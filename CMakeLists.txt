@@ -563,6 +563,9 @@ if(BUILD_APPS)
             "-sEXIT_RUNTIME=0"
             "--preload-file"
             "${CMAKE_CURRENT_SOURCE_DIR}/resources@/resources"
+            # The packager skips the bmfonts symlink, so take DPTLib's
+            # directly. SHELL: stops CMake de-duplicating --preload-file.
+            "SHELL:--preload-file ${dptlib_SOURCE_DIR}/resources/bmfonts@/resources/bmfonts"
             "SHELL:--exclude-file */resources/test"
             "SHELL:--exclude-file */resources/sources"
             "--shell-file"
