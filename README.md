@@ -1,6 +1,6 @@
 # Wuss
 
-version 0.6.0
+version 0.23.0
 
 [![Build status](https://github.com/dpt/Wuss/actions/workflows/ci.yml/badge.svg)](https://github.com/dpt/Wuss/actions)
 

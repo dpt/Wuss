@@ -12,7 +12,7 @@ if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE "Release" CACHE STRING "Choose the type of build, options are: Debug Release RelWithDebInfo MinSizeRel." FORCE)
 endif()
 
-project(Wuss VERSION 0.6.0 DESCRIPTION "Minimal window manager" LANGUAGES C)
+project(Wuss VERSION 0.23.0 DESCRIPTION "Minimal window manager" LANGUAGES C)
 
 # The values set in the toolchain file aren't available until this point.
 if(TARGET_RISCOS)
@@ -64,7 +64,7 @@ endif()
 add_library(WussLib)
 
 set_target_properties(WussLib PROPERTIES
-    VERSION 0.6.0
+    VERSION 0.23.0
     DESCRIPTION "Wuss window manager library"
     C_STANDARD 99
     PREFIX ""  # remove 'lib' prefix

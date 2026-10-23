@@ -5,10 +5,10 @@ All notable changes to Wuss are recorded here. Wuss was split out of
 carried over from DPTLib's changelog.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
-This project does not yet publish versioned releases; entries are grouped under
-_Unreleased_ until one is cut.
 
 ## [Unreleased]
+
+## [0.23.0] - 2026-10-23
 
 ### Added
 
