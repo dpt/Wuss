@@ -124,13 +124,12 @@ static void greatescape_free(zxtask_t *task)
 
 static result_t greatescape_claim_screen(zxtask_t *task, bitmap_t *bm)
 {
-  uint32_t *pixels;
+  const zx_frame_t *frame;
 
-  /* 4bpp, as the build selects (see CMakeLists.txt) */
-  pixels = zxspectrum_claim_screen(((greatescape_task_t *) task)->zx);
+  frame = zxspectrum_claim_screen(((greatescape_task_t *) task)->zx);
 
-  return bitmap_init(bm, SIZE2D(SCREEN_WIDTH, SCREEN_HEIGHT),
-                     pixelfmt_p4, SCREEN_WIDTH / 2, NULL, pixels);
+  return bitmap_init(bm, SIZE2D(frame->width, frame->height),
+                     pixelfmt_p4, frame->stride, NULL, frame->pixels);
 }
 
 static void greatescape_release_screen(zxtask_t *task)
@@ -181,14 +180,15 @@ result_t greatescape_create(wuss_t *wuss, greatescape_task_t **out)
   zxtask_init(&task->base, &ops);
 
   memset(&config, 0, sizeof(config));
-  config.width  = SCREEN_WIDTH / 8;
-  config.height = SCREEN_HEIGHT / 8;
-  config.opaque = task;
-  config.draw   = greatescape_draw;
-  config.stamp  = greatescape_stamp;
-  config.sleep  = greatescape_sleep;
-  config.key    = greatescape_key;
-  config.border = greatescape_border;
+  config.width        = SCREEN_WIDTH / 8;
+  config.height       = SCREEN_HEIGHT / 8;
+  config.opaque       = task;
+  config.draw         = greatescape_draw;
+  config.stamp        = greatescape_stamp;
+  config.sleep        = greatescape_sleep;
+  config.key          = greatescape_key;
+  config.border       = greatescape_border;
+  config.pixel_format = ZX_PIXEL_INDEXED4;
 
   task->zx = zxspectrum_create(&config);
   if (task->zx == NULL)
