@@ -14,26 +14,26 @@ Wuss was split out of [DPTLib](https://github.com/dpt/DPTLib), which it uses for
 
 ## Modules
 
-- [`wuss/wuss.h`](https://github.com/dpt/Wuss/blob/master/include/wuss/wuss.h) — minimal window manager {[docs](https://github.com/dpt/Wuss/blob/master/docs/windowing/wuss.md)}
-  - [`wuss/window.h`](https://github.com/dpt/Wuss/blob/master/include/wuss/window.h) — window creation, positioning, sizing and client delegation
-  - [`wuss/task.h`](https://github.com/dpt/Wuss/blob/master/include/wuss/task.h) — tasks: the clients of windows
-  - [`wuss/message.h`](https://github.com/dpt/Wuss/blob/master/include/wuss/message.h) — inter-task messaging
-  - [`wuss/icon.h`](https://github.com/dpt/Wuss/blob/master/include/wuss/icon.h) — work-area icons
-  - [`wuss/icon-spec.h`](https://github.com/dpt/Wuss/blob/master/include/wuss/icon-spec.h) — fill helpers for common icon shapes
-  - [`wuss/iconbar.h`](https://github.com/dpt/Wuss/blob/master/include/wuss/iconbar.h) — RISC OS-style icon bar
-  - [`wuss/menu.h`](https://github.com/dpt/Wuss/blob/master/include/wuss/menu.h) — pop-up menus
-  - [`wuss/menu-desc.h`](https://github.com/dpt/Wuss/blob/master/include/wuss/menu-desc.h) — build a menu tree from a descriptor string
-  - [`wuss/gadget/colourset.h`](https://github.com/dpt/Wuss/blob/master/include/wuss/gadget/colourset.h) — titled colour well with a colour menu
-  - [`wuss/gadget/gridview.h`](https://github.com/dpt/Wuss/blob/master/include/wuss/gadget/gridview.h) — glyph and label grid
-  - [`wuss/gadget/stringset.h`](https://github.com/dpt/Wuss/blob/master/include/wuss/gadget/stringset.h) — field with a pop-up menu of fixed strings
-  - [`wuss/component/dialogue.h`](https://github.com/dpt/Wuss/blob/master/include/wuss/component/dialogue.h) — interactive dialogue base class
-  - [`wuss/component/saveas.h`](https://github.com/dpt/Wuss/blob/master/include/wuss/component/saveas.h) — RISC OS-style drag-and-drop Save As dialogue
-  - [`wuss/component/info.h`](https://github.com/dpt/Wuss/blob/master/include/wuss/component/info.h) — label and value grid dialogue
-  - [`wuss/component/proginfo.h`](https://github.com/dpt/Wuss/blob/master/include/wuss/component/proginfo.h) — shared program information dialogue
-  - [`wuss/component/colourmenu.h`](https://github.com/dpt/Wuss/blob/master/include/wuss/component/colourmenu.h) — menu of the system palette colours
-  - [`wuss/component/fontmenu.h`](https://github.com/dpt/Wuss/blob/master/include/wuss/component/fontmenu.h) — menu of the available bitmap fonts
+- [`wuss/wuss.h`](https://github.com/dpt/Wuss/blob/main/include/wuss/wuss.h) — minimal window manager {[docs](https://github.com/dpt/Wuss/blob/main/docs/windowing/wuss.md)}
+  - [`wuss/window.h`](https://github.com/dpt/Wuss/blob/main/include/wuss/window.h) — window creation, positioning, sizing and client delegation
+  - [`wuss/task.h`](https://github.com/dpt/Wuss/blob/main/include/wuss/task.h) — tasks: the clients of windows
+  - [`wuss/message.h`](https://github.com/dpt/Wuss/blob/main/include/wuss/message.h) — inter-task messaging
+  - [`wuss/icon.h`](https://github.com/dpt/Wuss/blob/main/include/wuss/icon.h) — work-area icons
+  - [`wuss/icon-spec.h`](https://github.com/dpt/Wuss/blob/main/include/wuss/icon-spec.h) — fill helpers for common icon shapes
+  - [`wuss/iconbar.h`](https://github.com/dpt/Wuss/blob/main/include/wuss/iconbar.h) — RISC OS-style icon bar
+  - [`wuss/menu.h`](https://github.com/dpt/Wuss/blob/main/include/wuss/menu.h) — pop-up menus
+  - [`wuss/menu-desc.h`](https://github.com/dpt/Wuss/blob/main/include/wuss/menu-desc.h) — build a menu tree from a descriptor string
+  - [`wuss/gadget/colourset.h`](https://github.com/dpt/Wuss/blob/main/include/wuss/gadget/colourset.h) — titled colour well with a colour menu
+  - [`wuss/gadget/gridview.h`](https://github.com/dpt/Wuss/blob/main/include/wuss/gadget/gridview.h) — glyph and label grid
+  - [`wuss/gadget/stringset.h`](https://github.com/dpt/Wuss/blob/main/include/wuss/gadget/stringset.h) — field with a pop-up menu of fixed strings
+  - [`wuss/component/dialogue.h`](https://github.com/dpt/Wuss/blob/main/include/wuss/component/dialogue.h) — interactive dialogue base class
+  - [`wuss/component/saveas.h`](https://github.com/dpt/Wuss/blob/main/include/wuss/component/saveas.h) — RISC OS-style drag-and-drop Save As dialogue
+  - [`wuss/component/info.h`](https://github.com/dpt/Wuss/blob/main/include/wuss/component/info.h) — label and value grid dialogue
+  - [`wuss/component/proginfo.h`](https://github.com/dpt/Wuss/blob/main/include/wuss/component/proginfo.h) — shared program information dialogue
+  - [`wuss/component/colourmenu.h`](https://github.com/dpt/Wuss/blob/main/include/wuss/component/colourmenu.h) — menu of the system palette colours
+  - [`wuss/component/fontmenu.h`](https://github.com/dpt/Wuss/blob/main/include/wuss/component/fontmenu.h) — menu of the available bitmap fonts
 
-The interactive `wuss` demo (`apps/wuss/`) hosts several example tasks, including [Painting](https://github.com/dpt/Wuss/blob/master/docs/windowing/painting.md). More notes are in [`docs/windowing/`](https://github.com/dpt/Wuss/tree/master/docs/windowing).
+The interactive `wuss` demo (`apps/wuss/`) hosts several example tasks, including [Painting](https://github.com/dpt/Wuss/blob/main/docs/windowing/painting.md). More notes are in [`docs/windowing/`](https://github.com/dpt/Wuss/tree/main/docs/windowing).
 
 ## Building
 
