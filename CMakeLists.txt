@@ -589,14 +589,14 @@ if(BUILD_APPS)
         set(ZXGAME_SDL3 OFF)
         FetchContent_Declare(zxgame
                              GIT_REPOSITORY https://github.com/dpt/ZXGame.git
-                             GIT_TAG 0.1.0)
+                             GIT_TAG 0.1.1)
         FetchContent_Declare(chasehq
                              GIT_REPOSITORY https://github.com/dpt/ChaseHQ.git
                              GIT_TAG zxgame
                              SOURCE_SUBDIR none)
         FetchContent_Declare(greatescape
                              GIT_REPOSITORY https://github.com/dpt/The-Great-Escape-in-C.git
-                             GIT_TAG zxgame
+                             GIT_TAG 0.97.0
                              SOURCE_SUBDIR none)
         FetchContent_MakeAvailable(zxgame chasehq greatescape)
         find_package(Threads REQUIRED)
