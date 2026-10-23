@@ -589,7 +589,7 @@ if(BUILD_APPS)
         set(ZXGAME_SDL3 OFF)
         FetchContent_Declare(zxgame
                              GIT_REPOSITORY https://github.com/dpt/ZXGame.git
-                             GIT_TAG 0.1.1)
+                             GIT_TAG 0.1.2)
         FetchContent_Declare(chasehq
                              GIT_REPOSITORY https://github.com/dpt/ChaseHQ.git
                              GIT_TAG zxgame
