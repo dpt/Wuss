@@ -33,7 +33,7 @@
 #include "wuss/icon-spec.h"
 #include "../../icon.h"
 
-#include "test/all-tests.h"
+#include "wuss/test/all-tests.h"
 #include "../../test/harness.h"
 
 /* ----------------------------------------------------------------------- */
@@ -1364,7 +1364,7 @@ Failure:
 
 #else
 
-#include "test/all-tests.h"
+#include "wuss/test/all-tests.h"
 
 result_t wuss_menu_test(const char *resources)
 {

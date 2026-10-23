@@ -609,7 +609,7 @@ static result_t run_wuss(const char *resources,
     if (rc != result_OK)
     {
       logf_error("wuss: palette_load_hex(\"%s\") failed, rc=0x%X (%s)",
-                palette_name, rc, result_string(rc));
+                palette_name, rc, wuss_result_string(rc));
       goto Failure;
     }
   }
@@ -664,7 +664,7 @@ static result_t run_wuss(const char *resources,
       if (rc != result_OK)
       {
         logf_error("wuss: bmfont_create(\"%s\") failed, rc=0x%X (%s)", filename,
-                   rc, result_string(rc));
+                   rc, wuss_result_string(rc));
         goto Failure;
       }
       nfonts++;
@@ -673,7 +673,7 @@ static result_t run_wuss(const char *resources,
 
   rc = wuss_frontend_open(scr_width, scr_height, palette, NELEMS(palette),
                           depth, scale, &pixels, &rowbytes, &fmt, &frontend);
-  logf_info("wuss: wuss_frontend_open -> rc=0x%X (%s)", rc, result_string(rc));
+  logf_info("wuss: wuss_frontend_open -> rc=0x%X (%s)", rc, wuss_result_string(rc));
   if (rc != result_OK)
     goto Failure;
 
@@ -691,7 +691,7 @@ static result_t run_wuss(const char *resources,
 
   rc = bitmap_init(&g.bm, SIZE2D(scr_width, scr_height), fmt, rowbytes,
                    scr_palette, pixels);
-  logf_info("wuss: bitmap_init -> rc=0x%X (%s)", rc, result_string(rc));
+  logf_info("wuss: bitmap_init -> rc=0x%X (%s)", rc, wuss_result_string(rc));
   if (rc != result_OK)
     goto Failure;
 
@@ -717,7 +717,7 @@ static result_t run_wuss(const char *resources,
 
     rc = wuss_create(&g.scr, descs, nfonts, palette, NELEMS(palette), &config,
                      NULL, resources, &wuss);
-    logf_info("wuss: wuss_create -> rc=0x%X (%s)", rc, result_string(rc));
+    logf_info("wuss: wuss_create -> rc=0x%X (%s)", rc, wuss_result_string(rc));
     if (rc != result_OK)
       goto Failure;
 
@@ -768,7 +768,7 @@ static result_t run_wuss(const char *resources,
     desc.name      = "menu";
     rc = wuss_task_create(wuss, &desc, &g_tasks.menu_task);
     logf_info("wuss: wuss_task_create(menu) -> rc=0x%X (%s)", rc,
-              result_string(rc));
+              wuss_result_string(rc));
     if (rc != result_OK)
       goto Failure;
   }
@@ -783,12 +783,12 @@ static result_t run_wuss(const char *resources,
   rc = appsfiler_create(wuss);
   if (rc != result_OK)
     logf_error("wuss: appsfiler_create -> rc=0x%X (%s)", rc,
-               result_string(rc));
+               wuss_result_string(rc));
 
   rc = taskmanager_create(wuss);
   if (rc != result_OK)
     logf_error("wuss: taskmanager_create -> rc=0x%X (%s)", rc,
-               result_string(rc));
+               wuss_result_string(rc));
 #endif
 
   tasks_spawn(tasks);
@@ -831,7 +831,7 @@ static result_t run_wuss(const char *resources,
 Failure:
 
   if (rc != result_OK)
-    printf("run_wuss: failed (rc=0x%X: %s)\n", rc, result_string(rc));
+    printf("run_wuss: failed (rc=0x%X: %s)\n", rc, wuss_result_string(rc));
 
   /* ponytail: wuss_destroy() force-closes every still-open window and frees
    * every registered task node, but not the per-instance task_data block a

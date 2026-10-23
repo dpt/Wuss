@@ -51,7 +51,7 @@
 #include "../iconbar.h"
 #endif
 
-#include "test/all-tests.h"
+#include "wuss/test/all-tests.h"
 #include "test/tmpdir.h"
 #include "harness.h"
 

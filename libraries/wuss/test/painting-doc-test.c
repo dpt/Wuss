@@ -16,7 +16,7 @@
 
 #include "../../../apps/wuss/tasks/painting/painting-doc.h"
 
-#include "test/all-tests.h"
+#include "wuss/test/all-tests.h"
 #include "test/tmpdir.h"
 
 /* ----------------------------------------------------------------------- */

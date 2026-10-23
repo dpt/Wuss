@@ -53,6 +53,15 @@ extern "C"
 /** A palette file was malformed or the wrong length. */
 #define result_WUSS_BAD_PALETTE  (result_BASE_WUSS + 7)
 
+/**
+ * Describes a result code, covering the wuss codes as well as DPTLib's.
+ *
+ * \param err The result code.
+ *
+ * \return A static human-readable string.
+ */
+const char *wuss_result_string(result_t err);
+
 /* ----------------------------------------------------------------------- */
 
 /** A window manager instance. */

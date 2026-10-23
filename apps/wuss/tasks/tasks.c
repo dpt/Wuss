@@ -110,7 +110,7 @@ static result_t spawn_task(task_entry_t *entry)
   rc = entry->install(g_tasks.wuss);
   if (rc != result_OK)
     logf_error("wuss: %s install failed, rc=0x%X (%s)", entry->name, rc,
-               result_string(rc));
+               wuss_result_string(rc));
   return rc;
 }
 

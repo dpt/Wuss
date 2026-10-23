@@ -24,7 +24,7 @@
 #include "wuss/gadget/gridview.h"
 #endif
 
-#include "test/all-tests.h"
+#include "wuss/test/all-tests.h"
 
 #ifdef WUSS_GADGETS
 

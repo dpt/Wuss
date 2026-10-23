@@ -1,10 +1,4 @@
-/* test/main.c */
-//  main.c
-//  DPTLibTest
-//
-//  Created by David Thomas on 09/12/2014.
-//  Copyright (c) 2014-2026 David Thomas. All rights reserved.
-//
+/* main.c -- WussTest: runs the Wuss test suite */
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -22,7 +16,7 @@
 #include "base/result.h"
 #include "base/utils.h"
 
-#include "test/all-tests.h"
+#include "wuss/test/all-tests.h"
 
 /* ----------------------------------------------------------------------- */
 
@@ -37,61 +31,6 @@ test_t;
 
 static const test_t tests[] =
 {
-  { "atom",       atom_test       },
-  { "bitarr",     bitarr_test     },
-  { "bitfifo",    bitfifo_test    },
-  { "bitvec",     bitvec_test     },
-  { "cache",      cache_test      },
-  { "hash",       hash_test       },
-  { "list",       list_test       },
-  { "ntree",      ntree_test      },
-  { "bmtext",     bmtext_test     },
-  { "txtfmt",     txtfmt_test     },
-  { "utf8",       utf8_test       },
-  { "vector",     vector_test     },
-
-  { "pickle",     pickle_test     },
-  { "tagdb",      tagdb_test      },
-
-  { "bmfont",      bmfont_test      },
-  { "bmfontcache", bmfontcache_test },
-  { "bmfontfamily", bmfontfamily_test },
-  { "colour",     colour_test     },
-  { "colourspace", colourspace_test },
-  { "composite",   composite_test   },
-  { "bitload",     bitmap_load_test },
-  { "bitresize",   bitmap_resize_test },
-  { "rle",         bitmap_rle_test  },
-  { "bitconvert",  bitmap_convert_test },
-  { "span",        span_test        },
-  { "curve",       curve_test       },
-  { "dither",      dither_test      },
-  { "effects",     effects_test     },
-  { "octree",      octree_test      },
-  { "pattern",     pattern_test     },
-  { "pixelmap",    pixelmap_test    },
-  { "screen",      screen_test      },
-  { "tonemap",     tonemap_test     },
-
-  { "box",        box_test        },
-  { "layout",     layout_test     },
-  { "packer",     packer_test     },
-  { "region",     region_test     },
-  { "stack",      stack_test      },
-  { "stage",      stage_test      },
-
-  { "dirlist",    dirlist_test    },
-  { "filetype",   filetype_test   },
-  { "path",       path_test       },
-  { "stream",     stream_test     },
-
-  { "array",      array_test      },
-  { "barith",     barith_test     },
-  { "bsearch",    bsearch_test    },
-  { "bytesex",    bytesex_test    },
-  { "easing",     easing_test     },
-  { "pack",       pack_test       },
-
   { "gridview-bench", gridview_bench_test },
   { "paintingdoc",   paintingdoc_test   },
   { "wuss",       wuss_test       },
@@ -131,12 +70,6 @@ static const test_t tests[] =
 };
 
 static const int ntests = NELEMS(tests);
-
-/* ponytail: fixed frame count; take a number on the command line if a
- * test ever needs longer to cover its draw paths */
-#define AUTOQUIT_FRAMES 60
-
-int test_autoquit = 0;
 
 /* ----------------------------------------------------------------------- */
 
@@ -208,8 +141,6 @@ int main(int argc, char *argv[])
   for (i = 1; i < argc; i++)
     if (strcmp(argv[i], "-resources") == 0)
       resources = argv[++i];
-    else if (strcmp(argv[i], "-autoquit") == 0)
-      test_autoquit = AUTOQUIT_FRAMES;
     else
       testargvidx[nargs++] = i;
 

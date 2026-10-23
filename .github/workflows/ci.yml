@@ -1,8 +1,8 @@
 ---
-# CI build for DPTLib
+# CI build for Wuss (fetches DPTLib with FetchContent)
 #
 
-name: DPTLib
+name: Wuss
 on: [push]
 jobs:
   build:
@@ -59,9 +59,9 @@ jobs:
       - name: Run tests
         run: |
           case "${{ matrix.build_type }}" in
-            Debug) bin=DPTLibTest-debug ;;
-            MinSizeRel) bin=DPTLibTest-minsizerel ;;
-            *) bin=DPTLibTest ;;
+            Debug) bin=WussTest-debug ;;
+            MinSizeRel) bin=WussTest-minsizerel ;;
+            *) bin=WussTest ;;
           esac
           if [ "$RUNNER_OS" = "Windows" ]; then testbin="builddir/${{ matrix.build_type }}/$bin.exe"; else testbin="builddir/$bin"; fi
           "$testbin" -resources .

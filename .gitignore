@@ -54,3 +54,6 @@ build.*/
 composite-1.png
 testpickle1
 testpickle2
+
+# DPTLib's bitmap fonts, linked in at configure time
+resources/bmfonts

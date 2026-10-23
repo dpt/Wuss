@@ -1,6 +1,8 @@
 # Changelog
 
-All notable changes to DPTLib are recorded here.
+All notable changes to Wuss are recorded here. Wuss was split out of
+[DPTLib](https://github.com/dpt/DPTLib); entries before the split were
+carried over from DPTLib's changelog.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project does not yet publish versioned releases; entries are grouped under
@@ -10,17 +12,6 @@ _Unreleased_ until one is cut.
 
 ### Added
 
-- `geom/stage.h`: lays out a document background (a page in a margin, with a
-  stroked border and optional drop shadow, centred on a pasteboard) as a list
-  of tagged boxes to fill. Ported from PrivateEye's `stage`, with `box_t` in
-  place of `os_box` and `stageconfig_t::log2_pixel_x`/`log2_pixel_y` in place
-  of the RISC OS pixel size query. Viewing uses it: a Stage option (on by
-  default) draws the image on a page over a pasteboard, and its Background
-  menu becomes Colours (Pasteboard, Paper, Shadow and Border).
-- `framebuf/colourspace.h`: converts sRGB to and from CMYK, HSL, HSV and
-  OKLab as unclamped doubles, so out-of-gamut values survive round trips;
-  `colourspace_to_colour()` clamps and quantises. Also parses `#RRGGBB` and
-  `#RGB` hex colours.
 - `wuss_colourpicker`: a true-colour picker dialogue (RGB, CMYK, HSL, HSV or
   OKLab, old and new swatches, hex field) reporting every change live.
   Orbing's Light colour... (C) uses it.
@@ -49,13 +40,6 @@ _Unreleased_ until one is cut.
   hides it) and vetoes the close.
 - `wuss_FONTMENU_FAMILIES`: `wuss_fontmenu` lists one item per font family.
   Reading picks families and draws Markdown bold in the family's Bold face.
-- `bmtext_layout_measured()` wraps text with a caller-supplied measure
-  callback, so a line can mix faces; `bmtext_layout()` wraps it.
-- `io/filetype.h` holds every allocated RISC OS file type (1026, from
-  RISC OS Open's list) with its name and extensions, so aliases such as
-  `.jpeg` resolve; `filetype_t` gains `name`. `tools/gen_filetypes.py`
-  regenerates the tables. Markdown uses `&1D0` as a placeholder type.
-- `colour_to_pixel()` handles bgr565 and bgrx5551.
 - `wuss` DataOpen: Filing broadcasts `wuss_MESSAGE_DATA_OPEN` for a
   double-clicked file. A taskapp listing the type in its desc's `opens`
   claims it; otherwise Filing starts the app through its run function
@@ -72,14 +56,6 @@ _Unreleased_ until one is cut.
   Painting as `dithermenu_t` (`tasks/common/dithermenu.h`).
 - The SDL frontend draws a 16px border (`WUSS_SDL_BORDER`) around the
   screen.
-- `USE_COVERAGE` CMake option and `tools/coverage.sh` for a Clang
-  source-based coverage report in `build-coverage/`.
-- Tests for `barith`, `bsearch`, `bitmap` (palette, clear, convert,
-  `fill_pattern`, PNG save), `bmfont` at 8bpp, `bmtext`, `colour`, `curve`,
-  `effects`, `layout`, `ntree`, `pack`, `packer`, `pickle`, `span`, `stream`,
-  `tag-db` and many `wuss` areas (icons, writables, sliders, menus, menu
-  descriptors, dialogues, Save As, colour menus, gridview, icon bar,
-  furniture, backdrops, icon pools and toolbars).
 - `docs/windowing/menu-standard.md`: order, separators, labels and reserved
   keys for task window menus. Every task's menu now follows it: Save PNG
   becomes Save on F3, lone Background rows move into a Colours submenu and
@@ -108,14 +84,6 @@ _Unreleased_ until one is cut.
   search the task's pool first, then the shared one. Name-resolved icons now
   store bitmap pointers; `wuss_icon_spec_t` gains `u.bitmap.pressed_image`.
   Minesweeper's `mine` and `flag` icons move to its private pool.
-- `text/utf8.h` — a UTF-8 decoder/encoder (`utf8_decode`, `utf8_encode`,
-  `utf8_prev`). `bmfont` gains `.map` Unicode-cmap sidecars (one per bundled
-  font) and `bmfont_lookup()`, and `bmfont_draw()`/`bmfont_measure()` decode
-  UTF-8 and route through the cmap instead of a raw `char` index; `wuss`
-  writable icons edit as UTF-8. `bmfont_create()` also now reads cell
-  metrics from the first ink-free grid cell rather than the space glyph.
-  Menu tick/submenu-arrow glyphs move to `U+2713`/`U+25B6` via the Symbols
-  font's new cmap. New face: GrongyUI-Bold.
 - `wuss` Orbing task: a shaded sphere with draggable point lights (marker
   handles, a Light menu, per-light colour via `wuss_colourset`, highlight
   size/sharpness sliders, Randomise, arrow-key light nudging, a Dithering
@@ -145,33 +113,12 @@ _Unreleased_ until one is cut.
   particles, Gravity/Walls toggles, Space/C keys.
 - `wuss` CRT post-effect for the SDL frontend, and an optional software
   mouse pointer.
-- `screen_draw_rounded_rect()` — rounded-rectangle outline and fill, used
-  to draw menu shortcut keycaps.
-- `screen_copy_bitmap_dithered()` gains a selectable dithering method
-  (`screen_dither_t`), Orbing's own consumer of it.
 - The Display task also picks colour depth (not just resolution), gains
   Cancel/Change buttons (closing the task as RISC OS does) and offers
   480x360; mode changes move windows back on-screen instead of shrinking
   them. 1bpp/2bpp modes use a grey-ramp screen palette.
 - `wuss_set_config()` — swap a wuss instance's `wuss_config_t` mid-session.
 - `wuss_window_set_title()`.
-- `tools/fmt/balance_braces.py` — braces every arm of an if/else chain when
-  one arm is already braced (also run as part of the pre-commit format
-  pass alongside `wrap_protos.py`/`realign_decls.py`).
-- Aseprite extension to resize bmfont cells (`tools/aseprite/`).
-- `framebuf/bmfontfamily.h` — font families with style selection.
-  `bmfontfamily_scan()` reads a family directory without loading any PNG;
-  `bmfontfamily_find()`, `_heavier()`, `_lighter()` and `_with_slant()`
-  answer weight and slant queries; `bmfontfamily_label_path()` maps a
-  `Family Style` label back to a path. `dirscan_walk_dirs()` lists
-  subdirectories.
-
-- `io/filetype.h` — RISC OS filetype to host extension mapping, plus
-  `filetype_set()` to record the type as filesystem metadata on RISC OS (a
-  no-op elsewhere). `io/dirlist.h` — `dirlist_scan()` gives a sorted,
-  dotfile-filtered directory listing with each entry's filetype and
-  directory flag. `path_leaf_valid()`/`path_is_full()` validate leafnames
-  and full paths.
 - `wuss` inter-task messaging: fixed-size queued messages (`wuss_send`,
   recorded sends, acknowledge) with point-to-point and broadcast
   addressing, a bounce for unacknowledged recorded messages and delivery
@@ -220,15 +167,6 @@ _Unreleased_ until one is cut.
   `SDL_VIDEODRIVER=dummy` for headless use.
 - `wuss -f`/`--font` chooses the system font family; the bold slot comes
   from `bmfontfamily_heavier()`.
-- rgb565 and rgbx5551 (64K and 32K colour) screens: spans, `pixelmap`, RLE
-  bitmap blits, fill patterns, `bmfont` drawing, `screen_copy_bitmap()`
-  from 16bpp sources to any screen and ordered dithering onto 16bpp
-  screens. The SDL frontend's `--depth 15`/`16` and the Display task select
-  them.
-- `stack` size groups: items sharing a group get the largest size among
-  them, so labels and values in different rows line up. Dialogue labels in
-  the saturn, particles, display, orbing and config tasks are now
-  size-grouped and measured from the font.
 - Particles task: repeller and attractor forces (Add submenu) with a shared
   Strength dialogue whose Range slider sets the force's reach, and a
   Markers toggle (M) drawing each force's range.
@@ -254,12 +192,6 @@ _Unreleased_ until one is cut.
   rounds to the nearest value rather than truncating, and a min > max
   reversed-fill mode. `wuss_icon_get_value()` / `wuss_icon_set_value()` read
   and write it.
-- `geom/stack` — a nested HBox/VBox box-stack layout solver with flex
-  weights, cross-axis alignment, per-item min/max clamps and container
-  padding/gap (`docs/windowing/stack-sketch.md`); `STACK_VBOX`/`STACK_HBOX`/
-  `STACK_LEAF`/`STACK_SPACER` (plus `_EX` variants) compact a static
-  `stack_item_t` table to one designated-init literal per row. The saturn
-  Size dialogue is laid out through it.
 - `wuss/icon-spec.h` — `wuss_icon_spec_label()` / `_slider()` / `_action()`
   fill a `wuss_icon_spec_t` for the common cases, replacing manual
   field-by-field assignment (following the `create-from-desc.c` helper
@@ -277,30 +209,6 @@ _Unreleased_ until one is cut.
   advance-width rule under each glyph (useful for eyeballing advance-width
   drift), trims contiguous leading/trailing blank grid rows, and gains a
   `wuss_STD_INSET` margin.
-- `pixelfmt_p8` — 8bpp paletted screen support across the
-  framebuf/wuss/image-io stack: `span_p8`, screen blend/copy/fill-pattern/
-  RLE-blit p8 branches, `bmfont` p8 glyph drawing, `bitmap_convert()`
-  p8→bgrx8888/rgbx8888, PNG load/save keeping a palette-type PNG as
-  `pixelfmt_p8` instead of expanding it, and `--depth 8` on the `wuss` SDL
-  frontend. The palette task gains a second "Screen" window showing the
-  physical screen bitmap's own palette; the p8 tail beyond the 16 UI colours
-  is filled with the web-safe 216-colour cube.
-- `screen_copy_bitmap_dithered()` — blits onto a paletted screen with
-  per-pixel ordered dithering before the nearest-palette lookup, phased to
-  the source bitmap's top-left so it stays put across redraws. A
-  `screen_dither_t` picks the threshold map: none, 8x8 Bayer
-  (`pattern_bayer_threshold()`) or 64x64 blue noise
-  (`pattern_blue_noise_threshold()`, generated by
-  `tools/gen_blue_noise.py`). The `wuss` image task gains a Dithering
-  submenu to compare them.
-- `screen_copy_bitmap()` now blits a paletted (p1/p2/p4/p8) source bitmap
-  onto a screen of any format via a shared `src_fetch_rgba()` decode
-  helper, reusing the existing paletted→deep `pixelmap_get()` table with no
-  extra allocation or pass; a paletted source's tRNS-derived alpha is
-  honoured.
-- `screen_copy_rect()` now supports 1bpp and 2bpp screens (generalised from
-  the existing 4bpp packed-pixel path), so window move/scroll blit fast
-  paths work on low-bpp screens instead of falling back to a full repaint.
 - `wuss_EVENT_POINTER_ENTER` / `wuss_EVENT_POINTER_EXIT` — window-scoped
   events fired when the pointer crosses onto or off a window's whole
   on-screen footprint (content or furniture alike); exactly one ENTER is
@@ -329,34 +237,10 @@ _Unreleased_ until one is cut.
 - Shift-F1 on the RISC OS frontend now forces `wuss_INPUT_GARBAGE`
   (single-frame screen corruption), matching the existing SDL frontend and
   `frontend.h`'s documented F1/Shift-F1 intent.
-- `path_leaf_strip_ext()` — host-aware `.ext`-stripping helper; on RISC OS a
-  leafname carries no dotted extension at all (file type is separate
-  metadata), so the three call sites hand-rolling `strcmp`-based stripping
-  (namelist, bmfont enumerate, wuss icon registry) previously matched
-  nothing there.
-- `bmfont` glyphs are now drawn at the text baseline rather than the
-  glyph-cell top-left: `bmfont_create()` derives ascent/descent at load
-  time from the space glyph's grid rows, `bmfont_get_info()` gains ascent/
-  descent out-params, and every caller doing manual top-left positioning is
-  updated to add ascent.
 - Six reserved `wuss_ICON_TYPE_*` constants (`DISPLAY`, `WRITABLE`,
   `NUMBER`, `STRING_SET`, `SLIDER`, `DRAGGABLE`) after `RULE`, validated
   from a spec but (bar SLIDER and WRITABLE, now implemented) not yet
   drawn/hit-tested/routed.
-- `bmfont_draw_relief()` — draws a string twice with a transparent
-  background, a shadow pass in a given colour at `pos + offset` then the
-  main pass at `pos`, factoring the hand-rolled two-call drop-shadow idiom
-  into the library.
-- `bmfont` opt-in monospaced mode: `bmfont_set_flags()` with
-  `bmfont_FLAG_MONOSPACE` forces every glyph to advance by the font's
-  widest advance width (`maxadw`, computed once at load). Glyph bitmaps are
-  unchanged — proportional ink sits left-aligned in the wider fixed cell.
-  `bmfont_measure()` and both `bmfont_draw` paths route their advance
-  lookup through a new `bmfont_advance_for()` helper.
-- `io/dirscan` — a `dirscan_walk()` flat-directory walk (RISC OS
-  `OS_GBPB` / Win32 `FindFirstFile` / POSIX `dirent`) with a per-leafname
-  callback, extracted from the copies `bmfont_enumerate()` and the wuss
-  palette picker each carried.
 - `wuss/menu.h` gains `wuss_menu_should_keep_open(ev)` (the "ADJUST keeps
   the chain open, SELECT has already freed it" predicate) and
   `wuss_menu_open_ticked(task, menu, ticks[], at, out)` (sets each row's
@@ -367,13 +251,6 @@ _Unreleased_ until one is cut.
   tick, without reopening or repositioning the chain.
 - `wuss_window_set_doc()` — change a window's virtual document extent after
   creation (used when cycling to a differently-sized image).
-- `bitmap` now loads 1/2/4-bpp paletted PNGs: the sub-byte indices are
-  unpacked with `png_set_packing()` before the existing palette-to-RGB
-  expansion, and the `pngbitdepth != 8` rejection is restricted to
-  non-palette colour types.
-- `screen_draw_dashed_line()` now anchors its dash phase to the unclipped
-  start point, so a dashed rule scrolled partly off-screen and back no
-  longer smears its pattern.
 - New `wuss` demo tasks: **Minesweeper** (12x12/20-mine board, flood-fill
   reveal, flags on Adjust, mine counter and elapsed timer HUD) and
   **greeble** (an edge-matched tile-placement greebling pattern built from
@@ -397,10 +274,6 @@ _Unreleased_ until one is cut.
   `wuss.data` mounted at MEMFS `/resources`; the target emits `wuss.html`.
   A GitHub Actions Pages workflow builds and deploys the demo on pushes to
   `master` and `develop`.
-- `bmfont_enumerate()` — non-recursive scan of a directory's `*.png` files,
-  reporting each as a (name, path) pair (name is the leaf with `.png`
-  stripped) to a caller-supplied callback; the callback may return
-  `result_STOP_WALK` to stop early.
 - `wuss/component/fontmenu.h` and `wuss/component/colourmenu.h` — shared
   task components (the RISC OS Toolbox analogue), gated on a new
   `WUSS_COMPONENTS` CMake option (implies `WUSS_MENUS`). `wuss_fontmenu_create()`
@@ -438,14 +311,6 @@ _Unreleased_ until one is cut.
 - Clicking in a scrollbar well (not on the sausage) now pages the content
   one visible extent towards the click, keeping one `WUSS_SCROLL_STEP` of
   overlap, RISC OS style.
-- `bitmap_fill_pattern()` (see _Changed_ for the rename from
-  `bitmap_draw_pattern`) and `screen_fill_pattern()` now share a single
-  `pattern_t { bits, fg, bg, flags, origin }` describing an 8x8 tile,
-  built via `pattern_from_preset()` (the Bayer ramp and named tiles) or
-  `pattern_from_mask()` (stencil) in the new `framebuf/pattern` module.
-- `screen_fill_hline()` — fills one clipped horizontal run; the per-row
-  primitive `screen_fill_rect()` and `screen_draw_circle()`'s scanline fill
-  now loop over.
 - Symbolic `wuss_colour_t` values (`wuss/wuss.h`). A raw `wuss_colour_t` is a
   palette index, `0..127`; `wuss_COLOUR_SYMBOLIC` (128) and up name roles the
   window manager resolves to a concrete index. `wuss_COLOUR_BLACK`,
@@ -514,34 +379,12 @@ _Unreleased_ until one is cut.
 - `wuss_icon_create_array()` — creates a batch of icons from a spec array with
   all-or-nothing rollback: on the first failure any icons already created by
   the call are destroyed and no handles are written.
-- `text/bmtext.h` — `bmtext_layout()` word-wraps a string to a pixel width in a
-  `bmfont_t` (measuring each candidate line, so proportional fonts wrap
-  correctly); `bmtext_draw()` draws the laid-out lines stacked. Layout is pure.
-- `screen_draw_lines()` — connected polyline; a `screen_draw_line()` segment
-  between each adjacent pair.
-- `screen_draw_rect()` — one-pixel unfilled rectangle outline (falls back to a
-  fill for a degenerate size). See _Changed_ for the fill-primitive renames.
-- `screen_draw_dashed_line()` — Bresenham line with a dash-period counter.
-- `screen_PATTERN_BAYER0` .. `screen_PATTERN_BAYER0 + 64` — 8x8 ordered dither,
-  one fill pattern per coverage level 0 (empty) to 64 (solid), indexed as
-  `screen_PATTERN_BAYER0 + level`. `BAYER32` == `GREY50`, `BAYER64` == `SOLID`.
-- `define_wimp16_palette()` and the `palette_WIMP16_*` names — the RISC OS
-  desktop 16-colour palette in native Wimp index order.
-- `bitmap_set_palette()` — replace a bitmap's palette in place, reusing the
-  existing palette buffer when it is large enough; NULL drops the palette.
 - `wuss_window_create_placed()` — creates a window from a content size instead
   of a box, letting Wuss pack it (furniture included) into the first free
   screen region. Successive auto-placed windows tile; placement cascades when
   no region fits. The slot is released on close and on the first
   `wuss_window_move()` / `wuss_window_resize()`. An overall screen margin is
   kept around all auto-placed windows.
-- `screen_fill_pattern()` — 8x8 two-colour tile fill primitive in
-  `framebuf/screen` with eight built-in patterns (solid, grey50, stripes,
-  diagonal, dots, grid, crosshatch), phase-locked to a caller-supplied origin
-  so a scrolling fill stays put. The tile has only eight distinct rows, so each
-  is expanded to a phase-shifted colour run once up front and the scanline
-  loops index it with no per-pixel bit test; the 32bpp path memcpy's whole
-  8-pixel runs.
 - `wuss_ICON_TYPE_PATTERN` — a non-interactive work-area icon whose bbox is
   filled with a `screen_fill_pattern()` pattern in fg/bg, aligned to document
   space. Clicks fall through as `wuss_EVENT_MOUSE`; disabled swatches fold fg
@@ -552,35 +395,6 @@ _Unreleased_ until one is cut.
   window is chromeless (content box == visible box); with `WUSS_ICONS` off the
   `wuss_icon_*` API is not compiled. Programmatic and wheel scrolling survive
   either off via the new core `scroll-step.c`.
-- `screen_draw_ninepatch()` — draws a resizable "9-patch" frame from a source
-  image that is a 3x3 grid of equal cells: corners at natural size, edges and
-  centre tiled, clipped to the destination box and the screen clip.
-- `screen_NINEPATCH_NO_CENTRE` flag for `screen_draw_ninepatch()` to draw only
-  the border and leave the interior untouched.
-- `packer_set_gutter()` — `packer_place_by()` now reserves a configurable
-  gutter strip along the box's two inner edges so located boxes are never
-  flush. Defaults to 0, leaving existing callers unchanged; the returned
-  position is still the un-inflated box.
-- `packer_release()` — inverse of `packer_place_*`, returns an area to the
-  pool. Released areas are not coalesced.
-- `POINT(x, y)` and `SIZE2D(w, h)` compound-literal macros in `geom/point.h`
-  and `geom/size.h`.
-- 1bpp and 2bpp paletted pixel formats (`pixelfmt_p1`, `pixelfmt_p2`),
-  packed MSB-first (bit 7 / bits 7..6 are the leftmost pixel) to match PNG
-  and the existing pattern bit order. `span_p1` / `span_p2` (`fill` +
-  `blendconst`) are registered so `bitmap_init()` hands out a valid span;
-  `screen_set_pixel` / `screen_blend_pixel` / `screen_fill_pattern` /
-  `screen_copy_bitmap` gain p1 and p2 cases; `bitmap_convert()` grows
-  `p1 -> bgrx8888` and `p2 -> bgrx8888` paths for the SDL frontend's
-  per-frame display conversion. `pixelmap` already handled both generically.
-- `bmfont_draw()` renders to a `pixelfmt_p1` or `pixelfmt_p2` screen. A
-  single `bmfont_p1_plot_row` / `bmfont_p2_plot_row` does the per-pixel
-  MSB-first bit write for both 1- and 2-byte glyph rows and both opaque
-  and transparent backgrounds.
-- `pixelfmt_paletted_nentries()` — palette entry count for any paletted
-  format, replacing the `(scr->format == pixelfmt_p4) ? 16 : 0` hack at
-  every `colour_to_pixel()` call site (which passed a broken `nentries=0`
-  for any non-p4 paletted screen).
 - The `wuss` SDL demo accepts `-d`/`--depth 1` and `--depth 2`, selecting a
   `pixelfmt_p1` (stride `(width + 7) / 8`) or `pixelfmt_p2` (stride
   `(width + 3) / 4`) framebuffer alongside the existing 4 and 32.
@@ -591,13 +405,6 @@ _Unreleased_ until one is cut.
   4x4 and 8x8 on SELECT / ADJUST clicks; each matrix cell maps to a fixed
   -8..+8 offset so a larger matrix gives a finer pattern, not a noisier
   one (4x4 output unchanged). The current size is drawn top-left.
-- `tools/ttf2bmfont.py` — renders a TTF into the bmfont PNG format the
-  loader expects. Three small paletted bitmap faces (`04b_03`, `04b_25`,
-  `Nokia`) added under `resources/bmfonts/`.
-- `bmtext_layout()` / `bmtext_draw()` take an optional
-  `const bmfont_spacing_t *spacing` (NULL for none), threading letter/word
-  spacing through the paragraph word-wrap and draw paths, not just the
-  lower-level `bmfont_measure`/`bmfont_draw`.
 - The `wuss` text task's menu gains a Spacing submenu (Normal/Letter/Word/
   Letter+Word presets), Foreground/Background colourmenus
   (`wuss_colourmenu_t`) and a tickable No Background entry that draws
@@ -627,32 +434,6 @@ _Unreleased_ until one is cut.
   `result_WUSS_KEY_UNCLAIMED` to pass a key on. The SDL demo translates
   key-down and text-input events, runs its F1-F4 hotkeys only for
   unclaimed keys and adds a Keys test task.
-- `bmfont_find_caret()` (pointer x to nearest character boundary),
-  `bmfont_caret_x()` (index to caret x, in the letter-spacing gap) and
-  `bmfont_draw_caret()` (I-beam spanning the ascent with a 2px overhang).
-- `framebuf/bmfontcache` — `bmfontcache_t`, a refcounted acquire/release
-  wrapper so callers loading the same font file share one `bmfont_t`.
-  `wuss_t` owns one via `wuss_get_font_cache()`; the chars, text and
-  minesweeper tasks acquire through it.
-- `bmfont` supports glyphs up to 32px wide (64-bit extraction accumulators,
-  a 4-byte glyph-row tier and `_4w_` draw variants for every pixel format).
-  New fixture fonts: DPT-Digits-Bold-Lg (24px) and its regular weight,
-  GrongyUI and SF-Embers.
-- `pattern_from_colour()` — picks the palette pair whose Bayer mix best
-  approximates an arbitrary colour, with a spread penalty so a near-solid
-  entry beats a wide stipple.
-- `pathf()` — a printf-like path builder that substitutes `%s` arguments
-  then rewrites `/` to the host separator (dropping the final leaf's
-  extension on RISC OS). Covered by a new `path` test.
-- `bitmap_convert_into()` — a caller-owned-buffer sibling of
-  `bitmap_convert()`; both share each `bmconv_*` pixel loop.
-- `colour_get_rgb()`, mirroring `colour_get_alpha()`.
-- `bitmap_save_png()` writes p1/p2/p4 paletted bitmaps, deriving bit depth
-  and PLTE/tRNS size from the pixel format.
-- `geom/inset.h` — `inset_t` (t,r,b,l) and an `INSET()` brace initialiser.
-- `STACK_HUG` — a nested stack container sized to the sum of its
-  children's extents (plus gaps/padding), resolved bottom-up before the
-  top-down solve.
 - `wuss_STD_INSETS`, `wuss_STD_FRAME_INSET`/`_TOP_INSET` and
   `wuss_STD_FRAME_INSETS` standard padding constants,
   `wuss_SYSTEM_PALETTE_LENGTH`, `wuss_ICON_FLAGS_JUSTIFY_LEFT` (0, for
@@ -696,8 +477,6 @@ _Unreleased_ until one is cut.
   bitmaps (cells grow to 22px), caches its colours (rebuilt on
   `wuss_EVENT_PALETTE`) and is keyboard-playable: arrows move an orange
   cell cursor, Return reveals and Space flags.
-- `tools/extract_glyphs.py` — extracts unique 8-connected glyph shapes from
-  a PNG into a grid image sorted by area.
 - Release builds dead-strip unused code (`-ffunction-sections`/
   `-fdata-sections` with `-dead_strip` or `--gc-sections`), shrinking the
   release `wuss` binary by ~6%.
@@ -708,9 +487,6 @@ _Unreleased_ until one is cut.
   Invert), a New dialogue for canvas size and background, Save PNG (^S) and
   PNG load by file drop. Its UI-free core is `paint-doc`, covered by the new
   `paintdoc` test. See `docs/windowing/paint.md`.
-- `geom/region.h` — sparse pixel sets held as per-row runs: box and even-odd
-  polygon construction, `region_invert`, containment, row access and boundary
-  outline.
 - `wuss` bitmap icons can be latching and bevelled (RIDGE/GROOVE border plus a
   radio-style group).
 - `wuss` per-window mouse capture while a button is held; `wuss_is_capturing()`
@@ -730,13 +506,10 @@ _Unreleased_ until one is cut.
   `_hit_test()`, `_select_all()`, `_selected_count()`, `_set_drag()`; RISC OS
   style selection. The Filer gains Select all, Clear selection and Open
   parent menu rows and starts by default.
-- `DPTLIB_TMPPREFIX` places test scratch PNGs under `/tmp`.
 - `wuss` Effecting stack: effects are held in a reorderable stack shown in
   its own window (without a close icon). The menu adds, edits and deletes
   elements, sets the blend level (-100% to 200%) and applies or cancels the
   result. Menu shading updates live as the stack changes.
-- `effects_blend_extrapolate()` blends with alpha from -256 to 512, clamping
-  per byte. `tonemap_plot()` draws a map's per-channel curves over a grid.
 - `wuss_gridview_select()` selects a single item by index. A MENU click over
   an unselected item (with nothing selected) selects it until the menu
   closes, so the menu acts on it.
@@ -757,14 +530,7 @@ _Unreleased_ until one is cut.
 - Save PNG in the Ball and Fireworks tasks; wheel zoom in Fern and Saturn;
   Space toggles Animate in Fern and Saturn; Up/Down step rotation in Sofa
   while paused.
-- `easing()` in `utils/` (linear, quad to quint, sine, expo, circ, back,
-  elastic and bounce, each in in/out/in-out modes) and `colour_mix()`. The
-  Oscillating task uses them for random backwards runs, an Easing menu and a
-  Decay trail.
 - `docs/`: key reference and proposed system shortcuts for `wuss`.
-- `bitmap_resize()` with nearest, bilinear, box and Catmull-Rom filters and
-  an optional linear-light blend, and a `bitresize` test. The `wuss`
-  Resizing task offers Method, Scale, Linear light and Save PNG.
 - `wuss` Fern task: a parameterised Barnsley fern with size, points and curl
   (-300..300), colour menus, Animate, seed stepping by click or Left/Right
   and Save PNG.
@@ -828,6 +594,15 @@ _Unreleased_ until one is cut.
 
 ### Changed
 
+- **Breaking:** Wuss now lives in its own repository, split out of DPTLib
+  with its history. It fetches DPTLib with CMake `FetchContent` (pinned to a
+  commit; override with `-DFETCHCONTENT_SOURCE_DIR_DPTLIB`). The library
+  target is `WussLib`, the test runner is `WussTest` and the test
+  declarations are in `wuss/test/all-tests.h`. `resources/bmfonts` is linked
+  from DPTLib at configure time.
+- New `wuss_result_string()` gives text for `result_WUSS_*` codes, which
+  DPTLib's `result_string()` no longer knows.
+
 - The demo tasks move from `libraries/wuss/tasks/` to `apps/wuss/tasks/`,
   beside the `wuss` app that runs them. The app's icon bar tasks, Apps
   (`appsfiler`) and Tasks (`taskmanager`), join them in their own directories.
@@ -837,12 +612,6 @@ _Unreleased_ until one is cut.
   re-places the window after fitting it.
 - **Breaking:** `wuss_fontmenu_menu()` takes a flags argument; pass
   `wuss_FONTMENU_NONE` for the per-face menu.
-- **Breaking:** `screen_DITHER_NONE` is renamed `screen_DITHER_NEAREST`, and
-  None menu rows become Nearest.
-- **Breaking:** `filetype_t.ext` is undotted (`"png"`, not `".png"`);
-  `filetype_from_ext()` accepts either form. The generated tables shrink
-  from about 35.6 KB to 10.5 KB and `filetype_from_riscos()` binary
-  searches.
 - **Breaking:** `wuss_menu_close()` and the `_live` calls no longer accept a
   stale handle; drop it on `wuss_EVENT_MENU_CLOSED` and pass NULL.
 - **Breaking:** task resources move from `resources/wuss/` to
@@ -850,8 +619,6 @@ _Unreleased_ until one is cut.
   `resources/wuss-tasks/<task name>/iconpool/`), artwork sources to
   `resources/sources/` and test fixtures to `resources/test/`. Neither
   sources nor test fixtures are preloaded into the Emscripten build.
-- `layout_place()` returns `result_PACKER_DIDNT_FIT` when an element does
-  not fit.
 - Each demo task lives in its own directory under `libraries/wuss/tasks/`;
   shared task sources move to `tasks/common/`.
 - File-scope mutable static globals are grouped into one `static struct g`
@@ -859,8 +626,6 @@ _Unreleased_ until one is cut.
 - Painting's toolbox shows the desktop palette and follows palette changes;
   Palette's Load menu lists only sixteen-colour palettes.
 - Viewing no longer draws a ninepatch frame.
-- Ordered dithering on paletted screens sizes its bias from the real
-  palette spacing (`pixelmap_t` gains `step`), so it hides banding.
 - New and updated icons, including the task manager and Sudoku.
 - **Breaking:** `wuss_gridview_activate_fn_t` takes the double-click's
   `wuss_button_t` after the index, and may close the gadget's window. The
@@ -882,18 +647,12 @@ _Unreleased_ until one is cut.
   `Tiny/Regular.png`; the `-Lg` digits become the `DPT-DigitsLg` family).
   `bmfont_enumerate()` now walks family directories and reports
   `Family Style` labels, so `wuss_fontmenu` items read e.g. `GrongyUI Bold`.
-- **Breaking:** `screen_copy_bitmap_dithered()`'s dithering method argument
-  becomes a first-class selectable `screen_dither_t` rather than an
-  implicit fixed method.
-- **Breaking:** `array`'s duplicate squeeze/stretch variants are dropped
-  (kept only the non-duplicated pair).
 - Colour components (`wuss_colour_t` RGB fields etc.) move from `int` to
   `unsigned int`.
 - Scroll sausage Adjust-drag now scrolls both axes at once; scroll arrows
   auto-repeat while held; a window's minimum size floors at what its
   furniture needs; dragged windows snap to screen edges; a menu chain
   raises to front after an Adjust pick.
-- `bytesex`'s scalar byte-swap functions are inlined.
 - Task menu boilerplate (plain window creation, proginfo desc, key-shortcut
   prologue, clamp-to-range) is factored into shared helpers across tasks;
   task clamps use `MIN`/`MAX` instead of hand-rolled comparisons.
@@ -905,7 +664,6 @@ _Unreleased_ until one is cut.
   colour and open-code their clip test after clipping instead of before;
   p4 unpack-to-bgrx8888 and span fill get byte-at-a-time/`memset` fast
   paths; the clock task repaints only when the shown time changes.
-- AGENTS.md (agent guidance) split out from CLAUDE.md and refreshed.
 - Auto-placed windows are centred on screen when the packer finds no room,
   replacing the cascade fallback.
 - Setting a type-scoped icon flag (`DEFAULT`, `INTERACTIVE`, `SUBMENU`/
@@ -917,9 +675,6 @@ _Unreleased_ until one is cut.
 - A disabled menu row's shortcut keycap is drawn as an outline in the row's
   grey.
 - The Configure window's "ms"/"px" units follow their fields.
-- `screen` dispatches per-depth workers through `log2bpp`-indexed function
-  tables; single-use static tables are scoped to their functions.
-- bmfont scripts move to `tools/bmfont/`.
 - **Breaking:** reserved `wuss_ICON_TYPE_STRING_SET` removed (reimplemented
   as the `wuss_stringset` gadget); `DRAGGABLE`'s numeric value drops by one.
 - `wuss_nearest_colour()` defers to `colour_to_pixel()`, matching the
@@ -980,19 +735,6 @@ _Unreleased_ until one is cut.
 - Adjust-clicking a scroll well now pages away from the click point
   (mirroring Select's page-towards), matching RISC OS's usual Select/Adjust
   reversal elsewhere in the furniture.
-- `screen_set_pixel_8()` is renamed `screen_set_pixel_p8()`, matching the
-  `_p1`/`_p2`/`_p4` naming of the other paletted set-pixel helpers.
-- Advance widths encoded in font PNGs are now 1px shorter than the true pen
-  advance (`bmfont_advance_for()` adds the missing pixel back in as letter
-  spacing at every use site); the bundled bitmap fonts (`04b_03`, `04b_25`,
-  the `DPT-*` faces, `Nokia`, `Symbols`, `Tiny`) are regenerated to match,
-  and `tools/ttf2bmfont.py`'s ink-advance mode drops a spurious extra pixel
-  it previously added.
-- The bundled bitmap fonts are renamed with a provenance prefix (`DPT-` for
-  the in-house faces, `ZX-` for GliderRider).
-- `screen_copy_bitmap_i`'s has-alpha-channel check is hoisted into a general
-  `pixelfmt_has_alpha()` macro alongside `pixelfmt_is_rle`/
-  `pixelfmt_paletted_nentries`.
 - **Breaking:** `wuss_window_invalidate_all()` is renamed
   `wuss_window_invalidate_visible()` -- "all" misread as the whole document
   when it only ever covered the visible content rectangle. Same behaviour;
@@ -1040,19 +782,6 @@ _Unreleased_ until one is cut.
   `const wuss_alloc_t *alloc` (NULL selects `wuss_alloc`), routing every
   block the handle keeps through those hooks instead of libc
   malloc/calloc/strdup/free, matching `wuss_colourmenu` and `wuss_create`.
-- **Breaking:** `bitmap_draw_pattern()` is renamed `bitmap_fill_pattern()`
-  and now takes `const pattern_t *` and returns `result_t`.
-  `screen_draw_bitmap()` is renamed `screen_copy_bitmap()` and
-  `screen_draw_ninepatch()` renamed `screen_copy_ninepatch()` (its
-  `screen_NINEPATCH_NO_CENTRE` flag is unchanged) — `copy` is now the verb
-  for all pixel transfer, matching `screen_copy_rect()`. `screen_fill_pattern()`
-  now takes `const pattern_t *` instead of a preset enum. Hard renames, no
-  compatibility wrappers.
-- `screen_copy_bitmap()`, `screen_copy_ninepatch()` and `screen_copy_rect()`
-  now all return `result_t` (`result_OK` / `result_NOT_SUPPORTED`) instead
-  of `void` / `int`; `screen_copy_rect()` also returns
-  `result_NOT_SUPPORTED` when clipping leaves nothing to copy, so a caller
-  must fall back to a full redraw in that case.
 - Resizing a window (`wuss_window_resize()`) no longer clamps the result to
   the visible on-screen strip when the window's top-left is off-screen —
   the requested content size is applied verbatim and the window may
@@ -1070,10 +799,6 @@ _Unreleased_ until one is cut.
 - **Breaking:** `wuss_config_t::palette` is renamed `furniture`, and its type
   `wuss_palette_t` renamed `wuss_furniture_palette_t`. `wuss_colour_t` narrows
   from `int` to `unsigned char`.
-- **Breaking:** the framebuf draw primitives split draw/fill in their names:
-  `screen_draw_pixel` → `screen_set_pixel`, `screen_draw_rect` →
-  `screen_fill_rect`, `screen_draw_square` → `screen_fill_square`. `screen_draw_rect`
-  now names a one-pixel outline.
 - **Breaking:** the window/desktop background is now a `wuss_backdrop_t`
   (`{ colour, pattern, pattern_bg }`) instead of a bare `wuss_colour_t`:
   `wuss_config_t::backdrop`, and the `bg` parameter of
@@ -1130,8 +855,6 @@ _Unreleased_ until one is cut.
     leaf now delivers `wuss_EVENT_MENU_SELECT` (with `window == NULL`) to that
     task — `data.menu_select` carries `{ const struct wuss_menu *menu; int
     index; wuss_button_t button; }`. `wuss_menu_select_fn_t` is removed.
-- `screen_set_pixel_8()` is renamed `screen_set_pixel_p8()`, matching the
-  `_p1` / `_p2` / `_p4` naming of the other paletted set-pixel helpers.
 - The greeble prefab tables (`greeble_prefab_cells` / `greeble_prefab`) are
   regenerated from the current sheet; `GREEBLE_NPREFAB` 103 -> 137.
 - The `wuss` image task resizes the window frame on load (via
@@ -1149,8 +872,6 @@ _Unreleased_ until one is cut.
 - `wuss_window_move()` and `wuss_window_resize()`'s duplicated "filter clean
   pieces against `wuss->dirty[]`" loops are factored into a shared
   `wuss__filter_settled()`.
-- **Breaking:** `path_join_filename()`/`path_join_leafname()` are removed;
-  every caller now uses `pathf()`.
 - **Breaking:** the colourmenu, fontmenu and proginfo components are
   process-wide singletons. `wuss_colourmenu_create/destroy`,
   `wuss_fontmenu_create/destroy` (and the `wuss_fontmenu_t` handle) and
@@ -1164,9 +885,6 @@ _Unreleased_ until one is cut.
   black); `wuss_icon_spec_label()` takes icon flags instead of a
   `justify_right` bool; `wuss_icon_spec_slider_row()`'s caller now supplies
   the value text buffer.
-- **Breaking:** `stack_item_t`'s `pad_l/pad_t/pad_r/pad_b` become one
-  `inset_t pad`, and `STACK_VBOX_EX`/`STACK_HBOX_EX` take padding in
-  (t,r,b,l) order.
 - `wuss_ICON_TYPE_WRITABLE` moves out of the reserved types, swapping its
   numeric value with `DISPLAY`. Constructing a reserved type (`DISPLAY`,
   `NUMBER`, `STRING_SET`, `DRAGGABLE`) now asserts in debug builds.
@@ -1180,20 +898,12 @@ _Unreleased_ until one is cut.
   losing one to it; the sausage may shrink to 1px.
 - Frame captions are drawn above a shifted border rather than overpainting
   a gap in it.
-- p8 blending and p4 span blending use the cached `pixelmap` table instead
-  of a linear palette scan per pixel; `screen_fill_rect()` hoists its clip/
-  colour lookup out of the row loop; the SDL present path reuses a
-  persistent scratch bitmap instead of allocating per frame.
-- `bmfont_draw()` selects its draw function from a
-  `[format][rowbytes][transparent]` table.
 - The `wuss` demo opens no tasks at startup by default (see `-t`). The
   Swatches task is removed (superseded by Configure), Blank is renamed
   Patterns (a timed ordered-dither blend between random colours, with a
   Speed submenu and full furniture), the Image task drops its unwired
   menu rows, the Palette task moves its palettes to a Load submenu and
   menu categories are reordered.
-- `pattern_t.origin` is documented as the absolute coordinate of the
-  tile's top-left bit.
 - The `wuss` Image task is renamed Viewing and shows dropped images only; the
   Text task is renamed Reading and moves to a new Text category. Their old
   image/sample lists and Load menus are removed. The default startup task list
@@ -1202,9 +912,6 @@ _Unreleased_ until one is cut.
   per-task `bitmap_load_png` calls.
 - The Chars task draws cell numbers in Tiny Regular and its grid lines in one
   pass per redraw.
-- `box_list_add()` merges the pair whose union adds least area when full,
-  rather than folding into the last entry.
-- `screen_copy_rect()` copies packed 1/2/4bpp rects bytewise.
 - Xcode schemes set the working directory for the test and wuss targets.
 - **Breaking:** `wuss_gridview_window_create()` also takes the default
   furniture to omit.
@@ -1236,21 +943,6 @@ _Unreleased_ until one is cut.
 
 ### Fixed
 
-- `ntree_append()` was declared but never defined.
-- `stream`: PackBits fills never rewound their buffers, so output stopped
-  after the first buffer's worth.
-- `pickle_unpickle()` dropped a final line without a newline, and called
-  the writer's stop method after a failed start.
-- `layout_place()` ignored spacing in the remaining width, overflowed its
-  stack past 32 elements and looped forever on a box too wide for any line.
-- `tagdb_untagid()` decremented a count for a tag the id did not carry, and
-  `tagdb_forget()` left counts unchanged.
-- `pack`: array-mode signed halfwords were zero-extended.
-- `bitmap_clear()` at 32bpp took the per-pixel path for any non-zero
-  pixel.
-- `bmtext` pushed a word ending exactly at the wrap width to the next line,
-  and kept trailing whitespace at a break.
-- Dither bias on 1bpp and 2bpp screens was about 15x too weak.
 - Closing a colour picker, Save As, DCS or error dialogue with Ctrl-Q or
   Ctrl-F9 left its component holding a freed window (a crash in Orbing at
   shutdown).
@@ -1269,12 +961,8 @@ _Unreleased_ until one is cut.
   abandoning a later task's menu chain cannot hand the focus back to a window
   whose task is already gone (a heap use-after-free when quitting `wuss` with
   Paint's New dialogue open).
-- `screen_copy_bitmap()` honours BGR(X|A)8888 source formats instead of
-  assuming RGB byte order.
 - `wuss` windows are now placed around their actual (furniture-included)
   positions rather than their content box.
-- `stack`: a container's fixed size is counted along its parent's axis
-  (previously miscounted on the cross axis).
 - A menu title is padded by a space either side; a menu row can be both
   ticked and swatched at once; the colourmenu ticks the current colour;
   descriptor-built menu items now initialise their shortcut field; a gap
@@ -1287,12 +975,6 @@ _Unreleased_ until one is cut.
   the earlier `bmfont_enumerate` fix). The missing-glyph box is drawn one
   column further left. The image task's Background menu drops a stray
   None entry.
-- `bitmap_save()` wrote packed p1/p2/p4 PNG rows with neighbouring pixels
-  swapped.
-- `PIXELFMT_MAKE_BGRX8888` swapped red and blue; `PIXELFMT_xxB565_SHIFT`
-  overlapped green; `bitmap_clear()` did nothing for 16bpp bitmaps.
-- `bmfontfamily_label_path()` clobbered its directory argument when given
-  a `pathf()` result, leaving the Emscripten build with a black screen.
 - Escape now dismisses an open menu. Closing a window still in the open
   menu chain abandons the chain rather than leaving it pointing at freed
   memory. Auto-placement ignores open menus.
@@ -1322,17 +1004,8 @@ _Unreleased_ until one is cut.
   handler closed another task; all tasks are now marked reaping first.
 - `wuss_icon_delete()` swapped the last icon into the freed slot, changing
   draw and hit-test order; the rest now shift down.
-- `pathf()` on RISC OS stripped a '.' "extension" from output with no '/',
-  truncating native paths.
 - `run_wuss` leaked the backdrop, and on early failure the fonts, frontend
   and wuss instance.
-- `bmfont_draw()` clipped full-width glyphs (M, W, ...) out of existence:
-  `bmfont_advance_for()`'s advance (cell width + the new 1px letter
-  spacing) was used directly as the drawable pixel width, pushing
-  `clippedcharwidth` past `charwidth` and driving `right_skip` negative.
-  Each glyph's draw now splits into the cell itself (clamped to
-  `charwidth`) and any leftover advance, drawn from a zero-filled glyph
-  buffer.
 - Several furniture task windows (swatches, text, palette) passed
   `wuss_WINDOW_NO_RESIZE_BLIT` alone as their window flags, zeroing every
   furniture bit under the new opt-in flag polarity instead of just opting
@@ -1369,29 +1042,11 @@ _Unreleased_ until one is cut.
   menu's title bar being hovered now closes an open child chain (previously
   `wuss_mouse_move`'s early-return over furniture meant nothing heard about
   it).
-- `screen_copy_bitmap()` read a paletted source bitmap (e.g. a PLTE-chunk
-  PNG) as if it were 32bpp RGBA, running past the buffer end; first
-  hardened to reject non-32bpp sources, then given real paletted-source
-  support via a shared `src_fetch_rgba()` decode path.
-- The ordered-dither bias table was keyed on raw palette entry count
-  instead of the true per-channel quantisation level (4:4:4 for p1/p2/p4,
-  5:6:5 for p8), collapsing the p8 Bayer bias to `{-1,0}` and making
-  dithering invisible; and the dither cell was keyed on destination screen
-  coordinates rather than sprite-local ones, so the pattern crawled across
-  a moving sprite instead of staying fixed to it.
-- The generalised packed-copy path (`screen_copy_rect_packed`, covering
-  p1/p2/p4) used LSB-first within-byte indexing for every depth, but p1/p2
-  are packed MSB-first — a non-byte-aligned move on a 2bpp screen picked
-  the wrong pixel and shuffled the row.
 - The screen palette wasn't repadded on a live palette change, only at
   startup: picking a palette entry while running p8 fed wuss's bare
   16-entry UI palette straight to `bitmap_set_palette()`, which reads 256
   entries for p8 — a heap-buffer-overflow. The pad-to-screen-size logic is
   now shared between startup and the live-change handler.
-- A p8-loaded PNG converted to `bgrx8888` before reaching
-  `screen_copy_bitmap`/`screen_copy_ninepatch` produced dull/wrong-hue
-  composites, since that blit family assumes `rgba8888` byte order;
-  switched to a matching `bmconv_p8_to_rgbx8888`.
 - `wuss_window_invalidate(window, NULL)` built its whole-visible-rect
   placeholder already in screen space then ran it through the doc-space-
   to-screen translation a second time, double-applying scroll once a
@@ -1426,12 +1081,6 @@ _Unreleased_ until one is cut.
   width/height when the window's top-left was off-screen (negative x0/y0),
   since the clamp measured room left from the window's current position
   rather than the screen's total size.
-- `path_join_leafname()` on RISC OS produced invalid pathnames like
-  `Nokia/png` (`/` is a literal leafname character there, not a separator,
-  and file type isn't part of the string at all).
-- `mkstemps` (a GNU/BSD extension absent from the RISC OS GCCSDK libc) in
-  `rle-test.c` broke the RISC OS build; replaced with a fixed leafname via
-  `path_join_leafname`.
 - Minesweeper repainted the whole HUD strip and every board cell on any
   click, even a single flag toggle; reveal now accumulates just the
   board-cell range its flood fill touched and redraw skips the HUD/
@@ -1496,27 +1145,6 @@ _Unreleased_ until one is cut.
   its unoccluded pieces when redrawing its own dirty region; previously
   only the content redraw was occlusion-clipped, so a partly-covered
   window repainted furniture pixels straight over the window on top.
-- Bounds-checked `extract_advance_widths()` pixel reads in `bmfont` before
-  they happen, rather than after: a font PNG whose width is not an exact
-  multiple of the glyphs-per-row count could previously run the inner loop
-  past the row's — or the buffer's — last valid word before any check
-  caught it.
-- `bmfont`'s grid-size detector now decodes the image and verifies each
-  candidate cell height against the advance-width strip's pixel markers,
-  rather than taking the first divisor of the image height at or above the
-  grid width. The old heuristic could miss a valid cell height below the
-  grid width and, when the grid width did not divide the image height
-  cleanly, could latch onto a spurious large divisor and overflow the
-  pixel buffer in `bmfont_draw()`.
-- `bmfont` rejects a malformed font grid with `result_PARSE_ERROR` instead
-  of asserting, when `extract_advance_widths()`'s pixel cursor would walk
-  out of the decoded image (previously two `assert`s, compiled out under
-  `NDEBUG`).
-- `screen_fill_hline()` (and so `screen_fill_rect()`, which calls it per
-  row) is a no-op in release builds for a `screen_t` whose pixel format has
-  no span-registry entry — or a span with no `fill` — instead of
-  dereferencing the NULL `scr->span` / `scr->span->fill`; the guarding
-  `assert` was compiled out under `NDEBUG` so this previously crashed.
 - `wuss_create()`'s font-slot arrays and loop bound in the interactive demo
   are now sized from one named, compile-time-checked constant
   (`WUSS_MAIN_NFONTS`, checked against `wuss_MAX_FONTS`) instead of three
@@ -1548,40 +1176,11 @@ _Unreleased_ until one is cut.
 - Resize-corner drag preserves where within the resize icon the mouse-down
   landed, so the window's corner no longer jumps to the raw pointer position
   on the first move.
-- Removed signed-overflow and negative-shift undefined behaviour in the
-  anti-aliased fixed-point line rasteriser, reachable with long or off-screen
-  endpoints.
-- `screen_draw_ninepatch()` clamps its corner cells so they no longer overlap
-  and double-draw when the destination box is smaller than the source corners.
-- `spanregistry_get()`'s one-slot cache seeded `lastformat` to zero, which
-  equals `pixelfmt_p1` (the first enum member), so the first p1 lookup
-  short-circuited to a NULL span and tripped the `screen_fill_hline()`
-  assert. Seeded with `pixelfmt_unknown` and the fast path guarded on a
-  non-NULL span.
 - The `NO_RESIZE_BLIT` branch of `wuss_window_resize()` invalidated the
   dirty region but never dropped the cached furniture layout, so
   `wuss__furniture_draw` kept painting titlebar/carve/outline rects at the
   previous frame's width. It now calls `wuss__chrome_invalidate_layout`,
   matching the blit branch's `wuss__chrome_repaint`.
-- `bitmap_fill_pattern()` negated the `box_intersection()` result (which is
-  non-zero when the intersection is *empty*), so any non-NULL `area` that
-  overlapped the bitmap returned early and painted nothing — only
-  `area == NULL` worked. Drop the negation to match `screen_fill_pattern()`.
-- `bitmap__rle_decode_row()` ran a bare `for (;;)` that only stopped on an
-  EOL opcode, so a truncated or corrupt RLE blob read opcodes past the
-  allocation. It now takes an `end` limit (like every other row walker),
-  stops at it, and has a reserved opcode bail to `end` (release builds
-  previously did a bare `break`, desynchronising the caller's row cursor).
-  `bitmap_decompress()` reads `data_len` from the blob header to form
-  `end`.
-- `bmfont_draw()` formed `gid = c - ' '` from a raw signed `char` and
-  indexed `adw[]` and the glyph bitmaps with no bounds check, so a tab, a
-  DEL or any byte `>= 0x80` produced a negative or oversized index and an
-  out-of-bounds read/write. Both draw loops now filter `c < ' '` and
-  `gid >= totalchars`, matching `bmfont_measure()`. The
-  fully-vertically-clipped case (`clippedcharheight <= 0`) also gets a
-  release-build bail rather than entering `drawfn` with a negative height
-  and looping ~`INT_MAX` times.
 - `wuss_destroy()`'s task sweep delivered `wuss_EVENT_QUIT` and freed each
   task node without first setting `wuss_TASK__REAPING`. A QUIT handler that
   closed its last autoclose window hit `wuss_window_close`'s self-destruct
@@ -1589,18 +1188,6 @@ _Unreleased_ until one is cut.
   then freed again. `wuss_TASK__REAPING` is now set before QUIT in the
   sweep, and `wuss_task_destroy()` is a no-op when the task is already
   being reaped.
-- `bitmap_compress()`'s worst-case row estimate assumed one control byte
-  per 128 pixels, but the encoder emits a 1-byte literal control for every
-  isolated non-repeatable pixel. A legal y8 image of the form singleton,
-  pair, singleton, pair, ... needs ~1.33*w bytes/row, overflowing the
-  allocation and returning `result_BUFFER_OVERFLOW` on valid input. The
-  budget is now `w * (bpp + 1)` plus the literal-long split control and an
-  EOL.
-- `bmconv_p4_to_bgrx8888()` ran `x < src->size.w / 8` and expanded 8 pixels
-  per iteration, so the final `w % 8` pixels of each row were never written
-  — the output had uninitialised garbage columns for any width not a
-  multiple of 8 — and it ignored row padding in `src->rowbytes`. Switched
-  to a per-pixel loop honouring both, matching the p1 and p2 converters.
 - `wuss_window_set_hidden()` marked a window hidden but left
   `wuss->furniture.dragging`, `wuss->pressed_icon` and `wuss->hover_icon`
   pointing into it, so hiding a window mid-drag from an event handler meant
@@ -1626,8 +1213,6 @@ _Unreleased_ until one is cut.
   size, a larger window shrank the exclusion disc relative to half and let
   stars/ring points land inside the planet body. Scaled by
   `size/SATURN_SIZE_DEFAULT`.
-- `DPT-Digits-Bold` and `MS Sans Serif` bmfonts had an oversized space glyph
-  width; reduced.
 - `wuss__slider_row_snap()`'s `CLAMP(v, min, max)` assumed `min <= max`, so a
   reversed (fill-backwards) slider's `CLAMP` always returned `max` regardless
   of drag position; clamps against `MIN(min,max)`/`MAX(min,max)` instead.
@@ -1652,24 +1237,6 @@ _Unreleased_ until one is cut.
 - `wuss_proginfo_set_desc()` dereferenced a borrowed `desc` with no `NULL`
   check; guarded, matching the idiom used elsewhere in the component
   helpers.
-- RISC OS `dirscan_walk()`: subdirectories were reported as files (now uses
-  OS_GBPB 10 and skips non-files), HostFS `/DS_Store`-style entries
-  aborted the scan (skipped), SWI errors are logged, and a mid-scan failure
-  returns what was found instead of `result_FILE_NOT_FOUND`.
-- `bmfont_enumerate()` kept a pointer into `pathf()`'s shared buffer, so
-  later entries (and the RISC OS multi-call scan) clobbered it; it copies
-  the directory first.
-- `pixelmap` matched each quantised bucket using its top edge, biasing
-  deep-to-paletted conversion towards brighter entries; uses the bucket
-  centre.
-- `span_p4_blendconst` indexed the nibble-packed p4 pixelmap table as if
-  byte-per-entry, reading up to 2x past its end.
-- `bmfont_draw()` left `*end_pos` unset when fully clipped, garbling
-  chained multi-colour runs on partial redraws.
-- `bmfont_measure()` skipped bytes >= 0x80 that `bmfont_draw()` renders.
-- `bmtext_layout` ignored newlines.
-- The `bmconv_*` allocating wrappers leaked their buffer when
-  `bitmap_init` failed.
 - PRE_SHOW handlers in the demo app and saturn called
   `wuss_menu_open_window_now()` with a `NULL` handle for plain windows.
 - A task's stale main-window pointer was used after close while its
@@ -1705,9 +1272,7 @@ _Unreleased_ until one is cut.
   redraw ignored the scroll offset.
 - The doughnut render was sized from the dirty box rather than the window,
   and recomputed theta trig in its inner loop.
-- `INSET` was a compound literal, not a constant expression under GCCSDK.
 - The `wuss` and `bmfont` enumerate tests hardcoded fixture counts.
-- `rng.h` used `__inline__`, which MSVC rejects; it now uses `INLINE`.
 - `wuss` core drag takes the pointer from a captured press.
 - Ten `wuss` tasks swallowed every keypress; unused keys now return
   `result_WUSS_KEY_UNCLAIMED` so driver hotkeys work.
@@ -1716,8 +1281,6 @@ _Unreleased_ until one is cut.
 - A toggled window is trimmed to the document extent after a task reflows.
 - RISC OS: the Filer and Paint use native path separators, and
   `convolve` no longer uses `lroundf`, which the RISC OS libm lacks.
-- The pickle test deletes its temporary files.
-- `bitmap_load_png` honours colour-key tRNS on RGB and grey PNGs.
 - Save As closes after a drag-save (`DataLoadAck` is now sent).
 - A gridview keeps a MENU-click selection until the menu pick has been
   handled. The Effecting Save PNG row opens as a plain window submenu.

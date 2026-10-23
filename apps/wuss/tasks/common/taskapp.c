@@ -118,7 +118,7 @@ static result_t app_spawn(app_t             *app,
 
   if (rc != result_OK)
     logf_error("wuss: %s create failed, rc=0x%X (%s)", app->desc->name, rc,
-               result_string(rc));
+               wuss_result_string(rc));
   return rc;
 }
 
@@ -459,7 +459,7 @@ result_t taskapp_install(wuss_t *wuss, const taskapp_desc_t *desc)
   {
     wuss_task_destroy(app->task); /* its QUIT unlinks and frees app */
     logf_error("wuss: %s install failed, rc=0x%X (%s)", desc->name, rc,
-               result_string(rc));
+               wuss_result_string(rc));
   }
 
   return rc;

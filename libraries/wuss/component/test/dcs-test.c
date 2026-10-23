@@ -21,7 +21,7 @@
 #include "wuss/window.h"
 #include "wuss/component/dcs.h"
 
-#include "test/all-tests.h"
+#include "wuss/test/all-tests.h"
 
 #if defined(WUSS_FURNITURE) && defined(WUSS_COMPONENTS)
 

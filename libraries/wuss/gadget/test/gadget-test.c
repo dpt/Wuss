@@ -23,7 +23,7 @@
 #include "wuss/gadget/gridview.h"
 #include "wuss/gadget/swatches.h"
 
-#include "test/all-tests.h"
+#include "wuss/test/all-tests.h"
 
 #if defined(WUSS_FURNITURE) && defined(WUSS_GADGETS)
 

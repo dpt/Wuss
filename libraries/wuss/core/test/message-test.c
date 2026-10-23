@@ -15,7 +15,7 @@
 #include "wuss/window.h"
 #include "wuss/message.h"
 
-#include "test/all-tests.h"
+#include "wuss/test/all-tests.h"
 
 #ifdef WUSS_FURNITURE
 
