@@ -531,7 +531,7 @@ if(BUILD_APPS)
     # repos, configure with -DFETCHCONTENT_SOURCE_DIR_EXPLOSION=../Explosion
     FetchContent_Declare(explosion
                          GIT_REPOSITORY https://github.com/dpt/Explosion.git
-                         GIT_TAG e86fdffa80c83c51dfd1ab3ee3922e01ad8ef5de) # develop
+                         GIT_TAG 1.0.0)
     FetchContent_MakeAvailable(explosion)
     target_link_libraries(wuss explosion)
 
@@ -587,11 +587,11 @@ if(BUILD_APPS)
     if(NOT TARGET_RISCOS AND NOT EMSCRIPTEN AND NOT MSVC)
         FetchContent_Declare(chasehq
                              GIT_REPOSITORY https://github.com/dpt/ChaseHQ.git
-                             GIT_TAG 05ce4bdda77843a9ed27141c3f8257164ec61bed # develop
+                             GIT_TAG 0.8.0
                              SOURCE_SUBDIR none)
         FetchContent_Declare(greatescape
                              GIT_REPOSITORY https://github.com/dpt/The-Great-Escape-in-C.git
-                             GIT_TAG 8a3f5c572716851999018c4d13b7a29f7f91dd17 # master
+                             GIT_TAG 0.96.0
                              SOURCE_SUBDIR none)
         FetchContent_MakeAvailable(chasehq greatescape)
         find_package(Threads REQUIRED)
