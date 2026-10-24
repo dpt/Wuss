@@ -4,7 +4,7 @@ Every wuss app's window menu follows this arrangement, so the same thing sits
 in the same place from one app to the next. It follows the RISC OS Style
 Guide and PrivateEye's menus where they apply.
 
-The icon bar menu is not covered here. `taskapp` builds it (Info, New...,
+The icon bar menu is not covered here. `taskapp` builds it (Info, New or New...,
 Hide, Quit). Help and Choices... will join it when wuss has help text and a
 choices system.
 

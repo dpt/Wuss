@@ -29,17 +29,21 @@
 
 /* ----- icon bar apps ----------------------------------------------------
  *
- * SELECT on an app's icon opens another instance of the task's main window
- * by calling its X_create (or opens its new-instance dialogue, if it has
- * one); MENU opens the app menu, whose "Info" row shows the program
- * information dialogue, whose optional "New..." row opens that dialogue and
- * whose "Hide" row hides every window of the app until it is "Show"n again
- * (or the icon is used to open another instance) and whose "Quit" row removes the icon and shuts down every instance. Each
- * instance is a task of its own, parented to the app task
- * (wuss_set_task_parent) so Quit can find it. */
+ * SELECT or ADJUST on a hidden app's icon shows it again and does nothing
+ * else. Otherwise SELECT brings every window of the app to the front, or,
+ * when it has none, opens and focuses an instance of the task's main
+ * window by calling its X_create (or its new-instance dialogue, if it has
+ * one); ADJUST does nothing. MENU opens the app menu, whose "Info" row
+ * shows the program information dialogue, whose "New" row (an app that
+ * allows more than one instance only; "New..." when it opens the dialogue)
+ * opens and focuses another instance, whose "Hide" row hides every window
+ * of the app until it is "Show"n again and whose "Quit" row removes the
+ * icon and shuts down every instance. Each instance is a task of its own,
+ * parented to the app task (wuss_set_task_parent) so Quit can find it. */
 
-/* "New..." is present only for an app with a new_dialogue, so Quit's row
- * index varies: see app_t::new_row and quit_row. Info is always first */
+/* "New" is present only for an app that allows more than one instance, so
+ * Quit's row index varies: see app_t::new_row and quit_row. Info is always
+ * first */
 enum
 {
   APP_MENU_INFO,
@@ -58,7 +62,7 @@ struct app
   wuss_menu_handle_t    menu_handle;
   wuss_menu_item_t      menu_items[APP_MENU_MAX];
   wuss_menu_t           menu;
-  int                   new_row;  /* menu row of "New...", or -1 */
+  int                   new_row;  /* menu row of "New", or -1 */
   int                   create_row; /* menu rows of the create and adjust */
   int                   adjust_row; /* entries, or -1 when no adjust */
   int                   hide_row; /* menu row of "Hide" / "Show" */
@@ -116,7 +120,9 @@ static result_t app_spawn(app_t             *app,
   rc = fn(app->wuss, param, out);
   wuss_set_task_parent(app->wuss, NULL);
 
-  if (rc != result_OK)
+  if (rc == result_OK) /* focus the new instance; it opened in front */
+    (void) wuss_task_focus_front(app->wuss, app->task);
+  else
     logf_error("wuss: %s create failed, rc=0x%X (%s)", app->desc->name, rc,
                wuss_result_string(rc));
   return rc;
@@ -146,17 +152,13 @@ static result_t app_adjust_adapter(wuss_t *wuss, void *param, void **out)
   return app->desc->adjust(wuss, out);
 }
 
-/* what SELECT on the icon and the "New..." row do */
+/* what the "New" row, and SELECT on the icon of an app with no windows, do */
 static result_t app_new(app_t *app)
 {
   result_t rc;
 
   if (app_hidden(app))
     (void) app_set_hidden(app, false);
-
-  if (app->desc->singleton &&
-      wuss_task_raise_children(app->wuss, app->task))
-    return result_OK;
 
   if (app->desc->new_dialogue == NULL)
     return app_spawn_instance(app, NULL);
@@ -165,6 +167,9 @@ static result_t app_new(app_t *app)
   wuss_set_task_parent(app->wuss, app->task);
   rc = app->desc->new_dialogue(app->wuss);
   wuss_set_task_parent(app->wuss, NULL);
+
+  if (rc == result_OK) /* focus the dialogue */
+    (void) wuss_task_focus_front(app->wuss, app->task);
 
   return rc;
 }
@@ -297,12 +302,10 @@ static result_t app_handle(wuss_window_t      *window,
       return app_menu_open(app);
     if (app_hidden(app)) /* the click only reveals; it opens nothing new */
       return app_set_hidden(app, false);
-    if (event->data.iconbar_icon.button & wuss_BUTTON_SELECT)
-      return app->desc->drop_only ? result_OK : app_new(app);
-    if ((event->data.iconbar_icon.button & wuss_BUTTON_ADJUST) &&
-        app->desc->adjust != NULL)
-      return app_spawn(app, app_adjust_adapter, app, NULL);
-    return result_OK;
+    if ((event->data.iconbar_icon.button & wuss_BUTTON_SELECT) == 0 ||
+        wuss_task_front(app->wuss, app->task) || app->desc->drop_only)
+      return result_OK;
+    return app_new(app);
 
   case wuss_EVENT_MESSAGE:
     if (window != NULL)
@@ -407,10 +410,12 @@ result_t taskapp_install(wuss_t *wuss, const taskapp_desc_t *desc)
                                 * singleton in app_menu_open */
   n = APP_MENU_INFO + 1;
   app->new_row = -1;
-  if (desc->new_dialogue != NULL)
+  if (!desc->singleton && !desc->drop_only)
   {
     app->new_row = n;
-    WUSS_MENU_ITEM(app->menu_items, n, "New...", wuss_MENU_ITEM_NONE);
+    WUSS_MENU_ITEM(app->menu_items, n,
+                   desc->new_dialogue != NULL ? "New..." : "New",
+                   wuss_MENU_ITEM_NONE);
     n++;
   }
   app->create_row = -1;

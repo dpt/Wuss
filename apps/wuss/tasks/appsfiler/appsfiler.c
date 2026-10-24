@@ -271,6 +271,7 @@ static result_t apps_handle(wuss_window_t      *window,
                             const wuss_event_t *event,
                             void               *task_data)
 {
+  result_t       rc;
   apps_task_t   *task;
   apps_window_t *aw;
 
@@ -295,7 +296,13 @@ static result_t apps_handle(wuss_window_t      *window,
       return apps_menu_open(task);
     if (apps_hidden(task)) /* the click only reveals; it opens nothing new */
       return apps_set_hidden(task, 0);
-    return apps_open(task, -1, NULL, 0);
+    if ((event->data.iconbar_icon.button & wuss_BUTTON_SELECT) == 0 ||
+        wuss_task_front(task->wuss, task->delegate))
+      return result_OK;
+    rc = apps_open(task, -1, NULL, 0);
+    if (rc == result_OK) /* focus the new window */
+      (void) wuss_task_focus_front(task->wuss, task->delegate);
+    return rc;
 
   case wuss_EVENT_MENU_SELECT:
     if (event->data.menu_select.menu != &task->menu)

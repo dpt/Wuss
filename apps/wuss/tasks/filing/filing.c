@@ -815,6 +815,7 @@ result_t filing_handle(wuss_window_t      *window,
                        const wuss_event_t *event,
                        void               *task_data)
 {
+  result_t       rc;
   filing_task_t *task;
 
   task = task_data;
@@ -849,7 +850,13 @@ result_t filing_handle(wuss_window_t      *window,
       return filing_iconbar_menu_open(task);
     if (filing_hidden(task)) /* the click only reveals; it opens nothing new */
       return filing_set_hidden(task, 0);
-    return filing_open_path(task, filing_root(), NULL, 0);
+    if ((event->data.iconbar_icon.button & wuss_BUTTON_SELECT) == 0 ||
+        wuss_task_front(task->wuss, task->delegate))
+      return result_OK;
+    rc = filing_open_path(task, filing_root(), NULL, 0);
+    if (rc == result_OK) /* focus the new window */
+      (void) wuss_task_focus_front(task->wuss, task->delegate);
+    return rc;
 
   case wuss_EVENT_MENU_SELECT:
   {

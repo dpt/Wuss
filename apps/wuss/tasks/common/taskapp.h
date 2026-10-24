@@ -26,9 +26,9 @@ typedef result_t (*taskapp_create_fn_t)(wuss_t *wuss, void **out);
 typedef result_t (*taskapp_data_load_fn_t)(void *instance, const char *path);
 
 /* Open the app's "new instance" dialogue. Optional in a taskapp_desc: with
- * one, SELECT on the app's icon and a "New..." row in its menu call it in
- * place of create. The dialogue opens an instance itself, once the user
- * accepts it, through taskapp_spawn. */
+ * one, SELECT on the icon of the app with no windows and the "New..." row in
+ * its menu call it in place of create. The dialogue opens an instance
+ * itself, once the user accepts it, through taskapp_spawn. */
 typedef result_t (*taskapp_new_fn_t)(wuss_t *wuss);
 
 /* Make an instance as create does, but from fn with the caller's param; see
@@ -43,15 +43,14 @@ typedef struct taskapp_desc
   const char          *purpose; /* proginfo "Purpose" row */
   taskapp_create_fn_t  create;  /* opens an instance of the main window */
   taskapp_data_load_fn_t data_load; /* optional: file dropped on the icon */
-  bool                 drop_only;   /* SELECT on the icon opens nothing */
+  bool                 drop_only;   /* SELECT on the icon opens nothing and
+                                     * the menu has no "New" row */
   taskapp_new_fn_t     new_dialogue; /* optional: see taskapp_new_fn_t */
-  bool                 singleton;    /* SELECT on the icon raises the open
-                                      * instance rather than opening another */
-  taskapp_create_fn_t  adjust;       /* optional: ADJUST on the icon calls
-                                      * this in place of create, and the menu
-                                      * gets a row for each of create and
-                                      * adjust, labelled create_label and
-                                      * adjust_label */
+  bool                 singleton;    /* one instance only: the menu has no
+                                      * "New" row */
+  taskapp_create_fn_t  adjust;       /* optional: the menu gets a row for
+                                      * each of create and adjust, labelled
+                                      * create_label and adjust_label */
   const char          *create_label; /* menu row for create, if adjust */
   const char          *adjust_label; /* menu row for adjust, if adjust */
   const unsigned short *opens;       /* optional: 0-terminated RISC OS
@@ -62,9 +61,13 @@ typedef struct taskapp_desc
 taskapp_desc_t;
 
 /* Install the app for desc: a task with an icon bar icon (labelled name,
- * drawn with the application glyph) and a menu of Info and Quit. SELECT on
- * the icon calls desc->create for another instance of the main window, each
- * instance a child task of the app's, so no window opens until asked for.
+ * drawn with the application glyph) and a menu of Info, New (unless
+ * desc->singleton or desc->drop_only), Hide and Quit. SELECT or ADJUST on
+ * the icon of a hidden app shows it again. Otherwise SELECT brings every
+ * window of the app to the front or, when it has none, calls desc->create
+ * for an instance of the main window and focuses it, each instance a child
+ * task of the app's, so no window opens until asked for; ADJUST does
+ * nothing.
  * A wuss_MESSAGE_DATA_LOAD sent to the icon (a file dropped on it) opens an
  * instance the same way and passes it the path through desc->data_load; it
  * is acknowledged only if that returns result_OK. A wuss_MESSAGE_DATA_OPEN
@@ -78,9 +81,9 @@ result_t taskapp_install(wuss_t *wuss, const taskapp_desc_t *desc);
 
 /* Open an instance of desc's app by calling fn(wuss, param, out), as create
  * would be called: the instance becomes a child task of the app's, so Quit
- * takes it too. For a "new instance" dialogue to call once accepted. Fails
- * with result_NOT_FOUND if desc is not installed. Without the icon bar, just
- * calls fn. */
+ * takes it too, and it takes the focus. For a "new instance" dialogue to
+ * call once accepted. Fails with result_NOT_FOUND if desc is not installed.
+ * Without the icon bar, just calls fn. */
 result_t taskapp_spawn(wuss_t               *wuss,
                        const taskapp_desc_t *desc,
                        taskapp_spawn_fn_t    fn,
