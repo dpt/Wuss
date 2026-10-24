@@ -464,6 +464,7 @@ static result_t reading__load_text(reading_task_t *task,
 
   free(task->text);
   free(task->markdown_spans);
+  task->doc_text        = NULL; /* a new text may reuse the old address */
   task->text            = text;
   task->markdown_spans  = spans;
   task->markdown_nspans = nspans;
@@ -841,6 +842,8 @@ void reading_destroy(reading_task_t *task)
   reading_release_fonts(task);
   free(task->text);
   free(task->markdown_spans);
+  free(task->lines);
+  free(task->dx);
   free(task);
 }
 
@@ -1038,22 +1041,93 @@ static int reading__layout_lines(reading_task_t *tcx,
   return nlines;
 }
 
+/* Bring the cached layout (tcx->lines, tcx->nlines, tcx->dx) up to date for
+ * wrap_width, redoing only what a changed key invalidates. A redraw arrives
+ * once per visible piece of the window, so laying out per redraw repeats
+ * the whole document many times over when the window is covered. */
+static result_t reading__layout(reading_task_t *tcx, int wrap_width)
+{
+  bool           relaid;
+  size_t         max;
+  bmtext_line_t *lines;
+  int           *dx;
+  int            i;
+
+  relaid = false;
+  if (tcx->lines == NULL || wrap_width != tcx->doc_wrap ||
+      tcx->font != tcx->doc_font || tcx->spacing_idx != tcx->doc_spacing ||
+      tcx->text != tcx->doc_text)
+  {
+    /* every line holds at least one byte, plus one empty line per newline,
+     * so strlen + 1 bounds the count */
+    max   = strlen(tcx->text) + 1;
+    lines = malloc(max * sizeof(*lines));
+    dx    = malloc(max * sizeof(*dx));
+    if (lines == NULL || dx == NULL)
+    {
+      free(lines);
+      free(dx);
+      return result_OOM;
+    }
+
+    free(tcx->lines);
+    free(tcx->dx);
+    tcx->lines  = lines;
+    tcx->dx     = dx;
+    tcx->nlines = reading__layout_lines(tcx, tcx->text, wrap_width, lines,
+                                        (int) max);
+
+    tcx->doc_wrap    = wrap_width;
+    tcx->doc_font    = tcx->font;
+    tcx->doc_spacing = tcx->spacing_idx;
+    tcx->doc_text    = tcx->text;
+    relaid           = true;
+  }
+
+  if (!relaid && tcx->align == tcx->dx_align)
+    return result_OK;
+
+  /* per-line indent for the alignment; a line wider than the wrap width (a
+   * single unbreakable word) measures as the wrap width, so it stays at the
+   * left edge */
+  for (i = 0; i < tcx->nlines; i++)
+  {
+    int            split;
+    bmfont_width_t width;
+
+    tcx->dx[i] = 0;
+    if (tcx->align == READING_ALIGN_LEFT || tcx->lines[i].len == 0)
+      continue; /* bmfont_measure refuses an empty run */
+
+    if (reading__measure(tcx->lines[i].str, tcx->lines[i].len, wrap_width,
+                         &split, &width, tcx) != result_OK)
+      continue;
+
+    tcx->dx[i] = wrap_width - width;
+    if (tcx->align == READING_ALIGN_CENTRE)
+      tcx->dx[i] /= 2;
+  }
+  tcx->dx_align = tcx->align;
+
+  return result_OK;
+}
+
 static result_t reading_redraw(const wuss_event_t *event, void *task_data)
 {
+  result_t        rc;
   reading_task_t *tcx;
   screen_t       *scr;
   const box_t    *bounds;
+  const box_t    *clip;
   int             sx, sy;
   const colour_t *palette;
   colour_t        fg, bg;
   int             wrap_width;
-  bmtext_line_t  *lines;
-  int             nlines;
-  int            *dx;
-  int             i;
   point_t         origin;
   int             font_height;
-  size_t          max;
+  int             line_height;
+  int             first, last;
+  int             i;
 
   tcx = task_data;
   if (tcx->text == NULL)
@@ -1061,6 +1135,7 @@ static result_t reading_redraw(const wuss_event_t *event, void *task_data)
 
   scr    = event->data.redraw.scr;
   bounds = event->data.redraw.bounds;
+  clip   = event->data.redraw.content;
   sx     = event->data.redraw.scroll.x;
   sy     = event->data.redraw.scroll.y;
 
@@ -1070,83 +1145,56 @@ static result_t reading_redraw(const wuss_event_t *event, void *task_data)
 
   wrap_width = (bounds->x1 - READING_INSET) - (bounds->x0 + READING_INSET);
 
-  /* every line holds at least one byte, plus one empty line per newline, so
-   * strlen + 1 bounds the count */
-  max   = strlen(tcx->text) + 1;
-  lines = malloc(max * sizeof(*lines));
-  dx    = malloc(max * sizeof(*dx));
-  if (lines == NULL || dx == NULL)
-  {
-    free(lines);
-    free(dx);
-    return result_OOM;
-  }
-
-  nlines = reading__layout_lines(tcx, tcx->text, wrap_width, lines,
-                                 (int) max);
-
-  /* per-line indent for the alignment; a line wider than the wrap width (a
-   * single unbreakable word) measures as the wrap width, so it stays at the
-   * left edge */
-  for (i = 0; i < nlines; i++)
-  {
-    int            split;
-    bmfont_width_t width;
-
-    dx[i] = 0;
-    if (tcx->align == READING_ALIGN_LEFT || lines[i].len == 0)
-      continue; /* bmfont_measure refuses an empty run */
-
-    if (reading__measure(lines[i].str, lines[i].len, wrap_width, &split,
-                         &width, tcx) != result_OK)
-      continue;
-
-    dx[i] = wrap_width - width;
-    if (tcx->align == READING_ALIGN_CENTRE)
-      dx[i] /= 2;
-  }
+  rc = reading__layout(tcx, wrap_width);
+  if (rc != result_OK)
+    return rc;
 
   origin.x = bounds->x0 - sx + READING_INSET;
   origin.y = bounds->y0 - sy + READING_INSET;
 
   bmfont_get_info(tcx->font, NULL, &font_height, NULL, NULL);
+  line_height = font_height + LEADING;
+
+  /* draw only the lines the clip touches */
+  first = (clip->y0 - origin.y) / line_height;
+  last  = DIVIDE_ROUNDING_UP(clip->y1 - origin.y, line_height);
+  first = CLAMP(first, 0, tcx->nlines);
+  last  = CLAMP(last, first, tcx->nlines);
+
+  origin.y += first * line_height;
 
   if (tcx->markdown_nspans > 0)
   {
-    reading__draw_styled(tcx, scr, lines, nlines, dx, fg, bg, origin);
+    reading__draw_styled(tcx, scr, tcx->lines + first, last - first,
+                         tcx->dx + first, fg, bg, origin);
   }
   else
   {
     /* one bmtext_draw per line so each can take its own indent */
-    for (i = 0; i < nlines; i++)
+    for (i = first; i < last; i++)
     {
       point_t line_origin;
 
-      line_origin.x = origin.x + dx[i];
-      line_origin.y = origin.y + i * (font_height + LEADING);
-      bmtext_draw(tcx->font, scr, &lines[i], 1, fg, bg, LEADING, line_origin,
-                  &tcx->spacing);
+      line_origin.x = origin.x + tcx->dx[i];
+      line_origin.y = origin.y + (i - first) * line_height;
+      bmtext_draw(tcx->font, scr, &tcx->lines[i], 1, fg, bg, LEADING,
+                  line_origin, &tcx->spacing);
     }
   }
-
-  free(lines);
-  free(dx);
 
   return result_OK;
 }
 
 /* Size the scrollable document to the laid-out text. Done from idle rather
  * than from redraw: set_doc repaints the scrollbar and invalidates the
- * content, which a redraw in progress would lose. The layout is only redone
- * when something it depends on changes. */
+ * content, which a redraw in progress would lose. Only done when the line
+ * count changes. */
 static result_t reading_idle(void *task_data)
 {
+  result_t        rc;
   reading_task_t *tcx;
   box_t           bounds;
   int             wrap_width;
-  size_t          max;
-  bmtext_line_t  *lines;
-  int             nlines;
   int             font_height;
   size2d_t        doc;
 
@@ -1160,30 +1208,20 @@ static result_t reading_idle(void *task_data)
   wuss_window_get_content_bounds(tcx->window, &bounds);
   wrap_width = (bounds.x1 - READING_INSET) - (bounds.x0 + READING_INSET);
 
-  if (wrap_width == tcx->doc_wrap && tcx->font == tcx->doc_font &&
-      tcx->spacing_idx == tcx->doc_spacing && tcx->text == tcx->doc_text)
+  rc = reading__layout(tcx, wrap_width);
+  if (rc != result_OK)
+    return rc;
+
+  if (tcx->nlines == tcx->doc_lines)
     return result_OK;
-
-  max   = strlen(tcx->text) + 1;
-  lines = malloc(max * sizeof(*lines));
-  if (lines == NULL)
-    return result_OOM;
-
-  nlines = reading__layout_lines(tcx, tcx->text, wrap_width, lines,
-                                 (int) max);
-  free(lines);
-
-  tcx->doc_wrap    = wrap_width;
-  tcx->doc_font    = tcx->font;
-  tcx->doc_spacing = tcx->spacing_idx;
-  tcx->doc_text    = tcx->text;
+  tcx->doc_lines = tcx->nlines;
 
   bmfont_get_info(tcx->font, NULL, &font_height, NULL, NULL);
 
   /* a window cannot be dragged wider than its document, so make the
    * document as wide as the screen allows; the text reflows to fit */
   wuss_window_get_max_content(tcx->window, &doc);
-  doc.h = nlines * (font_height + LEADING) + 2 * READING_INSET;
+  doc.h = tcx->nlines * (font_height + LEADING) + 2 * READING_INSET;
 
   return wuss_window_set_doc(tcx->window, doc);
 }

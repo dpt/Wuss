@@ -9,6 +9,7 @@
 
 #include "framebuf/bmfont.h"
 #include "framebuf/colour.h"
+#include "text/bmtext.h"
 #include "wuss/component/colourmenu.h"
 #include "wuss/component/fontmenu.h"
 #include "wuss/menu.h"
@@ -46,6 +47,12 @@ typedef struct reading_task
   bmfont_t           *doc_font;    /* laid out for; reading_idle redoes it */
   int                 doc_spacing; /* when any of these change */
   const char         *doc_text;
+  bmtext_line_t      *lines;      /* owned; the cached layout of text for */
+  int                 nlines;     /* the doc_* keys, shared by redraw and */
+  int                *dx;         /* idle; dx[] is each line's indent for */
+  int                 dx_align;   /* alignment dx_align */
+  int                 doc_lines;  /* nlines the document extent was last
+                                   * set for */
   wuss_task_t        *delegate;   /* the wuss task backing this window */
   wuss_t             *wuss;       /* for wuss_get_pointer when opening the
                                    * menu */
