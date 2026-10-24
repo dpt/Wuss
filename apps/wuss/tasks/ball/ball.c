@@ -49,14 +49,20 @@ static int ball_random_radius(void)
   return BALL_BASE_RADIUS / 2 + rand() % (BALL_BASE_RADIUS + 1);
 }
 
-/* a fresh fully-opaque colour, red channel is at least 0x40 so it stays
- * visible against the red background */
-static colour_t ball_random_colour(void)
+/* a fresh system-palette colour, never the background's so the ball stays
+ * visible */
+static colour_t ball_random_colour(const ball_task_t *bc)
 {
-  int i;
-  
-  i = 0x40 + rand() % 0xC0;
-  return colour_rgb(0xFF, i, i);
+  const colour_t *palette;
+  int             npalette;
+  colour_t        c;
+
+  palette = wuss_get_palette(bc->wuss, &npalette);
+  do
+    c = palette[rand() % npalette];
+  while (c.primary == bc->bg.primary);
+
+  return c;
 }
 
 /* Invalidation box (virtual content space, as ball positions are held)
@@ -100,7 +106,10 @@ result_t ball_create(wuss_t *wuss, ball_task_t **out)
     return result_OOM;
 
   task->wuss    = wuss;
-  task->bg      = colour_rgb(0xFF, 0x00, 0x00);
+  /* a palette entry, so ball_random_colour can avoid it exactly */
+  task->bg      = wuss_get_palette(wuss, NULL)[wuss_nearest_colour(wuss, 0xFF,
+                                                                   0x00,
+                                                                   0x00)];
   task->nballs  = 1;
   task->grabbed = -1;
   task->damping = 1;
@@ -110,7 +119,7 @@ result_t ball_create(wuss_t *wuss, ball_task_t **out)
   task->balls[0].dx     = 3;
   task->balls[0].dy     = 2;
   task->balls[0].radius = ball_random_radius();
-  task->balls[0].colour = colour_rgb(0xFF, 0xFF, 0xFF); /* white */
+  task->balls[0].colour = ball_random_colour(task);
 
   /* ball_redraw paints its own background every frame */
   delegate_desc.handle    = ball_handle;
@@ -494,10 +503,22 @@ static result_t ball_idle(void *task_data)
   return result_OK;
 }
 
+/* a new background swaps its colour with any ball wearing it, so no ball
+ * vanishes into it */
 static result_t ball_menu_select(ball_task_t *bc, const wuss_event_t *event)
 {
-  if (wuss_colourlist_selected(&bc->colours, event))
-    wuss_window_invalidate_visible(bc->window);
+  colour_t old_bg;
+  int      i;
+
+  old_bg = bc->bg;
+  if (!wuss_colourlist_selected(&bc->colours, event))
+    return result_OK;
+
+  for (i = 0; i < bc->nballs; i++)
+    if (bc->balls[i].colour.primary == bc->bg.primary)
+      bc->balls[i].colour = old_bg;
+
+  wuss_window_invalidate_visible(bc->window);
 
   return result_OK;
 }
@@ -545,7 +566,7 @@ static result_t ball_add(ball_task_t *bc)
   b->dx     = (bc->nballs & 1) ? 3 : -3;
   b->dy     = (bc->nballs & 2) ? 2 : -2;
   b->radius = ball_random_radius();
-  b->colour = ball_random_colour();
+  b->colour = ball_random_colour(bc);
 
   local = ball_local_box(b->x, b->y, b->x, b->y, b->radius);
   wuss_window_invalidate(bc->window, &local);
