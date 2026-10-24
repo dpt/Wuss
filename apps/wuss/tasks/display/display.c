@@ -161,6 +161,10 @@ static const wuss_place_t g_display_place =
   { 0, 0, 0, 0 }
 };
 
+/* the one open instance, or NULL: display_create fronts it rather than
+ * opening another */
+static display_task_t *g_display;
+
 /* ----------------------------------------------------------------------- */
 
 /* the entry matching the current depth. ponytail: an unlisted mode shows
@@ -357,6 +361,15 @@ result_t display_create(wuss_t *wuss, display_task_t **out)
   wuss_task_t     *delegate;
   wuss_task_desc_t delegate_desc;
 
+  /* one closed but not yet quit no longer counts */
+  if (g_display != NULL && g_display->window != NULL)
+  {
+    (void) wuss_task_front(wuss, g_display->delegate);
+    if (out)
+      *out = g_display;
+    return result_OK;
+  }
+
   task = calloc(1, sizeof(*task));
   if (task == NULL)
     return result_OOM;
@@ -382,6 +395,8 @@ result_t display_create(wuss_t *wuss, display_task_t **out)
                                   * and any string sets made so far */
     return rc;
   }
+
+  g_display = task;
 
   if (out)
     *out = task;
@@ -424,6 +439,8 @@ void display_destroy(display_task_t *task)
   wuss_stringset_destroy(task->zoom);
   wuss_stringset_destroy(task->colours);
   wuss_stringset_destroy(task->resolution);
+  if (task == g_display)
+    g_display = NULL;
   free(task);
 }
 
