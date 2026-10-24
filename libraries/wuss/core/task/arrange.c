@@ -124,6 +124,19 @@ int wuss_task_front(wuss_t *wuss, wuss_task_t *task)
   return 1;
 }
 
+int wuss_task_focus_front(wuss_t *wuss, wuss_task_t *task)
+{
+  wuss_window_t *window;
+
+  window = front_window(wuss, task_root(task), 0);
+  if (window == NULL)
+    return 0;
+
+  (void) wuss_set_focus(wuss, window);
+
+  return 1;
+}
+
 int wuss_task_cycle_windows(wuss_t *wuss, wuss_task_t *task, int step)
 {
   const wuss_task_t *root;

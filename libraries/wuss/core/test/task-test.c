@@ -404,6 +404,9 @@ result_t wuss_task_test(const char *resources)
     if (rc != result_OK) goto Failure;
 
     /* front to back: b1 a2 a1 */
+    if (!wuss_task_focus_front(wuss, app_a) ||
+        wuss_get_focus(wuss) != a2 || wuss__z_first(wuss) != b1)
+      goto Failure; /* A's front window takes the focus; nothing restacks */
     if (!wuss_task_cycle_windows(wuss, app_a, 1) ||
         wuss_get_focus(wuss) != a1)
       goto Failure; /* rearmost window of A comes forward */

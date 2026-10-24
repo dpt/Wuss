@@ -551,6 +551,17 @@ int wuss_task_is_hidden(wuss_t *wuss, wuss_task_t *task);
 int wuss_task_front(wuss_t *wuss, wuss_task_t *task);
 
 /**
+ * Focus the frontmost window of the app that \p task belongs to (its root
+ * task: the parent, else itself), leaving the stacking order alone. A new
+ * window opens in front of its stack, so this focuses one just opened.
+ *
+ * \param[in] wuss Window manager.
+ * \param[in] task Any task of the app.
+ * \return Non-zero if a window took the focus, else zero.
+ */
+int wuss_task_focus_front(wuss_t *wuss, wuss_task_t *task);
+
+/**
  * Fetch the root task of the app that \p task belongs to: its parent, else
  * itself. Destroying it ends the whole app.
  *
