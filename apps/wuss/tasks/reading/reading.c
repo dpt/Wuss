@@ -861,36 +861,41 @@ static bmfont_t *reading__run_font(const reading_task_t *tcx,
 
 /* split off the next run of up to len bytes at byte offset off of tcx->text:
  * either part of one span, or unstyled text up to the next span. Returns the
- * span, or NULL for unstyled text, and sets *run_len. */
-static const reading_span_t *reading__run(const reading_task_t *tcx,
-                                          int                   off,
-                                          int                   len,
-                                          int                  *run_len)
+ * span, or NULL for unstyled text, and sets *run_len. Spans are sorted and
+ * never overlap, so their ends rise too: tcx->span_cursor is stepped back or
+ * forward to the first span ending after off. */
+static const reading_span_t *reading__run(reading_task_t *tcx,
+                                          int             off,
+                                          int             len,
+                                          int            *run_len)
 {
-  int j;
+  const reading_span_t *spans;
+  int                   n;
+  int                   c;
+  const reading_span_t *s;
 
-  for (j = 0; j < tcx->markdown_nspans; j++)
-  {
-    const reading_span_t *s;
+  spans = tcx->markdown_spans;
+  n     = tcx->markdown_nspans;
 
-    s = &tcx->markdown_spans[j];
-    if (off >= s->start && off < s->start + s->len)
-    {
-      *run_len = MIN(len, s->start + s->len - off);
-      return s;
-    }
-  }
+  c = MIN(tcx->span_cursor, n); /* the text may have changed */
+  while (c > 0 && spans[c - 1].start + spans[c - 1].len > off)
+    c--;
+  while (c < n && spans[c].start + spans[c].len <= off)
+    c++;
+  tcx->span_cursor = c;
 
   *run_len = len;
-  for (j = 0; j < tcx->markdown_nspans; j++)
-  {
-    int rel;
+  if (c == n)
+    return NULL; /* past the last span */
 
-    rel = tcx->markdown_spans[j].start - off;
-    if (rel > 0 && rel < *run_len)
-      *run_len = rel;
+  s = &spans[c];
+  if (off >= s->start)
+  {
+    *run_len = MIN(len, s->start + s->len - off);
+    return s;
   }
 
+  *run_len = MIN(len, s->start - off);
   return NULL;
 }
 

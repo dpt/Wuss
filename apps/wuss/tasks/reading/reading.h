@@ -99,6 +99,10 @@ typedef struct reading_task
                                    * when the current file isn't
                                    * Markdown */
   int                 markdown_nspans; /* length of markdown_spans */
+  int                 span_cursor; /* index of the first span ending after
+                                   * the last offset reading__run looked
+                                   * up; runs are asked for mostly in
+                                   * order, so the search starts here */
   int                 spacing_idx; /* index into reading_spacing_presets[]
                                    * currently applied */
   bmfont_spacing_t    spacing;    /* reading_spacing_presets[spacing_idx],
