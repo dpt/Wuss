@@ -10,6 +10,7 @@
 #endif
 
 #include "base/utils.h"
+#include "framebuf/pattern.h"
 #include "framebuf/screen.h"
 #include "geom/box.h"
 #include "utils/array.h"
@@ -95,6 +96,27 @@ static box_t painting_tool_box(int i)
 static void painting_swatches_track(painting_task_t *pt)
 {
   pt->swatches.colours = wuss_get_palette(pt->wuss, &pt->swatches.ncolours);
+}
+
+/* fill box with a light and dark grey checkerboard of 4 pixel squares phased
+ * to origin, to show through transparent pixels drawn over it */
+static void painting_draw_checks(screen_t    *scr,
+                                 const box_t *box,
+                                 point_t      origin)
+{
+  static const uint8_t checks[8] =
+  {
+    0xF0, 0xF0, 0xF0, 0xF0, 0x0F, 0x0F, 0x0F, 0x0F
+  };
+
+  pattern_t pattern;
+
+  pattern        = pattern_from_mask(checks, colour_rgb(0xCC, 0xCC, 0xCC));
+  pattern.bg     = colour_rgb(0xFF, 0xFF, 0xFF);
+  pattern.flags  = 0;
+  pattern.origin = origin;
+
+  screen_fill_pattern(scr, box, &pattern);
 }
 
 /* ----------------------------------------------------------------------- */
@@ -610,19 +632,24 @@ static void painting_draw_ants(const painting_task_t *pt,
 static result_t painting_redraw(painting_task_t    *pt,
                                 const wuss_event_t *event)
 {
-  result_t     rc;
-  const box_t *bounds;
-  screen_t    *scr;
-  point_t      a, b;
-  int          i, ox, oy;
+  result_t        rc;
+  const box_t    *bounds;
+  screen_t       *scr;
+  int             i, ox, oy;
+  const bitmap_t *bm;
+  box_t           canvas;
+  point_t         a, b;
 
   scr    = event->data.redraw.scr;
   bounds = event->data.redraw.bounds;
   ox     = bounds->x0 - event->data.redraw.scroll.x;
   oy     = bounds->y0 - event->data.redraw.scroll.y;
+  bm     = paintingdoc_bitmap(pt->doc);
+  canvas = (box_t) BOX_POS_SIZE(ox, oy, bm->size.w, bm->size.h);
 
-  rc = screen_copy_bitmap_dithered(scr, ox, oy, paintingdoc_bitmap(pt->doc),
-                                   pt->dithering);
+  /* the checks show through wherever the canvas is transparent */
+  painting_draw_checks(scr, &canvas, POINT(ox, oy));
+  rc = screen_copy_bitmap_dithered(scr, ox, oy, bm, pt->dithering);
 
   if (pt->held && painting_is_rubber_band(pt))
   {
@@ -651,6 +678,21 @@ static result_t painting_redraw(painting_task_t    *pt,
   return rc;
 }
 
+/* a colour chip at (x, y): a transparent colour shows as the checks */
+static void painting_draw_chip(screen_t *scr, int x, int y, colour_t colour)
+{
+  box_t chip;
+
+  chip = (box_t) BOX_POS_SIZE(x, y, OB_CHIP, OB_CHIP);
+
+  /* ponytail: a translucent colour is drawn solid; blit a 1x1 bgra8888
+   * bitmap tiled over the checks if a tint is wanted */
+  if (colour_get_alpha(&colour) == 0)
+    painting_draw_checks(scr, &chip, POINT(x, y));
+  else
+    screen_fill_rect(scr, x, y, SIZE2D(OB_CHIP, OB_CHIP), colour);
+}
+
 /* the background colour behind the foreground colour and the swatch row. The
  * icons draw over the window's own backdrop */
 static result_t painting_optionbar_redraw(painting_task_t    *pt,
@@ -669,14 +711,12 @@ static result_t painting_optionbar_redraw(painting_task_t    *pt,
 
   wuss_swatches_draw(&pt->swatches, event);
 
-  screen_fill_rect(scr, ox + OB_MARGIN + OB_CHIP_STEP,
-                   oy + OB_MARGIN + OB_CHIP_STEP,
-                   SIZE2D(OB_CHIP, OB_CHIP), pt->bg);
+  painting_draw_chip(scr, ox + OB_MARGIN + OB_CHIP_STEP,
+                     oy + OB_MARGIN + OB_CHIP_STEP, pt->bg);
   screen_draw_rect(scr, ox + OB_MARGIN + OB_CHIP_STEP,
                    oy + OB_MARGIN + OB_CHIP_STEP,
                    SIZE2D(OB_CHIP, OB_CHIP), black);
-  screen_fill_rect(scr, ox + OB_MARGIN, oy + OB_MARGIN,
-                   SIZE2D(OB_CHIP, OB_CHIP), pt->fg);
+  painting_draw_chip(scr, ox + OB_MARGIN, oy + OB_MARGIN, pt->fg);
   screen_draw_rect(scr, ox + OB_MARGIN, oy + OB_MARGIN,
                    SIZE2D(OB_CHIP, OB_CHIP), black);
 

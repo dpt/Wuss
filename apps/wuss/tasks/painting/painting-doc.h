@@ -12,10 +12,13 @@
 #include "geom/size.h"
 #include "utils/rng.h"
 
-/* the canvas is a bgrx8888 bitmap; hard-edged, opaque drawing only. every
- * drawing operation takes canvas pixel coordinates (clipped to the canvas) and
- * returns the box of canvas pixels it may have changed, empty (see
- * box_is_empty) if none. no wuss dependency, so this is testable headless. */
+/* the canvas is a bgra8888 bitmap with straight (not premultiplied) alpha.
+ * drawing is hard-edged: it replaces pixels, alpha and all, rather than
+ * blending over them, so painting with a transparent colour cuts a hole.
+ * every drawing operation takes canvas pixel coordinates (clipped to the
+ * canvas) and returns the box of canvas pixels it may have changed, empty
+ * (see box_is_empty) if none. no wuss dependency, so this is testable
+ * headless. */
 
 /* number of undo steps kept; the oldest is dropped beyond this */
 #define PAINTINGDOC_UNDO_MAX 20
@@ -26,7 +29,8 @@ typedef struct paintingdoc paintingdoc_t;
  * either dimension is not positive */
 result_t paintingdoc_create(size2d_t size, paintingdoc_t **doc);
 
-/* as paintingdoc_create, but filled with colour rather than white */
+/* as paintingdoc_create, but filled with colour rather than white; a
+ * transparent colour makes a transparent canvas */
 result_t paintingdoc_create_filled(size2d_t        size,
                                    colour_t        colour,
                                    paintingdoc_t **doc);
@@ -34,10 +38,10 @@ result_t paintingdoc_create_filled(size2d_t        size,
 /* free a canvas and its undo history. doc may be NULL */
 void paintingdoc_destroy(paintingdoc_t *doc);
 
-/* replace the canvas with the PNG at path, resized to match it. an image with
- * transparency is composited over white. discards the undo history, as it
- * could not be applied to a canvas of another size. on any failure the canvas
- * and its history are left as they were */
+/* replace the canvas with the PNG at path, resized to match it, keeping any
+ * transparency it has. discards the undo history, as it could not be applied
+ * to a canvas of another size. on any failure the canvas and its history are
+ * left as they were */
 result_t paintingdoc_load_png(paintingdoc_t *doc, const char *path);
 
 /* the canvas pixels, for drawing to a window. owned by doc: valid until the
@@ -117,13 +121,14 @@ box_t paintingdoc_rect(paintingdoc_t *doc,
                        int            fill,
                        colour_t       colour);
 
-/* flood fill from p, 4-connected, over pixels exactly equal to the one at p.
+/* flood fill from p, 4-connected, over pixels exactly equal (alpha included)
+ * to the one at p.
  * does nothing, and takes no checkpoint, if p is off the canvas or already
  * the fill colour; otherwise takes its own checkpoint */
 box_t paintingdoc_fill(paintingdoc_t *doc, point_t p, colour_t colour);
 
-/* the colour of the canvas pixel at p, into *colour. false, leaving *colour
- * alone, if p is off the canvas */
+/* the colour and alpha of the canvas pixel at p, into *colour. false,
+ * leaving *colour alone, if p is off the canvas */
 int paintingdoc_pick(const paintingdoc_t *doc, point_t p, colour_t *colour);
 
 /* the selection limits every drawing operation to its pixels, so a stroke,

@@ -21,9 +21,10 @@
 
 /* ----------------------------------------------------------------------- */
 
-#define WHITE 0x00FFFFFFu
-#define BLACK 0x00000000u
-#define RED   0x00FF0000u
+#define WHITE 0xFFFFFFFFu
+#define BLACK 0xFF000000u
+#define RED   0xFFFF0000u
+#define CLEAR 0x00000000u
 
 #define CHECK(cond) \
   do \
@@ -44,7 +45,7 @@ static uint32_t px(const paintingdoc_t *doc, int x, int y)
   bm = paintingdoc_bitmap(doc);
 
   return ((const uint32_t *) ((const uint8_t *) bm->base +
-                              (size_t) y * bm->rowbytes))[x] & 0x00FFFFFFu;
+                              (size_t) y * bm->rowbytes))[x];
 }
 
 static colour_t black(void)
@@ -57,6 +58,11 @@ static colour_t red(void)
   return colour_rgb(255, 0, 0);
 }
 
+static colour_t clear(void)
+{
+  return colour_rgba(0, 0, 0, 0);
+}
+
 /* ----------------------------------------------------------------------- */
 
 result_t paintingdoc_test(const char *resources)
@@ -67,7 +73,7 @@ result_t paintingdoc_test(const char *resources)
   int            i, n, x, y;
   uint32_t       before, after;
 
-  printf("test: create makes a white bgrx8888 canvas; a bad size is "
+  printf("test: create makes a white bgra8888 canvas; a bad size is "
          "rejected\n");
 
   CHECK(paintingdoc_create(SIZE2D(0, 10), &doc) == result_BAD_ARG);
@@ -75,7 +81,7 @@ result_t paintingdoc_test(const char *resources)
   CHECK(paintingdoc_create(SIZE2D(20, 10), &doc) == result_OK);
   CHECK(paintingdoc_bitmap(doc)->size.w == 20);
   CHECK(paintingdoc_bitmap(doc)->size.h == 10);
-  CHECK(paintingdoc_bitmap(doc)->format == pixelfmt_bgrx8888);
+  CHECK(paintingdoc_bitmap(doc)->format == pixelfmt_bgra8888);
   CHECK(px(doc, 0, 0) == WHITE);
   CHECK(px(doc, 19, 9) == WHITE);
   CHECK(!paintingdoc_can_undo(doc));
@@ -87,6 +93,61 @@ result_t paintingdoc_test(const char *resources)
   CHECK(paintingdoc_create_filled(SIZE2D(4, 3), red(), &doc) == result_OK);
   CHECK(px(doc, 0, 0) == RED);
   CHECK(px(doc, 3, 2) == RED);
+  paintingdoc_destroy(doc);
+
+  printf("test: a transparent canvas takes paint, and transparent paint, "
+         "fill and pick keep the alpha\n");
+
+  CHECK(paintingdoc_create_filled(SIZE2D(8, 8), clear(), &doc) == result_OK);
+  CHECK(px(doc, 0, 0) == CLEAR);
+  CHECK(px(doc, 7, 7) == CLEAR);
+
+  paintingdoc_stroke(doc, POINT(0, 3), POINT(7, 3), 1, red());
+  CHECK(px(doc, 4, 3) == RED);
+  CHECK(px(doc, 4, 2) == CLEAR);
+
+  paintingdoc_stroke(doc, POINT(4, 3), POINT(4, 3), 1, clear());
+  CHECK(px(doc, 4, 3) == CLEAR); /* an eraser on a clear canvas cuts a hole */
+  CHECK(px(doc, 5, 3) == RED);
+
+  {
+    colour_t c;
+
+    CHECK(paintingdoc_pick(doc, POINT(0, 0), &c));
+    CHECK(colour_get_alpha(&c) == 0);
+    CHECK(paintingdoc_pick(doc, POINT(5, 3), &c));
+    CHECK(colour_get_alpha(&c) == 255);
+  }
+
+  /* the hole at (4, 3) joins the clear halves, so the fill reaches both,
+   * but the red line either side of it is not clear and stays */
+  dirty = paintingdoc_fill(doc, POINT(0, 0), black());
+  CHECK(!box_is_empty(&dirty));
+  CHECK(px(doc, 0, 0) == BLACK);
+  CHECK(px(doc, 7, 7) == BLACK);
+  CHECK(px(doc, 4, 3) == BLACK);
+  CHECK(px(doc, 5, 3) == RED);
+
+  /* filling clear over the red line undoes to it exactly */
+  paintingdoc_fill(doc, POINT(5, 3), clear());
+  CHECK(px(doc, 5, 3) == CLEAR);
+  paintingdoc_undo(doc);
+  CHECK(px(doc, 5, 3) == RED);
+
+  printf("test: a transparent canvas saves and loads back with its alpha\n");
+
+  CHECK(test_tmppath(path, sizeof(path), "dptlib-paintingdoc-alpha.png"));
+  paintingdoc_fill(doc, POINT(0, 0), clear());
+  CHECK(bitmap_save_png(paintingdoc_bitmap(doc), path) == result_OK);
+  paintingdoc_destroy(doc);
+
+  CHECK(paintingdoc_create(SIZE2D(2, 2), &doc) == result_OK);
+  CHECK(paintingdoc_load_png(doc, path) == result_OK);
+  remove(path);
+  CHECK(paintingdoc_bitmap(doc)->size.w == 8);
+  CHECK(px(doc, 0, 0) == CLEAR);
+  CHECK(px(doc, 4, 3) == CLEAR);
+  CHECK(px(doc, 5, 3) == RED);
   paintingdoc_destroy(doc);
   CHECK(paintingdoc_create(SIZE2D(20, 10), &doc) == result_OK);
 

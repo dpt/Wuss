@@ -39,12 +39,13 @@ enum
   PN_BG_WHITE,
   PN_BG_BLACK,
   PN_BG_GREY,
+  PN_BG_TRANSPARENT,
   PN_BG__COUNT
 };
 
 static const char *const paintingnew_bg_names[PN_BG__COUNT] =
 {
-  "White", "Black", "Grey"
+  "White", "Black", "Grey", "Transparent"
 };
 
 /* icons, in creation order */
@@ -99,6 +100,7 @@ static const stack_item_t g_paintingnew_stack[PN_ST__LIMIT] =
   PN_ST_RADIO(0),
   PN_ST_RADIO(1),
   PN_ST_RADIO(2),
+  PN_ST_RADIO(3),
 
   [PN_ST_BUTTONS]      = STACK_HBOX(PN_ST_ROOT, wuss_STD_PRIMARY_BUTTON_HEIGHT, wuss_STD_GAP, stack_ALIGN_END),
   [PN_ST_SPACER]       = STACK_SPACER(PN_ST_BUTTONS, 1), /* push the buttons right */
@@ -132,6 +134,11 @@ static void paintingnew_colours(int which, paintingnew_params_t *params)
 
   case PN_BG_GREY:
     params->bg = colour_rgb(0xC0, 0xC0, 0xC0);
+    params->fg = colour_rgb(0x00, 0x00, 0x00);
+    break;
+
+  case PN_BG_TRANSPARENT:
+    params->bg = colour_rgba(0x00, 0x00, 0x00, 0x00);
     params->fg = colour_rgb(0x00, 0x00, 0x00);
     break;
 

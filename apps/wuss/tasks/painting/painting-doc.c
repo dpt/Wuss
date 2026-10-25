@@ -16,9 +16,6 @@
 
 #include "painting-doc.h"
 
-/* the unused byte of a bgrx8888 pixel is not significant */
-#define RGB(px) ((px) & 0x00FFFFFFu)
-
 /* ----------------------------------------------------------------------- */
 
 struct paintingdoc
@@ -39,7 +36,7 @@ struct paintingdoc
 
 /* ----------------------------------------------------------------------- */
 
-/* a bgrx8888 bitmap of the given size and colour, with its own pixel store */
+/* a bgra8888 bitmap of the given size and colour, with its own pixel store */
 static result_t canvas_make(size2d_t size, colour_t colour, bitmap_t *bm)
 {
   result_t rc;
@@ -49,7 +46,7 @@ static result_t canvas_make(size2d_t size, colour_t colour, bitmap_t *bm)
   if (pixels == NULL)
     return result_OOM;
 
-  rc = bitmap_init(bm, size, pixelfmt_bgrx8888, size.w * 4, NULL, pixels);
+  rc = bitmap_init(bm, size, pixelfmt_bgra8888, size.w * 4, NULL, pixels);
   if (rc != result_OK)
   {
     free(pixels);
@@ -115,52 +112,36 @@ void paintingdoc_destroy(paintingdoc_t *doc)
   free(doc);
 }
 
-/* free a bitmap that bitmap_load_png or bitmap_convert made */
-static void bitmap_discard(bitmap_t *bm, int heap_struct)
+/* free the pixels and palette of a bitmap that bitmap_load_png made */
+static void bitmap_discard(bitmap_t *bm)
 {
   free(bm->base);
   free(bm->palette);
-  if (heap_struct)
-    free(bm);
 }
 
 result_t paintingdoc_load_png(paintingdoc_t *doc, const char *path)
 {
-  result_t  rc;
-  bitmap_t  src;
-  bitmap_t *deep;
-  bitmap_t  next;
-  screen_t  scr;
+  result_t rc;
+  bitmap_t src;
+  bitmap_t next;
+  screen_t scr;
 
   rc = bitmap_load_png(&src, path);
   if (rc != result_OK)
     return rc;
 
-  /* a paletted image blits only once converted; bgrx8888 is the only deep
-   * target bitmap_convert offers for it, so palette transparency is lost */
-  deep = NULL;
-  if (src.format >= pixelfmt_p1 && src.format <= pixelfmt_p8)
-  {
-    rc = bitmap_convert(&src, pixelfmt_bgrx8888, &deep);
-    if (rc != result_OK)
-    {
-      bitmap_discard(&src, 0);
-      return rc;
-    }
-  }
-
-  rc = canvas_make(src.size, colour_rgb(255, 255, 255), &next);
+  /* blended over a fully transparent canvas, each pixel lands with its own
+   * colour and alpha, a fully transparent one as 0 */
+  rc = canvas_make(src.size, colour_rgba(0, 0, 0, 0), &next);
   if (rc == result_OK)
   {
     screen_for_bitmap(&scr, &next);
-    rc = screen_copy_bitmap(&scr, 0, 0, deep != NULL ? deep : &src);
+    rc = screen_copy_bitmap(&scr, 0, 0, &src);
     if (rc != result_OK)
       free(next.base);
   }
 
-  bitmap_discard(&src, 0);
-  if (deep != NULL)
-    bitmap_discard(deep, 1);
+  bitmap_discard(&src);
 
   if (rc != result_OK)
     return rc;
@@ -379,7 +360,7 @@ result_t paintingdoc_checkpoint(paintingdoc_t *doc)
 
   memcpy(pixels, doc->bm.base, n);
 
-  rc = bitmap_init(&snap, doc->bm.size, pixelfmt_bgrx8888, doc->bm.rowbytes,
+  rc = bitmap_init(&snap, doc->bm.size, pixelfmt_bgra8888, doc->bm.rowbytes,
                    NULL, pixels);
   if (rc == result_OK)
     rc = bitmap_compress(&snap);
@@ -668,7 +649,7 @@ box_t paintingdoc_fill(paintingdoc_t *doc, point_t p, colour_t colour)
 
   target = pixel_row(doc, p.y)[p.x];
   fillpx = screen_colour_to_pixel(&doc->scr, colour);
-  if (RGB(target) == RGB(fillpx))
+  if (target == fillpx)
     return dirty;
 
   checkpoint_or_warn(doc);
@@ -689,14 +670,14 @@ box_t paintingdoc_fill(paintingdoc_t *doc, point_t p, colour_t colour)
     row = pixel_row(doc, y);
 
     /* a seed pushed earlier may since have been filled over by another span */
-    if (RGB(row[x]) != RGB(target))
+    if (row[x] != target)
       continue;
 
     x0 = x;
-    while (x0 > 0 && RGB(row[x0 - 1]) == RGB(target))
+    while (x0 > 0 && row[x0 - 1] == target)
       x0--;
     x1 = x;
-    while (x1 < w - 1 && RGB(row[x1 + 1]) == RGB(target))
+    while (x1 < w - 1 && row[x1 + 1] == target)
       x1++;
 
     for (x = x0; x <= x1; x++)
@@ -718,7 +699,7 @@ box_t paintingdoc_fill(paintingdoc_t *doc, point_t p, colour_t colour)
 
       for (x = x0; x <= x1; x++)
       {
-        if (RGB(row[x]) != RGB(target))
+        if (row[x] != target)
         {
           in_span = 0;
           continue;
@@ -760,7 +741,8 @@ int paintingdoc_pick(const paintingdoc_t *doc, point_t p, colour_t *colour)
     return 0;
 
   px      = pixel_row(doc, p.y)[p.x];
-  *colour = colour_rgb((px >> 16) & 0xFF, (px >> 8) & 0xFF, px & 0xFF);
+  *colour = colour_rgba((px >> 16) & 0xFF, (px >> 8) & 0xFF, px & 0xFF,
+                        px >> 24);
 
   return 1;
 }

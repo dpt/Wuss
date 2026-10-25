@@ -64,8 +64,10 @@ enum
 /* a 640x480 white canvas in a scrollable window, with a toolbox of tools on
  * its left edge and an option bar of colours and tool options on its bottom
  * edge. Select paints with the foreground colour and Adjust with the
- * background colour; clicking an option bar swatch sets either. Closing the
- * canvas window closes both toolbars too */
+ * background colour; clicking an option bar swatch sets either. The canvas
+ * has alpha: a checkerboard shows through its transparent pixels, and on a
+ * transparent canvas (see paintingnew_params_t) the eraser and Adjust paint
+ * transparency. Closing the canvas window closes both toolbars too */
 typedef struct painting_task
 {
   wuss_t            *wuss;
