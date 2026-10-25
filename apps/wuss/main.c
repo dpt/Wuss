@@ -789,6 +789,9 @@ static result_t run_wuss(const char *resources,
   if (rc != result_OK)
     logf_error("wuss: taskmanager_create -> rc=0x%X (%s)", rc,
                wuss_result_string(rc));
+
+  /* always present, like the Task Manager; idempotent as above */
+  tasks_spawn("Display,Palette");
 #endif
 
   tasks_spawn(tasks);
