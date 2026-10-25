@@ -84,6 +84,10 @@ static const dither_method_t dithering_family_methods[] =
 
 #define DITHERING_NORDERED 5 /* leading ordered entries in the table above */
 
+/* Error diffusion submenu: Serpentine, then a row per method */
+#define DITHERING_DIFFUSION_SERPENTINE 0
+#define DITHERING_DIFFUSION_FIRST      1
+
 /* a method's index in dithering_family_methods, or -1 for Nearest */
 static int dithering_family_index(dither_method_t method)
 {
@@ -500,14 +504,22 @@ result_t dithering_create(wuss_t *wuss, dithering_task_t **out)
                 ".hex", task->palettes[0], sizeof(task->palettes[0]),
                 PALETTE_MAX_FILES, 1 /* sorted */, &task->npalettes);
 
+  /* a diffusion method's row sits after Serpentine's, the first of them
+   * below a rule */
   for (i = 0; i < (int) NELEMS(dithering_family_methods); i++)
-    WUSS_MENU_ITEM(task->family_items, i,
+    WUSS_MENU_ITEM(task->family_items,
+                   i < DITHERING_NORDERED ? i : i + DITHERING_DIFFUSION_FIRST,
                    dithering_method_names[dithering_family_methods[i]],
-                   wuss_MENU_ITEM_NONE);
+                   i == DITHERING_NORDERED ? wuss_MENU_ITEM_DASHED
+                                           : wuss_MENU_ITEM_NONE);
+  WUSS_MENU_ITEM(task->family_items,
+                 DITHERING_NORDERED + DITHERING_DIFFUSION_SERPENTINE,
+                 "Serpentine", wuss_MENU_ITEM_NONE);
   WUSS_MENU_TITLE(task->ordered_menu, "Ordered", task->family_items,
                   DITHERING_NORDERED);
   WUSS_MENU_TITLE(task->diffusion_menu, "Error diffusion",
                   &task->family_items[DITHERING_NORDERED],
+                  DITHERING_DIFFUSION_FIRST +
                   (int) NELEMS(dithering_family_methods) - DITHERING_NORDERED);
 
   WUSS_MENU_ITEM(task->method_items, DITHERING_METHOD_NEAREST,
@@ -542,8 +554,6 @@ result_t dithering_create(wuss_t *wuss, dithering_task_t **out)
                  wuss_MENU_ITEM_BORROWED_SUBMENU | wuss_MENU_ITEM_PRE_OPEN);
   WUSS_MENU_ITEM(task->menu_items, DITHERING_MENU_STRENGTH, "Strength",
                  wuss_MENU_ITEM_BORROWED_SUBMENU | wuss_MENU_ITEM_PRE_OPEN);
-  WUSS_MENU_ITEM(task->menu_items, DITHERING_MENU_SERPENTINE, "Serpentine",
-                 wuss_MENU_ITEM_NONE);
   WUSS_MENU_ITEM(task->menu_items, DITHERING_MENU_LINEAR, "Linear light",
                  wuss_MENU_ITEM_NONE);
   WUSS_MENU_TITLE(task->menu, "Dithering", task->menu_items,
@@ -720,15 +730,25 @@ static result_t dithering_redraw(dithering_task_t   *dt,
                         colour_rgb(0xFF, 0xFF, 0xFF), &pos, NULL);
 }
 
-/* Set or clear row's disabled flag. */
-static void dithering_menu_disable(dithering_task_t *dt,
-                                   int               row,
-                                   int               disable)
+/* Set or clear item's disabled flag. */
+static void dithering_menu_disable(wuss_menu_item_t *item, int disable)
 {
   if (disable)
-    dt->menu_items[row].flags |= wuss_MENU_ITEM_DISABLED;
+    item->flags |= wuss_MENU_ITEM_DISABLED;
   else
-    dt->menu_items[row].flags &= ~wuss_MENU_ITEM_DISABLED;
+    item->flags &= ~wuss_MENU_ITEM_DISABLED;
+}
+
+/* the Error diffusion submenu row of a method, or -1 if it has none */
+static int dithering_diffusion_row(dither_method_t method)
+{
+  int family;
+
+  family = dithering_family_index(method);
+  if (family < DITHERING_NORDERED)
+    return -1;
+
+  return family - DITHERING_NORDERED + DITHERING_DIFFUSION_FIRST;
 }
 
 /* Set the submenus' ticks and the rows' disabled states from the task. Run
@@ -743,11 +763,12 @@ static void dithering_menu_refresh(dithering_task_t *dt)
   int group;
   int i;
 
-  dithering_menu_disable(dt, DITHERING_MENU_COLOURS,
+  dithering_menu_disable(&dt->menu_items[DITHERING_MENU_COLOURS],
                          dt->palette != DITHERING_PALETTE_OPTIMAL);
-  dithering_menu_disable(dt, DITHERING_MENU_SERPENTINE,
+  dithering_menu_disable(&dt->family_items[DITHERING_NORDERED +
+                                           DITHERING_DIFFUSION_SERPENTINE],
                          !dithering_rows(dt->method));
-  dithering_menu_disable(dt, DITHERING_MENU_LINEAR,
+  dithering_menu_disable(&dt->menu_items[DITHERING_MENU_LINEAR],
                          dithering_ordered(dt->method));
 
   /* a method's tick shows on both its row and its family's row */
@@ -757,8 +778,9 @@ static void dithering_menu_refresh(dithering_task_t *dt)
   wuss_menu_tick_exclusive(&dt->ordered_menu,
                            family < DITHERING_NORDERED ? family : -1);
   wuss_menu_tick_exclusive(&dt->diffusion_menu,
-                           family >= DITHERING_NORDERED
-                           ? family - DITHERING_NORDERED : -1);
+                           dithering_diffusion_row(dt->method));
+  wuss_menu_tick_item(&dt->diffusion_menu, DITHERING_DIFFUSION_SERPENTINE,
+                      dt->serpentine);
 
   /* a file's tick shows on both its row and its group's row */
   group = dithering_current_group(dt);
@@ -780,8 +802,6 @@ static result_t dithering_menu_open(dithering_task_t *dt)
   dithering_menu_refresh(dt);
 
   ticks = 0;
-  if (dt->serpentine)
-    ticks |= 1u << DITHERING_MENU_SERPENTINE;
   if (dt->linear)
     ticks |= 1u << DITHERING_MENU_LINEAR;
   if (dt->palette_window != NULL)
@@ -822,15 +842,17 @@ static result_t dithering_menu_select(dithering_task_t   *dt,
     dt->method = dither_NONE;
   else if (menu == &dt->ordered_menu)
     dt->method = dithering_family_methods[index];
+  else if (menu == &dt->diffusion_menu &&
+           index == DITHERING_DIFFUSION_SERPENTINE)
+    dt->serpentine = !dt->serpentine;
   else if (menu == &dt->diffusion_menu)
-    dt->method = dithering_family_methods[DITHERING_NORDERED + index];
+    dt->method = dithering_family_methods[DITHERING_NORDERED + index -
+                                          DITHERING_DIFFUSION_FIRST];
   else if (menu == &dt->palette_menu && index < DITHERING_PALETTE_FIRST_HEX)
     dt->palette = index;
   else if (group < dt->ngroups)
     dt->palette = DITHERING_PALETTE_FIRST_HEX + dt->groups[group].start +
                   index;
-  else if (menu == &dt->menu && index == DITHERING_MENU_SERPENTINE)
-    dt->serpentine = !dt->serpentine;
   else if (menu == &dt->menu && index == DITHERING_MENU_LINEAR)
     dt->linear = !dt->linear;
   else
@@ -840,18 +862,28 @@ static result_t dithering_menu_select(dithering_task_t   *dt,
   wuss_menu_disable_item_live(dt->menu_handle, &dt->menu,
                               DITHERING_MENU_COLOURS,
                               dt->palette != DITHERING_PALETTE_OPTIMAL);
-  wuss_menu_disable_item_live(dt->menu_handle, &dt->menu,
-                              DITHERING_MENU_SERPENTINE,
+  wuss_menu_disable_item_live(dt->menu_handle, &dt->diffusion_menu,
+                              DITHERING_DIFFUSION_SERPENTINE,
                               !dithering_rows(dt->method));
   wuss_menu_disable_item_live(dt->menu_handle, &dt->menu,
                               DITHERING_MENU_LINEAR,
                               dithering_ordered(dt->method));
   if (menu == &dt->menu)
-    wuss_menu_tick_item_live(dt->menu_handle, menu, index,
-                             index == DITHERING_MENU_LINEAR ? dt->linear
-                                                            : dt->serpentine);
+  {
+    wuss_menu_tick_item_live(dt->menu_handle, menu, index, dt->linear);
+  }
+  else if (menu == &dt->diffusion_menu)
+  {
+    /* the method's tick and Serpentine's are independent */
+    wuss_menu_tick_exclusive_live(dt->menu_handle, menu,
+                                  dithering_diffusion_row(dt->method));
+    wuss_menu_tick_item_live(dt->menu_handle, menu,
+                             DITHERING_DIFFUSION_SERPENTINE, dt->serpentine);
+  }
   else
+  {
     wuss_menu_tick_exclusive_live(dt->menu_handle, menu, index);
+  }
   if (group < dt->ngroups)
     wuss_menu_tick_exclusive_live(dt->menu_handle, &dt->palette_menu,
                                   DITHERING_PALETTE_FIRST_HEX + group);
