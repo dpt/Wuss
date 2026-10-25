@@ -459,7 +459,7 @@ static void dithering_group_palettes(dithering_task_t *dt)
     grp = &dt->groups[i];
     WUSS_MENU_TITLE(grp->menu, grp->title, &dt->hex_items[grp->start],
                     grp->n);
-    WUSS_MENU_ITEM_MENU(dt->palette_items, DITHERING_PALETTE_FIRST_HEX + i,
+    WUSS_MENU_ITEM_MENU(dt->fixed_items, DITHERING_FIXED_FIRST_GROUP + i,
                         grp->title,
                         i == 0 ? wuss_MENU_ITEM_DASHED : wuss_MENU_ITEM_NONE,
                         &grp->menu);
@@ -479,6 +479,25 @@ static int dithering_current_group(const dithering_task_t *dt)
       return i;
 
   return -1;
+}
+
+/* the Palette submenu row the current palette sits under */
+static int dithering_palette_row(const dithering_task_t *dt)
+{
+  return dt->palette == DITHERING_PALETTE_OPTIMAL
+         ? DITHERING_PALETTE_ROW_COMPUTED : DITHERING_PALETTE_ROW_FIXED;
+}
+
+/* the Fixed submenu row the current palette sits on or under, or -1 */
+static int dithering_fixed_row(const dithering_task_t *dt)
+{
+  int group;
+
+  if (dt->palette == DITHERING_PALETTE_DESKTOP)
+    return DITHERING_FIXED_DESKTOP;
+
+  group = dithering_current_group(dt);
+  return group < 0 ? -1 : DITHERING_FIXED_FIRST_GROUP + group;
 }
 
 result_t dithering_create(wuss_t *wuss, dithering_task_t **out)
@@ -532,13 +551,26 @@ result_t dithering_create(wuss_t *wuss, dithering_task_t **out)
   WUSS_MENU_TITLE(task->method_menu, "Method", task->method_items,
                   DITHERING_METHOD__LIMIT);
 
-  WUSS_MENU_ITEM(task->palette_items, DITHERING_PALETTE_OPTIMAL, "Optimal",
+  WUSS_MENU_ITEM(task->computed_items, DITHERING_COMPUTED_OPTIMAL, "Optimal",
                  wuss_MENU_ITEM_NONE);
-  WUSS_MENU_ITEM(task->palette_items, DITHERING_PALETTE_DESKTOP, "Desktop",
+  /* window set once the dialogue exists */
+  WUSS_MENU_ITEM(task->computed_items, DITHERING_COMPUTED_COLOURS, "Colours",
+                 wuss_MENU_ITEM_BORROWED_SUBMENU | wuss_MENU_ITEM_PRE_OPEN);
+  WUSS_MENU_TITLE(task->computed_menu, "Computed", task->computed_items,
+                  DITHERING_COMPUTED__LIMIT);
+
+  WUSS_MENU_ITEM(task->fixed_items, DITHERING_FIXED_DESKTOP, "Desktop",
                  wuss_MENU_ITEM_NONE);
   dithering_group_palettes(task);
+  WUSS_MENU_TITLE(task->fixed_menu, "Fixed", task->fixed_items,
+                  DITHERING_FIXED_FIRST_GROUP + task->ngroups);
+
+  WUSS_MENU_ITEM_MENU(task->palette_items, DITHERING_PALETTE_ROW_COMPUTED,
+                      "Computed", wuss_MENU_ITEM_NONE, &task->computed_menu);
+  WUSS_MENU_ITEM_MENU(task->palette_items, DITHERING_PALETTE_ROW_FIXED,
+                      "Fixed", wuss_MENU_ITEM_NONE, &task->fixed_menu);
   WUSS_MENU_TITLE(task->palette_menu, "Palette", task->palette_items,
-                  DITHERING_PALETTE_FIRST_HEX + task->ngroups);
+                  DITHERING_PALETTE_ROW__LIMIT);
 
   WUSS_MENU_ITEM_SHORTCUT(task->menu_items, DITHERING_MENU_SAVE, "Save",
                           wuss_MENU_ITEM_NONE, "F3");
@@ -549,9 +581,7 @@ result_t dithering_create(wuss_t *wuss, dithering_task_t **out)
                       wuss_MENU_ITEM_NONE, &task->palette_menu);
   WUSS_MENU_ITEM(task->menu_items, DITHERING_MENU_SHOW_PALETTE,
                  "Show palette", wuss_MENU_ITEM_NONE);
-  /* windows set once the dialogues exist */
-  WUSS_MENU_ITEM(task->menu_items, DITHERING_MENU_COLOURS, "Colours",
-                 wuss_MENU_ITEM_BORROWED_SUBMENU | wuss_MENU_ITEM_PRE_OPEN);
+  /* window set once the dialogue exists */
   WUSS_MENU_ITEM(task->menu_items, DITHERING_MENU_STRENGTH, "Strength",
                  wuss_MENU_ITEM_BORROWED_SUBMENU | wuss_MENU_ITEM_PRE_OPEN);
   WUSS_MENU_ITEM(task->menu_items, DITHERING_MENU_LINEAR, "Linear light",
@@ -605,7 +635,7 @@ result_t dithering_create(wuss_t *wuss, dithering_task_t **out)
     wuss_task_destroy(task->delegate); /* QUIT frees the block */
     return rc;
   }
-  task->menu_items[DITHERING_MENU_COLOURS].window =
+  task->computed_items[DITHERING_COMPUTED_COLOURS].window =
     wuss_dialogue_window(task->colours_dialogue);
 
   if (out)
@@ -763,7 +793,7 @@ static void dithering_menu_refresh(dithering_task_t *dt)
   int group;
   int i;
 
-  dithering_menu_disable(&dt->menu_items[DITHERING_MENU_COLOURS],
+  dithering_menu_disable(&dt->computed_items[DITHERING_COMPUTED_COLOURS],
                          dt->palette != DITHERING_PALETTE_OPTIMAL);
   dithering_menu_disable(&dt->family_items[DITHERING_NORDERED +
                                            DITHERING_DIFFUSION_SERPENTINE],
@@ -782,11 +812,13 @@ static void dithering_menu_refresh(dithering_task_t *dt)
   wuss_menu_tick_item(&dt->diffusion_menu, DITHERING_DIFFUSION_SERPENTINE,
                       dt->serpentine);
 
-  /* a file's tick shows on both its row and its group's row */
+  /* a palette's tick shows on its own row and on every row leading to it */
   group = dithering_current_group(dt);
-  wuss_menu_tick_exclusive(&dt->palette_menu,
-                           group < 0 ? dt->palette
-                                     : DITHERING_PALETTE_FIRST_HEX + group);
+  wuss_menu_tick_exclusive(&dt->palette_menu, dithering_palette_row(dt));
+  wuss_menu_tick_exclusive(&dt->computed_menu,
+                           dt->palette == DITHERING_PALETTE_OPTIMAL
+                           ? DITHERING_COMPUTED_OPTIMAL : -1);
+  wuss_menu_tick_exclusive(&dt->fixed_menu, dithering_fixed_row(dt));
   for (i = 0; i < dt->ngroups; i++)
     wuss_menu_tick_exclusive(&dt->groups[i].menu,
                              i == group ? dt->palette -
@@ -848,19 +880,21 @@ static result_t dithering_menu_select(dithering_task_t   *dt,
   else if (menu == &dt->diffusion_menu)
     dt->method = dithering_family_methods[DITHERING_NORDERED + index -
                                           DITHERING_DIFFUSION_FIRST];
-  else if (menu == &dt->palette_menu && index < DITHERING_PALETTE_FIRST_HEX)
-    dt->palette = index;
+  else if (menu == &dt->computed_menu && index == DITHERING_COMPUTED_OPTIMAL)
+    dt->palette = DITHERING_PALETTE_OPTIMAL;
+  else if (menu == &dt->fixed_menu && index == DITHERING_FIXED_DESKTOP)
+    dt->palette = DITHERING_PALETTE_DESKTOP;
   else if (group < dt->ngroups)
     dt->palette = DITHERING_PALETTE_FIRST_HEX + dt->groups[group].start +
                   index;
   else if (menu == &dt->menu && index == DITHERING_MENU_LINEAR)
     dt->linear = !dt->linear;
   else
-    return result_OK; /* includes a click on a family or "N-colour" row */
+    return result_OK; /* includes a click on a submenu row */
 
   dithering_menu_refresh(dt);
-  wuss_menu_disable_item_live(dt->menu_handle, &dt->menu,
-                              DITHERING_MENU_COLOURS,
+  wuss_menu_disable_item_live(dt->menu_handle, &dt->computed_menu,
+                              DITHERING_COMPUTED_COLOURS,
                               dt->palette != DITHERING_PALETTE_OPTIMAL);
   wuss_menu_disable_item_live(dt->menu_handle, &dt->diffusion_menu,
                               DITHERING_DIFFUSION_SERPENTINE,
@@ -884,9 +918,15 @@ static result_t dithering_menu_select(dithering_task_t   *dt,
   {
     wuss_menu_tick_exclusive_live(dt->menu_handle, menu, index);
   }
-  if (group < dt->ngroups)
+  if (menu == &dt->computed_menu || menu == &dt->fixed_menu ||
+      group < dt->ngroups)
+  {
+    /* the other kind's submenu is closed: refresh's data ticks cover it */
     wuss_menu_tick_exclusive_live(dt->menu_handle, &dt->palette_menu,
-                                  DITHERING_PALETTE_FIRST_HEX + group);
+                                  dithering_palette_row(dt));
+    wuss_menu_tick_exclusive_live(dt->menu_handle, &dt->fixed_menu,
+                                  dithering_fixed_row(dt));
+  }
   if (menu == &dt->ordered_menu || menu == &dt->diffusion_menu)
     wuss_menu_tick_exclusive_live(dt->menu_handle, &dt->method_menu,
                                   dithering_method_row(dt->method));

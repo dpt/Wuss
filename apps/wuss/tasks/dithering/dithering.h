@@ -20,12 +20,32 @@
 #define DITHERING_SWATCHES_W   128 /* Show palette window's initial side */
 #define DITHERING_COLOURS_STEPS 8 /* Colours slider positions per doubling */
 
-/* Palette submenu rows: these two, then one "N-colour" submenu per *.hex
- * file size. dithering_task_t.palette is one of these two, or
- * DITHERING_PALETTE_FIRST_HEX plus an index into palettes[]. */
+/* dithering_task_t.palette: one of these two, or DITHERING_PALETTE_FIRST_HEX
+ * plus an index into palettes[] */
 #define DITHERING_PALETTE_OPTIMAL 0
 #define DITHERING_PALETTE_DESKTOP 1
 #define DITHERING_PALETTE_FIRST_HEX 2
+
+/* Palette submenu rows: a submenu per kind of palette */
+enum
+{
+  DITHERING_PALETTE_ROW_COMPUTED,
+  DITHERING_PALETTE_ROW_FIXED,
+  DITHERING_PALETTE_ROW__LIMIT
+};
+
+/* Computed submenu rows */
+enum
+{
+  DITHERING_COMPUTED_OPTIMAL,
+  DITHERING_COMPUTED_COLOURS,
+  DITHERING_COMPUTED__LIMIT
+};
+
+/* Fixed submenu rows: Desktop, then one "N-colour" submenu per *.hex file
+ * size */
+#define DITHERING_FIXED_DESKTOP     0
+#define DITHERING_FIXED_FIRST_GROUP 1
 
 /* Method submenu rows: Nearest alone, then a submenu per family */
 enum
@@ -58,7 +78,6 @@ enum
   DITHERING_MENU_METHOD,
   DITHERING_MENU_PALETTE,
   DITHERING_MENU_SHOW_PALETTE,
-  DITHERING_MENU_COLOURS,
   DITHERING_MENU_STRENGTH,
   DITHERING_MENU_LINEAR,
   DITHERING_MENU__LIMIT
@@ -110,8 +129,12 @@ typedef struct dithering_task
   wuss_menu_t        diffusion_menu;
   wuss_menu_item_t   hex_items[PALETTE_MAX_FILES]; /* one per palettes[];
                                 * each group's menu is a slice */
-  wuss_menu_item_t   palette_items[DITHERING_PALETTE_FIRST_HEX +
-                                   DITHERING_MAX_GROUPS];
+  wuss_menu_item_t   computed_items[DITHERING_COMPUTED__LIMIT];
+  wuss_menu_t        computed_menu;
+  wuss_menu_item_t   fixed_items[DITHERING_FIXED_FIRST_GROUP +
+                                 DITHERING_MAX_GROUPS];
+  wuss_menu_t        fixed_menu;
+  wuss_menu_item_t   palette_items[DITHERING_PALETTE_ROW__LIMIT];
   wuss_menu_t        palette_menu;
   wuss_menu_item_t   menu_items[DITHERING_MENU__LIMIT];
   wuss_menu_t        menu;
