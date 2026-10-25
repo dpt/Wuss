@@ -48,7 +48,10 @@ static const char *const dithering_method_names[dither__LIMIT] =
   "Knoll",
   "Riemersma",
   "Ostromoukhov",
-  "Zhou-Fang"
+  "Zhou-Fang",
+  "Fan",
+  "Shiau-Fan",
+  "Shiau-Fan 2"
 };
 
 /* ordered methods, Knoll's included, carry no error between pixels, so
