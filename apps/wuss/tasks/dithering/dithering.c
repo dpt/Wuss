@@ -40,7 +40,9 @@ static const char *const dithering_method_names[dither__LIMIT] =
   "Stucki",
   "Atkinson",
   "Burkes",
-  "Sierra"
+  "Sierra",
+  "Sierra Two-Row",
+  "Sierra Lite"
 };
 
 /* ----------------------------------------------------------------------- */
