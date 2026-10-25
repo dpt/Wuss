@@ -44,11 +44,13 @@ static const char *const dithering_method_names[dither__LIMIT] =
   "Sierra Two-Row",
   "Sierra Lite",
   "Bayer",
-  "Blue noise"
+  "Blue noise",
+  "Knoll"
 };
 
-/* ordered methods follow the diffusing ones: they carry no error, so
- * Serpentine and Linear light do nothing for them */
+/* ordered methods, Knoll's included, follow the diffusing ones: they carry
+ * no error between pixels, so Serpentine and Linear light do nothing for
+ * them */
 #define dithering_ordered(method) ((method) >= dither_BAYER)
 
 /* ----------------------------------------------------------------------- */
