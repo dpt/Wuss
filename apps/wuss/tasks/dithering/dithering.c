@@ -512,6 +512,7 @@ result_t dithering_create(wuss_t *wuss, dithering_task_t **out)
   task->palette    = DITHERING_PALETTE_OPTIMAL;
   task->colours_pos = 4 * DITHERING_COLOURS_STEPS; /* 16 */
   task->strength   = 100;
+  task->strength_step = DITHERING_STRENGTH_STEP;
   task->serpentine = 1;
 
   namelist_scan(pathf("%s/resources/wuss-tasks/palettes",
@@ -583,6 +584,8 @@ result_t dithering_create(wuss_t *wuss, dithering_task_t **out)
   /* window set once the dialogue exists */
   WUSS_MENU_ITEM(task->menu_items, DITHERING_MENU_STRENGTH, "Strength",
                  wuss_MENU_ITEM_BORROWED_SUBMENU | wuss_MENU_ITEM_PRE_OPEN);
+  WUSS_MENU_ITEM(task->menu_items, DITHERING_MENU_ANIMATE,
+                 "Animate strength", wuss_MENU_ITEM_NONE);
   WUSS_MENU_TITLE(task->menu, "Dithering", task->menu_items,
                   DITHERING_MENU__LIMIT);
 
@@ -833,6 +836,8 @@ static result_t dithering_menu_open(dithering_task_t *dt)
   ticks = 0;
   if (dt->palette_window != NULL)
     ticks |= 1u << DITHERING_MENU_SHOW_PALETTE;
+  if (dt->animate)
+    ticks |= 1u << DITHERING_MENU_ANIMATE;
 
   return wuss_menu_open_ticked(dt->delegate, &dt->menu, ticks,
                                wuss_get_pointer(dt->wuss), &dt->menu_handle);
@@ -859,6 +864,13 @@ static result_t dithering_menu_select(dithering_task_t   *dt,
     wuss_menu_tick_item_live(dt->menu_handle, menu, index,
                              dt->palette_window != NULL);
     return rc;
+  }
+
+  if (menu == &dt->menu && index == DITHERING_MENU_ANIMATE)
+  {
+    dt->animate = !dt->animate;
+    wuss_menu_tick_item_live(dt->menu_handle, menu, index, dt->animate);
+    return result_OK;
   }
 
   for (group = 0; group < dt->ngroups; group++)
@@ -924,6 +936,34 @@ static result_t dithering_menu_select(dithering_task_t   *dt,
   return dithering_apply(dt);
 }
 
+/* Animate strength: bounce strength between 0 and 100 a step per idle tick,
+ * re-dithering each time. The dialogue's slider follows, in case it is
+ * open. */
+static result_t dithering_idle(dithering_task_t *dt)
+{
+  result_t rc;
+  int      next;
+
+  /* the dialogues outlive the main window until they close too */
+  if (!dt->animate || dt->window == NULL || dt->source.base == NULL)
+    return result_OK;
+
+  next = dt->strength + dt->strength_step;
+  if (next < 0 || next > 100)
+  {
+    dt->strength_step = -dt->strength_step;
+    next = dt->strength + dt->strength_step;
+  }
+  dt->strength = next;
+
+  rc = wuss_slider_row_set(wuss_dialogue_window(dt->strength_dialogue),
+                           &dt->strength_row, dt->strength);
+  if (rc != result_OK)
+    return rc;
+
+  return dithering_apply(dt);
+}
+
 result_t dithering_handle(wuss_window_t      *window,
                           const wuss_event_t *event,
                           void               *task_data)
@@ -955,6 +995,9 @@ result_t dithering_handle(wuss_window_t      *window,
 
   case wuss_EVENT_MENU_SELECT:
     return dithering_menu_select(dt, event);
+
+  case wuss_EVENT_IDLE:
+    return dithering_idle(dt);
 
   case wuss_EVENT_ICON:
     if (window == wuss_dialogue_window(dt->strength_dialogue) &&

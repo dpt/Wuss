@@ -19,6 +19,7 @@
 #define DITHERING_SLIDER_W     128 /* slider dialogues' slider */
 #define DITHERING_SWATCHES_W   128 /* Show palette window's initial side */
 #define DITHERING_COLOURS_STEPS 8 /* Colours slider positions per doubling */
+#define DITHERING_STRENGTH_STEP 1 /* Animate strength: percent per tick */
 
 /* dithering_task_t.palette: one of these two, or DITHERING_PALETTE_FIRST_HEX
  * plus an index into palettes[] */
@@ -84,6 +85,7 @@ enum
   DITHERING_MENU_PALETTE,
   DITHERING_MENU_SHOW_PALETTE,
   DITHERING_MENU_STRENGTH,
+  DITHERING_MENU_ANIMATE,
   DITHERING_MENU__LIMIT
 };
 
@@ -112,6 +114,8 @@ typedef struct dithering_task
   int                colours_pos; /* Colours slider position: optimal
                                    * palette size is 2^(pos / STEPS) */
   int                strength; /* percent */
+  int                animate;  /* cycle strength up and down while idle */
+  int                strength_step; /* animated change per idle tick */
   int                serpentine;
   int                linear;   /* diffuse in linear light */
 
