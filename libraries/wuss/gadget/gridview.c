@@ -56,6 +56,7 @@ struct wuss_gridview
                                               * closed; undo at the next
                                               * event */
   point_t                        press_point; /* its document point */
+  wuss_button_t                  press_button; /* button that pressed it */
   void                          *opaque;
   bitvec_t                      *selected;
   int                            label_chars;
@@ -381,7 +382,8 @@ static void gridview_drag_maybe(wuss_gridview_t *gv, point_t point)
 
   cell    = gridview_cell_box(gv, index);
   hotspot = POINT(gv->press_point.x - cell.x0, gv->press_point.y - cell.y0);
-  (void) wuss_drag_start(wuss, gv->window, gv->cell, hotspot);
+  if (wuss_drag_start(wuss, gv->window, gv->cell, hotspot) == result_OK)
+    wuss->drag.button = gv->press_button; /* as an icon drag does */
 }
 
 /* Deselect everything, dirtying only the cells that were selected. */
@@ -611,7 +613,8 @@ int wuss_gridview_handle_event(wuss_gridview_t    *gv,
     if (gv->drag != NULL)
     {
       gv->press_index = index;
-      gv->press_point = event->data.mouse.point;
+      gv->press_point  = event->data.mouse.point;
+      gv->press_button = event->data.mouse.button;
     }
 
     if (!gv->selectable)
