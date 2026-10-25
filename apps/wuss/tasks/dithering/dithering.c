@@ -51,14 +51,16 @@ static const char *const dithering_method_names[dither__LIMIT] =
   "Zhou-Fang",
   "Fan",
   "Shiau-Fan",
-  "Shiau-Fan 2"
+  "Shiau-Fan 2",
+  "Clustered dot"
 };
 
 /* ordered methods, Knoll's included, carry no error between pixels, so
  * Serpentine and Linear light do nothing for them. Riemersma walks a curve
  * rather than rows, so it has no use for Serpentine alone. */
 #define dithering_ordered(method) \
-  ((method) >= dither_BAYER && (method) <= dither_KNOLL)
+  (((method) >= dither_BAYER && (method) <= dither_KNOLL) || \
+   (method) == dither_CLUSTERED)
 #define dithering_rows(method) \
   (!dithering_ordered(method) && (method) != dither_RIEMERSMA)
 
