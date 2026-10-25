@@ -34,26 +34,28 @@
 /* indexed by dither_method_t */
 static const char *const dithering_method_names[dither__LIMIT] =
 {
-  "Nearest",
-  "Floyd-Steinberg",
-  "Jarvis-Judice-Ninke",
-  "Stucki",
-  "Atkinson",
-  "Burkes",
-  "Sierra",
-  "Sierra Two-Row",
-  "Sierra Lite",
-  "Bayer",
-  "Blue noise",
-  "Knoll",
-  "Riemersma",
-  "Ostromoukhov",
-  "Zhou-Fang",
-  "Fan",
-  "Shiau-Fan",
-  "Shiau-Fan 2",
-  "Clustered dot",
-  "Random"
+  [dither_NONE]                = "Nearest",
+
+  [dither_CLUSTERED]           = "Clustered dot",
+  [dither_RANDOM]              = "Random",
+  [dither_BAYER]               = "Bayer",
+  [dither_BLUE_NOISE]          = "Blue noise",
+  [dither_KNOLL]               = "Knoll",
+
+  [dither_FLOYD_STEINBERG]     = "Floyd-Steinberg",
+  [dither_JARVIS_JUDICE_NINKE] = "Jarvis-Judice-Ninke",
+  [dither_STUCKI]              = "Stucki",
+  [dither_ATKINSON]            = "Atkinson",
+  [dither_BURKES]              = "Burkes",
+  [dither_SIERRA]              = "Sierra",
+  [dither_SIERRA_TWO_ROW]      = "Sierra Two-Row",
+  [dither_SIERRA_LITE]         = "Sierra Lite",
+  [dither_FAN]                 = "Fan",
+  [dither_SHIAU_FAN]           = "Shiau-Fan",
+  [dither_SHIAU_FAN_2]         = "Shiau-Fan 2",
+  [dither_RIEMERSMA]           = "Riemersma",
+  [dither_OSTROMOUKHOV]        = "Ostromoukhov",
+  [dither_ZHOU_FANG]           = "Zhou-Fang"
 };
 
 /* every method but Nearest in menu order: the ordered family, then the error
