@@ -45,13 +45,17 @@ static const char *const dithering_method_names[dither__LIMIT] =
   "Sierra Lite",
   "Bayer",
   "Blue noise",
-  "Knoll"
+  "Knoll",
+  "Riemersma"
 };
 
-/* ordered methods, Knoll's included, follow the diffusing ones: they carry
- * no error between pixels, so Serpentine and Linear light do nothing for
- * them */
-#define dithering_ordered(method) ((method) >= dither_BAYER)
+/* ordered methods, Knoll's included, carry no error between pixels, so
+ * Serpentine and Linear light do nothing for them. Riemersma walks a curve
+ * rather than rows, so it has no use for Serpentine alone. */
+#define dithering_ordered(method) \
+  ((method) >= dither_BAYER && (method) <= dither_KNOLL)
+#define dithering_rows(method) \
+  (!dithering_ordered(method) && (method) != dither_RIEMERSMA)
 
 /* ----------------------------------------------------------------------- */
 
@@ -664,7 +668,7 @@ static void dithering_menu_refresh(dithering_task_t *dt)
   dithering_menu_disable(dt, DITHERING_MENU_COLOURS,
                          dt->palette != DITHERING_PALETTE_OPTIMAL);
   dithering_menu_disable(dt, DITHERING_MENU_SERPENTINE,
-                         dithering_ordered(dt->method));
+                         !dithering_rows(dt->method));
   dithering_menu_disable(dt, DITHERING_MENU_LINEAR,
                          dithering_ordered(dt->method));
 
@@ -748,7 +752,7 @@ static result_t dithering_menu_select(dithering_task_t   *dt,
                               dt->palette != DITHERING_PALETTE_OPTIMAL);
   wuss_menu_disable_item_live(dt->menu_handle, &dt->menu,
                               DITHERING_MENU_SERPENTINE,
-                              dithering_ordered(dt->method));
+                              !dithering_rows(dt->method));
   wuss_menu_disable_item_live(dt->menu_handle, &dt->menu,
                               DITHERING_MENU_LINEAR,
                               dithering_ordered(dt->method));
