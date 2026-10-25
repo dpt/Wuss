@@ -56,6 +56,11 @@ enum
   DITHERING_METHOD__LIMIT
 };
 
+/* Error diffusion submenu rows: these options, then a row per method */
+#define DITHERING_DIFFUSION_SERPENTINE 0
+#define DITHERING_DIFFUSION_LINEAR     1
+#define DITHERING_DIFFUSION_FIRST      2
+
 /* ponytail: fixed cap on distinct *.hex sizes; files of any further size
  * are left out of the menu. Raise it if resources/palettes grows more. */
 #define DITHERING_MAX_GROUPS 8
@@ -79,7 +84,6 @@ enum
   DITHERING_MENU_PALETTE,
   DITHERING_MENU_SHOW_PALETTE,
   DITHERING_MENU_STRENGTH,
-  DITHERING_MENU_LINEAR,
   DITHERING_MENU__LIMIT
 };
 
@@ -121,10 +125,11 @@ typedef struct dithering_task
 
   wuss_menu_item_t   method_items[DITHERING_METHOD__LIMIT];
   wuss_menu_t        method_menu;
-  wuss_menu_item_t   family_items[dither__LIMIT]; /* every method but
-                                * Nearest, plus Serpentine heading the
-                                * diffusion family; each family's menu is a
-                                * slice */
+  wuss_menu_item_t   family_items[dither__LIMIT - 1 +
+                                  DITHERING_DIFFUSION_FIRST]; /* every
+                                * method but Nearest, plus the options
+                                * heading the diffusion family; each family's
+                                * menu is a slice */
   wuss_menu_t        ordered_menu;
   wuss_menu_t        diffusion_menu;
   wuss_menu_item_t   hex_items[PALETTE_MAX_FILES]; /* one per palettes[];

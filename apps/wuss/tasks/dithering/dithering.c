@@ -84,10 +84,6 @@ static const dither_method_t dithering_family_methods[] =
 
 #define DITHERING_NORDERED 5 /* leading ordered entries in the table above */
 
-/* Error diffusion submenu: Serpentine, then a row per method */
-#define DITHERING_DIFFUSION_SERPENTINE 0
-#define DITHERING_DIFFUSION_FIRST      1
-
 /* a method's index in dithering_family_methods, or -1 for Nearest */
 static int dithering_family_index(dither_method_t method)
 {
@@ -523,8 +519,8 @@ result_t dithering_create(wuss_t *wuss, dithering_task_t **out)
                 ".hex", task->palettes[0], sizeof(task->palettes[0]),
                 PALETTE_MAX_FILES, 1 /* sorted */, &task->npalettes);
 
-  /* a diffusion method's row sits after Serpentine's, the first of them
-   * below a rule */
+  /* a diffusion method's row sits after the options' rows, the first of
+   * them below a rule */
   for (i = 0; i < (int) NELEMS(dithering_family_methods); i++)
     WUSS_MENU_ITEM(task->family_items,
                    i < DITHERING_NORDERED ? i : i + DITHERING_DIFFUSION_FIRST,
@@ -534,6 +530,9 @@ result_t dithering_create(wuss_t *wuss, dithering_task_t **out)
   WUSS_MENU_ITEM(task->family_items,
                  DITHERING_NORDERED + DITHERING_DIFFUSION_SERPENTINE,
                  "Serpentine", wuss_MENU_ITEM_NONE);
+  WUSS_MENU_ITEM(task->family_items,
+                 DITHERING_NORDERED + DITHERING_DIFFUSION_LINEAR,
+                 "Linear light", wuss_MENU_ITEM_NONE);
   WUSS_MENU_TITLE(task->ordered_menu, "Ordered", task->family_items,
                   DITHERING_NORDERED);
   WUSS_MENU_TITLE(task->diffusion_menu, "Error diffusion",
@@ -584,8 +583,6 @@ result_t dithering_create(wuss_t *wuss, dithering_task_t **out)
   /* window set once the dialogue exists */
   WUSS_MENU_ITEM(task->menu_items, DITHERING_MENU_STRENGTH, "Strength",
                  wuss_MENU_ITEM_BORROWED_SUBMENU | wuss_MENU_ITEM_PRE_OPEN);
-  WUSS_MENU_ITEM(task->menu_items, DITHERING_MENU_LINEAR, "Linear light",
-                 wuss_MENU_ITEM_NONE);
   WUSS_MENU_TITLE(task->menu, "Dithering", task->menu_items,
                   DITHERING_MENU__LIMIT);
 
@@ -785,8 +782,8 @@ static int dithering_diffusion_row(dither_method_t method)
  * on open and after every pick: a submenu reopened within the same chain
  * (hover away and back) is built afresh from these items, so the live ticks
  * alone would go stale. Colours only applies to the optimal palette, and
- * Serpentine and Linear light only to diffusing methods, so each is
- * disabled otherwise. */
+ * Serpentine only to methods which scan rows, so each is disabled
+ * otherwise. */
 static void dithering_menu_refresh(dithering_task_t *dt)
 {
   int family;
@@ -798,8 +795,6 @@ static void dithering_menu_refresh(dithering_task_t *dt)
   dithering_menu_disable(&dt->family_items[DITHERING_NORDERED +
                                            DITHERING_DIFFUSION_SERPENTINE],
                          !dithering_rows(dt->method));
-  dithering_menu_disable(&dt->menu_items[DITHERING_MENU_LINEAR],
-                         dithering_ordered(dt->method));
 
   /* a method's tick shows on both its row and its family's row */
   family = dithering_family_index(dt->method);
@@ -811,6 +806,8 @@ static void dithering_menu_refresh(dithering_task_t *dt)
                            dithering_diffusion_row(dt->method));
   wuss_menu_tick_item(&dt->diffusion_menu, DITHERING_DIFFUSION_SERPENTINE,
                       dt->serpentine);
+  wuss_menu_tick_item(&dt->diffusion_menu, DITHERING_DIFFUSION_LINEAR,
+                      dt->linear);
 
   /* a palette's tick shows on its own row and on every row leading to it */
   group = dithering_current_group(dt);
@@ -834,8 +831,6 @@ static result_t dithering_menu_open(dithering_task_t *dt)
   dithering_menu_refresh(dt);
 
   ticks = 0;
-  if (dt->linear)
-    ticks |= 1u << DITHERING_MENU_LINEAR;
   if (dt->palette_window != NULL)
     ticks |= 1u << DITHERING_MENU_SHOW_PALETTE;
 
@@ -877,6 +872,8 @@ static result_t dithering_menu_select(dithering_task_t   *dt,
   else if (menu == &dt->diffusion_menu &&
            index == DITHERING_DIFFUSION_SERPENTINE)
     dt->serpentine = !dt->serpentine;
+  else if (menu == &dt->diffusion_menu && index == DITHERING_DIFFUSION_LINEAR)
+    dt->linear = !dt->linear;
   else if (menu == &dt->diffusion_menu)
     dt->method = dithering_family_methods[DITHERING_NORDERED + index -
                                           DITHERING_DIFFUSION_FIRST];
@@ -887,8 +884,6 @@ static result_t dithering_menu_select(dithering_task_t   *dt,
   else if (group < dt->ngroups)
     dt->palette = DITHERING_PALETTE_FIRST_HEX + dt->groups[group].start +
                   index;
-  else if (menu == &dt->menu && index == DITHERING_MENU_LINEAR)
-    dt->linear = !dt->linear;
   else
     return result_OK; /* includes a click on a submenu row */
 
@@ -899,20 +894,15 @@ static result_t dithering_menu_select(dithering_task_t   *dt,
   wuss_menu_disable_item_live(dt->menu_handle, &dt->diffusion_menu,
                               DITHERING_DIFFUSION_SERPENTINE,
                               !dithering_rows(dt->method));
-  wuss_menu_disable_item_live(dt->menu_handle, &dt->menu,
-                              DITHERING_MENU_LINEAR,
-                              dithering_ordered(dt->method));
-  if (menu == &dt->menu)
+  if (menu == &dt->diffusion_menu)
   {
-    wuss_menu_tick_item_live(dt->menu_handle, menu, index, dt->linear);
-  }
-  else if (menu == &dt->diffusion_menu)
-  {
-    /* the method's tick and Serpentine's are independent */
+    /* the method's tick and the options' ticks are independent */
     wuss_menu_tick_exclusive_live(dt->menu_handle, menu,
                                   dithering_diffusion_row(dt->method));
     wuss_menu_tick_item_live(dt->menu_handle, menu,
                              DITHERING_DIFFUSION_SERPENTINE, dt->serpentine);
+    wuss_menu_tick_item_live(dt->menu_handle, menu,
+                             DITHERING_DIFFUSION_LINEAR, dt->linear);
   }
   else
   {
