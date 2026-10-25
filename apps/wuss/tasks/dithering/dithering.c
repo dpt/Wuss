@@ -47,7 +47,8 @@ static const char *const dithering_method_names[dither__LIMIT] =
   "Blue noise",
   "Knoll",
   "Riemersma",
-  "Ostromoukhov"
+  "Ostromoukhov",
+  "Zhou-Fang"
 };
 
 /* ordered methods, Knoll's included, carry no error between pixels, so
