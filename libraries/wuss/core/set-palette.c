@@ -52,9 +52,13 @@ result_t wuss_set_palette(wuss_t         *wuss,
   memcpy(wuss->palette, palette, npalette * sizeof(*wuss->palette));
 
   wuss__rebuild_palettecache(wuss);
-  wuss__rebuild_fills(wuss);
 
   rc = wuss__broadcast_palette(wuss);
+
+  /* after the broadcast: whichever task owns the screen rebuilds its
+   * physical palette in its handler, and the fills must match that, not
+   * the previous one */
+  wuss__rebuild_fills(wuss);
 
   wuss__invalidate_screen(wuss);
 
