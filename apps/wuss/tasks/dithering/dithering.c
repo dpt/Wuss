@@ -1016,7 +1016,7 @@ result_t dithering_handle(wuss_window_t      *window,
     if (window == wuss_dialogue_window(dt->strength_dialogue) &&
         wuss_slider_row_event(window, &dt->strength_row, event,
                               &dt->strength))
-      return dithering_apply(dt);
+      return dithering_dither(dt, 1);
 
     if (window == wuss_dialogue_window(dt->colours_dialogue) &&
         wuss_slider_row_event(window, &dt->colours_row, event,
