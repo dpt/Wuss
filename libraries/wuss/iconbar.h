@@ -13,7 +13,7 @@
 
 /* Slot geometry: an icon is as wide as its label (or image, whichever is
  * wider; WUSS_ICONBAR_ICON if it has neither) and packs from its side's edge
- * in creation order, with WUSS_ICONBAR_GAP of empty bar between neighbours
+ * in array order, with WUSS_ICONBAR_GAP of empty bar between neighbours
  * and at the edge -- the gap is not drawn on, so it reads as space rather
  * than a shared border. An icon bar wider than the screen scrolls (see
  * WUSS_ICONBAR_SCROLL_ZONE). */
@@ -34,7 +34,10 @@
 
 /* A live icon bar icon is its creation spec plus the task it delivers
  * wuss_EVENT_ICON to. spec.text is owned (strdup'd by
- * wuss_iconbar_icon_create); never NULL, "" instead. */
+ * wuss_iconbar_icon_create); never NULL, "" instead. wuss->iconbar.icons
+ * holds each side's icons from its outer edge inward, the two sides
+ * interleaved; an associated icon's spec has its anchor's side and priority
+ * and a NULL anchor. */
 struct wuss_iconbar_icon
 {
   wuss_iconbar_icon_spec_t  spec;  /* text owned */

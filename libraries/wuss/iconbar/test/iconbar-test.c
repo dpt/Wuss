@@ -1,5 +1,6 @@
 /* iconbar/test/iconbar-test.c -- wuss icon bar tests */
 
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -29,6 +30,23 @@
 
 /* ----------------------------------------------------------------------- */
 
+/* left edge of icon's slot, or INT_MIN if it is not on the bar */
+static int slot_x0(const wuss_t *wuss, const wuss_iconbar_icon_t *icon)
+{
+  int   i;
+  box_t slot;
+
+  for (i = 0; i < wuss->iconbar.n; i++)
+  {
+    if (wuss->iconbar.icons[i] == icon)
+    {
+      wuss__iconbar_slot_box(wuss, i, &slot);
+      return slot.x0;
+    }
+  }
+
+  return INT_MIN;
+}
 
 /* ----------------------------------------------------------------------- */
 
@@ -102,6 +120,86 @@ result_t wuss_iconbar_test(const char *resources)
 
       wuss_iconbar_icon_destroy(wuss, wuss->iconbar.icons[2]);
       wuss_iconbar_icon_destroy(wuss, wuss->iconbar.icons[1]);
+    }
+
+    /* priorities sit further outward; ties go inside from the edge and
+     * outside from the middle; an anchor places beside it as a peer */
+    {
+      wuss_iconbar_icon_t *p0a, *hi, *p0b, *mid, *p0c, *x, *y, *z;
+      wuss_iconbar_icon_t *bogus;
+
+      printf("test: icon bar priorities and associations\n");
+
+      spec.side     = wuss_ICONBAR_RIGHT;
+      spec.text     = "a";
+      rc = wuss_iconbar_icon_create(wuss, owner, &spec, &p0a);
+      if (rc != result_OK) goto Failure;
+      spec.text     = "h";
+      spec.priority = 10;
+      rc = wuss_iconbar_icon_create(wuss, owner, &spec, &hi);
+      if (rc != result_OK) goto Failure;
+      spec.text     = "b";
+      spec.priority = 0;
+      rc = wuss_iconbar_icon_create(wuss, owner, &spec, &p0b);
+      if (rc != result_OK) goto Failure;
+      spec.text     = "m";
+      spec.priority = 5;
+      rc = wuss_iconbar_icon_create(wuss, owner, &spec, &mid);
+      if (rc != result_OK) goto Failure;
+      spec.text     = "c";
+      spec.priority = 0;
+      spec.scan     = wuss_ICONBAR_SCAN_FROM_MIDDLE;
+      rc = wuss_iconbar_icon_create(wuss, owner, &spec, &p0c);
+      if (rc != result_OK) goto Failure;
+      spec.scan     = wuss_ICONBAR_SCAN_FROM_EDGE;
+
+      /* right to left: h m c a b */
+      if (!(slot_x0(wuss, hi) > slot_x0(wuss, mid) &&
+            slot_x0(wuss, mid) > slot_x0(wuss, p0c) &&
+            slot_x0(wuss, p0c) > slot_x0(wuss, p0a) &&
+            slot_x0(wuss, p0a) > slot_x0(wuss, p0b)))
+        goto Failure;
+
+      spec.text   = "x";
+      spec.side   = wuss_ICONBAR_LEFT; /* overridden by the anchor's */
+      spec.anchor = hi;
+      spec.beside = wuss_ICONBAR_LEFT_OF;
+      rc = wuss_iconbar_icon_create(wuss, owner, &spec, &x);
+      if (rc != result_OK) goto Failure;
+      spec.text   = "y";
+      spec.beside = wuss_ICONBAR_RIGHT_OF;
+      rc = wuss_iconbar_icon_create(wuss, owner, &spec, &y);
+      if (rc != result_OK) goto Failure;
+      spec.text   = "z";
+      spec.anchor = icon; /* "T", on the left */
+      rc = wuss_iconbar_icon_create(wuss, owner, &spec, &z);
+      if (rc != result_OK) goto Failure;
+
+      if (!(slot_x0(wuss, y) > slot_x0(wuss, hi) &&
+            slot_x0(wuss, hi) > slot_x0(wuss, x) &&
+            slot_x0(wuss, x) > slot_x0(wuss, mid) &&
+            slot_x0(wuss, z) > slot_x0(wuss, icon) &&
+            y->spec.side == wuss_ICONBAR_RIGHT && y->spec.priority == 10 &&
+            z->spec.side == wuss_ICONBAR_LEFT))
+        goto Failure;
+
+      /* an anchor not on the bar; compared, never dereferenced */
+      bogus       = (wuss_iconbar_icon_t *) &tc_bar;
+      spec.anchor = bogus;
+      if (wuss_iconbar_icon_create(wuss, owner, &spec, &x) != result_BAD_ARG)
+        goto Failure;
+
+      memset(&spec, 0, sizeof(spec));
+      wuss_iconbar_icon_destroy(wuss, p0a);
+      wuss_iconbar_icon_destroy(wuss, hi);
+      wuss_iconbar_icon_destroy(wuss, p0b);
+      wuss_iconbar_icon_destroy(wuss, mid);
+      wuss_iconbar_icon_destroy(wuss, p0c);
+      wuss_iconbar_icon_destroy(wuss, x);
+      wuss_iconbar_icon_destroy(wuss, y);
+      wuss_iconbar_icon_destroy(wuss, z);
+      if (wuss->iconbar.n != 1)
+        goto Failure;
     }
 
     /* an overfull bar scrolls while the pointer hovers near an end */

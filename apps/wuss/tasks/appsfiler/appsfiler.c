@@ -4,6 +4,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #ifdef FORTIFY
 #include "fortify/fortify.h"
@@ -442,6 +443,7 @@ result_t appsfiler_create(wuss_t *wuss)
   task->glyph_directory_open = apps_find_glyph(task->delegate, "file_diro");
   task->glyph_apps           = apps_find_glyph(task->delegate, "apps");
 
+  memset(&spec, 0, sizeof(spec));
   spec.text  = "Apps";
   spec.side  = wuss_ICONBAR_LEFT;
   spec.image = task->glyph_apps;

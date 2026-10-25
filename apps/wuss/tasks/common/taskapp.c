@@ -452,6 +452,7 @@ result_t taskapp_install(wuss_t *wuss, const taskapp_desc_t *desc)
   app->next = g.apps;
   g.apps    = app;
 
+  memset(&spec, 0, sizeof(spec));
   spec.image = taskapp_glyph(app->task, desc->name);
   spec.text  = desc->name;
   if (spec.image == NULL)

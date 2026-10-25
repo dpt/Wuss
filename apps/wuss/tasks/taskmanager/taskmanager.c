@@ -2,6 +2,8 @@
 
 #ifdef WUSS_ICONBAR
 
+#include <string.h>
+
 #include "base/debug.h"
 #include "base/utils.h"
 #include "framebuf/bitmap.h"
@@ -42,6 +44,7 @@ result_t taskmanager_create(wuss_t *wuss)
   if (rc != result_OK)
     return rc;
 
+  memset(&spec, 0, sizeof(spec));
   spec.text  = NULL;
   spec.side  = wuss_ICONBAR_RIGHT;
   spec.image = wuss_task_iconpool_find(wtask, "app_taskmanager");

@@ -85,7 +85,7 @@ void wuss__iconbar_slot_box(const wuss_t *wuss, int index, box_t *out)
     right_edge = origin + leftw + rightw;
   }
 
-  /* icons of one side pack from that side's edge in creation order, with
+  /* icons of one side pack from that side's edge in array order, with
    * WUSS_ICONBAR_GAP of bar between neighbours and at the edge */
   if (icon->spec.side == wuss_ICONBAR_RIGHT)
   {

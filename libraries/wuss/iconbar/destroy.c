@@ -25,8 +25,9 @@ void wuss_iconbar_icon_destroy(wuss_t *wuss, wuss_iconbar_icon_t *icon)
   {
     if (wuss->iconbar.icons[i] == icon)
     {
-      /* Shift the rest down: array order is left-to-right slot order, and
-       * every icon to the right of the removed one moves one slot left. */
+      /* Shift the rest down: array order is each side's slot order from
+       * its edge, so every later icon of the same side moves one slot
+       * outward. */
       wuss->iconbar.n--;
       memmove(&wuss->iconbar.icons[i], &wuss->iconbar.icons[i + 1],
               (size_t) (wuss->iconbar.n - i) *

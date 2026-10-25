@@ -13,9 +13,9 @@
  * The bar itself always exists once the library is built with the
  * WUSS_ICONBAR option on -- there is no create/destroy call for the bar,
  * only for the icons on it. Icons are as wide as their label and sit 8
- * pixels apart, packed in creation order from the left or right edge as
- * requested; an icon bar wider than the screen simply clips, it does not
- * wrap or scroll.
+ * pixels apart, packed from the left or right edge as requested, ordered by
+ * priority (higher further outward) or placed beside an existing icon; an
+ * icon bar wider than the screen scrolls rather than wrapping.
  */
 
 #ifndef WUSS_ICONBAR_H
@@ -54,6 +54,28 @@ typedef enum wuss_iconbar_side
 }
 wuss_iconbar_side_t;
 
+/** Where a priority scan starts along its side of the icon bar. */
+typedef enum wuss_iconbar_scan
+{
+  /** From the bar's outer edge inward: the new icon goes inside every icon
+   *  of equal or higher priority, so equals stack inward in creation order
+   *  (the default). */
+  wuss_ICONBAR_SCAN_FROM_EDGE = 0,
+
+  /** From the middle of the bar outward: the new icon goes outside every
+   *  icon of equal or lower priority. */
+  wuss_ICONBAR_SCAN_FROM_MIDDLE
+}
+wuss_iconbar_scan_t;
+
+/** Which side of its anchor an associated icon is placed, on screen. */
+typedef enum wuss_iconbar_beside
+{
+  wuss_ICONBAR_LEFT_OF = 0,
+  wuss_ICONBAR_RIGHT_OF
+}
+wuss_iconbar_beside_t;
+
 /**
  * Description of an icon bar icon at creation. Copied by value into the
  * icon; the caller keeps ownership of \c text, which is copied.
@@ -70,14 +92,33 @@ typedef struct wuss_iconbar_icon_spec
 
   /** Which end of the bar to place the icon at. */
   wuss_iconbar_side_t side;
+
+  /** Placement priority: higher priorities sit further outward on their
+   *  side. Ordinary applications use 0. Kept by the icon, so later scans
+   *  compare against it. */
+  int                 priority;
+
+  /** Where the priority scan starts; decides where equal priorities go. */
+  wuss_iconbar_scan_t scan;
+
+  /** An icon already on the bar to place this one directly beside, or NULL
+   *  (the default) to place by side, priority and scan. The new icon joins
+   *  the anchor's side and takes its priority; the placement is fixed at
+   *  creation, so destroying the anchor leaves it where it is. */
+  const wuss_iconbar_icon_t *anchor;
+
+  /** Which side of the anchor, on screen. Ignored without an anchor. */
+  wuss_iconbar_beside_t beside;
 }
 wuss_iconbar_icon_spec_t;
 
 /**
- * Add an icon to the icon bar, next to the last icon on spec->side. The icon
- * is as wide as its label (or image if wider; 34 pixels with neither) and is
- * 8 pixels from its neighbours and the bar's edge. The icon's bounding box
- * is invalidated so the next redraw paints it.
+ * Add an icon to the icon bar. Without an anchor it goes on spec->side,
+ * placed by spec->priority and spec->scan; with one, directly beside the
+ * anchor. A zeroed spec (bar the label) packs from the left edge, each new
+ * icon inside the last. The icon is as wide as its label (or image if wider;
+ * 34 pixels with neither) and is 8 pixels from its neighbours and the bar's
+ * edge. The bar is invalidated so the next redraw paints it.
  *
  * \param[in]  wuss  Window manager.
  * \param[in]  owner Task to receive this icon's wuss_EVENT_ICON events (as a
@@ -85,7 +126,8 @@ wuss_iconbar_icon_spec_t;
  * \param[in]  spec  Icon description; copied.
  * \param[out] icon  Filled in with the new icon handle, or NULL if the
  *                   caller does not need it.
- * \return \ref result_OK on success, \ref result_OOM on allocation failure.
+ * \return \ref result_OK on success, \ref result_OOM on allocation failure,
+ *         \ref result_BAD_ARG if spec->anchor is not on the bar.
  */
 result_t wuss_iconbar_icon_create(wuss_t                         *wuss,
                                   wuss_task_t                    *owner,

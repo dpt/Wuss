@@ -543,6 +543,7 @@ result_t filing_create(wuss_t *wuss, filing_task_t **out)
   task->glyph_directory_open = filing_find_glyph(task->delegate, "file_diro");
   task->glyph_png            = filing_find_glyph(task->delegate, "file_b60");
 
+  memset(&spec, 0, sizeof(spec));
   spec.text  = "Filing";
   spec.side  = wuss_ICONBAR_LEFT;
   spec.image = task->glyph_directory;

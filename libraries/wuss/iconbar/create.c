@@ -1,6 +1,7 @@
 /* wuss/iconbar/create.c -- add an icon to the icon bar */
 
 #include <assert.h>
+#include <string.h>
 
 #ifdef FORTIFY
 #include "fortify/fortify.h"
@@ -88,18 +89,93 @@ static result_t iconbar_window_ensure(wuss_t *wuss)
   return result_OK;
 }
 
+/* Array index at which to insert an icon of side and priority. The array
+ * holds each side's icons from its outer edge inward, so scanning from the
+ * edge stops at the first lower priority and scanning from the middle at the
+ * first higher one (walking back from the end). */
+static int iconbar_scan(const wuss_t       *wuss,
+                        wuss_iconbar_side_t side,
+                        int                 priority,
+                        wuss_iconbar_scan_t scan)
+{
+  int                        pos;
+  int                        i;
+  const wuss_iconbar_icon_t *other;
+
+  pos = wuss->iconbar.n;
+  if (scan == wuss_ICONBAR_SCAN_FROM_EDGE)
+  {
+    for (i = 0; i < wuss->iconbar.n; i++)
+    {
+      other = wuss->iconbar.icons[i];
+      if (other->spec.side == side && other->spec.priority < priority)
+        return i;
+    }
+  }
+  else
+  {
+    for (i = wuss->iconbar.n - 1; i >= 0; i--)
+    {
+      other = wuss->iconbar.icons[i];
+      if (other->spec.side != side)
+        continue;
+      if (other->spec.priority > priority)
+        break;
+      pos = i;
+    }
+  }
+
+  return pos;
+}
+
+/* Array index at which to insert an icon beside anchor, or -1 if anchor is
+ * not on the bar. On the left side outward is leftward, on the right side
+ * rightward. */
+static int iconbar_beside(const wuss_t              *wuss,
+                          const wuss_iconbar_icon_t *anchor,
+                          wuss_iconbar_beside_t      beside)
+{
+  int i;
+  int outward;
+
+  for (i = 0; i < wuss->iconbar.n; i++)
+  {
+    if (wuss->iconbar.icons[i] == anchor)
+    {
+      outward = (anchor->spec.side == wuss_ICONBAR_RIGHT)
+                  ? (beside == wuss_ICONBAR_RIGHT_OF)
+                  : (beside == wuss_ICONBAR_LEFT_OF);
+      return outward ? i : i + 1;
+    }
+  }
+
+  return -1;
+}
+
 result_t wuss_iconbar_icon_create(wuss_t                         *wuss,
                                   wuss_task_t                    *owner,
                                   const wuss_iconbar_icon_spec_t *spec,
                                   wuss_iconbar_icon_t           **icon)
 {
   result_t             rc;
+  int                  pos;
   wuss_iconbar_icon_t *it;
   box_t                slot;
 
   assert(wuss  != NULL);
   assert(owner != NULL);
   assert(spec  != NULL);
+
+  if (spec->anchor != NULL)
+  {
+    pos = iconbar_beside(wuss, spec->anchor, spec->beside);
+    if (pos < 0)
+      return result_BAD_ARG;
+  }
+  else
+  {
+    pos = iconbar_scan(wuss, spec->side, spec->priority, spec->scan);
+  }
 
   rc = iconbar_window_ensure(wuss);
   if (rc != result_OK)
@@ -125,7 +201,19 @@ result_t wuss_iconbar_icon_create(wuss_t                         *wuss,
     return result_OOM;
   }
 
-  wuss->iconbar.icons[wuss->iconbar.n++] = it;
+  /* an associated icon joins its anchor's side as a peer; the link itself
+   * is not kept */
+  if (spec->anchor != NULL)
+  {
+    it->spec.side     = spec->anchor->spec.side;
+    it->spec.priority = spec->anchor->spec.priority;
+    it->spec.anchor   = NULL;
+  }
+
+  memmove(&wuss->iconbar.icons[pos + 1], &wuss->iconbar.icons[pos],
+          (size_t) (wuss->iconbar.n - pos) * sizeof(wuss->iconbar.icons[0]));
+  wuss->iconbar.icons[pos] = it;
+  wuss->iconbar.n++;
 
   /* the whole bar: a full bar re-lays out (strip mode) when an icon is added */
   wuss__iconbar_box(wuss, &slot);
