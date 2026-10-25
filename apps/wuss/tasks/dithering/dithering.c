@@ -13,6 +13,7 @@
 
 #include "base/debug.h"
 #include "base/utils.h"
+#include "framebuf/bmfont.h"
 #include "framebuf/dither.h"
 #include "framebuf/octree.h"
 #include "io/namelist.h"
@@ -585,8 +586,13 @@ static result_t dithering_redraw(dithering_task_t   *dt,
                                  wuss_window_t      *window,
                                  const wuss_event_t *event)
 {
+  result_t        rc;
   const box_t    *bounds;
   const bitmap_t *bm;
+  int             x, y;
+  bmfont_t       *font;
+  int             ascent;
+  point_t         pos;
 
   if (window == dt->palette_window)
   {
@@ -601,10 +607,22 @@ static result_t dithering_redraw(dithering_task_t   *dt,
   bm = (dt->show_original || dt->dithered == NULL) ? &dt->source
                                                        : dt->dithered;
 
-  return screen_copy_bitmap(event->data.redraw.scr,
-                            bounds->x0 - event->data.redraw.scroll.x,
-                            bounds->y0 - event->data.redraw.scroll.y,
-                            bm);
+  x  = bounds->x0 - event->data.redraw.scroll.x;
+  y  = bounds->y0 - event->data.redraw.scroll.y;
+  rc = screen_copy_bitmap(event->data.redraw.scr, x, y, bm);
+  if (rc != result_OK || !dt->show_original)
+    return rc;
+
+  /* Nearest does no diffusion: say so over the image's top left */
+  font = wuss_get_font(dt->wuss);
+  if (font == NULL)
+    return result_OK;
+
+  bmfont_get_info(font, NULL, NULL, &ascent, NULL);
+  pos = POINT(x + 2, y + 2 + ascent);
+  return wuss_text_draw(dt->wuss, 0, event->data.redraw.scr, "(Dither disabled)", 17,
+                        colour_rgb(0x00, 0x00, 0x00),
+                        colour_rgb(0xFF, 0xFF, 0xFF), &pos, NULL);
 }
 
 /* Set the submenus' ticks and the Colours row's state from the task. Run on
