@@ -52,7 +52,8 @@ static const char *const dithering_method_names[dither__LIMIT] =
   "Fan",
   "Shiau-Fan",
   "Shiau-Fan 2",
-  "Clustered dot"
+  "Clustered dot",
+  "Random"
 };
 
 /* ordered methods, Knoll's included, carry no error between pixels, so
@@ -60,7 +61,7 @@ static const char *const dithering_method_names[dither__LIMIT] =
  * rather than rows, so it has no use for Serpentine alone. */
 #define dithering_ordered(method) \
   (((method) >= dither_BAYER && (method) <= dither_KNOLL) || \
-   (method) == dither_CLUSTERED)
+   (method) == dither_CLUSTERED || (method) == dither_RANDOM)
 #define dithering_rows(method) \
   (!dithering_ordered(method) && (method) != dither_RIEMERSMA)
 
