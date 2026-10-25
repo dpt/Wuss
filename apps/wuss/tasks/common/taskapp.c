@@ -155,7 +155,8 @@ static result_t app_adjust_adapter(wuss_t *wuss, void *param, void **out)
 /* what the "New" row, and SELECT on the icon of an app with no windows, do */
 static result_t app_new(app_t *app)
 {
-  result_t rc;
+  result_t       rc;
+  wuss_window_t *focus;
 
   if (app_hidden(app))
     (void) app_set_hidden(app, false);
@@ -164,11 +165,15 @@ static result_t app_new(app_t *app)
     return app_spawn_instance(app, NULL);
 
   /* a task the dialogue makes belongs to the app too, and goes with it */
+  focus = wuss_get_focus(app->wuss);
   wuss_set_task_parent(app->wuss, app->task);
   rc = app->desc->new_dialogue(app->wuss);
   wuss_set_task_parent(app->wuss, NULL);
 
-  if (rc == result_OK) /* focus the dialogue */
+  /* focus the dialogue, unless it took the focus itself (one opened as a
+   * menu sits above the regular windows, out of wuss_task_focus_front's
+   * reach) */
+  if (rc == result_OK && wuss_get_focus(app->wuss) == focus)
     (void) wuss_task_focus_front(app->wuss, app->task);
 
   return rc;
