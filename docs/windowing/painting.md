@@ -31,7 +31,7 @@ makes an instance of its own.
 - **Select** paints with the foreground colour, **Adjust** with the
   background colour. Clicking a swatch in the toolbox sets the foreground
   (Select) or the background (Adjust).
-- Tools: brush, eraser (paints the background colour), line, rect, filled
+- Tools: brush, eraser (wipes to transparent), line, rect, filled
   rect, flood fill, spray, select (rectangle), lasso and colour picker. Press
   `B` `E` `L` `R` `X` `F` `P` `S` `O` or `I` to pick one. Other keys pass on to the demo's
   hotkeys. The slider sets the width, 1 to 32 pixels. For spray it sets the

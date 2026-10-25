@@ -510,11 +510,13 @@ static void painting_invalidate_box(painting_task_t *pt, const box_t *box)
     wuss_window_invalidate(pt->window, box);
 }
 
-/* the colour a stroke in progress paints: the eraser always uses the
- * background colour, the others the colour of the button held */
+/* the colour a stroke in progress paints: the eraser always wipes to
+ * transparent, the others use the colour of the button held */
 static colour_t painting_stroke_colour(const painting_task_t *pt)
 {
-  if (pt->tool == painting_TOOL_ERASER || pt->held == wuss_BUTTON_ADJUST)
+  if (pt->tool == painting_TOOL_ERASER)
+    return colour_rgba(0, 0, 0, 0);
+  if (pt->held == wuss_BUTTON_ADJUST)
     return pt->bg;
 
   return pt->fg;
