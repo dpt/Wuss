@@ -130,6 +130,7 @@ static result_t dithering_apply(dithering_task_t *dt)
     opts.ncolours   = ncolours;
     opts.strength   = dt->strength;
     opts.serpentine = dt->serpentine;
+    opts.linear     = dt->linear;
     rc = dither_bitmap(&dt->source, &opts, &out);
   }
 
@@ -452,6 +453,8 @@ result_t dithering_create(wuss_t *wuss, dithering_task_t **out)
                  wuss_MENU_ITEM_BORROWED_SUBMENU | wuss_MENU_ITEM_PRE_OPEN);
   WUSS_MENU_ITEM(task->menu_items, DITHERING_MENU_SERPENTINE, "Serpentine",
                  wuss_MENU_ITEM_NONE);
+  WUSS_MENU_ITEM(task->menu_items, DITHERING_MENU_LINEAR, "Linear light",
+                 wuss_MENU_ITEM_NONE);
   WUSS_MENU_TITLE(task->menu, "Dithering", task->menu_items,
                   DITHERING_MENU__LIMIT);
 
@@ -667,6 +670,8 @@ static result_t dithering_menu_open(dithering_task_t *dt)
   ticks = 0;
   if (dt->serpentine)
     ticks |= 1u << DITHERING_MENU_SERPENTINE;
+  if (dt->linear)
+    ticks |= 1u << DITHERING_MENU_LINEAR;
   if (dt->palette_window != NULL)
     ticks |= 1u << DITHERING_MENU_SHOW_PALETTE;
 
@@ -710,6 +715,8 @@ static result_t dithering_menu_select(dithering_task_t   *dt,
                   index;
   else if (menu == &dt->menu && index == DITHERING_MENU_SERPENTINE)
     dt->serpentine = !dt->serpentine;
+  else if (menu == &dt->menu && index == DITHERING_MENU_LINEAR)
+    dt->linear = !dt->linear;
   else
     return result_OK; /* includes a click on an "N-colour" row itself */
 
@@ -718,7 +725,9 @@ static result_t dithering_menu_select(dithering_task_t   *dt,
                               DITHERING_MENU_COLOURS,
                               dt->palette != DITHERING_PALETTE_OPTIMAL);
   if (menu == &dt->menu)
-    wuss_menu_tick_item_live(dt->menu_handle, menu, index, dt->serpentine);
+    wuss_menu_tick_item_live(dt->menu_handle, menu, index,
+                             index == DITHERING_MENU_LINEAR ? dt->linear
+                                                            : dt->serpentine);
   else
     wuss_menu_tick_exclusive_live(dt->menu_handle, menu, index);
   if (group < dt->ngroups)

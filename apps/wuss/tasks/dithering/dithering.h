@@ -52,6 +52,7 @@ enum
   DITHERING_MENU_COLOURS,
   DITHERING_MENU_STRENGTH,
   DITHERING_MENU_SERPENTINE,
+  DITHERING_MENU_LINEAR,
   DITHERING_MENU__LIMIT
 };
 
@@ -81,6 +82,7 @@ typedef struct dithering_task
                                    * palette size is 2^(pos / STEPS) */
   int                strength; /* percent */
   int                serpentine;
+  int                linear;   /* diffuse in linear light */
 
   char               name[DITHERING_MAX_NAME_LEN]; /* leafname of the shown
                                 * image, less ".png" */
