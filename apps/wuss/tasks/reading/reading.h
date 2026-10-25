@@ -51,8 +51,7 @@ typedef struct reading_task
   int                 nlines;     /* the doc_* keys, shared by redraw and */
   int                *dx;         /* idle; dx[] is each line's indent for */
   int                 dx_align;   /* alignment dx_align */
-  int                 doc_lines;  /* nlines the document extent was last
-                                   * set for */
+  int                 doc_h;      /* document height last set */
   wuss_task_t        *delegate;   /* the wuss task backing this window */
   wuss_t             *wuss;       /* for wuss_get_pointer when opening the
                                    * menu */

@@ -1217,16 +1217,16 @@ static result_t reading_idle(void *task_data)
   if (rc != result_OK)
     return rc;
 
-  if (tcx->nlines == tcx->doc_lines)
-    return result_OK;
-  tcx->doc_lines = tcx->nlines;
-
   bmfont_get_info(tcx->font, NULL, &font_height, NULL, NULL);
 
   /* a window cannot be dragged wider than its document, so make the
    * document as wide as the screen allows; the text reflows to fit */
   wuss_window_get_max_content(tcx->window, &doc);
   doc.h = tcx->nlines * (font_height + LEADING) + 2 * READING_INSET;
+
+  if (doc.h == tcx->doc_h)
+    return result_OK;
+  tcx->doc_h = doc.h;
 
   return wuss_window_set_doc(tcx->window, doc);
 }
