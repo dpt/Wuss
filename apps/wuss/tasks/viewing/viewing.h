@@ -8,6 +8,7 @@
 #include "framebuf/bitmap.h"
 #include "framebuf/screen.h"
 #include "geom/stage.h"
+#include "io/path.h"
 #include "wuss/component/colourmenu.h"
 #include "wuss/menu.h"
 #include "wuss/window.h"
@@ -22,6 +23,8 @@ typedef struct viewing_task
   wuss_window_t *window;
   wuss_t        *wuss;      /* for wuss_get_pointer when opening the menu */
   wuss_task_t   *delegate;  /* the wuss task backing this window */
+  char           path[DPTLIB_MAXPATH]; /* file shown; "" until one is
+                                       * loaded */
   bitmap_t       bitmap;    /* owned: base freed by the caller when done */
   int            alpha;     /* nonzero: bitmap has transparent pixels, so
                              * draw checks behind it */

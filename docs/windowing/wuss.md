@@ -325,6 +325,8 @@ A double ADJUST click opens the file and then closes the Filing window, as it do
 
 The demo app's tasks claim types through `taskapp_desc_t::opens`, a 0-terminated list of RISC OS filetype numbers. taskapp acknowledges a matching message as soon as the type matches, then opens a new instance and passes it the path through `data_load`. A load that fails is reported by the app itself, so Filing never reports a second error. The run function in `apps/wuss/tasks/tasks.c` maps PNG (&B60) to Viewing, and text (&FFF) and Markdown to Reading.
 
+The reverse trip goes through `wuss_MESSAGE_FILER_OPEN_DIR`. ADJUST on a document window's close icon broadcasts it, with the directory that holds the document as a NUL-terminated path, and Filing opens a window on that directory (or brings the existing one to the front). The document window then closes. With Shift held, it stays open. A document that has no file yet (an untitled Painting) only closes. The demo's document tasks do this through `task_close_adjust` in `apps/wuss/tasks/common/common.h`.
+
 Markdown has no allocated RISC OS filetype. `filetype_RISCOS_MARKDOWN` (&1D0) is a placeholder from the user range until one is allocated.
 
 On RISC OS, `io/dirlist` still takes a file's type from its extension rather than from the filing system, so a file without one is `&FFD` and finds no app.

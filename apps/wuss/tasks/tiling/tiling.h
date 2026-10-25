@@ -7,6 +7,7 @@
 
 #include "framebuf/bitmap.h"
 #include "geom/point.h"
+#include "io/path.h"
 #include "wuss/menu.h"
 #include "wuss/window.h"
 
@@ -19,6 +20,8 @@ typedef struct tiling_task
   wuss_t        *wuss;
   bitmap_t       bitmap; /* owned: base freed when replaced or at QUIT; NULL
                           * base until the first DataLoad */
+  char           path[DPTLIB_MAXPATH]; /* file shown; "" until the
+                                       * first DataLoad */
   point_t        origin; /* window-local position of one tile's top-left */
   point_t        grab;   /* pointer position at the last drag event */
   int            dragging; /* Select held: pointer moves drag the origin */

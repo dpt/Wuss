@@ -299,6 +299,7 @@ static result_t dithering_show(dithering_task_t *dt, const char *path)
   if (rc != result_OK)
     return rc;
 
+  snprintf(dt->path, sizeof(dt->path), "%s", path);
   task_set_doc_title(dt->window, path_leaf(path), "Dithering", 0);
   return dithering_apply(dt);
 }
@@ -1062,6 +1063,12 @@ result_t dithering_handle(wuss_window_t      *window,
     if (dt->palette == DITHERING_PALETTE_DESKTOP)
       return dithering_apply(dt);
     return result_OK;
+
+  case wuss_EVENT_CLOSE_ADJUST:
+    if (window != dt->window)
+      return result_OK;
+    return task_close_adjust(dt->wuss, dt->delegate, window, dt->path,
+                             event);
 
   case wuss_EVENT_CLOSE:
     wuss_dialogue_handle_close(dt->strength_dialogue, window);

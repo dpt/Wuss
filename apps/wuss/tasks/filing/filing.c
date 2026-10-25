@@ -785,6 +785,9 @@ static result_t filing_message(filing_task_t      *task,
 
   msg = event->data.message;
 
+  if (msg->action == wuss_MESSAGE_FILER_OPEN_DIR)
+    return filing_open_path(task, (const char *) msg->data, NULL, 0);
+
   if (msg->action == wuss_MESSAGE_DATA_SAVE)
   {
     char                    path[DPTLIB_MAXPATH];

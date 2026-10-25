@@ -78,7 +78,7 @@ typedef struct painting_task
                                  * closed */
   paintingdoc_t     *doc;
   wuss_saveas_t     *saveas;
-  char               leaf[DPTLIB_MAXPATH]; /* document's leafname; "" until
+  char               path[DPTLIB_MAXPATH]; /* document's file; "" until
                                             * loaded or saved */
   colour_t           fg, bg;
   painting_tool_t    tool;

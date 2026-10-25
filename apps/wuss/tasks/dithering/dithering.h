@@ -7,6 +7,7 @@
 
 #include "framebuf/bitmap.h"
 #include "framebuf/dither.h"
+#include "io/path.h"
 #include "wuss/component/dialogue.h"
 #include "wuss/component/saveas.h"
 #include "wuss/icon-spec.h"
@@ -119,6 +120,8 @@ typedef struct dithering_task
   int                serpentine;
   int                linear;   /* diffuse in linear light */
 
+  char               path[DPTLIB_MAXPATH]; /* file shown; "" until the
+                                * first DataLoad */
   char               name[DITHERING_MAX_NAME_LEN]; /* leafname of the shown
                                 * image, less ".png" */
   char               palettes[PALETTE_MAX_FILES][32]; /* *.hex leafnames,

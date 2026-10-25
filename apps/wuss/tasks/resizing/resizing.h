@@ -6,6 +6,7 @@
 #ifdef WUSS_APP
 
 #include "framebuf/bitmap.h"
+#include "io/path.h"
 #include "wuss/component/saveas.h"
 #include "wuss/menu.h"
 #include "wuss/window.h"
@@ -40,6 +41,8 @@ typedef struct resizing_task
   int                scale;   /* index into the Scale rows */
   int                linear;  /* blend in linear light */
 
+  char               path[DPTLIB_MAXPATH]; /* file shown; "" until the first
+                               * DataLoad */
   char               name[RESIZING_MAX_NAME_LEN]; /* leafname of the shown
                                * image, less ".png" */
 

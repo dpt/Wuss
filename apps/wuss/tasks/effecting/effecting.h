@@ -10,6 +10,7 @@
 #include "framebuf/effects.h"
 #include "framebuf/screen.h"
 #include "framebuf/tonemap.h"
+#include "io/path.h"
 #include "wuss/component/saveas.h"
 #include "wuss/gadget/gridview.h"
 #include "wuss/menu.h"
@@ -98,6 +99,8 @@ typedef struct effecting_task
   char                 label[EFFECTING_LABEL_LEN]; /* item callback */
   int                  drag_index; /* element being dragged, or -1 */
 
+  char                 path[DPTLIB_MAXPATH]; /* file shown; "" until
+                                * DataLoad */
   char                 name[EFFECTING_MAX_NAME_LEN]; /* leafname of the shown
                                 * image, less ".png" */
 

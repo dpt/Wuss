@@ -503,6 +503,7 @@ static result_t reading_show(reading_task_t *task, const char *path)
     return rc;
   }
 
+  snprintf(task->path, sizeof(task->path), "%s", path);
   task_set_doc_title(task->window, leaf, "Reading", 0);
   wuss_window_invalidate_visible(task->window);
   return result_OK;
@@ -1312,6 +1313,12 @@ result_t reading_handle(wuss_window_t      *window,
   case wuss_EVENT_MENU_CLOSED:
     tcx->menu_handle = NULL;
     return result_OK;
+
+  case wuss_EVENT_CLOSE_ADJUST:
+    if (window != tcx->window)
+      return result_OK;
+    return task_close_adjust(tcx->wuss, tcx->delegate, window, tcx->path,
+                             event);
 
   case wuss_EVENT_CLOSE:
     if (window == tcx->window)

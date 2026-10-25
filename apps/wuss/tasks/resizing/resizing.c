@@ -166,6 +166,7 @@ static result_t resizing_show(resizing_task_t *rt, const char *path)
   if (rc != result_OK)
     return rc;
 
+  snprintf(rt->path, sizeof(rt->path), "%s", path);
   task_set_doc_title(rt->window, path_leaf(path), "Resizing", 0);
   return result_OK;
 }
@@ -369,6 +370,12 @@ result_t resizing_handle(wuss_window_t      *window,
     return taskapp_window_data_load(rt->wuss, rt->delegate, rt,
                                     (taskapp_data_load_fn_t) resizing_show,
                                     event->data.message);
+
+  case wuss_EVENT_CLOSE_ADJUST:
+    if (window != rt->window)
+      return result_OK;
+    return task_close_adjust(rt->wuss, rt->delegate, window, rt->path,
+                             event);
 
   case wuss_EVENT_CLOSE:
     if (window == rt->window)

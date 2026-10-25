@@ -167,15 +167,16 @@ static void painting_title(painting_task_t *pt)
   if (pt->window == NULL)
     return;
 
-  task_set_doc_title(pt->window, pt->leaf[0] ? pt->leaf : "<Untitled>",
+  task_set_doc_title(pt->window,
+                     pt->path[0] ? path_leaf(pt->path) : "<Untitled>",
                      "Painting", paintingdoc_is_edited(pt->doc));
 }
 
 /* the document is now the file at path */
-static void painting_set_leaf(painting_task_t *pt, const char *path)
+static void painting_set_path(painting_task_t *pt, const char *path)
 {
-  snprintf(pt->leaf, sizeof(pt->leaf), "%s", path_leaf(path));
-  wuss_saveas_set_leafname(pt->saveas, pt->leaf);
+  snprintf(pt->path, sizeof(pt->path), "%s", path);
+  wuss_saveas_set_leafname(pt->saveas, path_leaf(pt->path));
 }
 
 /* wuss_saveas_save_fn_t: opaque is the painting_task_t */
@@ -190,7 +191,7 @@ static result_t painting_saveas_save(const char *path, void *opaque)
   if (rc != result_OK)
     return rc;
 
-  painting_set_leaf(pt, path);
+  painting_set_path(pt, path);
   paintingdoc_set_saved(pt->doc);
   painting_title(pt);
 
@@ -210,7 +211,7 @@ static result_t painting_load(painting_task_t *pt, const char *path)
   if (rc != result_OK)
     return rc;
 
-  painting_set_leaf(pt, path);
+  painting_set_path(pt, path);
   painting_title(pt);
 
   size = paintingdoc_bitmap(pt->doc)->size;
@@ -1180,6 +1181,12 @@ result_t painting_handle(wuss_window_t      *window,
     /* wuss_set_palette repaints the whole screen itself */
     painting_swatches_track(pt);
     return result_OK;
+
+  case wuss_EVENT_CLOSE_ADJUST:
+    if (window != pt->window)
+      return result_OK;
+    return task_close_adjust(pt->wuss, pt->delegate, window, pt->path,
+                             event);
 
   case wuss_EVENT_CLOSE:
     /* the toolbars belong to the canvas, so they close with it */

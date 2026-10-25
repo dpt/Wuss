@@ -495,6 +495,7 @@ static result_t effecting_show(effecting_task_t *ec, const char *path)
   if (rc != result_OK)
     return rc;
 
+  snprintf(ec->path, sizeof(ec->path), "%s", path);
   task_set_doc_title(ec->window, path_leaf(path), "Effecting", 0);
   wuss_window_invalidate_visible(ec->window);
   if (opening)
@@ -877,6 +878,12 @@ result_t effecting_handle(wuss_window_t      *window,
       effecting_menu_update(ec);
     }
     return result_OK;
+
+  case wuss_EVENT_CLOSE_ADJUST:
+    if (window != ec->window)
+      return result_OK;
+    return task_close_adjust(ec->wuss, ec->delegate, window, ec->path,
+                             event);
 
   case wuss_EVENT_CLOSE:
     effecting_edit_closed(ec->edit, window);

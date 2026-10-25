@@ -58,8 +58,11 @@ enum
   wuss_MESSAGE_DATA_SAVE_ACK, /**< Target -> saver: full path to write to. */
   wuss_MESSAGE_DATA_LOAD,     /**< Saver -> target: file has been written. */
   wuss_MESSAGE_DATA_LOAD_ACK, /**< Target -> saver: transfer complete. */
-  wuss_MESSAGE_DATA_OPEN      /**< Filer -> broadcast: a file was
+  wuss_MESSAGE_DATA_OPEN,     /**< Filer -> broadcast: a file was
                                *   double-clicked; see wuss_data_open_t. */
+  wuss_MESSAGE_FILER_OPEN_DIR /**< Any -> broadcast: Filer, open a window on
+                               *   the directory whose path is the payload, a
+                               *   NUL-terminated string. */
 };
 
 /**

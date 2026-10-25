@@ -9,6 +9,7 @@
 
 #include "framebuf/bmfont.h"
 #include "framebuf/colour.h"
+#include "io/path.h"
 #include "text/bmtext.h"
 #include "wuss/component/colourmenu.h"
 #include "wuss/component/fontmenu.h"
@@ -55,6 +56,8 @@ typedef struct reading_task
   wuss_task_t        *delegate;   /* the wuss task backing this window */
   wuss_t             *wuss;       /* for wuss_get_pointer when opening the
                                    * menu */
+  char                path[DPTLIB_MAXPATH]; /* file shown; "" until one
+                                   * is loaded */
   bmfont_t           *font;       /* currently shown: the current family's
                                    * Regular face (acquired from the font
                                    * cache), or the borrowed sysfont */

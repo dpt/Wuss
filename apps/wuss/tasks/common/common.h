@@ -16,7 +16,9 @@
 #include "geom/box.h"
 #include "geom/point.h"
 #include "geom/size.h"
+#include "io/path.h"
 #include "wuss/menu.h"
+#include "wuss/message.h"
 #include "wuss/task.h"
 #include "wuss/window.h"
 #include "wuss/wuss.h"
@@ -152,6 +154,36 @@ static inline void task_set_doc_title(wuss_window_t *window,
     snprintf(title, sizeof(title), "%s%s: %s", edited ? "*" : "", leaf, app);
 
   wuss_window_set_title(window, title);
+}
+
+/* wuss_EVENT_CLOSE_ADJUST on a document window, as RISC OS: ask the Filer to
+ * open the directory holding path, then close window unless Shift is held.
+ * path is the document's file, or "" if it has none (nothing is sent) */
+static inline result_t task_close_adjust(wuss_t             *wuss,
+                                         wuss_task_t        *task,
+                                         wuss_window_t      *window,
+                                         const char         *path,
+                                         const wuss_event_t *event)
+{
+  const char *leaf;
+  size_t      len;
+  char        dir[DPTLIB_MAXPATH];
+
+  leaf = path_leaf(path);
+  if (leaf != path)
+  {
+    len = (size_t) (leaf - path - 1);
+    if (len == 0)
+      len = 1; /* the directory of "/a" is "/" */
+    snprintf(dir, sizeof(dir), "%.*s", (int) len, path);
+    (void) wuss_send(wuss, task, NULL, wuss_MESSAGE_FILER_OPEN_DIR,
+                     dir, strlen(dir) + 1, 0);
+  }
+
+  if (event->data.close_adjust.modifiers & wuss_KEY_MOD_SHIFT)
+    return result_OK;
+
+  return wuss_window_try_close(window);
 }
 
 /* offer a key event to menu's shortcuts. returns non-zero if the task should

@@ -108,6 +108,7 @@ static result_t tiling_show(tiling_task_t *tc, const char *path)
   free(tc->bitmap.base);
   tc->bitmap = next;
 
+  snprintf(tc->path, sizeof(tc->path), "%s", path);
   task_set_doc_title(tc->window, path_leaf(path), "Tiling", 0);
   wuss_window_invalidate_visible(tc->window);
   return result_OK;
@@ -212,6 +213,12 @@ result_t tiling_handle(wuss_window_t      *window,
   case wuss_EVENT_MENU_CLOSED:
     tc->menu_handle = NULL; /* wuss closed the chain under us */
     return result_OK;
+
+  case wuss_EVENT_CLOSE_ADJUST:
+    if (window != tc->window)
+      return result_OK;
+    return task_close_adjust(tc->wuss, tc->delegate, window, tc->path,
+                             event);
 
   case wuss_EVENT_CLOSE:
     if (window == tc->window)

@@ -304,6 +304,7 @@ static result_t viewing_show(viewing_task_t *ic, const char *path)
   if (rc != result_OK)
     return rc;
 
+  snprintf(ic->path, sizeof(ic->path), "%s", path);
   task_set_doc_title(ic->window, path_leaf(path), "Viewing", 0);
   return result_OK;
 }
@@ -425,6 +426,12 @@ result_t viewing_handle(wuss_window_t      *window,
   case wuss_EVENT_MENU_CLOSED:
     ic->menu_handle = NULL; /* wuss closed the chain under us */
     return result_OK;
+
+  case wuss_EVENT_CLOSE_ADJUST:
+    if (window != ic->window)
+      return result_OK;
+    return task_close_adjust(ic->wuss, ic->delegate, window, ic->path,
+                             event);
 
   case wuss_EVENT_CLOSE:
     if (window == ic->window)
