@@ -15,7 +15,7 @@
  * list, so the menu_items/names arrays can live inline in palette_task_t
  * with no malloc bookkeeping. Raise it if resources/palettes ever grows
  * past this. */
-#define PALETTE_MAX_FILES 16
+#define PALETTE_MAX_FILES 32
 
 /* window D's task: draws every entry of the desktop palette as a square
  * in a grid, so the palette is visible at a glance. A MENU click over the
@@ -30,7 +30,10 @@
  * which is whatever size the screen's pixel format needs (2/4/16/256
  * entries for 1/2/4/8bpp) rather than the fixed wuss_SYSTEM_PALETTE_LENGTH
  * system palette above; a NULL screen palette (32bpp, no palette) just
- * shows a label. */
+ * shows a label. Its MENU click opens a "Screen" menu of the *.hex files
+ * whose entry count matches the screen's depth; a pick replaces the screen
+ * palette (tasks_set_screen_palette) until the next desktop palette or mode
+ * change. */
 typedef struct palette_task
 {
   wuss_t              *wuss;
@@ -45,10 +48,16 @@ typedef struct palette_task
 
   /* *.hex files found under resources/palettes at create time, leafname
    * with the extension stripped (e.g. "PICO-8"), sorted. selected indexes
-   * both this and menu_items. */
+   * both this and menu_items. A Screen task keeps every file; the desktop
+   * only the PALETTE_NCOLOURS-entry ones. */
   char                 names[PALETTE_MAX_FILES][32];
   int                  nnames;
   int                  selected;
+
+  /* Screen task: load_items row i shows names[screen_map[i]], rebuilt on
+   * each open to the files matching the screen's entry count */
+  int                  screen_map[PALETTE_MAX_FILES];
+  int                  nscreen;
 
   /* the picker menu: per-instance (not static const) because its ticks
    * track selected/invert and it must outlive the open chain, so a stack

@@ -21,6 +21,7 @@
 #include "wuss/menu.h"
 
 #include "palette.h"
+#include "../tasks.h"
 #include "../common/taskapp.h"
 #include "../common/common.h"
 
@@ -200,7 +201,7 @@ static result_t palette_open(wuss_t *wuss, bool screen, palette_task_t **out)
   current = wuss_get_palette(wuss, &ncurrent);
   matched = false;
   kept    = 0;
-  for (i = 0; i < task->nnames; i++)
+  for (i = 0; !screen && i < task->nnames; i++)
   {
     colour_t candidate[PALETTE_NCOLOURS];
 
@@ -219,7 +220,8 @@ static result_t palette_open(wuss_t *wuss, bool screen, palette_task_t **out)
     }
     kept++;
   }
-  task->nnames = kept;
+  if (!screen) /* the Screen menu filters per open instead */
+    task->nnames = kept;
 
   /* built once; ticks are refreshed from task->selected/invert on each open */
   for (i = 0; i < task->nnames; i++)
@@ -428,6 +430,51 @@ static result_t palette_menu_open(palette_task_t *pc)
                                wuss_get_pointer(pc->wuss), &pc->menu_handle);
 }
 
+/* Rebuild the Screen window's menu from the *.hex files of exactly the entry
+ * count the screen's format needs, ticking whichever matches the screen's
+ * current palette, then open it. Nothing opens on an unpaletted screen or
+ * when no file fits. */
+static result_t palette_screen_menu_open(palette_task_t *pc)
+{
+  const char *resources;
+  int         nentries;
+  colour_t    candidate[256];
+  int         n;
+  int         i;
+
+  resources = wuss_get_resources(pc->wuss);
+  nentries  = pixelfmt_paletted_nentries(g_tasks.bm->format);
+  if (nentries == 0)
+    return result_OK;
+
+  pc->nscreen  = 0;
+  pc->selected = -1;
+  for (i = 0; i < pc->nnames; i++)
+  {
+    if (palette_hex_size(resources, pc->names[i]) != nentries * 7)
+      continue;
+
+    if (pc->selected < 0 && g_tasks.bm->palette != NULL &&
+        palette_load_hex_n(resources, pc->names[i], candidate, nentries,
+                           &n) == result_OK &&
+        memcmp(candidate, g_tasks.bm->palette,
+               nentries * sizeof(*candidate)) == 0)
+      pc->selected = pc->nscreen;
+
+    WUSS_MENU_ITEM(pc->load_items, pc->nscreen, pc->names[i],
+                  wuss_MENU_ITEM_NONE);
+    pc->screen_map[pc->nscreen++] = i;
+  }
+  if (pc->nscreen == 0)
+    return result_OK;
+
+  WUSS_MENU_TITLE(pc->load_menu, "Screen", pc->load_items, pc->nscreen);
+  wuss_menu_tick_exclusive(&pc->load_menu, pc->selected);
+
+  return wuss_menu_open_at_pointer(pc->delegate, &pc->load_menu,
+                                   &pc->menu_handle);
+}
+
 static result_t palette_click(palette_task_t *pc, const wuss_event_t *event)
 {
   if (event->data.mouse.action != wuss_MOUSE_DOWN)
@@ -436,7 +483,38 @@ static result_t palette_click(palette_task_t *pc, const wuss_event_t *event)
   if (!(event->data.mouse.button & wuss_BUTTON_MENU))
     return result_OK;
 
+  if (pc->window2 != NULL)
+    return palette_screen_menu_open(pc);
+
   return palette_menu_open(pc);
+}
+
+/* A Screen menu pick loads that file and makes it the screen's palette */
+static result_t palette_screen_menu_select(palette_task_t     *pc,
+                                           const wuss_event_t *event)
+{
+  int      index;
+  colour_t loaded[256];
+  int      n;
+
+  index = event->data.menu_select.index;
+  if (index < 0 || index >= pc->nscreen)
+    return result_OK;
+
+  if (palette_load_hex_n(wuss_get_resources(pc->wuss),
+                         pc->names[pc->screen_map[index]], loaded,
+                         NELEMS(loaded), &n) != result_OK ||
+      n != pixelfmt_paletted_nentries(g_tasks.bm->format))
+    return result_OK; /* the depth changed under the open menu */
+
+  if (event->data.menu_select.button & wuss_BUTTON_ADJUST)
+    wuss_menu_tick_exclusive_live(pc->menu_handle, &pc->load_menu, index);
+  pc->selected = index;
+  wuss_menu_tick_exclusive(&pc->load_menu, index);
+
+  tasks_set_screen_palette(loaded, n);
+
+  return result_OK;
 }
 
 /* A pick loads that *.hex file (or re-applies the current one, for a bare
@@ -541,11 +619,11 @@ result_t palette_handle(wuss_window_t      *window,
     return palette_redraw(event, task_data);
 
   case wuss_EVENT_MOUSE:
-    if (window == pc->window2) /* the Screen window has no menu */
-      return result_OK;
     return palette_click(task_data, event);
 
   case wuss_EVENT_MENU_SELECT:
+    if (pc->window2 != NULL)
+      return palette_screen_menu_select(task_data, event);
     return palette_menu_select(task_data, event);
 
   case wuss_EVENT_MENU_CLOSED:

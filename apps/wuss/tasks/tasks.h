@@ -152,4 +152,10 @@ void tasks_build_screen_palette(colour_t       *out,
                                 const colour_t *ui,
                                 int             nui);
 
+/* Replace a paletted screen's own palette with palette[0..npalette-1]
+ * (npalette must be the count its format needs), push it to any physical
+ * palette and redraw the whole screen. The next desktop palette change or
+ * mode change rebuilds it from the desktop palette. */
+void tasks_set_screen_palette(const colour_t *palette, int npalette);
+
 #endif /* WUSS_APP_TASKS_H */

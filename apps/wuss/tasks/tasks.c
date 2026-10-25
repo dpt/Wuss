@@ -92,6 +92,17 @@ void tasks_build_screen_palette(colour_t       *out,
         out[n++] = colour_rgb(r * 0x33, g * 0x33, b * 0x33);
 }
 
+void tasks_set_screen_palette(const colour_t *palette, int npalette)
+{
+  box_t all;
+
+  bitmap_set_palette(g_tasks.bm, palette);
+  wuss_frontend_set_palette(g_tasks.frontend, palette, npalette);
+
+  all = (box_t) BOX_POS_SIZE(0, 0, g_tasks.bm->size.w, g_tasks.bm->size.h);
+  wuss_invalidate(g_tasks.wuss, &all);
+}
+
 /* One launchable task: g_*_tasks[i] below. install adds the task's app to
  * the icon bar (its X_app_create) without opening any window. */
 typedef result_t (*task_install_fn_t)(wuss_t *wuss);
