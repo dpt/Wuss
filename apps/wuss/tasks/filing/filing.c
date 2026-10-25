@@ -352,13 +352,17 @@ static int filing_drag(wuss_gridview_t *gridview, int index, void *opaque)
   return 1;
 }
 
-/* The drag ended: offer the file to the window or icon bar icon it was
- * dropped on. Drops on nothing, on a Filer window or after Escape do
- * nothing. */
-static void filing_drop(filing_task_t *task, const wuss_event_t *event)
+/* The drag from window ended: offer the file to the window or icon bar icon
+ * it was dropped on. Drops on nothing, on a Filer window or after Escape do
+ * nothing. As RISC OS, an ADJUST drag closes window once the transfer
+ * completes. */
+static void filing_drop(filing_task_t      *task,
+                        wuss_window_t      *window,
+                        const wuss_event_t *event)
 {
   char              path[DPTLIB_MAXPATH];
   wuss_msg_target_t target = { NULL, NULL };
+  unsigned int      ref;
 
   if (task->drag_path[0] == '\0')
     return;
@@ -373,9 +377,14 @@ static void filing_drop(filing_task_t *task, const wuss_event_t *event)
   target.window = event->data.drag_end.drop;
   target.icon   = event->data.drag_end.drop_icon;
 
-  (void) wuss_send_recorded_to(task->wuss, task->delegate, &target,
-                               wuss_MESSAGE_DATA_LOAD, path,
-                               strlen(path) + 1, 0, NULL);
+  if (wuss_send_recorded_to(task->wuss, task->delegate, &target,
+                            wuss_MESSAGE_DATA_LOAD, path,
+                            strlen(path) + 1, 0, &ref) != result_OK ||
+      (event->data.drag_end.button & wuss_BUTTON_ADJUST) == 0)
+    return;
+
+  task->load_ref   = ref;
+  task->load_close = window;
 }
 
 /* ----------------------------------------------------------------------- */
@@ -810,6 +819,18 @@ static result_t filing_message(filing_task_t      *task,
     return result_OK;
   }
 
+  /* an ADJUST-drag's transfer completed: close the window it came from, if
+   * it is still open */
+  if (msg->action == wuss_MESSAGE_DATA_LOAD_ACK && task->load_ref != 0 &&
+      msg->your_ref == task->load_ref)
+  {
+    fw = filing_find_by_window(task, task->load_close);
+    task->load_ref   = 0;
+    task->load_close = NULL;
+    if (fw != NULL)
+      return wuss_window_try_close(fw->window);
+  }
+
   return result_OK;
 }
 
@@ -964,7 +985,7 @@ result_t filing_handle(wuss_window_t      *window,
     return result_OK;
 
   case wuss_EVENT_DRAG_END:
-    filing_drop(task, event);
+    filing_drop(task, window, event);
     return result_OK;
 
   case wuss_EVENT_CLOSE_ADJUST:

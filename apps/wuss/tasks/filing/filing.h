@@ -121,6 +121,10 @@ struct filing_task
 
   char                   drag_path[DPTLIB_MAXPATH]; /* file being dragged,
                                        * or "" */
+  unsigned int           load_ref; /* my_ref of an ADJUST-drag's DataLoad,
+                                    * or 0 */
+  wuss_window_t         *load_close; /* window to close once load_ref is
+                                      * acknowledged */
   unsigned int           open_retry; /* my_ref of the DataOpen re-sent after
                                       * starting an app for it, or 0 */
 
