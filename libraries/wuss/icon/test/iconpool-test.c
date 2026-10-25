@@ -66,11 +66,11 @@ result_t wuss_iconpool_test(const char *resources)
     if (wuss_iconpool_lookup(wuss, "nonesuch") != -1)
       goto Failure;
 
-    /* only 32bpp icons get RLE-compressed: opton is plain grey (stays as
-     * loaded), radoff is grey+alpha (expanded to 32bpp) */
+    /* only 32bpp icons get RLE-compressed: opton is paletted (stays as
+     * loaded), file_dir is RGBA */
     if (wuss_iconpool_bitmap(wuss, opton) == NULL)
       goto Failure;
-    deep    = wuss_iconpool_lookup(wuss, "radoff");
+    deep    = wuss_iconpool_lookup(wuss, "file_dir");
     icon_bm = wuss_iconpool_bitmap(wuss, deep);
     if (icon_bm == NULL || !bitmap_is_compressed(icon_bm))
       goto Failure;
