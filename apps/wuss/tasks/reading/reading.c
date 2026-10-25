@@ -503,6 +503,7 @@ static result_t reading_show(reading_task_t *task, const char *path)
     return rc;
   }
 
+  task_set_doc_title(task->window, leaf, "Reading", 0);
   wuss_window_invalidate_visible(task->window);
   return result_OK;
 }

@@ -161,14 +161,40 @@ static result_t painting_toolbar_icons(painting_task_t *pt)
   return result_OK;
 }
 
+/* title the canvas window "LEAF: Painting", starred while edited */
+static void painting_title(painting_task_t *pt)
+{
+  if (pt->window == NULL)
+    return;
+
+  task_set_doc_title(pt->window, pt->leaf[0] ? pt->leaf : "<Untitled>",
+                     "Painting", paintingdoc_is_edited(pt->doc));
+}
+
+/* the document is now the file at path */
+static void painting_set_leaf(painting_task_t *pt, const char *path)
+{
+  snprintf(pt->leaf, sizeof(pt->leaf), "%s", path_leaf(path));
+  wuss_saveas_set_leafname(pt->saveas, pt->leaf);
+}
+
 /* wuss_saveas_save_fn_t: opaque is the painting_task_t */
 static result_t painting_saveas_save(const char *path, void *opaque)
 {
+  result_t         rc;
   painting_task_t *pt;
 
   pt = opaque;
 
-  return bitmap_save_png(paintingdoc_bitmap(pt->doc), path);
+  rc = bitmap_save_png(paintingdoc_bitmap(pt->doc), path);
+  if (rc != result_OK)
+    return rc;
+
+  painting_set_leaf(pt, path);
+  paintingdoc_set_saved(pt->doc);
+  painting_title(pt);
+
+  return result_OK;
 }
 
 /* load the PNG at path as the canvas, shrinking the window to the image if
@@ -183,6 +209,9 @@ static result_t painting_load(painting_task_t *pt, const char *path)
   rc = paintingdoc_load_png(pt->doc, path);
   if (rc != result_OK)
     return rc;
+
+  painting_set_leaf(pt, path);
+  painting_title(pt);
 
   size = paintingdoc_bitmap(pt->doc)->size;
 
@@ -362,6 +391,7 @@ result_t painting_create_with(wuss_t                     *wuss,
   }
   /* hover opens the Save As dialogue as a submenu; F3 shows it standalone */
   task->menu_items[PAINTING_MENU_SAVE].window = wuss_saveas_window(task->saveas);
+  painting_title(task); /* "<Untitled>: Painting" */
 
   /* both windows up: from here, closing the last one reaps the task and its
    * wuss_EVENT_QUIT frees task_data */
@@ -908,6 +938,8 @@ static result_t painting_mouse(painting_task_t    *pt,
   if (!box_is_empty(&dirty))
     wuss_window_invalidate(pt->window, &dirty);
 
+  painting_title(pt);
+
   return result_OK;
 }
 
@@ -944,6 +976,7 @@ static result_t painting_undo(painting_task_t *pt)
     wuss_window_invalidate(pt->window, &dirty);
 
   painting_menu_shade(pt);
+  painting_title(pt);
 
   return result_OK;
 }
@@ -1121,6 +1154,7 @@ result_t painting_handle(wuss_window_t      *window,
       dirty = paintingdoc_spray(pt->doc, pt->last, pt->size * PAINTING_SPRAY_SCALE,
                              painting_stroke_colour(pt), &pt->rng);
       painting_invalidate_box(pt, &dirty);
+      painting_title(pt);
     }
 
     if (!paintingdoc_has_selection(pt->doc))

@@ -108,6 +108,7 @@ static result_t tiling_show(tiling_task_t *tc, const char *path)
   free(tc->bitmap.base);
   tc->bitmap = next;
 
+  task_set_doc_title(tc->window, path_leaf(path), "Tiling", 0);
   wuss_window_invalidate_visible(tc->window);
   return result_OK;
 }

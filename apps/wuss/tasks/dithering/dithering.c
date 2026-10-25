@@ -206,6 +206,7 @@ static result_t dithering_show(dithering_task_t *dt, const char *path)
   if (rc != result_OK)
     return rc;
 
+  task_set_doc_title(dt->window, path_leaf(path), "Dithering", 0);
   return dithering_apply(dt);
 }
 

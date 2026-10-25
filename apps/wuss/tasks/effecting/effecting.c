@@ -495,6 +495,7 @@ static result_t effecting_show(effecting_task_t *ec, const char *path)
   if (rc != result_OK)
     return rc;
 
+  task_set_doc_title(ec->window, path_leaf(path), "Effecting", 0);
   wuss_window_invalidate_visible(ec->window);
   if (opening)
     return effecting_open_list(ec);

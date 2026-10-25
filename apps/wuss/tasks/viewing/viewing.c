@@ -13,6 +13,7 @@
 #include "base/utils.h"
 #include "framebuf/palettes.h"
 #include "geom/box.h"
+#include "io/path.h"
 #include "wuss/menu.h"
 #include "wuss/menu-desc.h"
 #include "wuss/message.h"
@@ -299,7 +300,12 @@ static result_t viewing_show(viewing_task_t *ic, const char *path)
   ic->bitmap = next;
   ic->alpha  = viewing_has_alpha(&ic->bitmap);
 
-  return viewing_fit(ic);
+  rc = viewing_fit(ic);
+  if (rc != result_OK)
+    return rc;
+
+  task_set_doc_title(ic->window, path_leaf(path), "Viewing", 0);
+  return result_OK;
 }
 
 /* A DataLoad on the viewing window: show the file it names. */

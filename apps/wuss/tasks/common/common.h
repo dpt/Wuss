@@ -4,6 +4,7 @@
 #define TASKS_COMMON_H
 
 #include <limits.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -134,6 +135,23 @@ static inline result_t task_window_fit(wuss_task_t        *task,
     return rc;
 
   return wuss_window_set_doc(*window, size);
+}
+
+/* title window for its document: "LEAF: APP", or "*LEAF: APP" when edited,
+ * or just "APP" with no document (leaf NULL) */
+static inline void task_set_doc_title(wuss_window_t *window,
+                                      const char    *leaf,
+                                      const char    *app,
+                                      int            edited)
+{
+  char title[256];
+
+  if (leaf == NULL)
+    snprintf(title, sizeof(title), "%s", app);
+  else
+    snprintf(title, sizeof(title), "%s%s: %s", edited ? "*" : "", leaf, app);
+
+  wuss_window_set_title(window, title);
 }
 
 /* offer a key event to menu's shortcuts. returns non-zero if the task should

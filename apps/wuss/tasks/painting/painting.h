@@ -7,6 +7,7 @@
 
 #include "framebuf/colour.h"
 #include "geom/point.h"
+#include "io/path.h"
 #include "wuss/icon.h"
 #include "wuss/icon-spec.h"
 #include "wuss/menu.h"
@@ -77,6 +78,8 @@ typedef struct painting_task
                                  * closed */
   paintingdoc_t     *doc;
   wuss_saveas_t     *saveas;
+  char               leaf[DPTLIB_MAXPATH]; /* document's leafname; "" until
+                                            * loaded or saved */
   colour_t           fg, bg;
   painting_tool_t    tool;
   paintingdoc_nozzle_t nozzle;  /* the paintbrush's current nozzle */

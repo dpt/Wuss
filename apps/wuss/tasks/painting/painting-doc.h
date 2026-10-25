@@ -44,6 +44,13 @@ void paintingdoc_destroy(paintingdoc_t *doc);
  * left as they were */
 result_t paintingdoc_load_png(paintingdoc_t *doc, const char *path);
 
+/* non-zero if the canvas has changed (drawn on or undone) since it was
+ * created, loaded or last marked saved */
+int paintingdoc_is_edited(const paintingdoc_t *doc);
+
+/* mark the canvas as saved: unedited until it next changes */
+void paintingdoc_set_saved(paintingdoc_t *doc);
+
 /* the canvas pixels, for drawing to a window. owned by doc: valid until the
  * next paintingdoc_undo or paintingdoc_destroy */
 const bitmap_t *paintingdoc_bitmap(const paintingdoc_t *doc);

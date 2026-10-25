@@ -32,6 +32,8 @@ struct paintingdoc
   box_t    *outline;
   int       noutline;
   uint8_t  *pre;
+  /* changed since the last load or paintingdoc_set_saved */
+  int       edited;
 };
 
 /* ----------------------------------------------------------------------- */
@@ -151,8 +153,19 @@ result_t paintingdoc_load_png(paintingdoc_t *doc, const char *path)
   free(doc->bm.base);
   doc->bm = next;
   screen_for_bitmap(&doc->scr, &doc->bm);
+  doc->edited = 0;
 
   return result_OK;
+}
+
+int paintingdoc_is_edited(const paintingdoc_t *doc)
+{
+  return doc->edited;
+}
+
+void paintingdoc_set_saved(paintingdoc_t *doc)
+{
+  doc->edited = 0;
 }
 
 const bitmap_t *paintingdoc_bitmap(const paintingdoc_t *doc)
@@ -295,7 +308,7 @@ const box_t *paintingdoc_selection_outline(const paintingdoc_t *doc, int *n)
 }
 
 /* put back, from the last checkpoint, the pixels of dirty that lie outside the
- * selection */
+ * selection. every drawing operation ends here, so it also marks doc edited */
 static void sel_clip(paintingdoc_t *doc, box_t dirty)
 {
   box_t      canvas, r;
@@ -303,6 +316,8 @@ static void sel_clip(paintingdoc_t *doc, box_t dirty)
   uint32_t  *src;
   const int *runs;
   int        nruns, x, y, i;
+
+  doc->edited = 1;
 
   if (doc->sel == NULL || doc->pre == NULL)
     return;
@@ -412,6 +427,7 @@ box_t paintingdoc_undo(paintingdoc_t *doc)
 
   free(snap->base);
   doc->nundo--;
+  doc->edited = 1;
 
   return canvas_box(doc);
 }

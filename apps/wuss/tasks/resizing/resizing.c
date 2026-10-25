@@ -162,7 +162,12 @@ static result_t resizing_show(resizing_task_t *rt, const char *path)
   strcpy(rt->name, name);
   resizing_saveas_name(rt);
 
-  return resizing_apply(rt);
+  rc = resizing_apply(rt);
+  if (rc != result_OK)
+    return rc;
+
+  task_set_doc_title(rt->window, path_leaf(path), "Resizing", 0);
+  return result_OK;
 }
 
 /* ----------------------------------------------------------------------- */
