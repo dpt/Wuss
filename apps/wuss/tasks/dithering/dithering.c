@@ -166,9 +166,11 @@ static void dithering_free_dithered(dithering_task_t *dt)
   dt->dithered = NULL;
 }
 
-/* Build the chosen palette and dither the source with it. On failure the
- * window shows the original instead. */
-static result_t dithering_apply(dithering_task_t *dt)
+/* Build the chosen palette and dither the source with it. If keep_palette is
+ * set and the last dither succeeded, reuse its palette instead, sparing an
+ * octree build when only the strength changed. On failure the window shows
+ * the original instead. */
+static result_t dithering_dither(dithering_task_t *dt, int keep_palette)
 {
   result_t         rc;
   colour_t         palette[256];
@@ -181,7 +183,13 @@ static result_t dithering_apply(dithering_task_t *dt)
   if (dt->source.base == NULL)
     return result_OK;
 
-  if (dt->palette == DITHERING_PALETTE_OPTIMAL)
+  if (keep_palette && dt->ntarget > 0)
+  {
+    ncolours = dt->ntarget;
+    memcpy(palette, dt->target, ncolours * sizeof(*palette));
+    rc = result_OK;
+  }
+  else if (dt->palette == DITHERING_PALETTE_OPTIMAL)
   {
     rc = octree_make_palette(&dt->source, dithering_colours(dt->colours_pos),
                              palette, &ncolours);
@@ -230,6 +238,11 @@ static result_t dithering_apply(dithering_task_t *dt)
     wuss_window_invalidate_visible(dt->palette_window);
 
   return result_OK;
+}
+
+static result_t dithering_apply(dithering_task_t *dt)
+{
+  return dithering_dither(dt, 0);
 }
 
 /* wuss_saveas_save_fn_t: opaque is the dithering_task_t */
@@ -961,7 +974,7 @@ static result_t dithering_idle(dithering_task_t *dt)
   if (rc != result_OK)
     return rc;
 
-  return dithering_apply(dt);
+  return dithering_dither(dt, 1);
 }
 
 result_t dithering_handle(wuss_window_t      *window,
