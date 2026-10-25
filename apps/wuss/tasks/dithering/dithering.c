@@ -42,8 +42,14 @@ static const char *const dithering_method_names[dither__LIMIT] =
   "Burkes",
   "Sierra",
   "Sierra Two-Row",
-  "Sierra Lite"
+  "Sierra Lite",
+  "Bayer",
+  "Blue noise"
 };
+
+/* ordered methods follow the diffusing ones: they carry no error, so
+ * Serpentine and Linear light do nothing for them */
+#define dithering_ordered(method) ((method) >= dither_BAYER)
 
 /* ----------------------------------------------------------------------- */
 
@@ -631,22 +637,34 @@ static result_t dithering_redraw(dithering_task_t   *dt,
                         colour_rgb(0xFF, 0xFF, 0xFF), &pos, NULL);
 }
 
-/* Set the submenus' ticks and the Colours row's state from the task. Run on
- * open and after every pick: a submenu reopened within the same chain (hover
- * away and back) is built afresh from these items, so the live ticks alone
- * would go stale. Colours only applies to the optimal palette, so it is
- * disabled for the others. */
+/* Set or clear row's disabled flag. */
+static void dithering_menu_disable(dithering_task_t *dt,
+                                   int               row,
+                                   int               disable)
+{
+  if (disable)
+    dt->menu_items[row].flags |= wuss_MENU_ITEM_DISABLED;
+  else
+    dt->menu_items[row].flags &= ~wuss_MENU_ITEM_DISABLED;
+}
+
+/* Set the submenus' ticks and the rows' disabled states from the task. Run
+ * on open and after every pick: a submenu reopened within the same chain
+ * (hover away and back) is built afresh from these items, so the live ticks
+ * alone would go stale. Colours only applies to the optimal palette, and
+ * Serpentine and Linear light only to diffusing methods, so each is
+ * disabled otherwise. */
 static void dithering_menu_refresh(dithering_task_t *dt)
 {
-  wuss_menu_item_t *colours;
-  int               group;
-  int               i;
+  int group;
+  int i;
 
-  colours = &dt->menu_items[DITHERING_MENU_COLOURS];
-  if (dt->palette == DITHERING_PALETTE_OPTIMAL)
-    colours->flags &= ~wuss_MENU_ITEM_DISABLED;
-  else
-    colours->flags |= wuss_MENU_ITEM_DISABLED;
+  dithering_menu_disable(dt, DITHERING_MENU_COLOURS,
+                         dt->palette != DITHERING_PALETTE_OPTIMAL);
+  dithering_menu_disable(dt, DITHERING_MENU_SERPENTINE,
+                         dithering_ordered(dt->method));
+  dithering_menu_disable(dt, DITHERING_MENU_LINEAR,
+                         dithering_ordered(dt->method));
 
   wuss_menu_tick_exclusive(&dt->method_menu, (int) dt->method);
 
@@ -726,6 +744,12 @@ static result_t dithering_menu_select(dithering_task_t   *dt,
   wuss_menu_disable_item_live(dt->menu_handle, &dt->menu,
                               DITHERING_MENU_COLOURS,
                               dt->palette != DITHERING_PALETTE_OPTIMAL);
+  wuss_menu_disable_item_live(dt->menu_handle, &dt->menu,
+                              DITHERING_MENU_SERPENTINE,
+                              dithering_ordered(dt->method));
+  wuss_menu_disable_item_live(dt->menu_handle, &dt->menu,
+                              DITHERING_MENU_LINEAR,
+                              dithering_ordered(dt->method));
   if (menu == &dt->menu)
     wuss_menu_tick_item_live(dt->menu_handle, menu, index,
                              index == DITHERING_MENU_LINEAR ? dt->linear
