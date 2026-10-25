@@ -10,6 +10,10 @@
 #include "base/result.h"
 #include "framebuf/bitmap.h"
 #include "framebuf/bmfont.h"
+#include "framebuf/pattern.h"
+#include "framebuf/screen.h"
+#include "geom/box.h"
+#include "geom/point.h"
 #include "geom/size.h"
 #include "wuss/menu.h"
 #include "wuss/task.h"
@@ -167,6 +171,27 @@ static inline int task_button_width(const wuss_t *wuss,
 {
   return task_text_width(wuss, text) + 2 * task_text_width(wuss, " ") +
          2 * border;
+}
+
+/* fill box with a light and dark grey checkerboard of 4 pixel squares phased
+ * to origin, to show through transparent pixels drawn over it */
+static inline void task_draw_checks(screen_t    *scr,
+                                    const box_t *box,
+                                    point_t      origin)
+{
+  static const uint8_t checks[8] =
+  {
+    0xF0, 0xF0, 0xF0, 0xF0, 0x0F, 0x0F, 0x0F, 0x0F
+  };
+
+  pattern_t pattern;
+
+  pattern        = pattern_from_mask(checks, colour_rgb(0xCC, 0xCC, 0xCC));
+  pattern.bg     = colour_rgb(0xFF, 0xFF, 0xFF);
+  pattern.flags  = 0;
+  pattern.origin = origin;
+
+  screen_fill_pattern(scr, box, &pattern);
 }
 
 #endif /* TASKS_COMMON_H */

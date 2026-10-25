@@ -23,6 +23,8 @@ typedef struct viewing_task
   wuss_t        *wuss;      /* for wuss_get_pointer when opening the menu */
   wuss_task_t   *delegate;  /* the wuss task backing this window */
   bitmap_t       bitmap;    /* owned: base freed by the caller when done */
+  int            alpha;     /* nonzero: bitmap has transparent pixels, so
+                             * draw checks behind it */
   wuss_menu_t   *menu;      /* owned: MENU-button demo tree, built from a
                               * descriptor string; rebuilt on each open,
                               * freed at QUIT */

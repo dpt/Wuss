@@ -144,6 +144,49 @@ void viewing_destroy(viewing_task_t *task)
   free(task); /* task_data was calloc'd per instance by the spawner */
 }
 
+/* Nonzero if any pixel of bm is less than opaque. ponytail: assumes alpha in
+ * the top byte (bgra8888/rgba8888, as the PNG loader gives); paletted images
+ * are made opaque by load_png_deep so never get checks */
+static int viewing_has_alpha(const bitmap_t *bm)
+{
+  int                 y;
+  const unsigned int *row;
+  int                 x;
+
+  if (!pixelfmt_has_alpha(bm->format))
+    return 0;
+
+  for (y = 0; y < bm->size.h; y++)
+  {
+    row = (const unsigned int *) ((const char *) bm->base + y * bm->rowbytes);
+    for (x = 0; x < bm->size.w; x++)
+      if ((row[x] >> 24) != 0xFF)
+        return 1;
+  }
+
+  return 0;
+}
+
+/* Draw the image at (x, y), over checks if it has transparent pixels */
+static void viewing_draw_image(viewing_task_t *ic,
+                               screen_t       *scr,
+                               int             x,
+                               int             y)
+{
+  box_t box;
+
+  if (ic->bitmap.base == NULL)
+    return;
+
+  if (ic->alpha)
+  {
+    box = (box_t) BOX_POS_SIZE(x, y, ic->bitmap.size.w, ic->bitmap.size.h);
+    task_draw_checks(scr, &box, POINT(x, y));
+  }
+
+  screen_copy_bitmap_dithered(scr, x, y, &ic->bitmap, ic->dithering);
+}
+
 /* Draw the stage behind the image, centred in the window. The stage lays out
  * with y up, so flip it. */
 static void viewing_redraw_stage(viewing_task_t *ic,
@@ -172,9 +215,7 @@ static void viewing_redraw_stage(viewing_task_t *ic,
     switch (boxes[i].kind)
     {
     case stageboxkind_CONTENT:
-      if (ic->bitmap.base != NULL)
-        screen_copy_bitmap_dithered(scr, b.x0, b.y0, &ic->bitmap,
-                                    ic->dithering);
+      viewing_draw_image(ic, scr, b.x0, b.y0);
       continue;
 
     case stageboxkind_STROKE:
@@ -235,8 +276,7 @@ static result_t viewing_redraw(const wuss_event_t *event, void *task_data)
   band[3] = (box_t) { bx + ic->bitmap.size.w, by, bx1, by1 }; /* right */
   screen_fill_rects(scr, band, 4, ic->colour_paper);
 
-  if (ic->bitmap.base != NULL)
-    screen_copy_bitmap_dithered(scr, bx, by, &ic->bitmap, ic->dithering);
+  viewing_draw_image(ic, scr, bx, by);
 
   return result_OK;
 }
@@ -257,6 +297,7 @@ static result_t viewing_show(viewing_task_t *ic, const char *path)
 
   free(ic->bitmap.base);
   ic->bitmap = next;
+  ic->alpha  = viewing_has_alpha(&ic->bitmap);
 
   return viewing_fit(ic);
 }

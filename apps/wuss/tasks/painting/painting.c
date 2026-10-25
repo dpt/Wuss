@@ -10,7 +10,6 @@
 #endif
 
 #include "base/utils.h"
-#include "framebuf/pattern.h"
 #include "framebuf/screen.h"
 #include "geom/box.h"
 #include "utils/array.h"
@@ -96,27 +95,6 @@ static box_t painting_tool_box(int i)
 static void painting_swatches_track(painting_task_t *pt)
 {
   pt->swatches.colours = wuss_get_palette(pt->wuss, &pt->swatches.ncolours);
-}
-
-/* fill box with a light and dark grey checkerboard of 4 pixel squares phased
- * to origin, to show through transparent pixels drawn over it */
-static void painting_draw_checks(screen_t    *scr,
-                                 const box_t *box,
-                                 point_t      origin)
-{
-  static const uint8_t checks[8] =
-  {
-    0xF0, 0xF0, 0xF0, 0xF0, 0x0F, 0x0F, 0x0F, 0x0F
-  };
-
-  pattern_t pattern;
-
-  pattern        = pattern_from_mask(checks, colour_rgb(0xCC, 0xCC, 0xCC));
-  pattern.bg     = colour_rgb(0xFF, 0xFF, 0xFF);
-  pattern.flags  = 0;
-  pattern.origin = origin;
-
-  screen_fill_pattern(scr, box, &pattern);
 }
 
 /* ----------------------------------------------------------------------- */
@@ -650,7 +628,7 @@ static result_t painting_redraw(painting_task_t    *pt,
   canvas = (box_t) BOX_POS_SIZE(ox, oy, bm->size.w, bm->size.h);
 
   /* the checks show through wherever the canvas is transparent */
-  painting_draw_checks(scr, &canvas, POINT(ox, oy));
+  task_draw_checks(scr, &canvas, POINT(ox, oy));
   rc = screen_copy_bitmap_dithered(scr, ox, oy, bm, pt->dithering);
 
   if (pt->held && painting_is_rubber_band(pt))
@@ -690,7 +668,7 @@ static void painting_draw_chip(screen_t *scr, int x, int y, colour_t colour)
   /* ponytail: a translucent colour is drawn solid; blit a 1x1 bgra8888
    * bitmap tiled over the checks if a tint is wanted */
   if (colour_get_alpha(&colour) == 0)
-    painting_draw_checks(scr, &chip, POINT(x, y));
+    task_draw_checks(scr, &chip, POINT(x, y));
   else
     screen_fill_rect(scr, x, y, SIZE2D(OB_CHIP, OB_CHIP), colour);
 }
