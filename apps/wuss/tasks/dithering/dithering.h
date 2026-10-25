@@ -27,6 +27,15 @@
 #define DITHERING_PALETTE_DESKTOP 1
 #define DITHERING_PALETTE_FIRST_HEX 2
 
+/* Method submenu rows: Nearest alone, then a submenu per family */
+enum
+{
+  DITHERING_METHOD_NEAREST,
+  DITHERING_METHOD_ORDERED,
+  DITHERING_METHOD_DIFFUSION,
+  DITHERING_METHOD__LIMIT
+};
+
 /* ponytail: fixed cap on distinct *.hex sizes; files of any further size
  * are left out of the menu. Raise it if resources/palettes grows more. */
 #define DITHERING_MAX_GROUPS 8
@@ -92,8 +101,12 @@ typedef struct dithering_task
   dithering_group_t  groups[DITHERING_MAX_GROUPS];
   int                ngroups;
 
-  wuss_menu_item_t   method_items[dither__LIMIT];
+  wuss_menu_item_t   method_items[DITHERING_METHOD__LIMIT];
   wuss_menu_t        method_menu;
+  wuss_menu_item_t   family_items[dither__LIMIT]; /* every method but
+                                * Nearest; each family's menu is a slice */
+  wuss_menu_t        ordered_menu;
+  wuss_menu_t        diffusion_menu;
   wuss_menu_item_t   hex_items[PALETTE_MAX_FILES]; /* one per palettes[];
                                 * each group's menu is a slice */
   wuss_menu_item_t   palette_items[DITHERING_PALETTE_FIRST_HEX +

@@ -56,12 +56,67 @@ static const char *const dithering_method_names[dither__LIMIT] =
   "Random"
 };
 
+/* every method but Nearest in menu order: the ordered family, then the error
+ * diffusion family, each oldest first */
+static const dither_method_t dithering_family_methods[] =
+{
+  dither_CLUSTERED,           /* printed halftones, 1880s */
+  dither_RANDOM,              /* Roberts, 1962 */
+  dither_BAYER,               /* 1973 */
+  dither_BLUE_NOISE,          /* Ulichney, 1993 */
+  dither_KNOLL,               /* Knoll, 1999 */
+
+  dither_FLOYD_STEINBERG,     /* 1976 */
+  dither_JARVIS_JUDICE_NINKE, /* 1976 */
+  dither_STUCKI,              /* 1981 */
+  dither_ATKINSON,            /* 1984 */
+  dither_BURKES,              /* 1988 */
+  dither_SIERRA,              /* 1989 */
+  dither_SIERRA_TWO_ROW,      /* 1990 */
+  dither_SIERRA_LITE,         /* 1990 */
+  dither_FAN,                 /* 1992 */
+  dither_SHIAU_FAN,           /* 1996 */
+  dither_SHIAU_FAN_2,         /* 1996 */
+  dither_RIEMERSMA,           /* 1998 */
+  dither_OSTROMOUKHOV,        /* 2001 */
+  dither_ZHOU_FANG            /* 2003 */
+};
+
+#define DITHERING_NORDERED 5 /* leading ordered entries in the table above */
+
+/* a method's index in dithering_family_methods, or -1 for Nearest */
+static int dithering_family_index(dither_method_t method)
+{
+  int i;
+
+  for (i = 0; i < (int) NELEMS(dithering_family_methods); i++)
+    if (dithering_family_methods[i] == method)
+      return i;
+
+  return -1;
+}
+
 /* ordered methods, Knoll's included, carry no error between pixels, so
  * Serpentine and Linear light do nothing for them. Riemersma walks a curve
  * rather than rows, so it has no use for Serpentine alone. */
-#define dithering_ordered(method) \
-  (((method) >= dither_BAYER && (method) <= dither_KNOLL) || \
-   (method) == dither_CLUSTERED || (method) == dither_RANDOM)
+static int dithering_ordered(dither_method_t method)
+{
+  int i;
+
+  i = dithering_family_index(method);
+  return i >= 0 && i < DITHERING_NORDERED;
+}
+
+/* the Method submenu row a method sits on or under */
+static int dithering_method_row(dither_method_t method)
+{
+  if (method == dither_NONE)
+    return DITHERING_METHOD_NEAREST;
+
+  return dithering_ordered(method) ? DITHERING_METHOD_ORDERED
+                                   : DITHERING_METHOD_DIFFUSION;
+}
+
 #define dithering_rows(method) \
   (!dithering_ordered(method) && (method) != dither_RIEMERSMA)
 
@@ -445,11 +500,25 @@ result_t dithering_create(wuss_t *wuss, dithering_task_t **out)
                 ".hex", task->palettes[0], sizeof(task->palettes[0]),
                 PALETTE_MAX_FILES, 1 /* sorted */, &task->npalettes);
 
-  for (i = 0; i < dither__LIMIT; i++)
-    WUSS_MENU_ITEM(task->method_items, i, dithering_method_names[i],
+  for (i = 0; i < (int) NELEMS(dithering_family_methods); i++)
+    WUSS_MENU_ITEM(task->family_items, i,
+                   dithering_method_names[dithering_family_methods[i]],
                    wuss_MENU_ITEM_NONE);
+  WUSS_MENU_TITLE(task->ordered_menu, "Ordered", task->family_items,
+                  DITHERING_NORDERED);
+  WUSS_MENU_TITLE(task->diffusion_menu, "Error diffusion",
+                  &task->family_items[DITHERING_NORDERED],
+                  (int) NELEMS(dithering_family_methods) - DITHERING_NORDERED);
+
+  WUSS_MENU_ITEM(task->method_items, DITHERING_METHOD_NEAREST,
+                 dithering_method_names[dither_NONE], wuss_MENU_ITEM_NONE);
+  WUSS_MENU_ITEM_MENU(task->method_items, DITHERING_METHOD_ORDERED,
+                      "Ordered", wuss_MENU_ITEM_NONE, &task->ordered_menu);
+  WUSS_MENU_ITEM_MENU(task->method_items, DITHERING_METHOD_DIFFUSION,
+                      "Error diffusion", wuss_MENU_ITEM_NONE,
+                      &task->diffusion_menu);
   WUSS_MENU_TITLE(task->method_menu, "Method", task->method_items,
-                  dither__LIMIT);
+                  DITHERING_METHOD__LIMIT);
 
   WUSS_MENU_ITEM(task->palette_items, DITHERING_PALETTE_OPTIMAL, "Optimal",
                  wuss_MENU_ITEM_NONE);
@@ -670,6 +739,7 @@ static void dithering_menu_disable(dithering_task_t *dt,
  * disabled otherwise. */
 static void dithering_menu_refresh(dithering_task_t *dt)
 {
+  int family;
   int group;
   int i;
 
@@ -680,7 +750,15 @@ static void dithering_menu_refresh(dithering_task_t *dt)
   dithering_menu_disable(dt, DITHERING_MENU_LINEAR,
                          dithering_ordered(dt->method));
 
-  wuss_menu_tick_exclusive(&dt->method_menu, (int) dt->method);
+  /* a method's tick shows on both its row and its family's row */
+  family = dithering_family_index(dt->method);
+  wuss_menu_tick_exclusive(&dt->method_menu,
+                           dithering_method_row(dt->method));
+  wuss_menu_tick_exclusive(&dt->ordered_menu,
+                           family < DITHERING_NORDERED ? family : -1);
+  wuss_menu_tick_exclusive(&dt->diffusion_menu,
+                           family >= DITHERING_NORDERED
+                           ? family - DITHERING_NORDERED : -1);
 
   /* a file's tick shows on both its row and its group's row */
   group = dithering_current_group(dt);
@@ -740,8 +818,12 @@ static result_t dithering_menu_select(dithering_task_t   *dt,
     if (menu == &dt->groups[group].menu)
       break;
 
-  if (menu == &dt->method_menu)
-    dt->method = (dither_method_t) index;
+  if (menu == &dt->method_menu && index == DITHERING_METHOD_NEAREST)
+    dt->method = dither_NONE;
+  else if (menu == &dt->ordered_menu)
+    dt->method = dithering_family_methods[index];
+  else if (menu == &dt->diffusion_menu)
+    dt->method = dithering_family_methods[DITHERING_NORDERED + index];
   else if (menu == &dt->palette_menu && index < DITHERING_PALETTE_FIRST_HEX)
     dt->palette = index;
   else if (group < dt->ngroups)
@@ -752,7 +834,7 @@ static result_t dithering_menu_select(dithering_task_t   *dt,
   else if (menu == &dt->menu && index == DITHERING_MENU_LINEAR)
     dt->linear = !dt->linear;
   else
-    return result_OK; /* includes a click on an "N-colour" row itself */
+    return result_OK; /* includes a click on a family or "N-colour" row */
 
   dithering_menu_refresh(dt);
   wuss_menu_disable_item_live(dt->menu_handle, &dt->menu,
@@ -773,6 +855,9 @@ static result_t dithering_menu_select(dithering_task_t   *dt,
   if (group < dt->ngroups)
     wuss_menu_tick_exclusive_live(dt->menu_handle, &dt->palette_menu,
                                   DITHERING_PALETTE_FIRST_HEX + group);
+  if (menu == &dt->ordered_menu || menu == &dt->diffusion_menu)
+    wuss_menu_tick_exclusive_live(dt->menu_handle, &dt->method_menu,
+                                  dithering_method_row(dt->method));
 
   return dithering_apply(dt);
 }
