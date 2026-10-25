@@ -17,6 +17,7 @@
 
 #define DITHERING_MAX_NAME_LEN 64
 #define DITHERING_SLIDER_W     128 /* slider dialogues' slider */
+#define DITHERING_SWATCHES_W   128 /* Show palette window's initial side */
 #define DITHERING_COLOURS_STEPS 8 /* Colours slider positions per doubling */
 
 /* Palette submenu rows: these two, then one per *.hex file */
@@ -30,6 +31,7 @@ enum
   DITHERING_MENU_SAVE,
   DITHERING_MENU_METHOD,
   DITHERING_MENU_PALETTE,
+  DITHERING_MENU_SHOW_PALETTE,
   DITHERING_MENU_COLOURS,
   DITHERING_MENU_STRENGTH,
   DITHERING_MENU_SERPENTINE,
@@ -40,16 +42,21 @@ enum
  * dither_bitmap, optionally to an octree palette. A Select click toggles
  * between the dithered result and the original; Menu picks the options, and
  * every change re-dithers at once; Colours and Strength are slider
- * dialogues. Save writes the dithered result as a PNG. */
+ * dialogues. Show palette opens a second window of swatches for the palette
+ * the last dither targeted. Save writes the dithered result as a PNG. */
 typedef struct dithering_task
 {
   wuss_window_t     *window;
+  wuss_window_t     *palette_window; /* Show palette's swatches, or NULL */
   wuss_t            *wuss;
   wuss_task_t       *delegate;
   bitmap_t           source;   /* owned base: rgbx8888 or rgba8888; NULL
                                 * base until the first DataLoad */
   bitmap_t          *dithered; /* owned; NULL if the last dither failed */
   int                show_original;
+  colour_t           target[256]; /* the palette dithered to; ntarget is 0
+                                   * if the last dither failed */
+  int                ntarget;
 
   dither_method_t    method;
   int                palette;  /* a DITHERING_PALETTE_* row */

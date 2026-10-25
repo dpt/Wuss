@@ -17,6 +17,7 @@
 #include "framebuf/octree.h"
 #include "io/namelist.h"
 #include "io/path.h"
+#include "wuss/gadget/swatches.h"
 #include "wuss/icon.h"
 #include "wuss/menu.h"
 
@@ -132,13 +133,22 @@ static result_t dithering_apply(dithering_task_t *dt)
   }
 
   dithering_free_dithered(dt);
+  dt->ntarget = 0;
   if (rc == result_OK)
+  {
     dt->dithered = out;
+    memcpy(dt->target, palette, ncolours * sizeof(*palette));
+    dt->ntarget  = ncolours;
+  }
   else
+  {
     logf_warning("dithering: dither failed (rc=0x%X)", rc);
+  }
 
   if (dt->window)
     wuss_window_invalidate_visible(dt->window);
+  if (dt->palette_window)
+    wuss_window_invalidate_visible(dt->palette_window);
 
   return result_OK;
 }
@@ -351,6 +361,8 @@ result_t dithering_create(wuss_t *wuss, dithering_task_t **out)
                       wuss_MENU_ITEM_DASHED, &task->method_menu);
   WUSS_MENU_ITEM_MENU(task->menu_items, DITHERING_MENU_PALETTE, "Palette",
                       wuss_MENU_ITEM_NONE, &task->palette_menu);
+  WUSS_MENU_ITEM(task->menu_items, DITHERING_MENU_SHOW_PALETTE,
+                 "Show palette", wuss_MENU_ITEM_NONE);
   /* windows set once the dialogues exist */
   WUSS_MENU_ITEM(task->menu_items, DITHERING_MENU_COLOURS, "Colours",
                  wuss_MENU_ITEM_BORROWED_SUBMENU | wuss_MENU_ITEM_PRE_OPEN);
@@ -442,11 +454,65 @@ void dithering_destroy(dithering_task_t *task)
 
 /* ----------------------------------------------------------------------- */
 
+/* Show palette: open the swatches window beside the image, or close it */
+static result_t dithering_toggle_palette_window(dithering_task_t *dt)
+{
+  wuss_place_t place;
+
+  if (dt->palette_window != NULL)
+  {
+    wuss_window_close(dt->palette_window); /* fires no CLOSE */
+    dt->palette_window = NULL;
+    return result_OK;
+  }
+
+  place = task_place_after(dt->window);
+  return wuss_window_create_at(dt->delegate, &place,
+                               SIZE2D(DITHERING_SWATCHES_W,
+                                      DITHERING_SWATCHES_W),
+                               "Target palette",
+                               wuss_WINDOW_DEFAULT | wuss_WINDOW_NO_RESIZE_BLIT, /* the grid spans the window, so a resize redraws all of it */
+                               wuss_BACKDROP_COLOUR(wuss_COLOUR_WINDOW),
+                               SIZE2D(DITHERING_SWATCHES_W,
+                                      DITHERING_SWATCHES_W),
+                               SIZE2D(0, 0), &dt->palette_window);
+}
+
+/* a roughly-square grid of the target palette across the visible content */
+static void dithering_redraw_palette(dithering_task_t   *dt,
+                                     const wuss_event_t *event)
+{
+  const box_t    *bounds;
+  wuss_swatches_t swatches;
+
+  if (dt->ntarget == 0)
+    return; /* the backdrop shows */
+
+  bounds = event->data.redraw.bounds;
+
+  swatches.bbox     = (box_t) BOX_POS_SIZE(0, 0, bounds->x1 - bounds->x0,
+                                           bounds->y1 - bounds->y0);
+  swatches.columns  = 0;
+  swatches.gap      = 0;
+  swatches.outline  = 0;
+  swatches.colours  = dt->target;
+  swatches.ncolours = dt->ntarget;
+
+  wuss_swatches_draw(&swatches, event);
+}
+
 static result_t dithering_redraw(dithering_task_t   *dt,
+                                 wuss_window_t      *window,
                                  const wuss_event_t *event)
 {
   const box_t    *bounds;
   const bitmap_t *bm;
+
+  if (window == dt->palette_window)
+  {
+    dithering_redraw_palette(dt, event);
+    return result_OK;
+  }
 
   bounds = event->data.redraw.bounds;
   if (dt->source.base == NULL)
@@ -482,17 +548,24 @@ static void dithering_menu_refresh(dithering_task_t *dt)
 
 static result_t dithering_menu_open(dithering_task_t *dt)
 {
+  unsigned int ticks;
+
   dithering_menu_refresh(dt);
 
-  return wuss_menu_open_ticked(dt->delegate, &dt->menu,
-                               dt->serpentine ? 1u << DITHERING_MENU_SERPENTINE
-                                              : 0,
+  ticks = 0;
+  if (dt->serpentine)
+    ticks |= 1u << DITHERING_MENU_SERPENTINE;
+  if (dt->palette_window != NULL)
+    ticks |= 1u << DITHERING_MENU_SHOW_PALETTE;
+
+  return wuss_menu_open_ticked(dt->delegate, &dt->menu, ticks,
                                wuss_get_pointer(dt->wuss), &dt->menu_handle);
 }
 
 static result_t dithering_menu_select(dithering_task_t   *dt,
                                       const wuss_event_t *event)
 {
+  result_t           rc;
   const wuss_menu_t *menu;
   int                index;
 
@@ -502,6 +575,14 @@ static result_t dithering_menu_select(dithering_task_t   *dt,
   /* clicking the row, rather than hovering, shows Save As standalone */
   if (menu == &dt->menu && index == DITHERING_MENU_SAVE)
     return wuss_saveas_open(dt->saveas);
+
+  if (menu == &dt->menu && index == DITHERING_MENU_SHOW_PALETTE)
+  {
+    rc = dithering_toggle_palette_window(dt);
+    wuss_menu_tick_item_live(dt->menu_handle, menu, index,
+                             dt->palette_window != NULL);
+    return rc;
+  }
 
   if (menu == &dt->method_menu)
     dt->method = (dither_method_t) index;
@@ -536,7 +617,7 @@ result_t dithering_handle(wuss_window_t      *window,
   switch (event->kind)
   {
   case wuss_EVENT_REDRAW:
-    return dithering_redraw(dt, event);
+    return dithering_redraw(dt, window, event);
 
   case wuss_EVENT_MOUSE:
     if (window != dt->window || event->data.mouse.action != wuss_MOUSE_DOWN)
@@ -608,9 +689,14 @@ result_t dithering_handle(wuss_window_t      *window,
   case wuss_EVENT_CLOSE:
     wuss_dialogue_handle_close(dt->strength_dialogue, window);
     wuss_dialogue_handle_close(dt->colours_dialogue, window);
+    if (window == dt->palette_window)
+      dt->palette_window = NULL;
     if (window == dt->window)
     {
       dt->window = NULL;
+      /* the swatches are meaningless without their image */
+      wuss_window_close(dt->palette_window);
+      dt->palette_window = NULL;
       /* the hidden dialogues are more windows on this autoclose task:
        * close them too, else the task outlives its main window */
       wuss_dialogue_destroy(dt->strength_dialogue);
