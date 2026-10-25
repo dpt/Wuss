@@ -902,6 +902,16 @@ result_t app_set_mode(size2d_t size, int depth)
   return result_OK;
 }
 
+result_t tasks_set_screen_palette(const colour_t *palette, int npalette)
+{
+  bitmap_set_palette(&g.bm, palette);
+  wuss_frontend_set_palette(g_tasks.frontend, palette, npalette);
+
+  /* same screen, new physical palette: wuss_resize rematches the fills and
+   * icons to it and invalidates the whole screen */
+  return wuss_resize(g_tasks.wuss, &g.scr);
+}
+
 int app_get_depth(void)
 {
   switch (g.bm.format)

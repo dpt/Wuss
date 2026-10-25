@@ -512,9 +512,7 @@ static result_t palette_screen_menu_select(palette_task_t     *pc,
   pc->selected = index;
   wuss_menu_tick_exclusive(&pc->load_menu, index);
 
-  tasks_set_screen_palette(loaded, n);
-
-  return result_OK;
+  return tasks_set_screen_palette(loaded, n);
 }
 
 /* A pick loads that *.hex file (or re-applies the current one, for a bare
