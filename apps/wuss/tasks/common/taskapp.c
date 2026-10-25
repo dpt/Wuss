@@ -459,7 +459,8 @@ result_t taskapp_install(wuss_t *wuss, const taskapp_desc_t *desc)
     logf_warning("taskapp: icon 'file_app' unavailable; icons show label only");
   else
     spec.text = "";
-  spec.side  = wuss_ICONBAR_RIGHT;
+  spec.side     = wuss_ICONBAR_RIGHT;
+  spec.priority = desc->iconbar_priority;
   rc = wuss_iconbar_icon_create(wuss, app->task, &spec, &app->icon);
   if (rc != result_OK)
   {

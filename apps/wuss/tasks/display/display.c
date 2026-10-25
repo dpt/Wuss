@@ -412,7 +412,12 @@ static const taskapp_desc_t display_desc =
   NULL,
   false,
   NULL,
-  true
+  true,
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  0x50000000 /* beside the Task Manager */
 };
 
 result_t display_app_create(wuss_t *wuss)

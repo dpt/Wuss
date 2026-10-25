@@ -544,8 +544,9 @@ result_t filing_create(wuss_t *wuss, filing_task_t **out)
   task->glyph_png            = filing_find_glyph(task->delegate, "file_b60");
 
   memset(&spec, 0, sizeof(spec));
-  spec.text  = "Filing";
-  spec.side  = wuss_ICONBAR_LEFT;
+  spec.text     = "Filing";
+  spec.side     = wuss_ICONBAR_LEFT;
+  spec.priority = 0x60000000; /* outermost */
   spec.image = task->glyph_directory;
   rc = wuss_iconbar_icon_create(wuss, task->delegate, &spec,
                                 &task->iconbar_icon);

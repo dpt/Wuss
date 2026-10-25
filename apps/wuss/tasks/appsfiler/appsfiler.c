@@ -444,8 +444,9 @@ result_t appsfiler_create(wuss_t *wuss)
   task->glyph_apps           = apps_find_glyph(task->delegate, "apps");
 
   memset(&spec, 0, sizeof(spec));
-  spec.text  = "Apps";
-  spec.side  = wuss_ICONBAR_LEFT;
+  spec.text     = "Apps";
+  spec.side     = wuss_ICONBAR_LEFT;
+  spec.priority = 0x50000000; /* inside Filing */
   spec.image = task->glyph_apps;
   rc = wuss_iconbar_icon_create(wuss, task->delegate, &spec,
                                 &task->iconbar_icon);

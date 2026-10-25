@@ -57,6 +57,9 @@ typedef struct taskapp_desc
                                       * filetypes this app claims from a
                                       * wuss_MESSAGE_DATA_OPEN; needs
                                       * data_load */
+  int                  iconbar_priority; /* icon bar placement on the right;
+                                          * higher is further outward, and
+                                          * ordinary apps leave it 0 */
 }
 taskapp_desc_t;
 
