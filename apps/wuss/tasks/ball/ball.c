@@ -19,7 +19,8 @@
 #include "../common/taskapp.h"
 #include "../common/common.h"
 
-#define BALL_BASE_RADIUS 8 /* +/-50% at spawn -> 4..12 */
+#define BALL_MIN_LARGE_RADIUS 14 /* every radius from here up is allowed */
+#define BALL_MAX_RADIUS       20
 #define BALL_SAVE_NAME "ball.png" /* Save As's initial leafname */
 #define BALL_MAX_DY     16 /* cap on vertical speed under gravity */
 
@@ -43,10 +44,21 @@ enum
 
 static const char *const ball_colour_names[] = { "Background" };
 
-/* a fresh radius in [BALL_BASE_RADIUS/2, BALL_BASE_RADIUS*3/2] */
+/* below BALL_MIN_LARGE_RADIUS only these radii are allowed */
+static const int ball_small_radii[] = { 5, 7, 8, 12 };
+
+/* a fresh radius, picked evenly from ball_small_radii and
+ * [BALL_MIN_LARGE_RADIUS, BALL_MAX_RADIUS] */
 static int ball_random_radius(void)
 {
-  return BALL_BASE_RADIUS / 2 + rand() % (BALL_BASE_RADIUS + 1);
+  int i;
+
+  i = rand() % (int) (NELEMS(ball_small_radii) +
+                      BALL_MAX_RADIUS - BALL_MIN_LARGE_RADIUS + 1);
+  if (i < (int) NELEMS(ball_small_radii))
+    return ball_small_radii[i];
+
+  return BALL_MIN_LARGE_RADIUS + i - (int) NELEMS(ball_small_radii);
 }
 
 /* a fresh system-palette colour, never the background's so the ball stays
