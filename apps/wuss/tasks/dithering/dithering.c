@@ -314,6 +314,89 @@ static result_t dithering_slider_create(dithering_task_t           *dt,
 
 /* ----------------------------------------------------------------------- */
 
+/* Sort palettes[] by entry count, keeping name order within a count and
+ * dropping any file that won't load, then build one "N-colour" submenu per
+ * count as a slice of hex_items. */
+static void dithering_group_palettes(dithering_task_t *dt)
+{
+  const char        *resources;
+  int                kept;
+  int                i, j;
+  colour_t           scratch[256];
+  int                count;
+  char               name[32];
+  int                counts[PALETTE_MAX_FILES];
+  dithering_group_t *grp;
+
+  resources = wuss_get_resources(dt->wuss);
+
+  /* insertion sort: name order is kept since only greater counts move */
+  kept = 0;
+  for (i = 0; i < dt->npalettes; i++)
+  {
+    if (palette_load_hex_n(resources, dt->palettes[i], scratch,
+                           NELEMS(scratch), &count) != result_OK)
+      continue;
+
+    strcpy(name, dt->palettes[i]);
+    for (j = kept; j > 0 && counts[j - 1] > count; j--)
+    {
+      strcpy(dt->palettes[j], dt->palettes[j - 1]);
+      counts[j] = counts[j - 1];
+    }
+    strcpy(dt->palettes[j], name);
+    counts[j] = count;
+    kept++;
+  }
+
+  dt->npalettes = 0;
+  dt->ngroups   = 0;
+  for (i = 0; i < kept; i++)
+  {
+    if (dt->ngroups == 0 || counts[i] != dt->groups[dt->ngroups - 1].ncolours)
+    {
+      if (dt->ngroups == DITHERING_MAX_GROUPS)
+        break;
+
+      grp           = &dt->groups[dt->ngroups++];
+      grp->ncolours = counts[i];
+      grp->start    = i;
+      grp->n        = 0;
+      snprintf(grp->title, sizeof(grp->title), "%d-colour", counts[i]);
+    }
+
+    WUSS_MENU_ITEM(dt->hex_items, i, dt->palettes[i], wuss_MENU_ITEM_NONE);
+    dt->groups[dt->ngroups - 1].n++;
+    dt->npalettes++;
+  }
+
+  for (i = 0; i < dt->ngroups; i++)
+  {
+    grp = &dt->groups[i];
+    WUSS_MENU_TITLE(grp->menu, grp->title, &dt->hex_items[grp->start],
+                    grp->n);
+    WUSS_MENU_ITEM_MENU(dt->palette_items, DITHERING_PALETTE_FIRST_HEX + i,
+                        grp->title,
+                        i == 0 ? wuss_MENU_ITEM_DASHED : wuss_MENU_ITEM_NONE,
+                        &grp->menu);
+  }
+}
+
+/* the group holding the current palette, or -1 for Optimal or Desktop */
+static int dithering_current_group(const dithering_task_t *dt)
+{
+  int file;
+  int i;
+
+  file = dt->palette - DITHERING_PALETTE_FIRST_HEX;
+  for (i = 0; i < dt->ngroups; i++)
+    if (file >= dt->groups[i].start &&
+        file < dt->groups[i].start + dt->groups[i].n)
+      return i;
+
+  return -1;
+}
+
 result_t dithering_create(wuss_t *wuss, dithering_task_t **out)
 {
   result_t          rc;
@@ -347,12 +430,9 @@ result_t dithering_create(wuss_t *wuss, dithering_task_t **out)
                  wuss_MENU_ITEM_NONE);
   WUSS_MENU_ITEM(task->palette_items, DITHERING_PALETTE_DESKTOP, "Desktop",
                  wuss_MENU_ITEM_NONE);
-  for (i = 0; i < task->npalettes; i++)
-    WUSS_MENU_ITEM(task->palette_items, DITHERING_PALETTE_FIRST_HEX + i,
-                   task->palettes[i],
-                   i == 0 ? wuss_MENU_ITEM_DASHED : wuss_MENU_ITEM_NONE);
+  dithering_group_palettes(task);
   WUSS_MENU_TITLE(task->palette_menu, "Palette", task->palette_items,
-                  DITHERING_PALETTE_FIRST_HEX + task->npalettes);
+                  DITHERING_PALETTE_FIRST_HEX + task->ngroups);
 
   WUSS_MENU_ITEM_SHORTCUT(task->menu_items, DITHERING_MENU_SAVE, "Save",
                           wuss_MENU_ITEM_NONE, "F3");
@@ -535,6 +615,8 @@ static result_t dithering_redraw(dithering_task_t   *dt,
 static void dithering_menu_refresh(dithering_task_t *dt)
 {
   wuss_menu_item_t *colours;
+  int               group;
+  int               i;
 
   colours = &dt->menu_items[DITHERING_MENU_COLOURS];
   if (dt->palette == DITHERING_PALETTE_OPTIMAL)
@@ -543,7 +625,18 @@ static void dithering_menu_refresh(dithering_task_t *dt)
     colours->flags |= wuss_MENU_ITEM_DISABLED;
 
   wuss_menu_tick_exclusive(&dt->method_menu, (int) dt->method);
-  wuss_menu_tick_exclusive(&dt->palette_menu, dt->palette);
+
+  /* a file's tick shows on both its row and its group's row */
+  group = dithering_current_group(dt);
+  wuss_menu_tick_exclusive(&dt->palette_menu,
+                           group < 0 ? dt->palette
+                                     : DITHERING_PALETTE_FIRST_HEX + group);
+  for (i = 0; i < dt->ngroups; i++)
+    wuss_menu_tick_exclusive(&dt->groups[i].menu,
+                             i == group ? dt->palette -
+                                          DITHERING_PALETTE_FIRST_HEX -
+                                          dt->groups[i].start
+                                        : -1);
 }
 
 static result_t dithering_menu_open(dithering_task_t *dt)
@@ -568,6 +661,7 @@ static result_t dithering_menu_select(dithering_task_t   *dt,
   result_t           rc;
   const wuss_menu_t *menu;
   int                index;
+  int                group;
 
   menu  = event->data.menu_select.menu;
   index = event->data.menu_select.index;
@@ -584,14 +678,21 @@ static result_t dithering_menu_select(dithering_task_t   *dt,
     return rc;
   }
 
+  for (group = 0; group < dt->ngroups; group++)
+    if (menu == &dt->groups[group].menu)
+      break;
+
   if (menu == &dt->method_menu)
     dt->method = (dither_method_t) index;
-  else if (menu == &dt->palette_menu)
+  else if (menu == &dt->palette_menu && index < DITHERING_PALETTE_FIRST_HEX)
     dt->palette = index;
+  else if (group < dt->ngroups)
+    dt->palette = DITHERING_PALETTE_FIRST_HEX + dt->groups[group].start +
+                  index;
   else if (menu == &dt->menu && index == DITHERING_MENU_SERPENTINE)
     dt->serpentine = !dt->serpentine;
   else
-    return result_OK;
+    return result_OK; /* includes a click on an "N-colour" row itself */
 
   dithering_menu_refresh(dt);
   wuss_menu_disable_item_live(dt->menu_handle, &dt->menu,
@@ -601,6 +702,9 @@ static result_t dithering_menu_select(dithering_task_t   *dt,
     wuss_menu_tick_item_live(dt->menu_handle, menu, index, dt->serpentine);
   else
     wuss_menu_tick_exclusive_live(dt->menu_handle, menu, index);
+  if (group < dt->ngroups)
+    wuss_menu_tick_exclusive_live(dt->menu_handle, &dt->palette_menu,
+                                  DITHERING_PALETTE_FIRST_HEX + group);
 
   return dithering_apply(dt);
 }
