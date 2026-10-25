@@ -15,7 +15,7 @@
  * list, so the menu_items/names arrays can live inline in palette_task_t
  * with no malloc bookkeeping. Raise it if resources/palettes ever grows
  * past this. */
-#define PALETTE_MAX_FILES 32
+#define PALETTE_MAX_FILES 64
 
 /* window D's task: draws every entry of the desktop palette as a square
  * in a grid, so the palette is visible at a glance. A MENU click over the
