@@ -546,7 +546,7 @@ int wuss_task_is_hidden(wuss_t *wuss, wuss_task_t *task);
  *
  * \param[in] wuss Window manager.
  * \param[in] task Any task of the app.
- * \return Non-zero if a window took the focus, else zero.
+ * \return Non-zero if the app has a visible window, else zero.
  */
 int wuss_task_front(wuss_t *wuss, wuss_task_t *task);
 

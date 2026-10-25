@@ -90,38 +90,37 @@ static void focus_if_none(wuss_t *wuss)
 }
 
 /* Raise, back to front, every window from node l onward that belongs to the
- * app headed by root, so their order among themselves is kept. */
-static void raise_from(list_t *l, const wuss_task_t *root)
+ * app headed by root, so their order among themselves is kept. Returns how
+ * many of them are visible. */
+static int raise_from(list_t *l, const wuss_task_t *root)
 {
   list_t        *next;
+  int            n;
   wuss_window_t *window;
 
   if (l == NULL)
-    return;
+    return 0;
 
   next = l->next;
-  raise_from(next, root);
+  n    = raise_from(next, root);
 
   window = wuss__window_from_link(l);
-  if (window->stack == wuss_STACK_MIDDLE && task_root(window->task) == root)
-    wuss_window_restack(window, wuss_ZORDER_FRONT);
+  if (window->stack != wuss_STACK_MIDDLE || task_root(window->task) != root)
+    return n;
+
+  wuss_window_restack(window, wuss_ZORDER_FRONT);
+
+  return n + !(window->flags & wuss_WINDOW_HIDDEN);
 }
 
 int wuss_task_front(wuss_t *wuss, wuss_task_t *task)
 {
-  const wuss_task_t *root;
-  wuss_window_t     *window;
+  int n;
 
-  root = task_root(task);
-  raise_from(wuss->z_order[wuss_STACK_MIDDLE].next, root);
+  n = raise_from(wuss->z_order[wuss_STACK_MIDDLE].next, task_root(task));
+  (void) wuss_task_focus_front(wuss, task);
 
-  window = front_window(wuss, root, 0);
-  if (window == NULL)
-    return 0;
-
-  (void) wuss_set_focus(wuss, window);
-
-  return 1;
+  return n > 0;
 }
 
 int wuss_task_focus_front(wuss_t *wuss, wuss_task_t *task)
