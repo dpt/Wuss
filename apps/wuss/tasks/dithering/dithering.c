@@ -38,7 +38,10 @@ static const char *const dithering_method_names[dither__LIMIT] =
 
   [dither_CLUSTERED]           = "Clustered dot",
   [dither_RANDOM]              = "Random",
-  [dither_BAYER]               = "Bayer",
+  [dither_BAYER_2]             = "Bayer 2x2",
+  [dither_BAYER_4]             = "Bayer 4x4",
+  [dither_BAYER_8]             = "Bayer 8x8",
+  [dither_BAYER_16]            = "Bayer 16x16",
   [dither_BLUE_NOISE]          = "Blue noise",
   [dither_KNOLL]               = "Knoll",
 
@@ -64,7 +67,10 @@ static const dither_method_t dithering_family_methods[] =
 {
   dither_CLUSTERED,           /* printed halftones, 1880s */
   dither_RANDOM,              /* Roberts, 1962 */
-  dither_BAYER,               /* 1973 */
+  dither_BAYER_2,             /* 1973 */
+  dither_BAYER_4,
+  dither_BAYER_8,
+  dither_BAYER_16,
   dither_BLUE_NOISE,          /* Ulichney, 1993 */
   dither_KNOLL,               /* Knoll, 1999 */
 
@@ -84,7 +90,7 @@ static const dither_method_t dithering_family_methods[] =
   dither_ZHOU_FANG            /* 2003 */
 };
 
-#define DITHERING_NORDERED 5 /* leading ordered entries in the table above */
+#define DITHERING_NORDERED 8 /* leading ordered entries in the table above */
 
 /* a method's index in dithering_family_methods, or -1 for Nearest */
 static int dithering_family_index(dither_method_t method)
