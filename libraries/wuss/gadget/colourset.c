@@ -310,3 +310,8 @@ void wuss_colourset_set_rgb(wuss_colourset_t *cs, colour_t rgb)
   cs->indexed = 0;
   colourset_show(cs, rgb);
 }
+
+wuss_icon_t *wuss_colourset_button(const wuss_colourset_t *cs)
+{
+  return cs->button;
+}

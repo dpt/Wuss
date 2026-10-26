@@ -563,26 +563,17 @@ static void orbing_sync_colours(orbing_task_t *task)
                            *orbing_colour_field(task, which));
 }
 
-/* a colour set's pick: its field takes that palette entry */
-static result_t orbing_colour_changed(wuss_colourset_t *colourset,
-                                      wuss_colour_t     colour,
-                                      void             *opaque)
+/* open the picker on colour set "which"'s field. A light's stays on that
+ * light even if another is made current meanwhile */
+static result_t orbing_pick(orbing_task_t *task, int which)
 {
-  orbing_task_t  *task;
-  const colour_t *palette;
-  int             npalette;
-  int             which;
-
-  task    = opaque;
-  palette = wuss_get_palette(task->wuss, &npalette);
-  for (which = 0; which < ORBING_NCOLOURS; which++)
-    if (task->colour_sets[which] == colourset)
-      *orbing_colour_field(task, which) = palette[colour];
-  orbing_invalidate_preview(task);
-  return result_OK;
+  task->picker_which = which;
+  task->picker_light = task->current;
+  return wuss_colourpicker_open(task->picker,
+                                *orbing_colour_field(task, which));
 }
 
-/* wuss_colourpicker_changed_fn_t: the picked light takes any 24-bit colour,
+/* wuss_colourpicker_changed_fn_t: the picked field takes any 24-bit colour,
  * its colour set showing it exactly */
 static void orbing_picker_changed(colour_t colour, void *opaque)
 {
@@ -593,7 +584,10 @@ static void orbing_picker_changed(colour_t colour, void *opaque)
   if (task->window == NULL)
     return; /* closing: the QUIT that frees the picker is on its way */
 
-  task->lights[task->picker_light].colour = colour;
+  if (task->picker_which == ORBING_COLOUR_LIGHT)
+    task->lights[task->picker_light].colour = colour;
+  else
+    *orbing_colour_field(task, task->picker_which) = colour;
   orbing_sync_colours(task);
   orbing_invalidate_preview(task);
 }
@@ -664,7 +658,8 @@ static result_t orbing_strip_create(orbing_task_t *task, int height)
                                line, "Colour",
                                boxes[SS_ROW + 1].x1 - boxes[SS_ROW + 1].x0,
                                /* line up with the sliders */
-                               0, orbing_colour_changed, task);
+                               0, NULL, NULL); /* its button opens the
+                                                * picker instead */
     if (rc != result_OK)
       return rc;
   }
@@ -758,7 +753,7 @@ result_t orbing_create(wuss_t *wuss, orbing_task_t **out)
     return rc;
   }
 
-  rc = wuss_colourpicker_create(&task->picker, wuss, "Light colour",
+  rc = wuss_colourpicker_create(&task->picker, wuss, NULL,
                                 orbing_picker_changed, task);
   if (rc != result_OK)
   {
@@ -1322,40 +1317,17 @@ static result_t orbing_key(orbing_task_t    *task,
   return result_OK;
 }
 
-/* offer "event" to each colour set; non-zero if one consumed it, its result
- * in "out_result" */
-static int orbing_colour_event(orbing_task_t      *task,
-                               const wuss_event_t *event,
-                               result_t           *out_result)
-{
-  int which;
-
-  for (which = 0; which < ORBING_NCOLOURS; which++)
-    if (wuss_colourset_handle_event(task->colour_sets[which], event,
-                                    out_result))
-      return 1;
-
-  return 0;
-}
-
 static result_t orbing_menu_select(orbing_task_t      *task,
                                    const wuss_event_t *event)
 {
-  result_t rc;
-  int      index;
-
-  if (orbing_colour_event(task, event, &rc))
-    return rc;
+  int index;
 
   if (event->data.menu_select.menu == &task->menu)
   {
     switch (event->data.menu_select.index)
     {
     case ORBING_MENU_LIGHT_COLOUR:
-      /* edits this light even if another is made current meanwhile */
-      task->picker_light = task->current;
-      return wuss_colourpicker_open(task->picker,
-                                    task->lights[task->current].colour);
+      return orbing_pick(task, ORBING_COLOUR_LIGHT);
 
     case ORBING_MENU_MUTATE:
       orbing_mutate(task);
@@ -1404,17 +1376,28 @@ static result_t orbing_menu_select(orbing_task_t      *task,
   return result_OK;
 }
 
-/* a strip click: the colour set's button, toggle the current light, or a
- * slider drag stores the value; each reshades */
+/* a strip click: a colour set's button opens the picker, the On option
+ * toggles the current light, or a slider drag stores the value; each
+ * reshades */
 static result_t orbing_icon(orbing_task_t      *task,
                             wuss_window_t      *window,
                             const wuss_event_t *event)
 {
-  result_t rc;
-  int      row, value;
+  int which, row, value;
 
-  if (orbing_colour_event(task, event, &rc))
-    return rc;
+  for (which = 0; which < ORBING_NCOLOURS; which++)
+  {
+    if (event->data.icon.icon !=
+        wuss_colourset_button(task->colour_sets[which]))
+      continue;
+
+    if (event->data.icon.action != wuss_MOUSE_UP ||
+        !(event->data.icon.button &
+          (wuss_BUTTON_SELECT | wuss_BUTTON_ADJUST)))
+      return result_OK;
+
+    return orbing_pick(task, which);
+  }
 
   if (event->data.icon.icon == task->on_icon)
   {
@@ -1480,13 +1463,8 @@ result_t orbing_handle(wuss_window_t      *window,
     return orbing_icon(task, window, event);
 
   case wuss_EVENT_MENU_CLOSED:
-  {
-    result_t rc;
-
-    (void) orbing_colour_event(task, event, &rc);
     task->menu_handle = NULL;
     return result_OK;
-  }
 
   case wuss_EVENT_CLOSE:
     if (window == task->window)

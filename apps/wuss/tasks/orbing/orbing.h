@@ -48,9 +48,9 @@ orbing_light_t;
  * keys move it too, a pixel at a time (eight with Shift). Inside the disc the
  * light faces the surface under the pointer; the band just outside wraps it
  * round to the back. Menu > Light (or keys 1-4) picks the current light; O
- * switches it on or off, as its On option does. Each colour set picks from the
- * palette; Light colour... (C) opens a true-colour picker on the current
- * light. Dithering picks how the preview is blitted to a paletted screen.
+ * switches it on or off, as its On option does. Each colour set's button
+ * opens a true-colour picker on its colour; Light colour... (C) opens it on
+ * the current light's. Dithering picks how the preview is blitted to a paletted screen.
  * Mutate (M) nudges the sliders, the lit lights' directions and the colours'
  * hues; Randomise (^R) picks every setting afresh, keeping at least one light
  * on; Reset (R) restores the defaults; Save (F3) opens a Save As dialogue
@@ -82,7 +82,8 @@ typedef struct orbing_task
                                                      * current light */
   rng_t              rng;        /* for Mutate and Randomise */
   wuss_saveas_t       *saveas;
-  wuss_colourpicker_t *picker;      /* Light colour...: any 24-bit colour */
+  wuss_colourpicker_t *picker;      /* any 24-bit colour */
+  int                  picker_which; /* ORBING_COLOUR_* it edits */
   int                  picker_light; /* index of the light it edits */
 }
 orbing_task_t;

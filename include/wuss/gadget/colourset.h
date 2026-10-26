@@ -172,6 +172,17 @@ result_t wuss_colourset_set_colour(wuss_colourset_t *colourset,
  */
 void wuss_colourset_set_rgb(wuss_colourset_t *colourset, colour_t rgb);
 
+/**
+ * The gadget's pop-up button, for a caller that opens something other than
+ * the colour menu from it (e.g. \ref colourpicker.h): such a caller handles
+ * the button's wuss_EVENT_ICON itself rather than offering it to \ref
+ * wuss_colourset_handle_event.
+ *
+ * \param[in] colourset Handle.
+ * \return The button icon.
+ */
+wuss_icon_t *wuss_colourset_button(const wuss_colourset_t *colourset);
+
 #ifdef __cplusplus
 }
 #endif
