@@ -6,7 +6,11 @@ This file provides guidance to coding agents (Claude Code, Codex, etc.) when wor
 
 Wuss is a minimal window manager in C99: window creation, z-ordering, mouse routing, dirty-region redraw and client-delegated content. It is layered as core, furniture, icons, menus, gadgets and components under `libraries/wuss/`, plus the interactive `wuss` demo and its tasks under `apps/wuss/`. Targets desktop (Linux/macOS/Windows), WebAssembly and RISC OS (via GCCSDK).
 
-Wuss was split out of [DPTLib](https://github.com/dpt/DPTLib) and depends on it for everything below the window manager (bitmaps, bmfont, geometry, regions, streams, `result_t`, debug macros). CMake fetches DPTLib with `FetchContent`, pinned to a commit in `CMakeLists.txt`. For work on both repos at once, configure with `-DFETCHCONTENT_SOURCE_DIR_DPTLIB=../DPTLib` so the local checkout is used instead. A change that needs a new DPTLib feature lands in DPTLib first; then bump the pin.
+Wuss was split out of [DPTLib](https://github.com/dpt/DPTLib) and depends on it for everything below the window manager (bitmaps, bmfont, geometry, regions, streams, `result_t`, debug macros).
+
+- CMake fetches DPTLib with `FetchContent`, pinned by `GIT_TAG` in `CMakeLists.txt` — read that line for the current form (tag or commit hash) rather than assuming.
+- For work on both repos at once, configure with `-DFETCHCONTENT_SOURCE_DIR_DPTLIB=../DPTLib` so the local checkout is used instead.
+- A change that needs a new DPTLib feature lands in DPTLib first. Bump the pin to the new DPTLib commit or tag as part of the same work, and say so: the local-checkout override hides a stale pin, so fetched builds stay broken until it moves. If the pin changes form, correct the line above in the same change.
 
 The bitmap fonts in `resources/bmfonts` are DPTLib's: configuring creates a symlink (a copy where links fail) to the fetched DPTLib's `resources/bmfonts`. It is git-ignored.
 
@@ -81,7 +85,7 @@ To drive the real demo headless, write a script (`move`, `click`, `key`, `wait N
 - File header comment format: `/* filename.c -- one-line description */`.
 - Section breaks within files use `/* ----- ... ----- */` rule comments.
 - Public API docs use Doxygen (`\file`, `\param`, `\return`).
-- Edit `.c`/`.h` files with the Edit tool, never `sed -i` line-range splices — they corrupt the Allman/2-space layout and can't be verified without re-reading. To inspect exact bytes or indentation, Read the file; don't shell out to `cat -A`/`cat -v`.
+- Edit `.c`/`.h` files with the Edit tool. Never rewrite them with a script — no `sed -i`, no `perl -pi`, no `python3`/`awk` heredoc doing string replacement, in this repo or in DPTLib: such splices corrupt the Allman/2-space layout and can't be verified without re-reading. To inspect exact bytes or indentation, Read the file; don't shell out to `cat -A`/`cat -v`.
 - After editing any `.c`/`.h` function prototype or definition, run `python3 tools/fmt/wrap_protos.py <file>`; after editing a header's Doxygen, run `python3 tools/fmt/wrap_doxygen.py <file>` (skip vendored headers).
 - Before committing any `.c`/`.h` changes, run `python3 tools/fmt/realign_decls.py <file>` (declaration-block alignment) and `python3 tools/fmt/balance_braces.py <file>` (if one branch of an `if`/`else` chain is braced, brace them all) alongside `wrap_protos.py`/`wrap_doxygen.py` on the same files.
 
