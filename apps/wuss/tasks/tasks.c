@@ -136,6 +136,7 @@ g_image_tasks[] =
 {
   { "Dithering", dithering_app_create },
   { "Effecting", effecting_app_create },
+  { "Orbing", orbing_app_create },
   { "Painting", painting_app_create },
   { "Resizing", resizing_app_create },
   { "Viewing", viewing_app_create },
@@ -173,8 +174,7 @@ g_toys_tasks[] =
   { "Fern", fern_app_create },
   { "Fireworks", fireworks_app_create },
   { "Saturn", saturn_app_create },
-  { "Sofa", sofa_app_create },
-  { "Orbing", orbing_app_create }
+  { "Sofa", sofa_app_create }
 },
 g_system_tasks[] =
 {
