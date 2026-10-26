@@ -1,5 +1,5 @@
 ---
-# Build the Wuss WebAssembly demo and publish it to GitHub Pages.
+# Build the Wuss WebAssembly demo; publish it to GitHub Pages from main only.
 #
 
 name: Pages
@@ -57,6 +57,8 @@ jobs:
   deploy:
     name: Deploy to Pages
     needs: build
+    # Every branch builds, to catch wasm breakage, but only main publishes
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     environment:
       name: github-pages
