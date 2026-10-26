@@ -300,7 +300,7 @@ static result_t dithering_show(dithering_task_t *dt, const char *path)
   /* the window opens with the first image, sized and placed for it */
   rc = task_window_fit(dt->delegate, &dt->window, "Dithering",
                        wuss_WINDOW_DEFAULT | wuss_WINDOW_FOCUSABLE,
-                       wuss_BACKDROP_COLOUR(wuss_COLOUR_WINDOW),
+                       wuss_NO_BACKDROP, /* the image covers it all */
                        dt->source.size, SIZE2D(0, 0));
   if (rc != result_OK)
     return rc;
@@ -759,7 +759,7 @@ static result_t dithering_redraw(dithering_task_t   *dt,
 
   bounds = event->data.redraw.bounds;
   if (dt->source.base == NULL)
-    return result_OK; /* the backdrop shows */
+    return result_OK; /* unreachable: the window opens with the first image */
 
   bm = (dt->show_original || dt->dithered == NULL) ? &dt->source
                                                        : dt->dithered;

@@ -110,8 +110,10 @@ static result_t tiling_show(tiling_task_t *tc, const char *path)
 
   snprintf(tc->path, sizeof(tc->path), "%s", path);
   task_set_doc_title(tc->window, path_leaf(path), "Tiling", 0);
-  wuss_window_invalidate_visible(tc->window);
-  return result_OK;
+
+  /* the tiles now cover the content, so drop the backdrop rather than fill
+   * under them (this invalidates the content) */
+  return wuss_window_set_background(tc->window, wuss_NO_BACKDROP);
 }
 
 /* Menu shape built from a descriptor string. The tree must outlive the open

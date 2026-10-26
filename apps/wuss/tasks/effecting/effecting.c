@@ -490,7 +490,7 @@ static result_t effecting_show(effecting_task_t *ec, const char *path)
   opening = ec->window == NULL;
   rc = task_window_fit(ec->delegate, &ec->window, "Effecting",
                        wuss_WINDOW_DEFAULT,
-                       wuss_BACKDROP_COLOUR(wuss_COLOUR_WINDOW),
+                       wuss_NO_BACKDROP, /* the image covers it all */
                        ec->source.size, SIZE2D(32, 32));
   if (rc != result_OK)
     return rc;
@@ -646,7 +646,7 @@ static result_t effecting_redraw(const wuss_event_t *event, void *task_data)
   scr    = event->data.redraw.scr;
   bounds = event->data.redraw.bounds;
   if (ec->source.base == NULL)
-    return result_OK; /* the backdrop shows */
+    return result_OK; /* unreachable: the window opens with the first image */
 
   bm = ec->show_original ? &ec->source : &ec->result;
 

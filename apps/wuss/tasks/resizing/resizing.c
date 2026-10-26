@@ -108,8 +108,8 @@ static result_t resizing_apply(resizing_task_t *rt)
   size = rt->resized ? rt->resized->size : rt->source.size;
   rc   = task_window_fit(rt->delegate, &rt->window, "Resizing",
                          wuss_WINDOW_DEFAULT | wuss_WINDOW_FOCUSABLE,
-                         wuss_BACKDROP_COLOUR(wuss_COLOUR_WINDOW), size,
-                         SIZE2D(0, 0));
+                         wuss_NO_BACKDROP, /* the image covers it all */
+                         size, SIZE2D(0, 0));
   if (rc != result_OK)
     return rc;
 
@@ -276,7 +276,7 @@ static result_t resizing_redraw(resizing_task_t    *rt,
 
   bounds = event->data.redraw.bounds;
   if (rt->source.base == NULL)
-    return result_OK; /* the backdrop shows */
+    return result_OK; /* unreachable: the window opens with the first image */
 
   bm = rt->resized != NULL ? rt->resized : &rt->source;
 
