@@ -68,7 +68,7 @@ static void fontmenu_free(void)
 /* Growable list of name copies, filled by the enumerate callback. Transient:
  * freed before create returns. Routed through the caller's hooks so even the
  * scratch never touches raw stdlib. */
-typedef struct namelist
+typedef struct fontmenu_names
 {
   const alloc_t      *alloc;    /* borrowed; the resolved hooks */
   const wuss_t       *wuss;     /* borrowed; consulted to skip SYSTEM fonts,
@@ -79,7 +79,7 @@ typedef struct namelist
   int                 cap;
   int                 oom; /* a strdup/grow failed; stop and unwind */
 }
-namelist_t;
+fontmenu_names_t;
 
 /* True if any wuss_create font slot names \p name and is classed SYSTEM --
  * chrome-only, not meant to be offered as a text font. A slot named for a
@@ -113,9 +113,9 @@ static result_t collect_name(const char *name,
                              const char *path,
                              void       *opaque)
 {
-  namelist_t *nl = opaque;
-  char       *copy;
-  char       *space;
+  fontmenu_names_t *nl = opaque;
+  char             *copy;
+  char             *space;
 
   (void) path;
 
@@ -146,7 +146,7 @@ static result_t collect_name(const char *name,
   return result_OK;
 }
 
-static void namelist_free(namelist_t *nl)
+static void fontmenu_names_free(fontmenu_names_t *nl)
 {
   int i;
 
@@ -220,7 +220,7 @@ static result_t build_menu(char **names, int nnames, const char *title)
 
 /* Drop adjacent duplicate names from a sorted list -- one per family once
  * collect_name has cut the styles off. */
-static void namelist_uniq(namelist_t *nl)
+static void fontmenu_names_uniq(fontmenu_names_t *nl)
 {
   int i;
   int j;
@@ -244,10 +244,10 @@ static result_t fontmenu_build(const char           *dir,
                                const wuss_t         *wuss,
                                wuss_fontmenu_flags_t flags)
 {
-  result_t   rc;
-  alloc_t    alloc;
-  char      *dir_copy;
-  namelist_t nl;
+  result_t         rc;
+  alloc_t          alloc;
+  char            *dir_copy;
+  fontmenu_names_t nl;
 
   fontmenu_free();
 
@@ -269,7 +269,7 @@ static result_t fontmenu_build(const char           *dir,
   rc = bmfont_enumerate(dir, collect_name, &nl);
   if (rc != result_OK)
   {
-    namelist_free(&nl);
+    fontmenu_names_free(&nl);
     alloc.free(dir_copy);
     return nl.oom ? result_OOM : rc;
   }
@@ -277,12 +277,12 @@ static result_t fontmenu_build(const char           *dir,
   if (nl.n > 1)
     qsort(nl.names, (size_t) nl.n, sizeof(nl.names[0]), name_cmp);
   if (nl.families)
-    namelist_uniq(&nl);
+    fontmenu_names_uniq(&nl);
 
   g.alloc = alloc;
 
   rc = build_menu(nl.names, nl.n, title);
-  namelist_free(&nl); /* build_menu copied what it needed */
+  fontmenu_names_free(&nl); /* build_menu copied what it needed */
   if (rc != result_OK)
   {
     alloc.free(dir_copy);
