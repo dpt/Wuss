@@ -33,6 +33,10 @@ typedef enum painting_tool
   painting_TOOL_LINE,
   painting_TOOL_RECT,
   painting_TOOL_RECT_FILL, /* as RECT, but solid */
+  painting_TOOL_ELLIPSE,
+  painting_TOOL_ELLIPSE_FILL, /* as ELLIPSE, but solid */
+  painting_TOOL_PATH,      /* drag out a freeform closed outline */
+  painting_TOOL_PATH_FILL, /* as PATH, but solid */
   painting_TOOL_FILL,
   painting_TOOL_GRADIENT, /* drag a linear gradient over the selection */
   painting_TOOL_SPRAY, /* scatter dots around the pointer while held */
@@ -88,7 +92,9 @@ typedef struct painting_task
   int                held;      /* button of the stroke in progress, or 0 */
   point_t            anchor;    /* where the stroke began */
   point_t            last;      /* where the stroke last reached */
-  point_t           *lasso;     /* points dragged out so far by the lasso */
+  wuss_key_modifiers_t mods;    /* keys held as the stroke last reached */
+  point_t           *lasso;     /* points dragged out so far by the lasso or
+                                 * path */
   int                nlasso, caplasso;
   int                ants_tick;  /* idles since the ants last moved */
   int                ants_phase; /* where the ants have marched, 0..7 */

@@ -217,6 +217,82 @@ result_t paintingdoc_test(const char *resources)
   paintingdoc_destroy(doc);
   doc = NULL;
 
+  printf("test: ellipse fills or outlines the rect between its corners, in "
+         "either order, and is undoable\n");
+
+  CHECK(paintingdoc_create(SIZE2D(20, 20), &doc) == result_OK);
+
+  dirty = paintingdoc_ellipse(doc, POINT(12, 12), POINT(2, 2), 1, 0, black());
+  CHECK(dirty.x0 == 2 && dirty.y0 == 2 && dirty.x1 == 13 && dirty.y1 == 13);
+  CHECK(px(doc, 2, 7) == BLACK);
+  CHECK(px(doc, 12, 7) == BLACK);
+  CHECK(px(doc, 7, 2) == BLACK);
+  CHECK(px(doc, 7, 12) == BLACK);
+  CHECK(px(doc, 3, 7) == WHITE); /* the outline is one pixel wide */
+  CHECK(px(doc, 7, 7) == WHITE);
+  CHECK(px(doc, 2, 2) == WHITE); /* the corners are cut off */
+
+  paintingdoc_ellipse(doc, POINT(14, 14), POINT(18, 18), 1, 1, red());
+  CHECK(px(doc, 16, 16) == RED);
+  CHECK(px(doc, 14, 16) == RED);
+  CHECK(px(doc, 16, 14) == RED);
+  CHECK(px(doc, 14, 14) == WHITE);
+
+  paintingdoc_undo(doc);
+  CHECK(px(doc, 16, 16) == WHITE);
+  CHECK(px(doc, 2, 7) == BLACK);
+
+  paintingdoc_destroy(doc);
+  doc = NULL;
+
+  printf("test: path fills the polygon or outlines it closed; too few "
+         "points do nothing\n");
+
+  CHECK(paintingdoc_create(SIZE2D(20, 20), &doc) == result_OK);
+
+  {
+    static const point_t square[] =
+    {
+      { 2, 2 }, { 10, 2 }, { 10, 10 }, { 2, 10 }
+    };
+    static const point_t corner[] =
+    {
+      { 2, 12 }, { 10, 12 }, { 10, 18 }
+    };
+
+    dirty = paintingdoc_path(doc, square, 0, 1, 0, black());
+    CHECK(box_is_empty(&dirty));
+    dirty = paintingdoc_path(doc, square, 2, 1, 1, black());
+    CHECK(box_is_empty(&dirty));
+    CHECK(!paintingdoc_can_undo(doc));
+
+    dirty = paintingdoc_path(doc, square, 4, 1, 1, red());
+    CHECK(dirty.x0 == 2 && dirty.y0 == 2 && dirty.x1 == 11 && dirty.y1 == 11);
+    CHECK(px(doc, 6, 6) == RED);
+    CHECK(px(doc, 2, 6) == RED);
+    CHECK(px(doc, 1, 6) == WHITE);
+    CHECK(px(doc, 11, 6) == WHITE);
+
+    paintingdoc_path(doc, corner, 3, 1, 0, black());
+    CHECK(px(doc, 6, 12) == BLACK);
+    CHECK(px(doc, 10, 15) == BLACK);
+    CHECK(px(doc, 6, 15) == BLACK); /* the closing edge, back to the start */
+    CHECK(px(doc, 8, 14) == WHITE); /* inside is left alone */
+    CHECK(px(doc, 4, 16) == WHITE);
+  }
+
+  n = 0;
+  while (paintingdoc_can_undo(doc))
+  {
+    paintingdoc_undo(doc);
+    n++;
+  }
+  CHECK(n == 2);
+  CHECK(px(doc, 6, 6) == WHITE);
+
+  paintingdoc_destroy(doc);
+  doc = NULL;
+
   printf("test: flood fill stops at an outline, fills exactly the region, and "
          "reports its box\n");
 

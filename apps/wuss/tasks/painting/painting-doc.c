@@ -1,5 +1,6 @@
 /* wuss/tasks/painting/painting-doc.c -- paint canvas, drawing and undo */
 
+#include <math.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -633,6 +634,144 @@ box_t paintingdoc_rect(paintingdoc_t *doc,
   paintingdoc_draw_rect(&doc->scr, a, b, width, fill, colour);
 
   dirty = clipped_box(doc, a, b, 0);
+  sel_clip(doc, dirty);
+
+  return dirty;
+}
+
+/* the run [*xa, *xb] of row y covered by the ellipse filling the w by h box
+ * at (x0, y0): those pixels whose centres lie inside it. false if none */
+static int ellipse_run(int x0, int y0, int w, int h, int y, int *xa, int *xb)
+{
+  double rx, ry, cx, dy, half;
+
+  if (w <= 0 || h <= 0)
+    return 0;
+
+  rx = w / 2.0;
+  ry = h / 2.0;
+  cx = x0 + rx;
+  dy = (y + 0.5 - (y0 + ry)) / ry;
+  if (dy <= -1.0 || dy >= 1.0)
+    return 0;
+
+  half = rx * sqrt(1.0 - dy * dy);
+  *xa  = (int) ceil(cx - half - 0.5);
+  *xb  = (int) floor(cx + half - 0.5);
+
+  return *xa <= *xb;
+}
+
+void paintingdoc_draw_ellipse(screen_t *scr,
+                              point_t   a,
+                              point_t   b,
+                              int       width,
+                              int       fill,
+                              colour_t  colour)
+{
+  int x0, y0, w, h, t;
+  int y, xa, xb, ia, ib;
+
+  x0 = MIN(a.x, b.x);
+  y0 = MIN(a.y, b.y);
+  w  = MAX(a.x, b.x) - x0 + 1;
+  h  = MAX(a.y, b.y) - y0 + 1;
+  t  = MAX(width, 1);
+
+  /* an outline is the ellipse less the one inset by its width */
+  for (y = y0; y < y0 + h; y++)
+  {
+    if (!ellipse_run(x0, y0, w, h, y, &xa, &xb))
+      continue;
+
+    if (fill ||
+        !ellipse_run(x0 + t, y0 + t, w - 2 * t, h - 2 * t, y, &ia, &ib))
+    {
+      screen_fill_hline(scr, xa, y, xb - xa + 1, colour);
+    }
+    else
+    {
+      screen_fill_hline(scr, xa, y, ia - xa, colour);
+      screen_fill_hline(scr, ib + 1, y, xb - ib, colour);
+    }
+  }
+}
+
+box_t paintingdoc_ellipse(paintingdoc_t *doc,
+                          point_t        a,
+                          point_t        b,
+                          int            width,
+                          int            fill,
+                          colour_t       colour)
+{
+  box_t dirty;
+
+  checkpoint_or_warn(doc);
+
+  paintingdoc_draw_ellipse(&doc->scr, a, b, width, fill, colour);
+
+  dirty = clipped_box(doc, a, b, 0);
+  sel_clip(doc, dirty);
+
+  return dirty;
+}
+
+box_t paintingdoc_path(paintingdoc_t *doc,
+                       const point_t *pts,
+                       int            n,
+                       int            width,
+                       int            fill,
+                       colour_t       colour)
+{
+  point_t    lo, hi;
+  int        i, y, nruns;
+  box_t      canvas;
+  region_t  *area;
+  const int *runs;
+  box_t      dirty;
+
+  if (n < (fill ? 3 : 1))
+    return (box_t) BOX_INIT;
+
+  lo = hi = pts[0];
+  for (i = 1; i < n; i++)
+  {
+    lo.x = MIN(lo.x, pts[i].x);
+    lo.y = MIN(lo.y, pts[i].y);
+    hi.x = MAX(hi.x, pts[i].x);
+    hi.y = MAX(hi.y, pts[i].y);
+  }
+
+  checkpoint_or_warn(doc);
+
+  if (fill)
+  {
+    canvas = canvas_box(doc);
+    if (region_from_polygon(pts, n, &canvas, &area) != result_OK)
+    {
+      logf_warning("painting: no memory to fill path");
+      area = NULL;
+    }
+
+    for (y = lo.y; y <= hi.y; y++)
+    {
+      nruns = region_row(area, y, &runs);
+      for (i = 0; i < nruns; i++)
+        screen_fill_hline(&doc->scr, runs[i * 2], y,
+                          runs[i * 2 + 1] - runs[i * 2], colour);
+    }
+
+    region_destroy(area);
+  }
+  else
+  {
+    /* the last point joins back to the first */
+    for (i = 0; i < n; i++)
+      paintingdoc_draw_stroke(&doc->scr, pts[i], pts[(i + 1) % n], width,
+                              colour);
+  }
+
+  dirty = clipped_box(doc, lo, hi, fill ? 0 : MAX(width, 1) / 2);
   sel_clip(doc, dirty);
 
   return dirty;

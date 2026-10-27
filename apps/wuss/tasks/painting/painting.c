@@ -2,6 +2,7 @@
 
 #ifdef WUSS_APP
 
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -26,13 +27,16 @@
 #define PAINTING_VIEW_W   400 /* initial visible size of the canvas window */
 #define PAINTING_VIEW_H   300
 
-/* Toolbox layout, in its window's content space: a single column of tool
- * buttons */
+/* Toolbox layout, in its window's content space: two columns of tool buttons,
+ * filled in row by row */
 #define TB_MARGIN    2
 #define TB_TOOL_CELL 26  /* pitch of the tool buttons */
 #define TB_TOOL_SIZE 24  /* button size, including its bevel */
-#define TB_W         (TB_MARGIN + TB_TOOL_SIZE + TB_MARGIN)
-#define TB_H         (TB_MARGIN + painting_TOOL__COUNT * TB_TOOL_CELL - \
+#define TB_COLUMNS   2
+#define TB_ROWS      DIVIDE_ROUNDING_UP(painting_TOOL__COUNT, TB_COLUMNS)
+#define TB_W         (TB_MARGIN + TB_COLUMNS * TB_TOOL_CELL - \
+                      (TB_TOOL_CELL - TB_TOOL_SIZE) + TB_MARGIN)
+#define TB_H         (TB_MARGIN + TB_ROWS * TB_TOOL_CELL - \
                       (TB_TOOL_CELL - TB_TOOL_SIZE) + TB_MARGIN)
 
 /* Option bar layout, in its window's content space: from the left, the
@@ -70,6 +74,10 @@ static const char *painting_tool_names[painting_TOOL__COUNT] =
   "line",
   "rectangle",
   "rectangle-fill",
+  "ellipse",
+  "ellipse-fill",
+  "path",
+  "path-fill",
   "fill",
   "gradient",
   "spray",
@@ -87,7 +95,8 @@ static const char *const painting_nozzle_names[paintingdoc_NOZZLE__COUNT] =
 /* the tool's button box in toolbox content space */
 static box_t painting_tool_box(int i)
 {
-  return (box_t) BOX_POS_SIZE(TB_MARGIN, TB_MARGIN + i * TB_TOOL_CELL,
+  return (box_t) BOX_POS_SIZE(TB_MARGIN + (i % TB_COLUMNS) * TB_TOOL_CELL,
+                              TB_MARGIN + (i / TB_COLUMNS) * TB_TOOL_CELL,
                               TB_TOOL_SIZE, TB_TOOL_SIZE);
 }
 
@@ -470,12 +479,20 @@ void painting_destroy(painting_task_t *task)
 
 /* ----------------------------------------------------------------------- */
 
-/* line, rect, gradient and select are rubber-banded: shown on the window, not
- * drawn into the canvas, until the button is released */
+/* rects and ellipses, outlined or filled */
+static int painting_is_shape(const painting_task_t *pt)
+{
+  return pt->tool == painting_TOOL_RECT ||
+         pt->tool == painting_TOOL_RECT_FILL ||
+         pt->tool == painting_TOOL_ELLIPSE ||
+         pt->tool == painting_TOOL_ELLIPSE_FILL;
+}
+
+/* line, the shapes, gradient and select are rubber-banded: shown on the
+ * window, not drawn into the canvas, until the button is released */
 static int painting_is_rubber_band(const painting_task_t *pt)
 {
-  return pt->tool == painting_TOOL_LINE || pt->tool == painting_TOOL_RECT ||
-         pt->tool == painting_TOOL_RECT_FILL ||
+  return pt->tool == painting_TOOL_LINE || painting_is_shape(pt) ||
          pt->tool == painting_TOOL_GRADIENT || pt->tool == painting_TOOL_SELECT;
 }
 
@@ -483,6 +500,60 @@ static int painting_is_rubber_band(const painting_task_t *pt)
 static int painting_is_selector(const painting_task_t *pt)
 {
   return pt->tool == painting_TOOL_SELECT || pt->tool == painting_TOOL_LASSO;
+}
+
+/* the paths, outlined or filled */
+static int painting_is_path(const painting_task_t *pt)
+{
+  return pt->tool == painting_TOOL_PATH || pt->tool == painting_TOOL_PATH_FILL;
+}
+
+/* the lasso and paths collect the points dragged through */
+static int painting_collects_points(const painting_task_t *pt)
+{
+  return pt->tool == painting_TOOL_LASSO || painting_is_path(pt);
+}
+
+/* the rubber band's ends, a and b, given the keys held: for a shape or
+ * gradient Ctrl makes the anchor the centre rather than an end, and Shift
+ * squares a shape or turns a gradient to the nearest 22.5 degrees */
+static void painting_band_ends(const painting_task_t *pt,
+                               point_t               *a,
+                               point_t               *b)
+{
+  int    dx, dy, s;
+  double step, len, angle;
+
+  *a = pt->anchor;
+  *b = pt->last;
+
+  if (!painting_is_shape(pt) && pt->tool != painting_TOOL_GRADIENT)
+    return;
+
+  dx = pt->last.x - pt->anchor.x;
+  dy = pt->last.y - pt->anchor.y;
+
+  if (pt->mods & wuss_KEY_MOD_SHIFT)
+  {
+    if (pt->tool == painting_TOOL_GRADIENT)
+    {
+      step  = atan(1.0) / 2; /* 22.5 degrees */
+      len   = sqrt((double) dx * dx + (double) dy * dy);
+      angle = floor(atan2(dy, dx) / step + 0.5) * step;
+      dx    = (int) floor(len * cos(angle) + 0.5);
+      dy    = (int) floor(len * sin(angle) + 0.5);
+    }
+    else
+    {
+      s  = MAX(abs(dx), abs(dy));
+      dx = dx < 0 ? -s : s;
+      dy = dy < 0 ? -s : s;
+    }
+  }
+
+  if (pt->mods & wuss_KEY_MOD_CTRL)
+    *a = POINT(pt->anchor.x - dx, pt->anchor.y - dy);
+  *b = POINT(pt->anchor.x + dx, pt->anchor.y + dy);
 }
 
 /* the lasso's path grows by one point; false if out of memory, when the
@@ -549,17 +620,38 @@ static box_t painting_stroke_segment(painting_task_t *pt,
 /* the canvas box the rubber band at its current size may cover */
 static box_t painting_band_box(const painting_task_t *pt)
 {
-  int   r;
-  box_t box;
+  int     r;
+  point_t a, b;
+  box_t   box;
 
   r = pt->size / 2 + 1;
+  painting_band_ends(pt, &a, &b);
 
-  box.x0 = MIN(pt->anchor.x, pt->last.x) - r;
-  box.y0 = MIN(pt->anchor.y, pt->last.y) - r;
-  box.x1 = MAX(pt->anchor.x, pt->last.x) + r + 1;
-  box.y1 = MAX(pt->anchor.y, pt->last.y) + r + 1;
+  box.x0 = MIN(a.x, b.x) - r;
+  box.y0 = MIN(a.y, b.y) - r;
+  box.x1 = MAX(a.x, b.x) + r + 1;
+  box.y1 = MAX(a.y, b.y) + r + 1;
 
   return box;
+}
+
+/* the canvas box the lasso or path's points, drawn as thin lines, cover */
+static box_t painting_points_box(const painting_task_t *pt)
+{
+  box_t drag = BOX_INIT;
+  box_t box;
+  int   i;
+
+  for (i = 0; i < pt->nlasso; i++)
+  {
+    box     = painting_span_box(pt->lasso[i], pt->lasso[i]);
+    drag.x0 = MIN(drag.x0, box.x0);
+    drag.y0 = MIN(drag.y0, box.y0);
+    drag.x1 = MAX(drag.x1, box.x1);
+    drag.y1 = MAX(drag.y1, box.y1);
+  }
+
+  return drag;
 }
 
 /* finish a selection drag: the new selection replaces the old, and all that
@@ -568,7 +660,6 @@ static void painting_select_commit(painting_task_t *pt, point_t p)
 {
   box_t old, now, drag;
   box_t box;
-  int   i;
 
   old = paintingdoc_selection_bounds(pt->doc);
   pt->last = p;
@@ -592,16 +683,7 @@ static void painting_select_commit(painting_task_t *pt, point_t p)
   }
   else
   {
-    drag = (box_t) BOX_INIT;
-    for (i = 0; i < pt->nlasso; i++)
-    {
-      box    = painting_span_box(pt->lasso[i], pt->lasso[i]);
-      drag.x0 = MIN(drag.x0, box.x0);
-      drag.y0 = MIN(drag.y0, box.y0);
-      drag.x1 = MAX(drag.x1, box.x1);
-      drag.y1 = MAX(drag.y1, box.y1);
-    }
-
+    drag = painting_points_box(pt);
     paintingdoc_select_poly(pt->doc, pt->lasso, pt->nlasso);
     pt->nlasso = 0;
   }
@@ -666,8 +748,9 @@ static result_t painting_redraw(painting_task_t    *pt,
 
   if (pt->held && painting_is_rubber_band(pt))
   {
-    a = POINT(pt->anchor.x + ox, pt->anchor.y + oy);
-    b = POINT(pt->last.x + ox, pt->last.y + oy);
+    painting_band_ends(pt, &a, &b);
+    a = POINT(a.x + ox, a.y + oy);
+    b = POINT(b.x + ox, b.y + oy);
 
     if (pt->tool == painting_TOOL_LINE)
       paintingdoc_draw_stroke(scr, a, b, pt->size, painting_stroke_colour(pt));
@@ -675,17 +758,25 @@ static result_t painting_redraw(painting_task_t    *pt,
       paintingdoc_draw_stroke(scr, a, b, 1, colour_rgb(0x00, 0x00, 0x00));
     else if (pt->tool == painting_TOOL_SELECT)
       paintingdoc_draw_rect(scr, a, b, 1, 0, colour_rgb(0x00, 0x00, 0x00));
+    else if (pt->tool == painting_TOOL_ELLIPSE ||
+             pt->tool == painting_TOOL_ELLIPSE_FILL)
+      paintingdoc_draw_ellipse(scr, a, b, pt->size,
+                               pt->tool == painting_TOOL_ELLIPSE_FILL,
+                               painting_stroke_colour(pt));
     else
       paintingdoc_draw_rect(scr, a, b, pt->size, pt->tool == painting_TOOL_RECT_FILL,
                          painting_stroke_colour(pt));
   }
 
-  if (pt->held && pt->tool == painting_TOOL_LASSO)
+  /* ponytail: a path is previewed as thin, open lines, as the lasso is;
+   * draw it at its width, closed, if that misleads */
+  if (pt->held && painting_collects_points(pt))
   {
     for (i = 1; i < pt->nlasso; i++)
       screen_draw_line(scr, pt->lasso[i - 1].x + ox, pt->lasso[i - 1].y + oy,
                        pt->lasso[i].x + ox, pt->lasso[i].y + oy,
-                       colour_rgb(0x00, 0x00, 0x00));
+                       painting_is_path(pt) ? painting_stroke_colour(pt) :
+                                              colour_rgb(0x00, 0x00, 0x00));
   }
 
   painting_draw_ants(pt, scr, ox, oy);
@@ -795,23 +886,30 @@ static result_t painting_toolbar_icon(painting_task_t    *pt,
 static box_t painting_band_commit(painting_task_t *pt)
 {
   colour_t colour;
+  point_t  a, b;
 
   colour = painting_stroke_colour(pt);
+  painting_band_ends(pt, &a, &b);
 
   /* Select runs from fg to bg, Adjust the other way */
   if (pt->tool == painting_TOOL_GRADIENT)
     return pt->held == wuss_BUTTON_ADJUST ?
-           paintingdoc_gradient(pt->doc, pt->anchor, pt->last, pt->bg, pt->fg) :
-           paintingdoc_gradient(pt->doc, pt->anchor, pt->last, pt->fg, pt->bg);
+           paintingdoc_gradient(pt->doc, a, b, pt->bg, pt->fg) :
+           paintingdoc_gradient(pt->doc, a, b, pt->fg, pt->bg);
 
   if (pt->tool == painting_TOOL_RECT || pt->tool == painting_TOOL_RECT_FILL)
-    return paintingdoc_rect(pt->doc, pt->anchor, pt->last, pt->size,
+    return paintingdoc_rect(pt->doc, a, b, pt->size,
                          pt->tool == painting_TOOL_RECT_FILL, colour);
+
+  if (pt->tool == painting_TOOL_ELLIPSE ||
+      pt->tool == painting_TOOL_ELLIPSE_FILL)
+    return paintingdoc_ellipse(pt->doc, a, b, pt->size,
+                               pt->tool == painting_TOOL_ELLIPSE_FILL, colour);
 
   if (paintingdoc_checkpoint(pt->doc) != result_OK)
     return (box_t) BOX_INIT; /* no undo step, so no line */
 
-  return paintingdoc_stroke(pt->doc, pt->anchor, pt->last, pt->size, colour);
+  return paintingdoc_stroke(pt->doc, a, b, pt->size, colour);
 }
 
 /* a MOVE always reports the Select button, hovering or not, so a stroke in
@@ -836,6 +934,7 @@ static result_t painting_mouse(painting_task_t    *pt,
                  wuss_BUTTON_SELECT : wuss_BUTTON_ADJUST;
     pt->anchor = p;
     pt->last   = p;
+    pt->mods   = event->data.mouse.modifiers;
 
     switch (pt->tool)
     {
@@ -859,6 +958,8 @@ static result_t painting_mouse(painting_task_t    *pt,
       break;
 
     case painting_TOOL_LASSO:
+    case painting_TOOL_PATH:
+    case painting_TOOL_PATH_FILL:
       pt->nlasso = 0;
       painting_lasso_add(pt, p);
       dirty = painting_span_box(p, p);
@@ -895,7 +996,7 @@ static result_t painting_mouse(painting_task_t    *pt,
     if (!pt->held)
       return result_OK;
 
-    if (pt->tool == painting_TOOL_LASSO)
+    if (painting_collects_points(pt))
     {
       painting_lasso_add(pt, p);
       dirty    = painting_span_box(pt->last, p);
@@ -906,6 +1007,7 @@ static result_t painting_mouse(painting_task_t    *pt,
       old = painting_band_box(pt);
       wuss_window_invalidate(pt->window, &old);
       pt->last = p;
+      pt->mods = event->data.mouse.modifiers;
       dirty    = painting_band_box(pt);
     }
     else if (pt->tool == painting_TOOL_SPRAY)
@@ -929,14 +1031,28 @@ static result_t painting_mouse(painting_task_t    *pt,
     {
       painting_select_commit(pt, p);
     }
+    else if (painting_is_path(pt))
+    {
+      painting_lasso_add(pt, p);
+
+      /* the preview is no longer drawn over the canvas */
+      old = painting_points_box(pt);
+      wuss_window_invalidate(pt->window, &old);
+
+      dirty = paintingdoc_path(pt->doc, pt->lasso, pt->nlasso, pt->size,
+                               pt->tool == painting_TOOL_PATH_FILL,
+                               painting_stroke_colour(pt));
+      pt->nlasso = 0;
+    }
     else if (painting_is_rubber_band(pt))
     {
-      pt->last = p;
-      dirty    = painting_band_commit(pt);
-
       /* the band is no longer drawn over the canvas */
       old = painting_band_box(pt);
       wuss_window_invalidate(pt->window, &old);
+
+      pt->last = p;
+      pt->mods = event->data.mouse.modifiers;
+      dirty    = painting_band_commit(pt);
     }
 
     pt->held = 0;
@@ -1005,9 +1121,9 @@ static void painting_step_size(painting_task_t *pt, int delta)
   (void) wuss_slider_row_set(pt->optionbar, &pt->size_row, pt->size);
 }
 
-/* B, H, E, L, R, X, F, G, P, S, O and I pick the matching tool, [ and ] step
- * the size down and up, Escape drops the selection. Anything else is passed
- * back unclaimed */
+/* B, H, E, L, R, X, C, D, N, M, F, G, P, S, O and I pick the matching tool, [
+ * and ] step the size down and up, Escape drops the selection. Anything else
+ * is passed back unclaimed */
 static result_t painting_key(painting_task_t *pt, int code)
 {
   box_t box;
@@ -1020,6 +1136,10 @@ static result_t painting_key(painting_task_t *pt, int code)
   case 'l': case 'L': painting_set_tool(pt, painting_TOOL_LINE);   break;
   case 'r': case 'R': painting_set_tool(pt, painting_TOOL_RECT);   break;
   case 'x': case 'X': painting_set_tool(pt, painting_TOOL_RECT_FILL); break;
+  case 'c': case 'C': painting_set_tool(pt, painting_TOOL_ELLIPSE); break;
+  case 'd': case 'D': painting_set_tool(pt, painting_TOOL_ELLIPSE_FILL); break;
+  case 'n': case 'N': painting_set_tool(pt, painting_TOOL_PATH);   break;
+  case 'm': case 'M': painting_set_tool(pt, painting_TOOL_PATH_FILL); break;
   case 'f': case 'F': painting_set_tool(pt, painting_TOOL_FILL);   break;
   case 'g': case 'G': painting_set_tool(pt, painting_TOOL_GRADIENT); break;
   case 'p': case 'P': painting_set_tool(pt, painting_TOOL_SPRAY);  break;

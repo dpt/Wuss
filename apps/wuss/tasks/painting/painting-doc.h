@@ -60,9 +60,10 @@ const bitmap_t *paintingdoc_bitmap(const paintingdoc_t *doc);
  * with result_OOM, leaving the history as it was */
 result_t paintingdoc_checkpoint(paintingdoc_t *doc);
 
-/* draw a stroke or rect as paintingdoc_stroke and paintingdoc_rect do, but onto any
- * screen, for a rubber-band preview over the canvas: the canvas, its undo
- * history and the dirty box are not touched. */
+/* draw a stroke, rect or ellipse as paintingdoc_stroke, paintingdoc_rect and
+ * paintingdoc_ellipse do, but onto any screen, for a rubber-band preview over
+ * the canvas: the canvas, its undo history and the dirty box are not
+ * touched. */
 void paintingdoc_draw_stroke(screen_t *scr,
                              point_t   a,
                              point_t   b,
@@ -75,6 +76,13 @@ void paintingdoc_draw_rect(screen_t *scr,
                            int       width,
                            int       fill,
                            colour_t  colour);
+
+void paintingdoc_draw_ellipse(screen_t *scr,
+                              point_t   a,
+                              point_t   b,
+                              int       width,
+                              int       fill,
+                              colour_t  colour);
 
 /* draw a round-ended line of the given width in pixels (1 = a single pixel
  * wide) from a to b; a == b draws a dab. also the brush and eraser stroke
@@ -124,6 +132,26 @@ box_t paintingdoc_spray(paintingdoc_t *doc,
 box_t paintingdoc_rect(paintingdoc_t *doc,
                        point_t        a,
                        point_t        b,
+                       int            width,
+                       int            fill,
+                       colour_t       colour);
+
+/* draw the ellipse filling the rectangle with opposite corners a and b (both
+ * inclusive, any order), as paintingdoc_rect does */
+box_t paintingdoc_ellipse(paintingdoc_t *doc,
+                          point_t        a,
+                          point_t        b,
+                          int            width,
+                          int            fill,
+                          colour_t       colour);
+
+/* draw the closed path through n points (the last joins back to the first):
+ * filled (even-odd rule, as paintingdoc_select_poly) or as round-ended lines
+ * width pixels wide. does nothing, and takes no checkpoint, if there are no
+ * points or fewer than 3 to fill; otherwise takes its own checkpoint */
+box_t paintingdoc_path(paintingdoc_t *doc,
+                       const point_t *pts,
+                       int            n,
                        int            width,
                        int            fill,
                        colour_t       colour);
