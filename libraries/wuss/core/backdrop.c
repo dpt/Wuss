@@ -1,5 +1,6 @@
 /* wuss/backdrop.c -- shared fill/backdrop validation and fill */
 
+#include "framebuf/pixelfmt.h"
 #include "framebuf/screen.h"
 
 #include "impl.h"
@@ -23,18 +24,6 @@ result_t wuss__validate_fill(const wuss_t      *wuss,
   return result_OK;
 }
 
-static int physical_entries(const screen_t *scr)
-{
-  switch (scr->format)
-  {
-  case pixelfmt_p1: return 2;
-  case pixelfmt_p2: return 4;
-  case pixelfmt_p4: return 16;
-  case pixelfmt_p8: return 256;
-  default:          return 0; /* direct colour */
-  }
-}
-
 void wuss__rebuild_fills(wuss_t *wuss)
 {
   const screen_t *scr;
@@ -42,7 +31,8 @@ void wuss__rebuild_fills(wuss_t *wuss)
   int             i;
 
   scr   = wuss->scr;
-  nphys = (scr->palette != NULL) ? physical_entries(scr) : 0;
+  nphys = (scr->palette != NULL) ?
+          pixelfmt_paletted_nentries(scr->format) : 0;
 
   for (i = 0; i < wuss->npalette; i++)
   {
