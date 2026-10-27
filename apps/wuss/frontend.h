@@ -29,7 +29,7 @@ typedef enum wuss_input_kind
 {
   wuss_INPUT_NONE = 0,
   wuss_INPUT_QUIT,          /* window closed, or the quit key */
-  wuss_INPUT_MOUSE_MOVE,    /* .pos */
+  wuss_INPUT_MOUSE_MOVE,    /* .pos, .mods */
   wuss_INPUT_MOUSE_DOWN,    /* .pos, .button, .mods */
   wuss_INPUT_MOUSE_UP,      /* .pos, .button, .mods */
   wuss_INPUT_MOUSE_LEAVE,   /* pointer left the window; next move returns */

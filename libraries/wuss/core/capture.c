@@ -27,10 +27,11 @@ result_t wuss__capture_deliver(wuss_t             *wuss,
   if (action == wuss_MOUSE_UP)
     wuss->capture = NULL;
 
-  event.kind              = wuss_EVENT_MOUSE;
-  event.data.mouse.action = action;
-  event.data.mouse.point  = wuss__screen_to_doc(win, p);
-  event.data.mouse.button = button;
+  event.kind                 = wuss_EVENT_MOUSE;
+  event.data.mouse.action    = action;
+  event.data.mouse.point     = wuss__screen_to_doc(win, p);
+  event.data.mouse.button    = button;
+  event.data.mouse.modifiers = wuss->modifiers;
   return wuss__deliver(win->task, win, &event);
 }
 

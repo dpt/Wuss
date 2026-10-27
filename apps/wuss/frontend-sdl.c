@@ -535,6 +535,7 @@ bool wuss_frontend_poll(wuss_frontend_t *fe, wuss_input_t *event)
                        ev.motion.x, ev.motion.y, &x, &y);
         event->kind = wuss_INPUT_MOUSE_MOVE;
         event->pos  = POINT(x, y);
+        event->mods = sdl_mods_to_wuss(SDL_GetModState());
       }
       return true;
 

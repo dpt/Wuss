@@ -107,10 +107,11 @@ static result_t mouse_click(wuss_t             *wuss,
     if (action == wuss_MOUSE_DOWN && (button & WUSS_BUTTON_CLICK))
       wuss->capture = win;
 
-    event.kind              = wuss_EVENT_MOUSE;
-    event.data.mouse.action = action;
-    event.data.mouse.point  = doc_point;
-    event.data.mouse.button = button;
+    event.kind                 = wuss_EVENT_MOUSE;
+    event.data.mouse.action    = action;
+    event.data.mouse.point     = doc_point;
+    event.data.mouse.button    = button;
+    event.data.mouse.modifiers = wuss->modifiers;
     return wuss__deliver(win->task, win, &event);
   }
 

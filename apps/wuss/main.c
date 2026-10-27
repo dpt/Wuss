@@ -326,17 +326,18 @@ static bool frame_poll(struct wuss_frame_ctx *c,
 static void wuss_frame(void *arg)
 {
   struct wuss_frame_ctx *c = arg;
-  bool         scripting;
-  wuss_input_t ev;
-  bool         move_pending;
-  point_t      move_pos;
-  bool         garbage;
-  bool         stress;
-  bool         redraw_all;
-  box_t        old_pointer;
-  bool         had_pointer;
-  box_t        new_pointer;
-  bool         has_pointer;
+  bool                 scripting;
+  wuss_input_t         ev;
+  bool                 move_pending;
+  point_t              move_pos;
+  wuss_key_modifiers_t move_mods;
+  bool                 garbage;
+  bool                 stress;
+  bool                 redraw_all;
+  box_t                old_pointer;
+  bool                 had_pointer;
+  box_t                new_pointer;
+  bool                 has_pointer;
 
   /* before anything below can draw: see g.pointer */
   had_pointer = pointer_undraw(&old_pointer);
@@ -356,6 +357,7 @@ static void wuss_frame(void *arg)
    * nothing is redrawn until the pointer stops. */
   move_pending = false;
   move_pos     = POINT(0, 0);
+  move_mods    = wuss_KEY_MOD_NONE;
 
   scripting = g.scripted;
   while (frame_poll(c, &scripting, &ev))
@@ -365,12 +367,14 @@ static void wuss_frame(void *arg)
       g.pointer.pos       = ev.pos;
       g.pointer.in_window = true;
       move_pos            = ev.pos;
+      move_mods           = ev.mods;
       move_pending        = true;
       continue;
     }
 
     if (move_pending)
     {
+      wuss_set_modifiers(c->wuss, move_mods);
       wuss_mouse_move(c->wuss, move_pos, NULL);
       move_pending = false;
     }
@@ -456,7 +460,10 @@ static void wuss_frame(void *arg)
   }
 
   if (move_pending)
+  {
+    wuss_set_modifiers(c->wuss, move_mods);
     wuss_mouse_move(c->wuss, move_pos, NULL);
+  }
 
   wuss_idle(c->wuss);
   tasks_reap_apps();

@@ -267,10 +267,11 @@ static result_t mouse_move(wuss_t *wuss, point_t p, wuss_window_t **hit)
     }
 #endif
 
-    event.kind              = wuss_EVENT_MOUSE;
-    event.data.mouse.action = wuss_MOUSE_MOVE;
-    event.data.mouse.point  = doc_point;
-    event.data.mouse.button = wuss_BUTTON_SELECT;
+    event.kind                 = wuss_EVENT_MOUSE;
+    event.data.mouse.action    = wuss_MOUSE_MOVE;
+    event.data.mouse.point     = doc_point;
+    event.data.mouse.button    = wuss_BUTTON_SELECT;
+    event.data.mouse.modifiers = wuss->modifiers;
     return wuss__deliver(win->task, win, &event);
   }
 

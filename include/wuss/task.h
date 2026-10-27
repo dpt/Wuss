@@ -226,12 +226,14 @@ typedef struct wuss_event
      * again. With a scroll offset of (0,0) this is the same as window-local
      * content coordinates, where the content area's top-left is (0,0).
      * button is meaningful for DOWN/UP, and is a set of wuss_button_t
-     * flags, so test it with '&' rather than comparing for equality. */
+     * flags, so test it with '&' rather than comparing for equality.
+     * modifiers are the keys held, as last passed to wuss_set_modifiers. */
     struct
     {
-      wuss_mouse_action_t action;
-      point_t             point;
-      wuss_button_t       button;
+      wuss_mouse_action_t  action;
+      point_t              point;
+      wuss_button_t        button;
+      wuss_key_modifiers_t modifiers;
     }
     mouse;
 

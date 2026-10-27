@@ -460,6 +460,7 @@ bool wuss_frontend_poll(wuss_frontend_t *fe, wuss_input_t *event)
       last_py = py;
       event->kind = wuss_INPUT_MOUSE_MOVE;
       event->pos  = POINT(px, py);
+      event->mods = read_mods();
       return true;
     }
   }
