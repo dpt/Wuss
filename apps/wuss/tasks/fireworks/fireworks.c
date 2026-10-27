@@ -252,12 +252,10 @@ static void fireworks_init_styles(particle_style_t *styles)
 static unsigned int fireworks_rand(int nbits, void *opaque)
 {
   fireworks_task_t *pt;
-  uint32_t          r;
 
   pt = opaque;
 
-  r = rng_xorshift32(&pt->rng);
-  return (nbits >= 32) ? r : r & ((1u << nbits) - 1);
+  return rng_bits(&pt->rng, nbits);
 }
 
 static unsigned int fireworks_time(void *opaque)

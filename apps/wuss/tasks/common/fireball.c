@@ -21,12 +21,10 @@ static const unsigned char g_fireball_fire[PALETTE_SIZE][3] =
 static unsigned int fireball_rand(int nbits, void *opaque)
 {
   fireball_t *fb;
-  uint32_t    r;
 
   fb = opaque;
 
-  r = rng_xorshift32(&fb->rng);
-  return (nbits >= 32) ? r : r & ((1u << nbits) - 1);
+  return rng_bits(&fb->rng, nbits);
 }
 
 static unsigned int fireball_time(void *opaque)
