@@ -34,7 +34,8 @@ typedef enum painting_tool
   painting_TOOL_RECT,
   painting_TOOL_RECT_FILL, /* as RECT, but solid */
   painting_TOOL_FILL,
-  painting_TOOL_SPRAY,  /* scatter dots around the pointer while held */
+  painting_TOOL_GRADIENT, /* drag a linear gradient over the selection */
+  painting_TOOL_SPRAY, /* scatter dots around the pointer while held */
   painting_TOOL_SELECT, /* rubber-band a rectangular selection */
   painting_TOOL_LASSO,  /* drag out a freeform selection */
   painting_TOOL_PICK,   /* take the fg (Select) or bg (Adjust) from the canvas */

@@ -347,6 +347,24 @@ result_t paintingdoc_test(const char *resources)
   CHECK(px(doc, 5, 5) == WHITE);
   CHECK(!paintingdoc_can_undo(doc));
 
+  printf("test: gradient runs from c0 to c1 across the canvas, clamps beyond "
+         "its ends, and a click does nothing\n");
+
+  dirty = paintingdoc_gradient(doc, POINT(5, 5), POINT(5, 5), black(), red());
+  CHECK(box_is_empty(&dirty));
+  CHECK(!paintingdoc_can_undo(doc));
+
+  dirty = paintingdoc_gradient(doc, POINT(5, 0), POINT(15, 0), black(), red());
+  CHECK(dirty.x0 == 0 && dirty.y0 == 0 && dirty.x1 == 20 && dirty.y1 == 20);
+  CHECK(px(doc, 0, 7) == BLACK);
+  CHECK(px(doc, 5, 19) == BLACK);
+  CHECK(px(doc, 10, 3) == 0xFF800000u);
+  CHECK(px(doc, 15, 0) == RED);
+  CHECK(px(doc, 19, 12) == RED);
+  paintingdoc_undo(doc);
+  CHECK(px(doc, 10, 3) == WHITE);
+  CHECK(!paintingdoc_can_undo(doc));
+
   printf("test: undo keeps at most PAINTINGDOC_UNDO_MAX steps, dropping the "
          "oldest\n");
 

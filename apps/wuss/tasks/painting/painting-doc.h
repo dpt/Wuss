@@ -134,6 +134,16 @@ box_t paintingdoc_rect(paintingdoc_t *doc,
  * the fill colour; otherwise takes its own checkpoint */
 box_t paintingdoc_fill(paintingdoc_t *doc, point_t p, colour_t colour);
 
+/* fill the selection, or the whole canvas if none, with a linear gradient,
+ * alpha included, from c0 at a to c1 at b. pixels beyond either end take
+ * that end's colour. does nothing, and takes no checkpoint, if a == b;
+ * otherwise takes its own checkpoint */
+box_t paintingdoc_gradient(paintingdoc_t *doc,
+                           point_t        a,
+                           point_t        b,
+                           colour_t       c0,
+                           colour_t       c1);
+
 /* the colour and alpha of the canvas pixel at p, into *colour. false,
  * leaving *colour alone, if p is off the canvas */
 int paintingdoc_pick(const paintingdoc_t *doc, point_t p, colour_t *colour);

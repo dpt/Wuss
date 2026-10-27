@@ -71,6 +71,7 @@ static const char *painting_tool_names[painting_TOOL__COUNT] =
   "rectangle",
   "rectangle-fill",
   "fill",
+  "gradient",
   "spray",
   "select",
   "lasso",
@@ -469,12 +470,13 @@ void painting_destroy(painting_task_t *task)
 
 /* ----------------------------------------------------------------------- */
 
-/* line, rect and select are rubber-banded: shown on the window, not drawn
- * into the canvas, until the button is released */
+/* line, rect, gradient and select are rubber-banded: shown on the window, not
+ * drawn into the canvas, until the button is released */
 static int painting_is_rubber_band(const painting_task_t *pt)
 {
   return pt->tool == painting_TOOL_LINE || pt->tool == painting_TOOL_RECT ||
-         pt->tool == painting_TOOL_RECT_FILL || pt->tool == painting_TOOL_SELECT;
+         pt->tool == painting_TOOL_RECT_FILL ||
+         pt->tool == painting_TOOL_GRADIENT || pt->tool == painting_TOOL_SELECT;
 }
 
 /* select and lasso make a selection rather than paint */
@@ -669,6 +671,8 @@ static result_t painting_redraw(painting_task_t    *pt,
 
     if (pt->tool == painting_TOOL_LINE)
       paintingdoc_draw_stroke(scr, a, b, pt->size, painting_stroke_colour(pt));
+    else if (pt->tool == painting_TOOL_GRADIENT)
+      paintingdoc_draw_stroke(scr, a, b, 1, colour_rgb(0x00, 0x00, 0x00));
     else if (pt->tool == painting_TOOL_SELECT)
       paintingdoc_draw_rect(scr, a, b, 1, 0, colour_rgb(0x00, 0x00, 0x00));
     else
@@ -793,6 +797,12 @@ static box_t painting_band_commit(painting_task_t *pt)
   colour_t colour;
 
   colour = painting_stroke_colour(pt);
+
+  /* Select runs from fg to bg, Adjust the other way */
+  if (pt->tool == painting_TOOL_GRADIENT)
+    return pt->held == wuss_BUTTON_ADJUST ?
+           paintingdoc_gradient(pt->doc, pt->anchor, pt->last, pt->bg, pt->fg) :
+           paintingdoc_gradient(pt->doc, pt->anchor, pt->last, pt->fg, pt->bg);
 
   if (pt->tool == painting_TOOL_RECT || pt->tool == painting_TOOL_RECT_FILL)
     return paintingdoc_rect(pt->doc, pt->anchor, pt->last, pt->size,
@@ -995,9 +1005,9 @@ static void painting_step_size(painting_task_t *pt, int delta)
   (void) wuss_slider_row_set(pt->optionbar, &pt->size_row, pt->size);
 }
 
-/* B, H, E, L, R, X, F, P, S, O and I pick the matching tool, [ and ] step the
- * size down and up, Escape drops the selection. Anything else is passed back
- * unclaimed */
+/* B, H, E, L, R, X, F, G, P, S, O and I pick the matching tool, [ and ] step
+ * the size down and up, Escape drops the selection. Anything else is passed
+ * back unclaimed */
 static result_t painting_key(painting_task_t *pt, int code)
 {
   box_t box;
@@ -1011,6 +1021,7 @@ static result_t painting_key(painting_task_t *pt, int code)
   case 'r': case 'R': painting_set_tool(pt, painting_TOOL_RECT);   break;
   case 'x': case 'X': painting_set_tool(pt, painting_TOOL_RECT_FILL); break;
   case 'f': case 'F': painting_set_tool(pt, painting_TOOL_FILL);   break;
+  case 'g': case 'G': painting_set_tool(pt, painting_TOOL_GRADIENT); break;
   case 'p': case 'P': painting_set_tool(pt, painting_TOOL_SPRAY);  break;
   case 's': case 'S': painting_set_tool(pt, painting_TOOL_SELECT); break;
   case 'o': case 'O': painting_set_tool(pt, painting_TOOL_LASSO);  break;
