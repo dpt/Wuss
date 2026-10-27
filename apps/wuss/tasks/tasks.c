@@ -165,7 +165,6 @@ g_visuals_tasks[] =
   { "Curving", curving_app_create },
   { "Gradient", gradient_app_create },
   { "Greebling", greebling_app_create },
-  { "Oscillating", oscillating_app_create },
   { "Patterns", patterns_app_create }
 },
 g_toys_tasks[] =
@@ -173,6 +172,7 @@ g_toys_tasks[] =
   { "Doughnut", doughnut_app_create },
   { "Fern", fern_app_create },
   { "Fireworks", fireworks_app_create },
+  { "Oscillating", oscillating_app_create },
   { "Saturn", saturn_app_create },
   { "Sofa", sofa_app_create }
 },
