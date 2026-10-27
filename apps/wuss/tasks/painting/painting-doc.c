@@ -1,6 +1,5 @@
 /* wuss/tasks/painting/painting-doc.c -- paint canvas, drawing and undo */
 
-#include <math.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -639,29 +638,6 @@ box_t paintingdoc_rect(paintingdoc_t *doc,
   return dirty;
 }
 
-/* the run [*xa, *xb] of row y covered by the ellipse filling the w by h box
- * at (x0, y0): those pixels whose centres lie inside it. false if none */
-static int ellipse_run(int x0, int y0, int w, int h, int y, int *xa, int *xb)
-{
-  double rx, ry, cx, dy, half;
-
-  if (w <= 0 || h <= 0)
-    return 0;
-
-  rx = w / 2.0;
-  ry = h / 2.0;
-  cx = x0 + rx;
-  dy = (y + 0.5 - (y0 + ry)) / ry;
-  if (dy <= -1.0 || dy >= 1.0)
-    return 0;
-
-  half = rx * sqrt(1.0 - dy * dy);
-  *xa  = (int) ceil(cx - half - 0.5);
-  *xb  = (int) floor(cx + half - 0.5);
-
-  return *xa <= *xb;
-}
-
 void paintingdoc_draw_ellipse(screen_t *scr,
                               point_t   a,
                               point_t   b,
@@ -669,32 +645,17 @@ void paintingdoc_draw_ellipse(screen_t *scr,
                               int       fill,
                               colour_t  colour)
 {
-  int x0, y0, w, h, t;
-  int y, xa, xb, ia, ib;
+  int      x, y;
+  size2d_t size;
 
-  x0 = MIN(a.x, b.x);
-  y0 = MIN(a.y, b.y);
-  w  = MAX(a.x, b.x) - x0 + 1;
-  h  = MAX(a.y, b.y) - y0 + 1;
-  t  = MAX(width, 1);
+  x    = MIN(a.x, b.x);
+  y    = MIN(a.y, b.y);
+  size = SIZE2D(MAX(a.x, b.x) - x + 1, MAX(a.y, b.y) - y + 1);
 
-  /* an outline is the ellipse less the one inset by its width */
-  for (y = y0; y < y0 + h; y++)
-  {
-    if (!ellipse_run(x0, y0, w, h, y, &xa, &xb))
-      continue;
-
-    if (fill ||
-        !ellipse_run(x0 + t, y0 + t, w - 2 * t, h - 2 * t, y, &ia, &ib))
-    {
-      screen_fill_hline(scr, xa, y, xb - xa + 1, colour);
-    }
-    else
-    {
-      screen_fill_hline(scr, xa, y, ia - xa, colour);
-      screen_fill_hline(scr, ib + 1, y, xb - ib, colour);
-    }
-  }
+  if (fill)
+    screen_fill_ellipse(scr, x, y, size, colour);
+  else
+    screen_draw_ellipse(scr, x, y, size, width, colour);
 }
 
 box_t paintingdoc_ellipse(paintingdoc_t *doc,
