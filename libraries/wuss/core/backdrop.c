@@ -37,8 +37,6 @@ void wuss__rebuild_fills(wuss_t *wuss)
   for (i = 0; i < wuss->npalette; i++)
   {
     pattern_t pat;
-    unsigned  r0, g0, b0, r1, g1, b1;
-    bool      uniform;
 
     if (nphys == 0)
     {
@@ -51,19 +49,7 @@ void wuss__rebuild_fills(wuss_t *wuss)
 
     pat = pattern_from_colour(scr->palette, nphys, wuss->palette[i]);
 
-    colour_get_rgb(&pat.fg, &r0, &g0, &b0);
-    colour_get_rgb(&pat.bg, &r1, &g1, &b1);
-    uniform = pat.bits[0] == 0x00 || pat.bits[0] == 0xFF;
-    if (uniform)
-    {
-      int k;
-
-      for (k = 1; k < 8; k++)
-        if (pat.bits[k] != pat.bits[0])
-          uniform = false;
-    }
-
-    wuss->autosolid[i] = uniform || (r0 == r1 && g0 == g1 && b0 == b1);
+    wuss->autosolid[i] = pattern_is_solid(&pat);
     if (wuss->autosolid[i] && pat.bits[0] == 0x00)
       pat.fg = pat.bg; /* solid colour always lives in fg */
     wuss->autofill[i] = pat;
