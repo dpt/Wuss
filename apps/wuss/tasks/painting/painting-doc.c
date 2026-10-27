@@ -748,103 +748,19 @@ static uint32_t *pixel_row(const paintingdoc_t *doc, int y)
 
 box_t paintingdoc_fill(paintingdoc_t *doc, point_t p, colour_t colour)
 {
-  box_t     dirty = BOX_INIT;
-  uint32_t  target, fillpx;
-  uint32_t *row;
-  point_t  *stack;
-  int       n, cap;
-  int       w, h;
-  int       x, x0, x1, y, dy, in_span;
-  point_t  *grown;
+  box_t dirty = BOX_INIT;
 
-  w = doc->bm.size.w;
-  h = doc->bm.size.h;
-
-  if (p.x < 0 || p.x >= w || p.y < 0 || p.y >= h)
+  if (p.x < 0 || p.x >= doc->bm.size.w || p.y < 0 || p.y >= doc->bm.size.h)
     return dirty;
 
-  target = pixel_row(doc, p.y)[p.x];
-  fillpx = screen_colour_to_pixel(&doc->scr, colour);
-  if (target == fillpx)
+  if (pixel_row(doc, p.y)[p.x] == screen_colour_to_pixel(&doc->scr, colour))
     return dirty;
 
   checkpoint_or_warn(doc);
 
-  cap   = 256;
-  n     = 0;
-  stack = malloc((size_t) cap * sizeof(*stack));
-  if (stack == NULL)
-    return dirty;
+  if (bitmap_flood_fill(&doc->bm, p, colour, &dirty) != result_OK)
+    logf_warning("painting: no memory to finish fill");
 
-  stack[n++] = p;
-
-  while (n > 0)
-  {
-    n--;
-    x = stack[n].x;
-    y = stack[n].y;
-    row = pixel_row(doc, y);
-
-    /* a seed pushed earlier may since have been filled over by another span */
-    if (row[x] != target)
-      continue;
-
-    x0 = x;
-    while (x0 > 0 && row[x0 - 1] == target)
-      x0--;
-    x1 = x;
-    while (x1 < w - 1 && row[x1 + 1] == target)
-      x1++;
-
-    for (x = x0; x <= x1; x++)
-      row[x] = fillpx;
-
-    dirty.x0 = MIN(dirty.x0, x0);
-    dirty.x1 = MAX(dirty.x1, x1 + 1);
-    dirty.y0 = MIN(dirty.y0, y);
-    dirty.y1 = MAX(dirty.y1, y + 1);
-
-    /* one seed per run of target pixels in each adjacent row */
-    for (dy = -1; dy <= 1; dy += 2)
-    {
-      if (y + dy < 0 || y + dy >= h)
-        continue;
-
-      row     = pixel_row(doc, y + dy);
-      in_span = 0;
-
-      for (x = x0; x <= x1; x++)
-      {
-        if (row[x] != target)
-        {
-          in_span = 0;
-          continue;
-        }
-        if (in_span)
-          continue;
-
-        in_span = 1;
-
-        if (n == cap)
-        {
-          grown = realloc(stack, (size_t) cap * 2 * sizeof(*stack));
-          if (grown == NULL)
-          {
-            logf_warning("painting: no memory to finish fill");
-            free(stack);
-            sel_clip(doc, dirty);
-            return dirty;
-          }
-          stack = grown;
-          cap  *= 2;
-        }
-
-        stack[n++] = POINT(x, y + dy);
-      }
-    }
-  }
-
-  free(stack);
   sel_clip(doc, dirty);
   return dirty;
 }
