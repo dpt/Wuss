@@ -4,6 +4,8 @@
 #include "fortify/fortify.h"
 #endif
 
+#include "framebuf/pattern.h"
+#include "framebuf/pixelfmt.h"
 #include "framebuf/screen.h"
 #include "geom/box.h"
 #include "geom/size.h"
@@ -47,8 +49,11 @@ void wuss_swatches_draw(const wuss_swatches_t *swatches,
   size2d_t  cell;
   int       ox, oy;
   colour_t  black;
+  int       nphys;
   int       i;
   int       x, y;
+  pattern_t pat;
+  box_t     box;
 
   scr = event->data.redraw.scr;
   if (!swatches_layout(swatches, &cols, &cell))
@@ -59,13 +64,30 @@ void wuss_swatches_draw(const wuss_swatches_t *swatches,
   oy    = event->data.redraw.bounds->y0 - event->data.redraw.scroll.y +
           swatches->bbox.y0;
   black = colour_rgb(0x00, 0x00, 0x00);
+  nphys = (scr->palette != NULL) ?
+          pixelfmt_paletted_nentries(scr->format) : 0;
 
   for (i = 0; i < swatches->ncolours; i++)
   {
     x = ox + (i % cols) * (cell.w + swatches->gap);
     y = oy + (i / cols) * (cell.h + swatches->gap);
 
-    screen_fill_rect(scr, x, y, cell, swatches->colours[i]);
+    if (nphys == 0)
+    {
+      screen_fill_rect(scr, x, y, cell, swatches->colours[i]);
+    }
+    else
+    {
+      /* on a paletted screen show a colour the palette lacks as a Bayer
+       * mix of two entries, phased to the cell so it holds still.
+       * ponytail: pattern_from_colour is O(nphys²) per swatch per redraw;
+       * cache the patterns in the swatches if a 256-colour screen drags */
+      pat        = pattern_from_colour(scr->palette, nphys,
+                                       swatches->colours[i]);
+      pat.origin = POINT(x, y);
+      box        = (box_t) BOX_POS_SIZE(x, y, cell.w, cell.h);
+      screen_fill_pattern(scr, &box, &pat);
+    }
     if (swatches->outline)
       screen_draw_rect(scr, x, y, cell, black);
   }
