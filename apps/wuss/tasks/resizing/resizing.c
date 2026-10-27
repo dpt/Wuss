@@ -43,32 +43,6 @@ static const char *const resizing_scale_names[RESIZING_NSCALES] =
 
 /* ----------------------------------------------------------------------- */
 
-/* Load the PNG at path as rgbx8888/rgba8888. bitmap_load_png keeps a
- * palette-type PNG paletted (p1 to p8), so expand that one. */
-static result_t resizing_load(const char *path, bitmap_t *bm)
-{
-  result_t  rc;
-  bitmap_t *deep;
-
-  rc = bitmap_load_png(bm, path);
-  if (rc != result_OK)
-    return rc;
-
-  if (bm->format < pixelfmt_p1 || bm->format > pixelfmt_p8)
-    return result_OK;
-
-  rc = bitmap_convert(bm, pixelfmt_rgbx8888, &deep);
-  free(bm->base);
-  free(bm->palette);
-  if (rc != result_OK)
-    return rc;
-
-  *bm = *deep;
-  free(deep);
-
-  return result_OK;
-}
-
 static void resizing_free_resized(resizing_task_t *rt)
 {
   if (rt->resized == NULL)
@@ -150,7 +124,7 @@ static result_t resizing_show(resizing_task_t *rt, const char *path)
   if (!path_leaf_strip_ext(path_leaf(path), ".png", name, sizeof(name)))
     return result_BAD_ARG;
 
-  rc = resizing_load(path, &next);
+  rc = bitmap_load_png_deep(&next, path, pixelfmt_rgbx8888);
   if (rc != result_OK)
   {
     logf_warning("resizing: cannot load \"%s\" (rc=0x%X)", path, rc);

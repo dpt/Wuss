@@ -137,32 +137,6 @@ static int dithering_colours(int pos)
   return (int) floor(pow(2.0, (double) pos / DITHERING_COLOURS_STEPS) + 0.5);
 }
 
-/* Load the PNG at path as rgbx8888/rgba8888. bitmap_load_png keeps a
- * palette-type PNG paletted (p1 to p8), so expand that one. */
-static result_t dithering_load(const char *path, bitmap_t *bm)
-{
-  result_t  rc;
-  bitmap_t *deep;
-
-  rc = bitmap_load_png(bm, path);
-  if (rc != result_OK)
-    return rc;
-
-  if (bm->format < pixelfmt_p1 || bm->format > pixelfmt_p8)
-    return result_OK;
-
-  rc = bitmap_convert(bm, pixelfmt_rgbx8888, &deep);
-  free(bm->base);
-  free(bm->palette);
-  if (rc != result_OK)
-    return rc;
-
-  *bm = *deep;
-  free(deep);
-
-  return result_OK;
-}
-
 static void dithering_free_dithered(dithering_task_t *dt)
 {
   if (dt->dithered == NULL)
@@ -285,7 +259,7 @@ static result_t dithering_show(dithering_task_t *dt, const char *path)
   if (!path_leaf_strip_ext(path_leaf(path), ".png", name, sizeof(name)))
     return result_BAD_ARG;
 
-  rc = dithering_load(path, &next);
+  rc = bitmap_load_png_deep(&next, path, pixelfmt_rgbx8888);
   if (rc != result_OK)
   {
     logf_warning("dithering: cannot load \"%s\" (rc=0x%X)", path, rc);

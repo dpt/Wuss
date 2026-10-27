@@ -147,7 +147,7 @@ void viewing_destroy(viewing_task_t *task)
 
 /* Nonzero if any pixel of bm is less than opaque. ponytail: assumes alpha in
  * the top byte (bgra8888/rgba8888, as the PNG loader gives); paletted images
- * are made opaque by load_png_deep so never get checks */
+ * are made opaque by bitmap_load_png_deep so never get checks */
 static int viewing_has_alpha(const bitmap_t *bm)
 {
   int                 y;
@@ -289,7 +289,7 @@ static result_t viewing_show(viewing_task_t *ic, const char *path)
   result_t rc;
   bitmap_t next;
 
-  rc = load_png_deep(&next, path, pixelfmt_rgbx8888);
+  rc = bitmap_load_png_deep(&next, path, pixelfmt_rgbx8888);
   if (rc != result_OK)
   {
     logf_warning("viewing: cannot load \"%s\" (rc=0x%X)", path, rc);

@@ -98,7 +98,7 @@ static result_t tiling_show(tiling_task_t *tc, const char *path)
   if (!path_leaf_strip_ext(path_leaf(path), ".png", name, sizeof(name)))
     return result_BAD_ARG;
 
-  rc = load_png_deep(&next, path, pixelfmt_rgbx8888);
+  rc = bitmap_load_png_deep(&next, path, pixelfmt_rgbx8888);
   if (rc != result_OK)
   {
     logf_warning("tiling: cannot load \"%s\" (rc=0x%X)", path, rc);

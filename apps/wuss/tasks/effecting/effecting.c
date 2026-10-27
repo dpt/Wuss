@@ -471,7 +471,7 @@ static result_t effecting_show(effecting_task_t *ec, const char *path)
   if (!path_leaf_strip_ext(path_leaf(path), ".png", name, sizeof(name)))
     return result_BAD_ARG;
 
-  rc = load_png_deep(&next, path, pixelfmt_rgbx8888);
+  rc = bitmap_load_png_deep(&next, path, pixelfmt_rgbx8888);
   if (rc != result_OK)
   {
     logf_warning("effecting: cannot load \"%s\" (rc=0x%X)", path, rc);

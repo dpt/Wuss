@@ -28,40 +28,6 @@
 #define TASK_PROGINFO_DESC(name, purpose) \
   { name, purpose, "© DPTLib contributors", "1.0 (" __DATE__ ")" }
 
-/* bitmap_load_png keeps a palette-type or greyscale PNG paletted, so convert one
- * back to a deep format here for screen_copy_bitmap and
- * screen_copy_ninepatch. Callers wanting an untouched load (e.g. to inspect
- * the palette) pass pixelfmt_unknown to skip conversion. */
-static inline result_t load_png_deep(bitmap_t   *bm,
-                                     const char *filename,
-                                     pixelfmt_t  fmt)
-{
-  result_t  rc;
-  bitmap_t *deep;
-
-  rc = bitmap_load_png(bm, filename);
-  if (rc != result_OK)
-    return rc;
-
-  if (fmt == pixelfmt_unknown || bm->format < pixelfmt_p1 ||
-      bm->format > pixelfmt_p8)
-    return result_OK;
-
-  rc = bitmap_convert(bm, fmt, &deep);
-  if (rc != result_OK)
-  {
-    free(bm->base);
-    return rc;
-  }
-
-  free(bm->base);
-  free(bm->palette);
-  *bm = *deep;
-  free(deep);
-
-  return result_OK;
-}
-
 /* where a demo task's window opens: in the free region of the safe area
  * nearest the pointer, else centred on the pointer */
 static const wuss_place_t task_place =
