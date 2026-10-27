@@ -29,6 +29,7 @@ typedef enum painting_tool
 {
   painting_TOOL_BRUSH,
   painting_TOOL_PAINTBRUSH, /* stamp the chosen nozzle along the stroke */
+  painting_TOOL_WOBBLE,     /* a freehand stroke with wobbly edges */
   painting_TOOL_ERASER,
   painting_TOOL_LINE,
   painting_TOOL_RECT,
@@ -100,6 +101,7 @@ typedef struct painting_task
   int                ants_tick;  /* idles since the ants last moved */
   int                ants_phase; /* where the ants have marched, 0..7 */
   rng_t              rng;        /* the spray's scatter */
+  paintingdoc_wobble_t wobble;   /* the wobbly stroke in progress */
   wuss_icon_t       *tool_icons[painting_TOOL__COUNT];
   wuss_slider_row_t  size_row;
   wuss_menu_handle_t menu_handle; /* live only between open and a pick */

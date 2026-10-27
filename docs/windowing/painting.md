@@ -31,13 +31,17 @@ makes an instance of its own.
 - **Select** paints with the foreground colour, **Adjust** with the
   background colour. Clicking a swatch in the toolbox sets the foreground
   (Select) or the background (Adjust).
-- Tools: brush, eraser (wipes to transparent), line, rect, filled
-  rect, flood fill, spray, select (rectangle), lasso, magic wand and colour
-  picker. Press `B` `E` `L` `R` `X` `F` `P` `S` `O` `W` or `I` to pick one. Other keys pass on to the demo's
+- Tools: brush, wobbly brush, eraser (wipes to transparent), line, rect,
+  filled rect, flood fill, spray, select (rectangle), lasso, magic wand and
+  colour picker. Press `B` `K` `E` `L` `R` `X` `F` `P` `S` `O` `W` or `I` to
+  pick one. Other keys pass on to the demo's
   hotkeys. The toolbox groups its buttons: selection tools at the top, then
   painting tools, then shapes, each outline beside its filled form. The
   slider sets the width, 1 to 32 pixels. For spray it sets the
   radius (3 pixels per unit).
+- The wobbly brush draws an inked line whose two edges wander in and out
+  on their own, swelling slowly and jittering finely, in the manner of
+  Ellis Nadler's drawings. Each stroke wobbles differently.
 - The colour picker takes the foreground (Select) or the background
   (Adjust) colour from the canvas pixel clicked.
 - Spray scatters dots in a disc round the pointer. Dots build up while the

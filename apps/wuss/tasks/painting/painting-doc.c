@@ -549,6 +549,90 @@ box_t paintingdoc_brush(paintingdoc_t       *doc,
 
 /* ----------------------------------------------------------------------- */
 
+/* a well-mixed 32-bit value for knot k of the noise seeded by seed */
+static uint32_t wobble_hash(uint32_t seed, int k)
+{
+  uint32_t h;
+
+  h  = seed ^ ((uint32_t) k * 0x9E3779B9u);
+  h ^= h >> 16;
+  h *= 0x7FEB352Du;
+  h ^= h >> 15;
+  h *= 0x846CA68Bu;
+  h ^= h >> 16;
+
+  return h;
+}
+
+/* smooth value noise at step s (>= 0), -256..256, with a random knot every
+ * period steps eased into the next */
+static int wobble_noise(uint32_t seed, int s, int period)
+{
+  int k, f, v0, v1, t;
+
+  k  = s / period;
+  f  = s % period;
+  v0 = (int) (wobble_hash(seed, k) & 511) - 256;
+  v1 = (int) (wobble_hash(seed, k + 1) & 511) - 256;
+  t  = 256 * f * f * (3 * period - 2 * f) / (period * period * period);
+
+  return v0 + (v1 - v0) * t / 256;
+}
+
+/* stamp a disc at every pixel step: its radius wanders, moving both edges
+ * apart and together, and its centre wanders across the stroke, moving them
+ * together, so each edge wobbles on its own. the radius swells slowly and
+ * jitters quickly: the slow swell alone looks like a string of beads */
+box_t paintingdoc_wobble(paintingdoc_t        *doc,
+                         point_t               a,
+                         point_t               b,
+                         int                   width,
+                         colour_t              colour,
+                         paintingdoc_wobble_t *wobble)
+{
+  box_t dirty;
+  int   r, as, aj, ao, ps, pj, dx, dy, n, i, s, rr, o, cx, cy;
+
+  r  = MAX(width, 1) / 2;
+  as = r / 4;           /* how far the slow swell moves the radius */
+  aj = (r + 4) / 5;     /* how far the fast jitter moves it */
+  ao = r / 4;           /* how far the centre wanders */
+  ps = MAX(3 * r, 8);   /* steps between the swell's knots */
+  pj = MAX(r / 2, 2);   /* steps between the jitter's knots */
+  dx = b.x - a.x;
+  dy = b.y - a.y;
+  n  = MAX(abs(dx), abs(dy));
+
+  for (i = 0; i <= n; i++)
+  {
+    s  = wobble->step + i;
+    rr = wobble_noise(wobble->seed, s, ps) * as +
+         wobble_noise(wobble->seed ^ 0x27D4EB2Fu, s, pj) * aj;
+    rr = r + (rr >= 0 ? rr + 128 : rr - 128) / 256; /* rounded: a thin
+                                                      * line's one-pixel
+                                                      * jitter survives */
+    o  = wobble_noise(wobble->seed ^ 0x5BD1E995u, s, ps) * ao;
+    o  = (o >= 0 ? o + 128 : o - 128) / 256;
+    cx = a.x;
+    cy = a.y;
+    if (n)
+    {
+      /* (-dy, dx) / n is across the stroke, near enough unit length */
+      cx += (dx * i - dy * o) / n;
+      cy += (dy * i + dx * o) / n;
+    }
+    screen_fill_circle(&doc->scr, cx, cy, MAX(rr, 0), colour);
+  }
+  wobble->step += n;
+
+  dirty = clipped_box(doc, a, b, r + as + aj + ao + 1);
+  sel_clip(doc, dirty);
+
+  return dirty;
+}
+
+/* ----------------------------------------------------------------------- */
+
 box_t paintingdoc_spray(paintingdoc_t *doc,
                         point_t        p,
                         int            radius,

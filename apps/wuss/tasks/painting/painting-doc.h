@@ -117,6 +117,26 @@ box_t paintingdoc_brush(paintingdoc_t       *doc,
                         int                  size,
                         colour_t             colour);
 
+/* a wobbly stroke's progress, carried from one segment to the next so the
+ * wobble runs on unbroken. set seed to any value (a fresh one per stroke for
+ * a fresh wobble) and step to 0 before the first segment */
+typedef struct paintingdoc_wobble
+{
+  uint32_t seed;
+  int      step; /* pixel steps drawn so far */
+}
+paintingdoc_wobble_t;
+
+/* draw a stroke segment a to b about width pixels wide whose two edges
+ * wander in and out independently, like an inked line drawn with a shaky
+ * hand. the caller takes the checkpoint, as for paintingdoc_stroke */
+box_t paintingdoc_wobble(paintingdoc_t        *doc,
+                         point_t               a,
+                         point_t               b,
+                         int                   width,
+                         colour_t              colour,
+                         paintingdoc_wobble_t *wobble);
+
 /* scatter dots of colour over the disc of the given radius in pixels centred
  * on p. each call adds a light, even dusting, so repeat it to build up. the
  * caller takes the checkpoint, as for paintingdoc_stroke */

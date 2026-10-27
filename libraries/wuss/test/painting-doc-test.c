@@ -67,11 +67,13 @@ static colour_t clear(void)
 
 result_t paintingdoc_test(const char *resources)
 {
-  paintingdoc_t *doc = NULL;
-  box_t          dirty;
-  char           path[256];
-  int            i, n, x, y;
-  uint32_t       before, after;
+  paintingdoc_t       *doc = NULL;
+  box_t                dirty;
+  char                 path[256];
+  int                  i, n, x, y;
+  uint32_t             before, after;
+  paintingdoc_wobble_t wobble;
+  int                  lo, hi;
 
   printf("test: create makes a white bgra8888 canvas; a bad size is "
          "rejected\n");
@@ -179,6 +181,38 @@ result_t paintingdoc_test(const char *resources)
   CHECK(px(doc, 0, 0) == RED);
   CHECK(px(doc, 1, 0) == RED);
   CHECK(dirty.x0 >= 0 && dirty.y0 >= 0);
+
+  paintingdoc_destroy(doc);
+  doc = NULL;
+
+  printf("test: a wobbly stroke keeps its spine but its edge wanders, "
+         "inside the dirty box\n");
+
+  CHECK(paintingdoc_create(SIZE2D(80, 30), &doc) == result_OK);
+  wobble.seed = 1;
+  wobble.step = 0;
+  dirty = paintingdoc_wobble(doc, POINT(10, 15), POINT(70, 15), 12, black(),
+                             &wobble);
+  CHECK(wobble.step == 60);
+  lo = 30;
+  hi = -1;
+  for (x = 0; x < 80; x++)
+  {
+    for (y = 0; y < 30; y++)
+    {
+      if (px(doc, x, y) != BLACK)
+        continue;
+      CHECK(box_contains_point(&dirty, x, y));
+    }
+    if (x < 10 || x > 70)
+      continue;
+    CHECK(px(doc, x, 15) == BLACK);
+    for (y = 0; px(doc, x, y) != BLACK; y++)
+      ;
+    lo = MIN(lo, y);
+    hi = MAX(hi, y);
+  }
+  CHECK(hi - lo >= 2); /* the top edge is not straight */
 
   paintingdoc_destroy(doc);
   doc = NULL;

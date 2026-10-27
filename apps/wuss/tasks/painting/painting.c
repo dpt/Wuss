@@ -35,7 +35,7 @@
 #define TB_TOOL_SIZE 24  /* button size, including its bevel */
 #define TB_GROUP_GAP 2   /* extra space between groups */
 #define TB_COLUMNS   2
-#define TB_ROWS      9   /* rows used by painting_tool_cells */
+#define TB_ROWS      10  /* rows used by painting_tool_cells */
 #define TB_GROUPS    3   /* groups used by painting_tool_cells */
 #define TB_W         (TB_MARGIN + TB_COLUMNS * TB_TOOL_CELL - \
                       (TB_TOOL_CELL - TB_TOOL_SIZE) + TB_MARGIN)
@@ -78,6 +78,7 @@ static const char *painting_tool_names[painting_TOOL__COUNT] =
 {
   "draw",
   "brush",
+  "wobble",
   "erase",
   "line",
   "rectangle",
@@ -116,18 +117,19 @@ painting_tool_cells[painting_TOOL__COUNT] =
 
   [painting_TOOL_BRUSH]        = { 0, 2, 1 },
   [painting_TOOL_PAINTBRUSH]   = { 1, 2, 1 },
-  [painting_TOOL_SPRAY]        = { 0, 3, 1 },
-  [painting_TOOL_ERASER]       = { 1, 3, 1 },
-  [painting_TOOL_FILL]         = { 0, 4, 1 },
-  [painting_TOOL_GRADIENT]     = { 1, 4, 1 },
+  [painting_TOOL_WOBBLE]       = { 0, 3, 1 },
+  [painting_TOOL_SPRAY]        = { 1, 3, 1 },
+  [painting_TOOL_ERASER]       = { 0, 4, 1 },
+  [painting_TOOL_FILL]         = { 1, 4, 1 },
+  [painting_TOOL_GRADIENT]     = { 0, 5, 1 },
 
-  [painting_TOOL_RECT]         = { 0, 5, 2 },
-  [painting_TOOL_RECT_FILL]    = { 1, 5, 2 },
-  [painting_TOOL_ELLIPSE]      = { 0, 6, 2 },
-  [painting_TOOL_ELLIPSE_FILL] = { 1, 6, 2 },
-  [painting_TOOL_PATH]         = { 0, 7, 2 },
-  [painting_TOOL_PATH_FILL]    = { 1, 7, 2 },
-  [painting_TOOL_LINE]         = { 0, 8, 2 }
+  [painting_TOOL_RECT]         = { 0, 6, 2 },
+  [painting_TOOL_RECT_FILL]    = { 1, 6, 2 },
+  [painting_TOOL_ELLIPSE]      = { 0, 7, 2 },
+  [painting_TOOL_ELLIPSE_FILL] = { 1, 7, 2 },
+  [painting_TOOL_PATH]         = { 0, 8, 2 },
+  [painting_TOOL_PATH_FILL]    = { 1, 8, 2 },
+  [painting_TOOL_LINE]         = { 0, 9, 2 }
 };
 
 /* the tool's button box in toolbox content space */
@@ -653,6 +655,9 @@ static box_t painting_stroke_segment(painting_task_t *pt,
   if (pt->tool == painting_TOOL_PAINTBRUSH)
     return paintingdoc_brush(pt->doc, a, b, pt->nozzle, pt->size,
                              painting_stroke_colour(pt));
+  if (pt->tool == painting_TOOL_WOBBLE)
+    return paintingdoc_wobble(pt->doc, a, b, pt->size,
+                              painting_stroke_colour(pt), &pt->wobble);
 
   return paintingdoc_stroke(pt->doc, a, b, pt->size,
                             painting_stroke_colour(pt));
@@ -1048,12 +1053,15 @@ static result_t painting_mouse(painting_task_t    *pt,
 
     case painting_TOOL_BRUSH:
     case painting_TOOL_PAINTBRUSH:
+    case painting_TOOL_WOBBLE:
     case painting_TOOL_ERASER:
       if (paintingdoc_checkpoint(pt->doc) != result_OK)
       {
         pt->held = 0; /* no undo step, so no stroke */
         return result_OK;
       }
+      pt->wobble.seed = rng_xorshift32(&pt->rng); /* a fresh wobble */
+      pt->wobble.step = 0;
       dirty = painting_stroke_segment(pt, p, p);
       break;
 
@@ -1204,6 +1212,7 @@ static result_t painting_key(painting_task_t *pt, int code)
   {
   case 'b': case 'B': painting_set_tool(pt, painting_TOOL_BRUSH);  break;
   case 'h': case 'H': painting_set_tool(pt, painting_TOOL_PAINTBRUSH); break;
+  case 'k': case 'K': painting_set_tool(pt, painting_TOOL_WOBBLE); break;
   case 'e': case 'E': painting_set_tool(pt, painting_TOOL_ERASER); break;
   case 'l': case 'L': painting_set_tool(pt, painting_TOOL_LINE);   break;
   case 'r': case 'R': painting_set_tool(pt, painting_TOOL_RECT);   break;
