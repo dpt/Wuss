@@ -6,6 +6,7 @@
 #ifdef WUSS_APP
 
 #include "framebuf/colour.h"
+#include "utils/rng.h"
 #include "wuss/component/colourmenu.h"
 #include "wuss/component/saveas.h"
 #include "wuss/menu.h"
@@ -51,6 +52,7 @@ typedef struct ball_task
   ball_t              balls[BALL_MAX];
   int                 nballs;
   int                 grabbed; /* index of the ball held by Select, or -1 */
+  rng_t               rng;     /* new balls' radii and colours */
 }
 ball_task_t;
 

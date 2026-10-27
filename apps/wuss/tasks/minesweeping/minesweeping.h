@@ -13,6 +13,7 @@
 #include "framebuf/colour.h"
 #include "wuss/menu.h"
 #include "wuss/task.h"
+#include "utils/rng.h"
 #include "wuss/window.h"
 
 #include "../common/fireball.h"
@@ -106,6 +107,7 @@ typedef struct minesweeping_task
   time_t                   start_time; /* set on first reveal */
   int                      elapsed; /* seconds, frozen on dead/won */
   int                      cur_r, cur_c; /* keyboard cursor cell */
+  rng_t                    rng;     /* mine placement */
   struct
   {
     colour_t number[9];     /* [1..8] neighbour-count colours; [0] unused */

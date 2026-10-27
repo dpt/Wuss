@@ -167,8 +167,8 @@ static void minesweeping_place_mines(minesweeping_task_t *ms,
   placed = 0;
   while (placed < ms->mines)
   {
-    r = rand() % ms->rows;
-    c = rand() % ms->cols;
+    r = rng_range(&ms->rng, ms->rows);
+    c = rng_range(&ms->rng, ms->cols);
     if (ms->mine[r][c] ||
         ((r == 0 || r == ms->rows - 1) && (c == 0 || c == ms->cols - 1)) ||
         (abs(r - safe_r) <= 1 && abs(c - safe_c) <= 1))
@@ -333,6 +333,7 @@ result_t minesweeping_create(wuss_t *wuss, minesweeping_task_t **out)
     return result_OOM;
 
   task->wuss = wuss;
+  rng_seed(&task->rng, (uint32_t) rand());
   task->font = wuss_get_font_n(wuss, 1);
   task->difficulty = minesweeping_DIFFICULTY_NORMAL;
   fireball_init(&task->boom);

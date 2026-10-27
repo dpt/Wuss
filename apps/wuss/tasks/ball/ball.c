@@ -49,12 +49,12 @@ static const int ball_small_radii[] = { 5, 7, 8, 12 };
 
 /* a fresh radius, picked evenly from ball_small_radii and
  * [BALL_MIN_LARGE_RADIUS, BALL_MAX_RADIUS] */
-static int ball_random_radius(void)
+static int ball_random_radius(ball_task_t *bc)
 {
   int i;
 
-  i = rand() % (int) (NELEMS(ball_small_radii) +
-                      BALL_MAX_RADIUS - BALL_MIN_LARGE_RADIUS + 1);
+  i = rng_range(&bc->rng, (int) (NELEMS(ball_small_radii) +
+                                 BALL_MAX_RADIUS - BALL_MIN_LARGE_RADIUS + 1));
   if (i < (int) NELEMS(ball_small_radii))
     return ball_small_radii[i];
 
@@ -63,7 +63,7 @@ static int ball_random_radius(void)
 
 /* a fresh system-palette colour, never the background's so the ball stays
  * visible */
-static colour_t ball_random_colour(const ball_task_t *bc)
+static colour_t ball_random_colour(ball_task_t *bc)
 {
   const colour_t *palette;
   int             npalette;
@@ -71,7 +71,7 @@ static colour_t ball_random_colour(const ball_task_t *bc)
 
   palette = wuss_get_palette(bc->wuss, &npalette);
   do
-    c = palette[rand() % npalette];
+    c = palette[rng_range(&bc->rng, npalette)];
   while (c.primary == bc->bg.primary);
 
   return c;
@@ -118,6 +118,7 @@ result_t ball_create(wuss_t *wuss, ball_task_t **out)
     return result_OOM;
 
   task->wuss    = wuss;
+  rng_seed(&task->rng, (uint32_t) rand());
   /* a palette entry, so ball_random_colour can avoid it exactly */
   task->bg      = wuss_get_palette(wuss, NULL)[wuss_nearest_colour(wuss, 0xFF,
                                                                    0x00,
@@ -130,7 +131,7 @@ result_t ball_create(wuss_t *wuss, ball_task_t **out)
   task->balls[0].y      = 50;
   task->balls[0].dx     = 3;
   task->balls[0].dy     = 2;
-  task->balls[0].radius = ball_random_radius();
+  task->balls[0].radius = ball_random_radius(task);
   task->balls[0].colour = ball_random_colour(task);
 
   /* ball_redraw paints its own background every frame */
@@ -577,7 +578,7 @@ static result_t ball_add(ball_task_t *bc)
   b->y      = scroll.y + (content.y1 - content.y0) / 2;
   b->dx     = (bc->nballs & 1) ? 3 : -3;
   b->dy     = (bc->nballs & 2) ? 2 : -2;
-  b->radius = ball_random_radius();
+  b->radius = ball_random_radius(bc);
   b->colour = ball_random_colour(bc);
 
   local = ball_local_box(b->x, b->y, b->x, b->y, b->radius);

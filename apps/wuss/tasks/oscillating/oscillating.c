@@ -393,7 +393,8 @@ static result_t oscillating_idle(void *task_data)
   }
 
   /* 2% of ticks start a 90 degree backwards run, then the drift resumes */
-  if (lc->reversals && lc->reversing <= 0.0 && rand() % 100 < 2)
+  if (lc->reversals && lc->reversing <= 0.0 &&
+      rng_range(&lc->rng, 100) < 2)
   {
     lc->reversing    = 1.0;
     lc->reverse_from = lc->phase;
