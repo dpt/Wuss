@@ -192,6 +192,13 @@ result_t paintingdoc_select_poly(paintingdoc_t *doc,
                                  const point_t *pts,
                                  int            n);
 
+/* select the pixels 4-connected to p whose every channel, alpha included, is
+ * within tolerance (0..255) of p's: a magic wand. 0 takes only exact
+ * matches, as paintingdoc_fill does. p off the canvas selects nothing */
+result_t paintingdoc_select_similar(paintingdoc_t *doc,
+                                    point_t        p,
+                                    int            tolerance);
+
 /* select the whole canvas */
 result_t paintingdoc_select_all(paintingdoc_t *doc);
 

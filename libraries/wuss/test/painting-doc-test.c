@@ -513,6 +513,27 @@ result_t paintingdoc_test(const char *resources)
 
   paintingdoc_destroy(doc);
 
+  printf("test: the wand selects the connected similar colour\n");
+
+  CHECK(paintingdoc_create(SIZE2D(8, 8), &doc) == result_OK);
+  paintingdoc_stroke(doc, POINT(0, 3), POINT(7, 3), 1, red());
+
+  /* exact: the white above the red line, which walls it off */
+  CHECK(paintingdoc_select_similar(doc, POINT(1, 1), 0) == result_OK);
+  dirty = paintingdoc_selection_bounds(doc);
+  CHECK(dirty.x0 == 0 && dirty.y0 == 0 && dirty.x1 == 8 && dirty.y1 == 3);
+
+  /* wide enough to take red too: the whole canvas */
+  CHECK(paintingdoc_select_similar(doc, POINT(1, 1), 255) == result_OK);
+  dirty = paintingdoc_selection_bounds(doc);
+  CHECK(dirty.x0 == 0 && dirty.y0 == 0 && dirty.x1 == 8 && dirty.y1 == 8);
+
+  /* off the canvas: nothing */
+  CHECK(paintingdoc_select_similar(doc, POINT(8, 0), 0) == result_OK);
+  CHECK(!paintingdoc_has_selection(doc));
+
+  paintingdoc_destroy(doc);
+
   printf("paintingdoc: all tests passed\n");
 
   return result_TEST_PASSED;

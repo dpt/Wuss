@@ -32,8 +32,8 @@ makes an instance of its own.
   background colour. Clicking a swatch in the toolbox sets the foreground
   (Select) or the background (Adjust).
 - Tools: brush, eraser (wipes to transparent), line, rect, filled
-  rect, flood fill, spray, select (rectangle), lasso and colour picker. Press
-  `B` `E` `L` `R` `X` `F` `P` `S` `O` or `I` to pick one. Other keys pass on to the demo's
+  rect, flood fill, spray, select (rectangle), lasso, magic wand and colour
+  picker. Press `B` `E` `L` `R` `X` `F` `P` `S` `O` `W` or `I` to pick one. Other keys pass on to the demo's
   hotkeys. The slider sets the width, 1 to 32 pixels. For spray it sets the
   radius (3 pixels per unit).
 - The colour picker takes the foreground (Select) or the background
@@ -43,6 +43,9 @@ makes an instance of its own.
 - Select and lasso make a selection, shown with marching ants. The new
   selection replaces the old one. A click without a drag drops it. Every
   drawing tool only changes selected pixels.
+- The magic wand selects the pixels joined to the one clicked whose every
+  channel is close to its colour. The slider sets how close: 1 takes exact
+  matches only, and each step above adds 8 to the tolerance.
 - Menu > Selection has Select all, Clear selection and Invert. `Esc` also
   clears the selection. Clear selection and Undo are shaded when they do not apply, and update
   while the menu stays open.
@@ -63,7 +66,8 @@ Every operation in `painting-doc.h` takes canvas pixels and returns the box it
 may have changed. The task passes that box to `wuss_window_invalidate`.
 
 The selection is a `geom/region.h` region (`paintingdoc_select_*`). The lasso
-fills its polygon with the even-odd rule and Invert uses `region_invert`.
+fills its polygon with the even-odd rule, the wand uses `region_from_flood`
+and Invert uses `region_invert`.
 `paintingdoc_selection_outline` gives the boundary boxes that the ants draw.
 
 Undo keeps RLE-compressed copies of the whole canvas. A stroke takes one

@@ -740,6 +740,58 @@ box_t paintingdoc_fill(paintingdoc_t *doc, point_t p, colour_t colour)
   return dirty;
 }
 
+/* what select_similar's flood compares each pixel against */
+typedef struct
+{
+  const paintingdoc_t *doc;
+  uint32_t             seed;
+  int                  tolerance;
+}
+similar_t;
+
+/* every channel, alpha included, within tolerance of the seed's */
+static int similar_inside(void *opaque, int x, int y)
+{
+  const similar_t *s = opaque;
+  uint32_t         px;
+  int              shift;
+  int              d;
+
+  px = pixel_row(s->doc, y)[x];
+  for (shift = 0; shift < 32; shift += 8)
+  {
+    d = (int) ((px >> shift) & 0xFF) - (int) ((s->seed >> shift) & 0xFF);
+    if (abs(d) > s->tolerance)
+      return 0;
+  }
+
+  return 1;
+}
+
+result_t paintingdoc_select_similar(paintingdoc_t *doc,
+                                    point_t        p,
+                                    int            tolerance)
+{
+  result_t  rc;
+  box_t     canvas;
+  similar_t s;
+  region_t *sel;
+
+  canvas = canvas_box(doc);
+  if (p.x < 0 || p.x >= doc->bm.size.w || p.y < 0 || p.y >= doc->bm.size.h)
+    return sel_adopt(doc, NULL);
+
+  s.doc       = doc;
+  s.seed      = pixel_row(doc, p.y)[p.x];
+  s.tolerance = tolerance;
+
+  rc = region_from_flood(p, &canvas, similar_inside, &s, &sel);
+  if (rc != result_OK)
+    return rc;
+
+  return sel_adopt(doc, sel);
+}
+
 box_t paintingdoc_gradient(paintingdoc_t *doc,
                            point_t        a,
                            point_t        b,

@@ -89,6 +89,7 @@ Direct keys:
 | orbing                              | Arrows              | Nudge light (Shift = bigger step)                       |
 | orbing                              | O                   | Toggle the current light                                |
 | painting                            | B E L R X F P S O   | Brush Eraser Line Rect RectFill Fill Spray Select Lasso |
+| painting                            | W                   | Magic wand                                              |
 | painting                            | `[` `]`             | Size down / up                                          |
 | painting                            | Escape              | Drop selection                                          |
 | saturn                              | Left / Right        | Previous / next seed                                    |

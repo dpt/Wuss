@@ -64,6 +64,10 @@
 /* the spray's radius in pixels per unit of the size slider */
 #define PAINTING_SPRAY_SCALE 3
 
+/* the wand's colour tolerance per unit of the size slider above 1, so size 1
+ * takes exact matches only */
+#define PAINTING_WAND_SCALE 8
+
 /* the tools' images, in the task's icon pool under
  * resources/wuss-tasks/painting/iconpool */
 static const char *painting_tool_names[painting_TOOL__COUNT] =
@@ -83,6 +87,7 @@ static const char *painting_tool_names[painting_TOOL__COUNT] =
   "spray",
   "select",
   "lasso",
+  "wand",
   "pick"
 };
 
@@ -951,6 +956,16 @@ static result_t painting_mouse(painting_task_t    *pt,
         wuss_window_invalidate_visible(pt->optionbar);
       return result_OK;
 
+    case painting_TOOL_WAND:
+      pt->held = 0; /* a click, not a stroke */
+      old      = paintingdoc_selection_bounds(pt->doc);
+      (void) paintingdoc_select_similar(pt->doc, p,
+                                        (pt->size - 1) * PAINTING_WAND_SCALE);
+      painting_invalidate_box(pt, &old);
+      old = paintingdoc_selection_bounds(pt->doc);
+      painting_invalidate_box(pt, &old);
+      return result_OK;
+
     case painting_TOOL_FILL:
       colour   = painting_stroke_colour(pt);
       pt->held = 0; /* a click, not a stroke */
@@ -1121,9 +1136,9 @@ static void painting_step_size(painting_task_t *pt, int delta)
   (void) wuss_slider_row_set(pt->optionbar, &pt->size_row, pt->size);
 }
 
-/* B, H, E, L, R, X, C, D, N, M, F, G, P, S, O and I pick the matching tool, [
- * and ] step the size down and up, Escape drops the selection. Anything else
- * is passed back unclaimed */
+/* B, H, E, L, R, X, C, D, N, M, F, G, P, S, O, W and I pick the matching
+ * tool, [ and ] step the size down and up, Escape drops the selection.
+ * Anything else is passed back unclaimed */
 static result_t painting_key(painting_task_t *pt, int code)
 {
   box_t box;
@@ -1145,6 +1160,7 @@ static result_t painting_key(painting_task_t *pt, int code)
   case 'p': case 'P': painting_set_tool(pt, painting_TOOL_SPRAY);  break;
   case 's': case 'S': painting_set_tool(pt, painting_TOOL_SELECT); break;
   case 'o': case 'O': painting_set_tool(pt, painting_TOOL_LASSO);  break;
+  case 'w': case 'W': painting_set_tool(pt, painting_TOOL_WAND);   break;
   case 'i': case 'I': painting_set_tool(pt, painting_TOOL_PICK);   break;
   case '[':           painting_step_size(pt, -1);               break;
   case ']':           painting_step_size(pt, +1);               break;
