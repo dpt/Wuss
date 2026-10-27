@@ -15,6 +15,7 @@
 #include "base/utils.h"
 #include "framebuf/bmfont.h"
 #include "framebuf/colour.h"
+#include "framebuf/colourspace.h"
 #include "framebuf/pattern.h"
 #include "framebuf/pixelfmt.h"
 #include "geom/box.h"
@@ -93,31 +94,15 @@ static void channel_steps(pixelfmt_t fmt, int step[3])
   }
 }
 
-/* fully saturated hue for t in 0..1535 (six 256-step segments round the
- * colour wheel: red, yellow, green, cyan, blue, magenta, back to red) */
-static void hue(int t, int rgb[3])
-{
-  int f;
-
-  f = t & 255;
-  switch ((t >> 8) % 6)
-  {
-  case 0:  rgb[0] = 255;     rgb[1] = f;       rgb[2] = 0;       break;
-  case 1:  rgb[0] = 255 - f; rgb[1] = 255;     rgb[2] = 0;       break;
-  case 2:  rgb[0] = 0;       rgb[1] = 255;     rgb[2] = f;       break;
-  case 3:  rgb[0] = 0;       rgb[1] = 255 - f; rgb[2] = 255;     break;
-  case 4:  rgb[0] = f;       rgb[1] = 0;       rgb[2] = 255;     break;
-  default: rgb[0] = 255;     rgb[1] = 0;       rgb[2] = 255 - f; break;
-  }
-}
-
 /* the unadjusted colour of document point (lx, ly) under "shape" */
 static void shade(gradient_shape_t shape, int lx, int ly, int rgb[3])
 {
   static const double max_r = GRADIENT_DOC_WIDTH / 2 * 1.4142136;
 
-  int    dx, dy;
-  double t;
+  int               dx, dy;
+  double            t;
+  colourspace_hsv_t hsv;
+  colourspace_rgb_t c;
 
   dx = lx - GRADIENT_DOC_WIDTH  / 2;
   dy = ly - GRADIENT_DOC_HEIGHT / 2;
@@ -141,7 +126,14 @@ static void shade(gradient_shape_t shape, int lx, int ly, int rgb[3])
     break;
   }
 
-  hue(CLAMP((int) (t * 1535.0), 0, 1535), rgb);
+  /* fully saturated, round the colour wheel from red back to red */
+  hsv.h = CLAMP(t, 0.0, 1.0) * 360.0;
+  hsv.s = 1.0;
+  hsv.v = 1.0;
+  colourspace_hsv_to_rgb(&hsv, &c);
+  rgb[0] = (int) (c.r * 255.0 + 0.5);
+  rgb[1] = (int) (c.g * 255.0 + 0.5);
+  rgb[2] = (int) (c.b * 255.0 + 0.5);
 }
 
 /* apply the task's saturation (lerp away from luma) then brightness (scale)
