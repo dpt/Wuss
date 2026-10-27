@@ -145,29 +145,6 @@ void viewing_destroy(viewing_task_t *task)
   free(task); /* task_data was calloc'd per instance by the spawner */
 }
 
-/* Nonzero if any pixel of bm is less than opaque. ponytail: assumes alpha in
- * the top byte (bgra8888/rgba8888, as the PNG loader gives); paletted images
- * are made opaque by bitmap_load_png_deep so never get checks */
-static int viewing_has_alpha(const bitmap_t *bm)
-{
-  int                 y;
-  const unsigned int *row;
-  int                 x;
-
-  if (!pixelfmt_has_alpha(bm->format))
-    return 0;
-
-  for (y = 0; y < bm->size.h; y++)
-  {
-    row = (const unsigned int *) ((const char *) bm->base + y * bm->rowbytes);
-    for (x = 0; x < bm->size.w; x++)
-      if ((row[x] >> 24) != 0xFF)
-        return 1;
-  }
-
-  return 0;
-}
-
 /* Draw the image at (x, y), over checks if it has transparent pixels */
 static void viewing_draw_image(viewing_task_t *ic,
                                screen_t       *scr,
@@ -298,7 +275,7 @@ static result_t viewing_show(viewing_task_t *ic, const char *path)
 
   free(ic->bitmap.base);
   ic->bitmap = next;
-  ic->alpha  = viewing_has_alpha(&ic->bitmap);
+  ic->alpha  = bitmap_has_transparency(&ic->bitmap);
 
   rc = viewing_fit(ic);
   if (rc != result_OK)
