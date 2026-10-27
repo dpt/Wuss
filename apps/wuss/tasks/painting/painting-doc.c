@@ -765,57 +765,22 @@ box_t paintingdoc_fill(paintingdoc_t *doc, point_t p, colour_t colour)
   return dirty;
 }
 
-/* the colour num/255 of the way from c0 to c1, alpha included */
-static colour_t gradient_mix(colour_t c0, colour_t c1, unsigned int num)
-{
-  unsigned int r0, g0, b0, a0;
-  unsigned int r1, g1, b1, a1;
-
-  colour_get_rgb(&c0, &r0, &g0, &b0);
-  a0 = colour_get_alpha(&c0);
-  colour_get_rgb(&c1, &r1, &g1, &b1);
-  a1 = colour_get_alpha(&c1);
-
-  return colour_rgba((r0 * (255 - num) + r1 * num + 127) / 255,
-                     (g0 * (255 - num) + g1 * num + 127) / 255,
-                     (b0 * (255 - num) + b1 * num + 127) / 255,
-                     (a0 * (255 - num) + a1 * num + 127) / 255);
-}
-
 box_t paintingdoc_gradient(paintingdoc_t *doc,
                            point_t        a,
                            point_t        b,
                            colour_t       c0,
                            colour_t       c1)
 {
-  box_t     dirty = BOX_INIT;
-  uint32_t  lut[256];
-  uint32_t *row;
-  double    dx, dy, len2, t;
-  int       i, x, y;
+  box_t dirty = BOX_INIT;
 
-  dx   = b.x - a.x;
-  dy   = b.y - a.y;
-  len2 = dx * dx + dy * dy;
-  if (len2 == 0)
+  if (a.x == b.x && a.y == b.y)
     return dirty;
 
   dirty = doc->sel ? paintingdoc_selection_bounds(doc) : canvas_box(doc);
 
   checkpoint_or_warn(doc);
 
-  for (i = 0; i < 256; i++)
-    lut[i] = screen_colour_to_pixel(&doc->scr, gradient_mix(c0, c1, i));
-
-  for (y = dirty.y0; y < dirty.y1; y++)
-  {
-    row = pixel_row(doc, y);
-    for (x = dirty.x0; x < dirty.x1; x++)
-    {
-      t      = ((x - a.x) * dx + (y - a.y) * dy) / len2;
-      row[x] = lut[CLAMP((int) (t * 255 + 0.5), 0, 255)];
-    }
-  }
+  screen_fill_linear_gradient(&doc->scr, &dirty, a, b, c0, c1);
 
   sel_clip(doc, dirty);
   return dirty;
