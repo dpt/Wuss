@@ -11,6 +11,8 @@
 #endif
 
 #include "base/utils.h"
+#include "framebuf/pattern.h"
+#include "framebuf/pixelfmt.h"
 #include "framebuf/screen.h"
 #include "geom/box.h"
 #include "utils/array.h"
@@ -846,19 +848,34 @@ static result_t painting_redraw(painting_task_t    *pt,
   return rc;
 }
 
-/* a colour chip at (x, y): a transparent colour shows as the checks */
+/* a colour chip at (x, y): a transparent colour shows as the checks. on a
+ * paletted screen a colour the palette lacks is a Bayer mix of two entries,
+ * as wuss_swatches_draw does */
 static void painting_draw_chip(screen_t *scr, int x, int y, colour_t colour)
 {
-  box_t chip;
+  box_t     chip;
+  pattern_t pat;
 
   chip = (box_t) BOX_POS_SIZE(x, y, OB_CHIP, OB_CHIP);
 
   /* ponytail: a translucent colour is drawn solid; blit a 1x1 bgra8888
    * bitmap tiled over the checks if a tint is wanted */
   if (colour_get_alpha(&colour) == 0)
+  {
     task_draw_checks(scr, &chip, POINT(x, y));
+  }
+  else if (scr->palette != NULL)
+  {
+    pat        = pattern_from_colour(scr->palette,
+                                     pixelfmt_paletted_nentries(scr->format),
+                                     colour);
+    pat.origin = POINT(x, y);
+    screen_fill_pattern(scr, &chip, &pat);
+  }
   else
+  {
     screen_fill_rect(scr, x, y, SIZE2D(OB_CHIP, OB_CHIP), colour);
+  }
 }
 
 /* the background colour behind the foreground colour and the swatch row. The
