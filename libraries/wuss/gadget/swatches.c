@@ -79,9 +79,7 @@ void wuss_swatches_draw(const wuss_swatches_t *swatches,
     else
     {
       /* on a paletted screen show a colour the palette lacks as a Bayer
-       * mix of two entries, phased to the cell so it holds still.
-       * ponytail: pattern_from_colour is O(nphys²) per swatch per redraw;
-       * cache the patterns in the swatches if a 256-colour screen drags */
+       * mix of two entries, phased to the cell so it holds still */
       pat        = pattern_from_colour(scr->palette, nphys,
                                        swatches->colours[i]);
       pat.origin = POINT(x, y);
