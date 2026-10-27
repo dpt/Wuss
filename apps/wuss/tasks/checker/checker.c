@@ -214,6 +214,13 @@ static result_t checker_redraw(const wuss_event_t *event, void *task_data)
   pattern = cc->pattern;
   band_px = cc->band;
 
+  if (pattern == checker_PATTERN_CHECKERBOARD)
+  {
+    screen_fill_checks(scr, content, POINT(bounds->x0 - sx, bounds->y0 - sy),
+                       band_px, cc->white, cc->black);
+    return result_OK;
+  }
+
   for (y = content->y0; y < content->y1; y++)
   {
     for (x = content->x0; x < content->x1; x++)
@@ -223,10 +230,9 @@ static result_t checker_redraw(const wuss_event_t *event, void *task_data)
 
       switch (pattern)
       {
-      case checker_PATTERN_HORIZONTAL: band = ly / band_px;                break;
-      case checker_PATTERN_VERTICAL:   band = lx / band_px;                break;
-      case checker_PATTERN_DIAGONAL:   band = (lx + ly) / band_px;         break;
-      default:                         band = lx / band_px + ly / band_px; break; /* CHECKERBOARD */
+      case checker_PATTERN_HORIZONTAL: band = ly / band_px;        break;
+      case checker_PATTERN_VERTICAL:   band = lx / band_px;        break;
+      default:                         band = (lx + ly) / band_px; break; /* DIAGONAL */
       }
 
       screen_set_pixel(scr, x, y, (band & 1) ? cc->black : cc->white);

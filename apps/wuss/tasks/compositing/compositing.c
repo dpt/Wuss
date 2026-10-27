@@ -272,50 +272,6 @@ static void compositing_ramp_src(compositing_task_t *pd, int ramp)
     }
 }
 
-static void compositing_draw_checkerboard(const compositing_task_t *pd,
-                                          screen_t                 *scr,
-                                          const box_t              *content,
-                                          const box_t              *bounds,
-                                          int                       sx,
-                                          int                       sy)
-{
-  pixelfmt_any_t darkpix, lightpix;
-  int            ox, oy;
-  int            col0, row0, col1, row1;
-  int            col, row;
-
-  /* resolve both colours once, not once per pixel */
-  darkpix  = screen_colour_to_pixel(scr, pd->dark);
-  lightpix = screen_colour_to_pixel(scr, pd->light);
-
-  /* screen position of document (0, 0); content lies within bounds, so the
-   * square indices below are never negative */
-  ox = bounds->x0 - sx;
-  oy = bounds->y0 - sy;
-
-  col0 = (content->x0 - ox) / PD_CHECKER_BAND;
-  row0 = (content->y0 - oy) / PD_CHECKER_BAND;
-  col1 = (content->x1 - ox + PD_CHECKER_BAND - 1) / PD_CHECKER_BAND;
-  row1 = (content->y1 - oy + PD_CHECKER_BAND - 1) / PD_CHECKER_BAND;
-
-  /* one rect fill per square, trimmed to the content box */
-  for (row = row0; row < row1; row++)
-    for (col = col0; col < col1; col++)
-    {
-      box_t square, visible;
-
-      square.x0 = ox + col * PD_CHECKER_BAND;
-      square.y0 = oy + row * PD_CHECKER_BAND;
-      square.x1 = square.x0 + PD_CHECKER_BAND;
-      square.y1 = square.y0 + PD_CHECKER_BAND;
-      if (box_intersection(&square, content, &visible))
-        continue;
-
-      screen_fill_rect_value(scr, visible.x0, visible.y0, box_size(&visible),
-                             ((row + col) & 1) ? darkpix : lightpix);
-    }
-}
-
 static result_t compositing_redraw(const wuss_event_t *event,
                                    void               *task_data)
 {
@@ -335,7 +291,8 @@ static result_t compositing_redraw(const wuss_event_t *event,
   sx      = event->data.redraw.scroll.x;
   sy      = event->data.redraw.scroll.y;
 
-  compositing_draw_checkerboard(pd, scr, content, bounds, sx, sy);
+  screen_fill_checks(scr, content, POINT(bounds->x0 - sx, bounds->y0 - sy),
+                     PD_CHECKER_BAND, pd->light, pd->dark);
 
   /* ponytail: the whole 256x256 pane is recomposited on every redraw -- two
    * full-image memcpys plus two full-image passes. Fine for one window in a

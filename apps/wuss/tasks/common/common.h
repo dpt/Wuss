@@ -11,7 +11,6 @@
 #include "base/result.h"
 #include "framebuf/bitmap.h"
 #include "framebuf/bmfont.h"
-#include "framebuf/pattern.h"
 #include "framebuf/screen.h"
 #include "geom/box.h"
 #include "geom/point.h"
@@ -195,19 +194,8 @@ static inline void task_draw_checks(screen_t    *scr,
                                     const box_t *box,
                                     point_t      origin)
 {
-  static const uint8_t checks[8] =
-  {
-    0xF0, 0xF0, 0xF0, 0xF0, 0x0F, 0x0F, 0x0F, 0x0F
-  };
-
-  pattern_t pattern;
-
-  pattern        = pattern_from_mask(checks, colour_rgb(0xCC, 0xCC, 0xCC));
-  pattern.bg     = colour_rgb(0xFF, 0xFF, 0xFF);
-  pattern.flags  = 0;
-  pattern.origin = origin;
-
-  screen_fill_pattern(scr, box, &pattern);
+  screen_fill_checks(scr, box, origin, 4, colour_rgb(0xCC, 0xCC, 0xCC),
+                     colour_rgb(0xFF, 0xFF, 0xFF));
 }
 
 #endif /* TASKS_COMMON_H */
