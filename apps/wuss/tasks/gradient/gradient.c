@@ -15,6 +15,7 @@
 #include "base/utils.h"
 #include "framebuf/bmfont.h"
 #include "framebuf/colour.h"
+#include "framebuf/pattern.h"
 #include "framebuf/pixelfmt.h"
 #include "geom/box.h"
 
@@ -52,52 +53,11 @@ static const char *const gradient_shape_names[gradient_NSHAPES] =
 #define GRADIENT_ADJUST_MAX     512
 #define GRADIENT_DRAG_SCALE       2 /* adjust units per pixel dragged */
 
-/* ordered (Bayer) dither matrices, each holding values 0 .. dim*dim-1.
+/* ordered (Bayer) dither matrix sizes, as log2 of the side: 2x2, 4x4, 8x8,
+ * then 0 for dithering off (plain truncation to the target format).
  * SELECT/ADJUST clicks cycle task->dither_index forward/backward through
  * this table. */
-static const struct
-{
-  int dim;
-  int cell[64]; /* row-major, first dim*dim entries used */
-}
-gradient_dithers[] =
-{
-  {
-    2,
-    {
-      0, 2,
-      3, 1,
-    }
-  },
-  {
-    4,
-    {
-       0,  8,  2, 10,
-      12,  4, 14,  6,
-       3, 11,  1,  9,
-      15,  7, 13,  5,
-    }
-  },
-  {
-    8,
-    {
-       0, 32,  8, 40,  2, 34, 10, 42,
-      48, 16, 56, 24, 50, 18, 58, 26,
-      12, 44,  4, 36, 14, 46,  6, 38,
-      60, 28, 52, 20, 62, 30, 54, 22,
-       3, 35, 11, 43,  1, 33,  9, 41,
-      51, 19, 59, 27, 49, 17, 57, 25,
-      15, 47,  7, 39, 13, 45,  5, 37,
-      63, 31, 55, 23, 61, 29, 53, 21,
-    }
-  },
-  {
-    1, /* dithering off: plain truncation to the target format */
-    {
-      0,
-    }
-  },
-};
+static const int gradient_dithers[] = { 1, 2, 3, 0 };
 
 /* offset "v" by the dither cell for (x, y), spread across one "step" of the
  * target channel (-step/2 .. +step/2) whatever the matrix size, so a larger
@@ -105,14 +65,14 @@ gradient_dithers[] =
  * (an 8-bit channel) adds nothing and only clamps. */
 static int dither(int index, int step, int v, int x, int y)
 {
-  int dim, n, m;
+  int log2n, n, m;
 
-  dim = gradient_dithers[index].dim;
-  if (dim == 1)
+  log2n = gradient_dithers[index];
+  if (log2n == 0)
     return CLAMP(v, 0, 255);
 
-  n   = dim * dim;
-  m   = gradient_dithers[index].cell[(y % dim) * dim + (x % dim)];
+  n     = 1 << (2 * log2n);
+  m     = pattern_bayer_threshold_n(x, y, log2n);
 
   return CLAMP(v + m * step / n - step / 2, 0, 255);
 }
@@ -121,45 +81,15 @@ static int dither(int index, int step, int v, int x, int y)
  * channel in "fmt" */
 static void channel_steps(pixelfmt_t fmt, int step[3])
 {
-  switch (fmt)
+  int i;
+
+  for (i = 0; i < 3; i++)
   {
-  case pixelfmt_bgrx4444:
-  case pixelfmt_rgbx4444:
-  case pixelfmt_xbgr4444:
-  case pixelfmt_xrgb4444:
-    step[0] = step[1] = step[2] = 16;
-    break;
-
-  case pixelfmt_bgrx5551:
-  case pixelfmt_rgbx5551:
-  case pixelfmt_xbgr1555:
-  case pixelfmt_xrgb1555:
-    step[0] = step[1] = step[2] = 8;
-    break;
-
-  case pixelfmt_bgr565:
-  case pixelfmt_rgb565:
-    step[0] = step[2] = 8;
-    step[1] = 4;
-    break;
-
-  case pixelfmt_y8:
-  case pixelfmt_bgrx8888:
-  case pixelfmt_rgbx8888:
-  case pixelfmt_xbgr8888:
-  case pixelfmt_xrgb8888:
-  case pixelfmt_bgra8888:
-  case pixelfmt_rgba8888:
-  case pixelfmt_abgr8888:
-  case pixelfmt_argb8888:
-    step[0] = step[1] = step[2] = 1;
-    break;
-
-  default:
+    step[i] = pixelfmt_channel_step(fmt, i);
     /* ponytail: paletted gaps depend on the palette; keep the original
      * fixed 16 (+/-8) swing rather than analysing it */
-    step[0] = step[1] = step[2] = 16;
-    break;
+    if (step[i] == 0)
+      step[i] = 16;
   }
 }
 
@@ -381,7 +311,7 @@ static result_t gradient_redraw(const wuss_event_t *event, void *task_data)
    * not the per-redraw dirty piece, so it is drawn whole on a partial redraw */
   {
     bmfont_t   *font = wuss_get_font(gc->wuss);
-    int       dim  = gradient_dithers[gc->dither_index].dim;
+    int       dim  = 1 << gradient_dithers[gc->dither_index];
     char      label[32];
     colour_t    ink  = colour_rgb(0xFF, 0xFF, 0xFF);
     colour_t    bg   = colour_rgba(0, 0, 0, 0); /* transparent */
