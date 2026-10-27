@@ -519,17 +519,50 @@ result_t paintingdoc_test(const char *resources)
   paintingdoc_stroke(doc, POINT(0, 3), POINT(7, 3), 1, red());
 
   /* exact: the white above the red line, which walls it off */
-  CHECK(paintingdoc_select_similar(doc, POINT(1, 1), 0) == result_OK);
+  CHECK(paintingdoc_select_similar(doc, POINT(1, 1), 0,
+                                   paintingdoc_SELOP_REPLACE) == result_OK);
   dirty = paintingdoc_selection_bounds(doc);
   CHECK(dirty.x0 == 0 && dirty.y0 == 0 && dirty.x1 == 8 && dirty.y1 == 3);
 
   /* wide enough to take red too: the whole canvas */
-  CHECK(paintingdoc_select_similar(doc, POINT(1, 1), 255) == result_OK);
+  CHECK(paintingdoc_select_similar(doc, POINT(1, 1), 255,
+                                   paintingdoc_SELOP_REPLACE) == result_OK);
   dirty = paintingdoc_selection_bounds(doc);
   CHECK(dirty.x0 == 0 && dirty.y0 == 0 && dirty.x1 == 8 && dirty.y1 == 8);
 
   /* off the canvas: nothing */
-  CHECK(paintingdoc_select_similar(doc, POINT(8, 0), 0) == result_OK);
+  CHECK(paintingdoc_select_similar(doc, POINT(8, 0), 0,
+                                   paintingdoc_SELOP_REPLACE) == result_OK);
+  CHECK(!paintingdoc_has_selection(doc));
+
+  paintingdoc_destroy(doc);
+
+  printf("test: a new area can join or leave the selection\n");
+
+  CHECK(paintingdoc_create(SIZE2D(8, 8), &doc) == result_OK);
+
+  CHECK(paintingdoc_select_rect(doc, (box_t) { 0, 0, 2, 2 },
+                                paintingdoc_SELOP_REPLACE) == result_OK);
+  CHECK(paintingdoc_select_rect(doc, (box_t) { 6, 6, 8, 8 },
+                                paintingdoc_SELOP_ADD) == result_OK);
+  dirty = paintingdoc_selection_bounds(doc);
+  CHECK(dirty.x0 == 0 && dirty.y0 == 0 && dirty.x1 == 8 && dirty.y1 == 8);
+
+  /* only the selected corners take paint */
+  paintingdoc_rect(doc, POINT(0, 0), POINT(7, 7), 1, 1, red());
+  CHECK(px(doc, 1, 1) == RED);
+  CHECK(px(doc, 7, 7) == RED);
+  CHECK(px(doc, 4, 4) == WHITE);
+
+  /* taking the first corner away leaves the second */
+  CHECK(paintingdoc_select_rect(doc, (box_t) { 0, 0, 2, 2 },
+                                paintingdoc_SELOP_SUBTRACT) == result_OK);
+  dirty = paintingdoc_selection_bounds(doc);
+  CHECK(dirty.x0 == 6 && dirty.y0 == 6 && dirty.x1 == 8 && dirty.y1 == 8);
+
+  /* taking everything away leaves nothing */
+  CHECK(paintingdoc_select_similar(doc, POINT(4, 4), 255,
+                                   paintingdoc_SELOP_SUBTRACT) == result_OK);
   CHECK(!paintingdoc_has_selection(doc));
 
   paintingdoc_destroy(doc);

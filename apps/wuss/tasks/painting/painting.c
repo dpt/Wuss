@@ -659,15 +659,29 @@ static box_t painting_points_box(const painting_task_t *pt)
   return drag;
 }
 
-/* finish a selection drag: the new selection replaces the old, and all that
- * the ants and the drag's own outline covered is repainted */
+/* Shift adds the new area to the selection, Alt takes it away, otherwise it
+ * replaces it */
+static paintingdoc_selop_t painting_selop(const painting_task_t *pt)
+{
+  if (pt->mods & wuss_KEY_MOD_SHIFT)
+    return paintingdoc_SELOP_ADD;
+  if (pt->mods & wuss_KEY_MOD_ALT)
+    return paintingdoc_SELOP_SUBTRACT;
+  return paintingdoc_SELOP_REPLACE;
+}
+
+/* finish a selection drag: the new area replaces, joins or leaves the
+ * selection, and all that the ants and the drag's own outline covered is
+ * repainted */
 static void painting_select_commit(painting_task_t *pt, point_t p)
 {
-  box_t old, now, drag;
-  box_t box;
+  box_t               old, now, drag;
+  paintingdoc_selop_t op;
+  box_t               box;
 
-  old = paintingdoc_selection_bounds(pt->doc);
+  old      = paintingdoc_selection_bounds(pt->doc);
   pt->last = p;
+  op       = painting_selop(pt);
 
   if (pt->tool == painting_TOOL_SELECT)
   {
@@ -675,7 +689,9 @@ static void painting_select_commit(painting_task_t *pt, point_t p)
 
     if (pt->anchor.x == p.x && pt->anchor.y == p.y)
     {
-      paintingdoc_select_none(pt->doc); /* a click drops the selection */
+      /* a plain click drops the selection; one with a modifier is ignored */
+      if (op == paintingdoc_SELOP_REPLACE)
+        paintingdoc_select_none(pt->doc);
     }
     else
     {
@@ -683,13 +699,13 @@ static void painting_select_commit(painting_task_t *pt, point_t p)
       box.y0 = MIN(pt->anchor.y, p.y);
       box.x1 = MAX(pt->anchor.x, p.x) + 1;
       box.y1 = MAX(pt->anchor.y, p.y) + 1;
-      paintingdoc_select_rect(pt->doc, box);
+      paintingdoc_select_rect(pt->doc, box, op);
     }
   }
   else
   {
     drag = painting_points_box(pt);
-    paintingdoc_select_poly(pt->doc, pt->lasso, pt->nlasso);
+    paintingdoc_select_poly(pt->doc, pt->lasso, pt->nlasso, op);
     pt->nlasso = 0;
   }
 
@@ -960,7 +976,8 @@ static result_t painting_mouse(painting_task_t    *pt,
       pt->held = 0; /* a click, not a stroke */
       old      = paintingdoc_selection_bounds(pt->doc);
       (void) paintingdoc_select_similar(pt->doc, p,
-                                        (pt->size - 1) * PAINTING_WAND_SCALE);
+                                        (pt->size - 1) * PAINTING_WAND_SCALE,
+                                        painting_selop(pt));
       painting_invalidate_box(pt, &old);
       old = paintingdoc_selection_bounds(pt->doc);
       painting_invalidate_box(pt, &old);

@@ -218,10 +218,27 @@ void paintingdoc_select_none(paintingdoc_t *doc)
   doc->pre      = NULL;
 }
 
-/* take a freshly built region as the selection (NULL selects nothing) */
-static result_t sel_adopt(paintingdoc_t *doc, region_t *sel)
+/* take a freshly built region (NULL for none) as, into or out of the
+ * selection, as op says */
+static result_t sel_adopt(paintingdoc_t      *doc,
+                          region_t           *sel,
+                          paintingdoc_selop_t op)
 {
-  result_t rc;
+  result_t  rc;
+  region_t *combined;
+
+  if (op != paintingdoc_SELOP_REPLACE)
+  {
+    if (op == paintingdoc_SELOP_ADD)
+      rc = region_union(doc->sel, sel, &combined);
+    else
+      rc = region_subtract(doc->sel, sel, &combined);
+    region_destroy(sel);
+    if (rc != result_OK)
+      return rc;
+
+    sel = combined;
+  }
 
   paintingdoc_select_none(doc);
 
@@ -239,7 +256,9 @@ static result_t sel_adopt(paintingdoc_t *doc, region_t *sel)
   return result_OK;
 }
 
-result_t paintingdoc_select_rect(paintingdoc_t *doc, box_t box)
+result_t paintingdoc_select_rect(paintingdoc_t      *doc,
+                                 box_t               box,
+                                 paintingdoc_selop_t op)
 {
   result_t  rc;
   box_t     canvas, r;
@@ -253,12 +272,13 @@ result_t paintingdoc_select_rect(paintingdoc_t *doc, box_t box)
   if (rc != result_OK)
     return rc;
 
-  return sel_adopt(doc, sel);
+  return sel_adopt(doc, sel, op);
 }
 
 result_t paintingdoc_select_all(paintingdoc_t *doc)
 {
-  return paintingdoc_select_rect(doc, canvas_box(doc));
+  return paintingdoc_select_rect(doc, canvas_box(doc),
+                                 paintingdoc_SELOP_REPLACE);
 }
 
 result_t paintingdoc_select_invert(paintingdoc_t *doc)
@@ -272,12 +292,13 @@ result_t paintingdoc_select_invert(paintingdoc_t *doc)
   if (rc != result_OK)
     return rc;
 
-  return sel_adopt(doc, sel);
+  return sel_adopt(doc, sel, paintingdoc_SELOP_REPLACE);
 }
 
-result_t paintingdoc_select_poly(paintingdoc_t *doc,
-                                 const point_t *pts,
-                                 int            n)
+result_t paintingdoc_select_poly(paintingdoc_t      *doc,
+                                 const point_t      *pts,
+                                 int                 n,
+                                 paintingdoc_selop_t op)
 {
   result_t  rc;
   box_t     canvas;
@@ -288,7 +309,7 @@ result_t paintingdoc_select_poly(paintingdoc_t *doc,
   if (rc != result_OK)
     return rc;
 
-  return sel_adopt(doc, sel);
+  return sel_adopt(doc, sel, op);
 }
 
 int paintingdoc_has_selection(const paintingdoc_t *doc)
@@ -768,9 +789,10 @@ static int similar_inside(void *opaque, int x, int y)
   return 1;
 }
 
-result_t paintingdoc_select_similar(paintingdoc_t *doc,
-                                    point_t        p,
-                                    int            tolerance)
+result_t paintingdoc_select_similar(paintingdoc_t      *doc,
+                                    point_t             p,
+                                    int                 tolerance,
+                                    paintingdoc_selop_t op)
 {
   result_t  rc;
   box_t     canvas;
@@ -779,7 +801,7 @@ result_t paintingdoc_select_similar(paintingdoc_t *doc,
 
   canvas = canvas_box(doc);
   if (p.x < 0 || p.x >= doc->bm.size.w || p.y < 0 || p.y >= doc->bm.size.h)
-    return sel_adopt(doc, NULL);
+    return sel_adopt(doc, NULL, op);
 
   s.doc       = doc;
   s.seed      = pixel_row(doc, p.y)[p.x];
@@ -789,7 +811,7 @@ result_t paintingdoc_select_similar(paintingdoc_t *doc,
   if (rc != result_OK)
     return rc;
 
-  return sel_adopt(doc, sel);
+  return sel_adopt(doc, sel, op);
 }
 
 box_t paintingdoc_gradient(paintingdoc_t *doc,

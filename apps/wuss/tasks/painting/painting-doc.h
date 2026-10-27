@@ -178,26 +178,41 @@ int paintingdoc_pick(const paintingdoc_t *doc, point_t p, colour_t *colour);
 
 /* the selection limits every drawing operation to its pixels, so a stroke,
  * rect or fill leaves the rest of the canvas as it was. there is at most one;
- * making a new one replaces it. it is not part of the undo history. loading a
- * PNG drops it */
+ * making a new one replaces it, adds to it or takes from it, as the
+ * paintingdoc_selop_t passed says. it is not part of the undo history.
+ * loading a PNG drops it */
+
+/* how a newly made area meets the selection already there */
+typedef enum paintingdoc_selop
+{
+  paintingdoc_SELOP_REPLACE,  /* the area becomes the selection */
+  paintingdoc_SELOP_ADD,      /* the area joins the selection */
+  paintingdoc_SELOP_SUBTRACT  /* the area leaves the selection */
+}
+paintingdoc_selop_t;
 
 /* select the canvas pixels in box (clipped to the canvas, x1/y1 exclusive).
- * an empty box selects nothing, as paintingdoc_select_none */
-result_t paintingdoc_select_rect(paintingdoc_t *doc, box_t box);
+ * an empty box is an area of nothing, so replacing with it selects nothing,
+ * as paintingdoc_select_none */
+result_t paintingdoc_select_rect(paintingdoc_t      *doc,
+                                 box_t               box,
+                                 paintingdoc_selop_t op);
 
 /* select the area enclosed by the polygon of n points (even-odd rule; the
  * last point joins back to the first). fewer than 3 points, or an area with
- * no pixels in it, selects nothing */
-result_t paintingdoc_select_poly(paintingdoc_t *doc,
-                                 const point_t *pts,
-                                 int            n);
+ * no pixels in it, is an area of nothing */
+result_t paintingdoc_select_poly(paintingdoc_t      *doc,
+                                 const point_t      *pts,
+                                 int                 n,
+                                 paintingdoc_selop_t op);
 
 /* select the pixels 4-connected to p whose every channel, alpha included, is
  * within tolerance (0..255) of p's: a magic wand. 0 takes only exact
- * matches, as paintingdoc_fill does. p off the canvas selects nothing */
-result_t paintingdoc_select_similar(paintingdoc_t *doc,
-                                    point_t        p,
-                                    int            tolerance);
+ * matches, as paintingdoc_fill does. p off the canvas is an area of nothing */
+result_t paintingdoc_select_similar(paintingdoc_t      *doc,
+                                    point_t             p,
+                                    int                 tolerance,
+                                    paintingdoc_selop_t op);
 
 /* select the whole canvas */
 result_t paintingdoc_select_all(paintingdoc_t *doc);

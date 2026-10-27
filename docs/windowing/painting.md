@@ -41,11 +41,14 @@ makes an instance of its own.
 - Spray scatters dots in a disc round the pointer. Dots build up while the
   button is held still.
 - Select and lasso make a selection, shown with marching ants. The new
-  selection replaces the old one. A click without a drag drops it. Every
-  drawing tool only changes selected pixels.
+  selection replaces the old one. Hold Shift to add the new area to the
+  selection instead, or Alt to take it away. A click without a drag drops
+  the selection (with Shift or Alt it does nothing). Every drawing tool
+  only changes selected pixels.
 - The magic wand selects the pixels joined to the one clicked whose every
   channel is close to its colour. The slider sets how close: 1 takes exact
-  matches only, and each step above adds 8 to the tolerance.
+  matches only, and each step above adds 8 to the tolerance. Shift and Alt
+  add and take away, as for select and lasso.
 - Menu > Selection has Select all, Clear selection and Invert. `Esc` also
   clears the selection. Clear selection and Undo are shaded when they do not apply, and update
   while the menu stays open.
@@ -67,7 +70,8 @@ may have changed. The task passes that box to `wuss_window_invalidate`.
 
 The selection is a `geom/region.h` region (`paintingdoc_select_*`). The lasso
 fills its polygon with the even-odd rule, the wand uses `region_from_flood`
-and Invert uses `region_invert`.
+and Invert uses `region_invert`. Adding and taking away use `region_union`
+and `region_subtract`.
 `paintingdoc_selection_outline` gives the boundary boxes that the ants draw.
 
 Undo keeps RLE-compressed copies of the whole canvas. A stroke takes one
