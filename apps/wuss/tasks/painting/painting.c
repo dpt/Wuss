@@ -31,9 +31,9 @@
  * in groups -- selection, painting, shapes -- placed by painting_tool_cells,
  * with a gap between groups */
 #define TB_MARGIN    2
-#define TB_TOOL_CELL 26  /* pitch of the tool buttons */
+#define TB_TOOL_CELL 24  /* pitch of the tool buttons */
 #define TB_TOOL_SIZE 24  /* button size, including its bevel */
-#define TB_GROUP_GAP 6   /* extra space between groups */
+#define TB_GROUP_GAP 2   /* extra space between groups */
 #define TB_COLUMNS   2
 #define TB_ROWS      9   /* rows used by painting_tool_cells */
 #define TB_GROUPS    3   /* groups used by painting_tool_cells */
@@ -984,7 +984,10 @@ static result_t painting_mouse(painting_task_t    *pt,
   switch (event->data.mouse.action)
   {
   case wuss_MOUSE_DOWN:
-    if (!(event->data.mouse.button & (wuss_BUTTON_SELECT | wuss_BUTTON_ADJUST)))
+    /* a second button pressed mid-stroke is ignored, so it can't restart
+     * the stroke and strand what is drawn so far */
+    if (pt->held ||
+        !(event->data.mouse.button & (wuss_BUTTON_SELECT | wuss_BUTTON_ADJUST)))
       return result_OK;
 
     pt->held   = (event->data.mouse.button & wuss_BUTTON_SELECT) ?
@@ -1092,7 +1095,8 @@ static result_t painting_mouse(painting_task_t    *pt,
     break;
 
   case wuss_MOUSE_UP:
-    if (!pt->held)
+    /* only releasing the button that began the stroke ends it */
+    if (!(event->data.mouse.button & pt->held))
       return result_OK;
 
     if (painting_is_selector(pt))
