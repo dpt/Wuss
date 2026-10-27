@@ -27,17 +27,21 @@
 #define PAINTING_VIEW_W   400 /* initial visible size of the canvas window */
 #define PAINTING_VIEW_H   300
 
-/* Toolbox layout, in its window's content space: two columns of tool buttons,
- * filled in row by row */
+/* Toolbox layout, in its window's content space: two columns of tool buttons
+ * in groups -- selection, painting, shapes -- placed by painting_tool_cells,
+ * with a gap between groups */
 #define TB_MARGIN    2
 #define TB_TOOL_CELL 26  /* pitch of the tool buttons */
 #define TB_TOOL_SIZE 24  /* button size, including its bevel */
+#define TB_GROUP_GAP 6   /* extra space between groups */
 #define TB_COLUMNS   2
-#define TB_ROWS      DIVIDE_ROUNDING_UP(painting_TOOL__COUNT, TB_COLUMNS)
+#define TB_ROWS      9   /* rows used by painting_tool_cells */
+#define TB_GROUPS    3   /* groups used by painting_tool_cells */
 #define TB_W         (TB_MARGIN + TB_COLUMNS * TB_TOOL_CELL - \
                       (TB_TOOL_CELL - TB_TOOL_SIZE) + TB_MARGIN)
 #define TB_H         (TB_MARGIN + TB_ROWS * TB_TOOL_CELL - \
-                      (TB_TOOL_CELL - TB_TOOL_SIZE) + TB_MARGIN)
+                      (TB_TOOL_CELL - TB_TOOL_SIZE) + \
+                      (TB_GROUPS - 1) * TB_GROUP_GAP + TB_MARGIN)
 
 /* Option bar layout, in its window's content space: from the left, the
  * current colours, a single row of colour swatches and the size slider. The
@@ -97,11 +101,43 @@ static const char *const painting_nozzle_names[paintingdoc_NOZZLE__COUNT] =
   "Round", "Square", "Flat", "Tall", "Slash", "Backslash", "Bristles"
 };
 
+/* where each tool's button sits in the toolbox: its column, row and group.
+ * outline shapes are on the left with their filled forms beside them */
+static const struct
+{
+  int col, row, group;
+}
+painting_tool_cells[painting_TOOL__COUNT] =
+{
+  [painting_TOOL_SELECT]       = { 0, 0, 0 },
+  [painting_TOOL_LASSO]        = { 1, 0, 0 },
+  [painting_TOOL_WAND]         = { 0, 1, 0 },
+  [painting_TOOL_PICK]         = { 1, 1, 0 },
+
+  [painting_TOOL_BRUSH]        = { 0, 2, 1 },
+  [painting_TOOL_PAINTBRUSH]   = { 1, 2, 1 },
+  [painting_TOOL_SPRAY]        = { 0, 3, 1 },
+  [painting_TOOL_ERASER]       = { 1, 3, 1 },
+  [painting_TOOL_FILL]         = { 0, 4, 1 },
+  [painting_TOOL_GRADIENT]     = { 1, 4, 1 },
+
+  [painting_TOOL_RECT]         = { 0, 5, 2 },
+  [painting_TOOL_RECT_FILL]    = { 1, 5, 2 },
+  [painting_TOOL_ELLIPSE]      = { 0, 6, 2 },
+  [painting_TOOL_ELLIPSE_FILL] = { 1, 6, 2 },
+  [painting_TOOL_PATH]         = { 0, 7, 2 },
+  [painting_TOOL_PATH_FILL]    = { 1, 7, 2 },
+  [painting_TOOL_LINE]         = { 0, 8, 2 }
+};
+
 /* the tool's button box in toolbox content space */
 static box_t painting_tool_box(int i)
 {
-  return (box_t) BOX_POS_SIZE(TB_MARGIN + (i % TB_COLUMNS) * TB_TOOL_CELL,
-                              TB_MARGIN + (i / TB_COLUMNS) * TB_TOOL_CELL,
+  return (box_t) BOX_POS_SIZE(TB_MARGIN +
+                              painting_tool_cells[i].col * TB_TOOL_CELL,
+                              TB_MARGIN +
+                              painting_tool_cells[i].row * TB_TOOL_CELL +
+                              painting_tool_cells[i].group * TB_GROUP_GAP,
                               TB_TOOL_SIZE, TB_TOOL_SIZE);
 }
 

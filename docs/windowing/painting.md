@@ -34,7 +34,9 @@ makes an instance of its own.
 - Tools: brush, eraser (wipes to transparent), line, rect, filled
   rect, flood fill, spray, select (rectangle), lasso, magic wand and colour
   picker. Press `B` `E` `L` `R` `X` `F` `P` `S` `O` `W` or `I` to pick one. Other keys pass on to the demo's
-  hotkeys. The slider sets the width, 1 to 32 pixels. For spray it sets the
+  hotkeys. The toolbox groups its buttons: selection tools at the top, then
+  painting tools, then shapes, each outline beside its filled form. The
+  slider sets the width, 1 to 32 pixels. For spray it sets the
   radius (3 pixels per unit).
 - The colour picker takes the foreground (Select) or the background
   (Adjust) colour from the canvas pixel clicked.
