@@ -44,90 +44,6 @@ enum
 
 /* ----------------------------------------------------------------------- */
 
-/* These three are lifted from libraries/framebuf/composite/test/composite-test.c,
- * where they're static helpers rather than library functions: their memory
- * management is raw malloc and the original carries a FIXME saying as much, so
- * they're copied rather than promoted to framebuf. */
-
-static result_t bitmap_clone_by_size(bitmap_t *cloned, const bitmap_t *src)
-{
-  size_t pixelbytes;
-  void  *pixels;
-
-  pixelbytes = src->size.h * src->rowbytes;
-  pixels     = malloc(pixelbytes);
-  if (pixels == NULL)
-    return result_OOM;
-
-  *cloned      = *src;
-  cloned->base = pixels;
-
-  return result_OK;
-}
-
-static result_t bitmap_clone_pixels(bitmap_t *dst, const bitmap_t *src)
-{
-  if (dst->size.w    != src->size.w  ||
-      dst->size.h    != src->size.h  ||
-      dst->format    != src->format  ||
-      dst->rowbytes  != src->rowbytes)
-    return result_INCOMPATIBLE;
-
-  memcpy(dst->base, src->base, src->size.h * src->rowbytes);
-
-  return result_OK;
-}
-
-/* Only the arms reachable from bitmap_load_png's output are implemented. */
-static result_t bitmap_convert_inplace(bitmap_t *bm, pixelfmt_t new_fmt)
-{
-  pixelfmt_any_t *p;
-  int             x, y;
-
-  if (new_fmt != pixelfmt_bgra8888)
-    return result_NOT_IMPLEMENTED;
-
-  switch (bm->format)
-  {
-  case pixelfmt_bgra8888:
-    return result_OK;
-
-  case pixelfmt_rgbx8888:
-    p = bm->base;
-    for (y = 0; y < bm->size.h; y++)
-      for (x = 0; x < bm->size.w; x++)
-      {
-        pixelfmt_rgbx8888_t px = *p;
-        /* the x byte isn't a real alpha channel, so force it opaque */
-        *p++ = PIXELFMT_MAKE_BGRA8888(PIXELFMT_Bxxx8888(px),
-                                      PIXELFMT_xGxx8888(px),
-                                      PIXELFMT_xxRx8888(px),
-                                      0xFF);
-      }
-    bm->format = pixelfmt_bgra8888;
-    return result_OK;
-
-  case pixelfmt_rgba8888:
-    p = bm->base;
-    for (y = 0; y < bm->size.h; y++)
-      for (x = 0; x < bm->size.w; x++)
-      {
-        pixelfmt_rgba8888_t px = *p;
-        *p++ = PIXELFMT_MAKE_BGRA8888(PIXELFMT_Bxxx8888(px),
-                                      PIXELFMT_xGxx8888(px),
-                                      PIXELFMT_xxRx8888(px),
-                                      PIXELFMT_xxxA8888(px));
-      }
-    bm->format = pixelfmt_bgra8888;
-    return result_OK;
-
-  default:
-    return result_NOT_IMPLEMENTED;
-  }
-}
-
-/* ----------------------------------------------------------------------- */
-
 static const char *const rule_names[composite_RULE__LIMIT] =
 {
   "CLEAR",
@@ -157,7 +73,7 @@ static result_t load_demo_png(bitmap_t   *bm,
   if (rc != result_OK)
     return rc;
 
-  rc = bitmap_convert_inplace(bm, PD_FORMAT);
+  rc = bitmap_convert_in_place(bm, PD_FORMAT);
   if (rc != result_OK)
   {
     free(bm->base);
@@ -214,11 +130,11 @@ result_t compositing_create(wuss_t *wuss, compositing_task_t **out)
   if (rc != result_OK)
     goto free_a;
 
-  rc = bitmap_clone_by_size(&task->src, &task->a);
+  rc = bitmap_clone(&task->a, &task->src);
   if (rc != result_OK)
     goto free_b;
 
-  rc = bitmap_clone_by_size(&task->dst, &task->b);
+  rc = bitmap_clone(&task->b, &task->dst);
   if (rc != result_OK)
     goto free_src;
 
@@ -425,7 +341,7 @@ static result_t compositing_redraw(const wuss_event_t *event,
    * full-image memcpys plus two full-image passes. Fine for one window in a
    * test harness; if the main loop ever gets tight, cache the composited
    * bitmap and rebuild it only when the ramp value or rule actually changes. */
-  rc = bitmap_clone_pixels(&pd->dst, &pd->b);
+  rc = bitmap_copy_pixels(&pd->b, &pd->dst);
   if (rc != result_OK)
     return rc;
 
