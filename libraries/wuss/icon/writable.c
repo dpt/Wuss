@@ -82,46 +82,6 @@ static wuss_icon_t *writable_neighbour(const wuss_window_t *window,
   return from;
 }
 
-/* Start of the word before "index": skip spaces, then non-spaces. */
-static int writable_word_left(const char *text, int index)
-{
-  while (index > 0 && text[index - 1] == ' ')
-    index--;
-  while (index > 0 && text[index - 1] != ' ')
-    index--;
-
-  return index;
-}
-
-/* End of the word after "index": skip spaces, then non-spaces. */
-static int writable_word_right(const char *text, int len, int index)
-{
-  while (index < len && text[index] == ' ')
-    index++;
-  while (index < len && text[index] != ' ')
-    index++;
-
-  return index;
-}
-
-/* The byte index of the codepoint containing "index", or "len" past it. */
-static int writable_rune_start(const char *text, int len, int index)
-{
-  unsigned long codepoint;
-  int           i;
-  int           n;
-
-  /* ponytail: a scan from the start, fine for field-sized strings */
-  for (i = 0; i < len; i += n)
-  {
-    n = utf8_decode(text + i, len - i, &codepoint);
-    if (i + n > index)
-      break;
-  }
-
-  return i;
-}
-
 /* Whether the caret icon has a selection; its byte range is *lo..*hi. */
 static int writable_selection(const wuss_t *wuss, int *lo, int *hi)
 {
@@ -239,7 +199,7 @@ void wuss__writable_place_caret(wuss_window_t *window,
   if (index < 0)
     index = len;
   else
-    index = writable_rune_start(icon->spec.text, len, index);
+    index = utf8_rune_start(icon->spec.text, len, index);
 
   /* keep the caret in view, jumping a third of the field at a time so typing
    * at an edge doesn't scroll on every key; text that fits never scrolls, so
@@ -418,7 +378,7 @@ result_t wuss__writable_key(wuss_t              *wuss,
   case wuss_KEY_LEFT:
     *claimed = 1;
     if (modifiers & wuss_KEY_MOD_SHIFT)
-      index = writable_word_left(text, index);
+      index = utf8_word_left(text, index);
     else if (index > 0)
       index = utf8_prev(text, index);
     wuss__writable_place_caret(window, icon, index);
@@ -427,7 +387,7 @@ result_t wuss__writable_key(wuss_t              *wuss,
   case wuss_KEY_RIGHT:
     *claimed = 1;
     if (modifiers & wuss_KEY_MOD_SHIFT)
-      index = writable_word_right(text, len, index);
+      index = utf8_word_right(text, len, index);
     else if (index < len)
       index += utf8_decode(text + index, len - index, &codepoint);
     wuss__writable_place_caret(window, icon, index);
