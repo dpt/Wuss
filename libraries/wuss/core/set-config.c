@@ -108,6 +108,9 @@ result_t wuss__apply_config(wuss_t *w, const wuss_config_t *config)
     pal.scroll.wells    = wuss__resolve_colour(w, pal.scroll.wells);
     pal.scroll.sausages = wuss__resolve_colour(w, pal.scroll.sausages);
     pal.pressed         = wuss__resolve_colour(w, pal.pressed);
+    pal.scroll.active   = (pal.scroll.active == wuss_NO_BACKGROUND)
+                        ? pal.pressed
+                        : wuss__resolve_colour(w, pal.scroll.active);
     blight     = wuss__resolve_colour(w, config->bevel.light);
     bdark      = wuss__resolve_colour(w, config->bevel.dark);
     bdivider   = (config->bevel.divider == wuss_NO_BACKGROUND)
@@ -138,6 +141,7 @@ result_t wuss__apply_config(wuss_t *w, const wuss_config_t *config)
     pal.scroll.arrows   = bg;
     pal.scroll.wells    = bg;
     pal.scroll.sausages = fg;
+    pal.scroll.active   = pal.title.focus_bg;
     pal.pressed         = fg;
 
     blight     = 0;
@@ -161,6 +165,7 @@ result_t wuss__apply_config(wuss_t *w, const wuss_config_t *config)
       pal.scroll.arrows   >= w->npalette ||
       pal.scroll.wells    >= w->npalette ||
       pal.scroll.sausages >= w->npalette ||
+      pal.scroll.active   >= w->npalette ||
       pal.pressed         >= w->npalette ||
       validate_bevel_backdrop(w, blight, bdark, bdivider,
                               btnbg, btnfg, btnpressed, accent) != result_OK)

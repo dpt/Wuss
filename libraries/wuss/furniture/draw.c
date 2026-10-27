@@ -87,6 +87,28 @@ static colour_t paint_colour(const wuss_t                 *wuss,
   return title_bg(wuss, window);
 }
 
+/* The sausage of "kind": lit while this window drags it, or while an Adjust
+ * drag of either sausage moves both. */
+static colour_t sausage_colour(const wuss_t              *wuss,
+                               const wuss_window_t       *window,
+                               wuss_furniture_drag_kind_t kind)
+{
+  const wuss_furniture_palette_t *fc;
+  wuss_furniture_drag_kind_t      dragged;
+  int                             active;
+
+  fc      = &wuss->furniture_colours;
+  dragged = wuss->furniture.drag_kind;
+
+  active = wuss->furniture.dragging == window &&
+           (dragged == kind ||
+            (wuss->furniture.drag_both &&
+             (dragged == wuss_FURNITURE_DRAG_VSCROLL_SAUSAGE ||
+              dragged == wuss_FURNITURE_DRAG_HSCROLL_SAUSAGE)));
+
+  return wuss->palette[active ? fc->scroll.active : fc->scroll.sausages];
+}
+
 /* The title string, drawn into its titlebar slot. Split out of the main
  * routine only to keep the phase-2 loop readable; still runs every paint
  * because measurement depends on the current font. */
@@ -239,14 +261,14 @@ void wuss__furniture_draw(wuss_t        *wuss,
   {
     wuss__vscroll_sausage_box(window, &sausage);
     fill_furniture_rect(wuss, window, &sausage, full,
-                        wuss->palette[wuss->furniture_colours.scroll.sausages]);
+                        sausage_colour(wuss, window, wuss_FURNITURE_DRAG_VSCROLL_SAUSAGE));
   }
 
   if (window->flags & wuss_WINDOW_HSCROLL)
   {
     wuss__hscroll_sausage_box(window, &sausage);
     fill_furniture_rect(wuss, window, &sausage, full,
-                        wuss->palette[wuss->furniture_colours.scroll.sausages]);
+                        sausage_colour(wuss, window, wuss_FURNITURE_DRAG_HSCROLL_SAUSAGE));
   }
 
   /* RESIZE or a scroll arrow held down on this window: painted live, over the

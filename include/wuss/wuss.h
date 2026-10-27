@@ -277,6 +277,9 @@ typedef struct wuss_furniture_palette
     wuss_colour_t arrows;   /**< Scrollbar arrows. */
     wuss_colour_t wells;    /**< Scrollbar wells. */
     wuss_colour_t sausages; /**< Scrollbar sausages. */
+    wuss_colour_t active;   /**< A scrollbar sausage while clicked or
+                                 dragged. wuss_NO_BACKGROUND means follow
+                                 pressed. */
   }
   scroll;
   wuss_colour_t pressed;    /**< A scroll arrow, RESIZE, TOGGLE_SIZE, CLOSE

@@ -62,6 +62,7 @@ result_t wuss_lifecycle_test(const char *resources)
   bad_config.furniture.scroll.arrows   = 0;
   bad_config.furniture.scroll.wells    = 0;
   bad_config.furniture.scroll.sausages = 0;
+  bad_config.furniture.scroll.active   = 0;
   bad_config.furniture.pressed         = 0;
   bad_config.bevel.light               = 0;
   bad_config.bevel.dark                = 0;

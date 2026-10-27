@@ -131,6 +131,7 @@ static void fill_chrome_config(wuss_config_t *config, int use_wimp16)
     config->furniture.scroll.arrows   = palette_WIMP16_GREY_50;
     config->furniture.scroll.wells    = palette_WIMP16_GREY_62;
     config->furniture.scroll.sausages = palette_WIMP16_GREY_87;
+    config->furniture.scroll.active   = palette_WIMP16_CREAM;
     config->furniture.pressed         = palette_WIMP16_ORANGE;
     config->bevel.light               = palette_WIMP16_WHITE;
     config->bevel.dark                = palette_WIMP16_GREY_50;
@@ -160,6 +161,7 @@ static void fill_chrome_config(wuss_config_t *config, int use_wimp16)
     config->furniture.scroll.arrows   = palette_PICO8_BLUE;
     config->furniture.scroll.wells    = palette_PICO8_DARK_BLUE;
     config->furniture.scroll.sausages = palette_PICO8_LIGHT_GREY;
+    config->furniture.scroll.active   = palette_PICO8_WHITE;
     config->furniture.pressed         = palette_PICO8_ORANGE;
     config->bevel.light               = palette_PICO8_WHITE;
     config->bevel.dark                = palette_PICO8_DARK_GREY;

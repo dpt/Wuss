@@ -501,7 +501,7 @@ result_t wuss_furniture_test(const char *resources)
     wuss_task_desc_t desc;
     wuss_task_t     *owner;
     wuss_window_t   *wa, *wb, *wc;
-    box_t            b, tb, slot, vdown;
+    box_t            b, tb, slot, vdown, sausage;
     point_t          at;
     unsigned long    before, after;
 
@@ -620,6 +620,31 @@ result_t wuss_furniture_test(const char *resources)
     (void) box_uniform(pixels, &vdown, &after);
     wuss_mouse_click(fw, at, wuss_BUTTON_SELECT, wuss_MOUSE_UP, NULL);
     if (after == before)
+      goto TitleFail;
+
+    /* a held sausage is drawn in the active colour, repainted on press and
+     * release without any help. The default config's active colour matches
+     * the sausage in this palette, so pick one that differs. */
+    fw->furniture_colours.scroll.active = fw->furniture_colours.scroll.wells;
+    rc = wuss_redraw_dirty(fw);
+    if (rc != result_OK)
+      goto TitleFail;
+    wuss__vscroll_sausage_box(wa, &sausage);
+    (void) box_uniform(pixels, &sausage, &before);
+    at = POINT((sausage.x0 + sausage.x1) / 2, (sausage.y0 + sausage.y1) / 2);
+    wuss_mouse_click(fw, at, wuss_BUTTON_SELECT, wuss_MOUSE_DOWN, NULL);
+    rc = wuss_redraw_dirty(fw);
+    if (rc != result_OK)
+      goto TitleFail;
+    (void) box_uniform(pixels, &sausage, &after);
+    if (after == before)
+      goto TitleFail;
+    wuss_mouse_click(fw, at, wuss_BUTTON_SELECT, wuss_MOUSE_UP, NULL);
+    rc = wuss_redraw_dirty(fw);
+    if (rc != result_OK)
+      goto TitleFail;
+    (void) box_uniform(pixels, &sausage, &after);
+    if (after != before)
       goto TitleFail;
 
     wuss_task_destroy(owner);

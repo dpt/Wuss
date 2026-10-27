@@ -38,6 +38,25 @@ void wuss__furniture_hold(wuss_window_t          *win,
   wuss__furniture_set_pressed(win, region);
 }
 
+/* Repaint both sausages, so a sausage drag starting or ending shows or clears
+ * its active colour even when the scroll offset never moved. */
+static void invalidate_sausages(wuss_window_t *win)
+{
+  box_t sausage;
+
+  if (win->flags & wuss_WINDOW_VSCROLL)
+  {
+    wuss__vscroll_sausage_box(win, &sausage);
+    wuss__invalidate_clipped(win, &sausage);
+  }
+
+  if (win->flags & wuss_WINDOW_HSCROLL)
+  {
+    wuss__hscroll_sausage_box(win, &sausage);
+    wuss__invalidate_clipped(win, &sausage);
+  }
+}
+
 void wuss__furniture_arm_drag(wuss_window_t             *win,
                               wuss_furniture_drag_kind_t kind,
                               point_t                    p,
@@ -54,6 +73,10 @@ void wuss__furniture_arm_drag(wuss_window_t             *win,
   wuss->furniture.drag              = p;
   wuss->furniture.drag_scroll_start = scroll;
   wuss->furniture.drag_both         = (button & wuss_BUTTON_ADJUST) != 0;
+
+  if (kind == wuss_FURNITURE_DRAG_VSCROLL_SAUSAGE ||
+      kind == wuss_FURNITURE_DRAG_HSCROLL_SAUSAGE)
+    invalidate_sausages(win);
 }
 
 wuss_window_t *wuss__furniture_release(wuss_t             *wuss,
@@ -66,6 +89,10 @@ wuss_window_t *wuss__furniture_release(wuss_t             *wuss,
     return NULL;
 
   wuss__furniture_set_pressed(win, wuss_FURNITURE_NONE);
+
+  if (wuss->furniture.drag_kind == wuss_FURNITURE_DRAG_VSCROLL_SAUSAGE ||
+      wuss->furniture.drag_kind == wuss_FURNITURE_DRAG_HSCROLL_SAUSAGE)
+    invalidate_sausages(win);
 
   wuss->furniture.dragging  = NULL;
   wuss->furniture.drag_kind = wuss_FURNITURE_DRAG_NONE;
