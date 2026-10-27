@@ -311,41 +311,16 @@ const box_t *paintingdoc_selection_outline(const paintingdoc_t *doc, int *n)
  * selection. every drawing operation ends here, so it also marks doc edited */
 static void sel_clip(paintingdoc_t *doc, box_t dirty)
 {
-  box_t      canvas, r;
-  uint32_t  *dst;
-  uint32_t  *src;
-  const int *runs;
-  int        nruns, x, y, i;
+  bitmap_t pre;
 
   doc->edited = 1;
 
   if (doc->sel == NULL || doc->pre == NULL)
     return;
 
-  canvas = canvas_box(doc);
-  if (box_intersection(&dirty, &canvas, &r))
-    return;
-
-  for (y = r.y0; y < r.y1; y++)
-  {
-    dst   = (uint32_t *) ((uint8_t *) doc->bm.base + (size_t) y * doc->bm.rowbytes);
-    src   = (uint32_t *) (doc->pre + (size_t) y * doc->bm.rowbytes);
-    nruns = region_row(doc->sel, y, &runs);
-
-    /* restore the gaps between the selected runs */
-    x = r.x0;
-    for (i = 0; i < nruns && x < r.x1; i++)
-    {
-      if (runs[i * 2] > x)
-        memcpy(dst + x, src + x,
-               (size_t) (MIN(runs[i * 2], r.x1) - x) * sizeof(*dst));
-
-      x = MAX(x, runs[i * 2 + 1]);
-    }
-
-    if (x < r.x1)
-      memcpy(dst + x, src + x, (size_t) (r.x1 - x) * sizeof(*dst));
-  }
+  pre      = doc->bm;
+  pre.base = doc->pre;
+  (void) bitmap_restore_outside_region(&doc->bm, &pre, doc->sel, &dirty);
 }
 
 /* ----------------------------------------------------------------------- */
