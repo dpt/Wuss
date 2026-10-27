@@ -107,7 +107,7 @@ error_report_t;
 static struct
 {
   wuss_t          *wuss;
-  wuss_alloc_t     alloc;
+  alloc_t          alloc;
   wuss_task_t     *task;
   wuss_dialogue_t *dialogue;
   wuss_icon_t     *icons[ERROR_ICON__COUNT];
@@ -139,7 +139,7 @@ static int error_button_width(const wuss_t *wuss,
          2 * border;
 }
 
-static char *error_dup(wuss_alloc_t alloc, const char *text)
+static char *error_dup(alloc_t alloc, const char *text)
 {
   char  *copy;
   size_t n;

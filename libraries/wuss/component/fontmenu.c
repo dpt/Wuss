@@ -31,7 +31,7 @@
  * when the caller's dir, wuss_t or flags change. */
 static struct
 {
-  wuss_alloc_t          alloc;
+  alloc_t               alloc;
   char                 *dir;   /* owned copy; whose fonts the menu was built
                                 * from -- callers pass a pathf() scratch
                                 * pointer, so this cannot just borrow it */
@@ -70,7 +70,7 @@ static void fontmenu_free(void)
  * scratch never touches raw stdlib. */
 typedef struct namelist
 {
-  const wuss_alloc_t *alloc;    /* borrowed; the resolved hooks */
+  const alloc_t      *alloc;    /* borrowed; the resolved hooks */
   const wuss_t       *wuss;     /* borrowed; consulted to skip SYSTEM fonts,
                                  * or NULL to skip nothing */
   int                 families; /* keep only the family part of each name */
@@ -122,14 +122,14 @@ static result_t collect_name(const char *name,
   if (is_system_font_name(nl->wuss, name))
     return result_OK;
 
-  if (wuss__array_grow(nl->alloc, (void **) &nl->names, sizeof(*nl->names),
+  if (array_grow_alloc(nl->alloc, (void **) &nl->names, sizeof(*nl->names),
                        nl->n, &nl->cap, 1, 8))
   {
     nl->oom = 1;
     return result_OOM;
   }
 
-  copy = wuss__alloc_strdup(nl->alloc, name);
+  copy = alloc_strdup(nl->alloc, name);
   if (copy == NULL)
   {
     nl->oom = 1;
@@ -195,7 +195,7 @@ static result_t build_menu(char **names, int nnames, const char *title)
                               * is safe */
   }
 
-  g.menu->title = wuss__alloc_strdup(&g.alloc, title ? title : "Font");
+  g.menu->title = alloc_strdup(&g.alloc, title ? title : "Font");
   if (g.menu->title == NULL)
   {
     fontmenu_free();
@@ -204,7 +204,7 @@ static result_t build_menu(char **names, int nnames, const char *title)
 
   for (i = 0; i < nnames; i++)
   {
-    items[i].text = wuss__alloc_strdup(&g.alloc, names[i]);
+    items[i].text = alloc_strdup(&g.alloc, names[i]);
     if (items[i].text == NULL)
     {
       fontmenu_free();
@@ -244,20 +244,20 @@ static result_t fontmenu_build(const char           *dir,
                                const wuss_t         *wuss,
                                wuss_fontmenu_flags_t flags)
 {
-  result_t     rc;
-  wuss_alloc_t alloc;
-  char        *dir_copy;
-  namelist_t   nl;
+  result_t   rc;
+  alloc_t    alloc;
+  char      *dir_copy;
+  namelist_t nl;
 
   fontmenu_free();
 
-  alloc = wuss ? wuss->alloc : wuss_alloc;
+  alloc = wuss ? wuss->alloc : alloc_default;
 
   /* copy dir before enumerating: callers pass a pathf() scratch pointer,
    * which bmfont_enumerate's own per-entry pathf calls clobber -- copied
    * afterwards, g.dir would hold the last font's path, never match again
    * and so rebuild the menu (discarding its ticks) on every call */
-  dir_copy = wuss__alloc_strdup(&alloc, dir);
+  dir_copy = alloc_strdup(&alloc, dir);
   if (dir_copy == NULL)
     return result_OOM;
 

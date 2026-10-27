@@ -30,7 +30,7 @@
  * size changes. */
 static struct
 {
-  wuss_alloc_t      alloc;
+  alloc_t           alloc;
   const wuss_t     *wuss;      /* whose palette menu was built from */
   int               npalette;  /* palette rows in menu, None excluded */
   wuss_menu_t      *menu;
@@ -100,7 +100,7 @@ static result_t colourmenu_build(const wuss_t *wuss)
   memset(g.items, 0, (size_t) (npalette + 1) * sizeof(*g.items));
   g.menu->items = g.items;
 
-  g.title = wuss__alloc_strdup(&g.alloc, "Colour");
+  g.title = alloc_strdup(&g.alloc, "Colour");
   if (g.title == NULL)
   {
     rc = result_OOM;
@@ -116,7 +116,7 @@ static result_t colourmenu_build(const wuss_t *wuss)
     colour_get_rgb(&wuss->palette[i], &r, &gr, &b);
     snprintf(label, sizeof(label), "#%02X%02X%02X", r, gr, b);
 
-    g.items[i].text = wuss__alloc_strdup(&g.alloc, label);
+    g.items[i].text = alloc_strdup(&g.alloc, label);
     if (g.items[i].text == NULL)
     {
       rc = result_OOM;
@@ -127,7 +127,7 @@ static result_t colourmenu_build(const wuss_t *wuss)
     g.items[i].swatch = (wuss_colour_t) i;
   }
 
-  g.items[npalette].text   = wuss__alloc_strdup(&g.alloc, "None");
+  g.items[npalette].text   = alloc_strdup(&g.alloc, "None");
   g.items[npalette].flags  = wuss_MENU_ITEM_SWATCH | wuss_MENU_ITEM_DASHED;
   g.items[npalette].swatch = wuss_NO_BACKGROUND;
   if (g.items[npalette].text == NULL)
@@ -176,7 +176,7 @@ result_t wuss_colourmenu_set_title(const char *title)
   if (g.menu == NULL)
     return result_NULL_ARG;
 
-  copy = wuss__alloc_strdup(&g.alloc, title ? title : "Colour");
+  copy = alloc_strdup(&g.alloc, title ? title : "Colour");
   if (copy == NULL)
     return result_OOM;
 

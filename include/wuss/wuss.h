@@ -25,6 +25,7 @@ extern "C"
 #include "geom/box.h"
 #include "geom/point.h"
 #include "geom/size.h"
+#include "utils/alloc.h"
 
 /* ----------------------------------------------------------------------- */
 
@@ -85,24 +86,6 @@ typedef struct wuss_iconbar_icon wuss_iconbar_icon_t;
 /** A message in flight. Full API is in message.h. */
 typedef struct wuss_message wuss_message_t;
 
-/**
- * Allocator hooks used by a wuss_t for every heap block it owns (the
- * instance itself, windows, icons, menu nodes) and by the wuss shared
- * components. \c malloc, \c realloc and \c free must behave like their C
- * library namesakes -- same argument and return conventions, realloc(NULL,
- * n) == malloc(n), free(NULL) a no-op. Passed to wuss_create and copied in;
- * NULL there selects wuss_alloc (plain stdlib).
- */
-typedef struct wuss_alloc
-{
-  void *(*malloc)(size_t size);
-  void *(*realloc)(void *ptr, size_t size);
-  void  (*free)(void *ptr);
-}
-wuss_alloc_t;
-
-/** The default allocator: the C library malloc / realloc / free. */
-extern const wuss_alloc_t wuss_alloc;
 
 /**
  * Mouse buttons, RISC OS-style: Select is the primary action, Adjust the
@@ -690,9 +673,12 @@ wuss_font_desc_t;
  * \param[in]  npalette Number of entries in palette. Ignored if palette is
  *                      NULL.
  * \param[in]  config    Creation-time configuration, or NULL for defaults.
- * \param[in]  alloc     Allocator hooks, copied in, or NULL for \ref
- *                       wuss_alloc (plain stdlib). Must outlive nothing --
- *                       only the three function pointers are kept.
+ * \param[in]  alloc     Allocator hooks (DPTLib's utils/alloc.h) for every
+ *                       heap block the wuss_t owns (the instance itself,
+ *                       windows, icons, menu nodes) and for the shared
+ *                       components, copied in, or NULL for alloc_default
+ *                       (plain stdlib). Must outlive nothing -- only the
+ *                       three function pointers are kept.
  * \param[in]  resources Borrowed root path a caller-defined convention (e.g.
  *                       a demo app's task modules) can use to locate its own
  *                       bundled files; wuss itself never reads it. Must
@@ -710,7 +696,7 @@ result_t wuss_create(screen_t               *scr,
                      const colour_t         *palette,
                      int                     npalette,
                      const wuss_config_t    *config,
-                     const wuss_alloc_t     *alloc,
+                     const alloc_t          *alloc,
                      const char             *resources,
                      wuss_t                **wuss);
 

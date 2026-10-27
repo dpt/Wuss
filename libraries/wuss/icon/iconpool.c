@@ -29,7 +29,7 @@
 #ifdef WUSS_ICONS
 
 /* State threaded through the dirscan callback while a set is being built. The
- * three arrays grow in lockstep via wuss__array_grow. */
+ * three arrays grow in lockstep via array_grow_alloc. */
 typedef struct icons_load
 {
   wuss_t          *wuss;
@@ -182,7 +182,7 @@ static result_t icons_load_entry(const char *leaf, void *opaque)
   }
 
   oldcap = st->cap;
-  if (wuss__array_grow(&st->wuss->alloc, (void **) &st->bitmaps,
+  if (array_grow_alloc(&st->wuss->alloc, (void **) &st->bitmaps,
                        sizeof(*st->bitmaps), st->n, &st->cap, 1, 8) != 0)
   {
     free(bm.base);

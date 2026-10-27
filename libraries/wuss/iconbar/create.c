@@ -181,7 +181,7 @@ result_t wuss_iconbar_icon_create(wuss_t                         *wuss,
   if (rc != result_OK)
     return rc;
 
-  if (wuss__array_grow(&wuss->alloc, (void **) &wuss->iconbar.icons,
+  if (array_grow_alloc(&wuss->alloc, (void **) &wuss->iconbar.icons,
                        sizeof(*wuss->iconbar.icons), wuss->iconbar.n,
                        &wuss->iconbar.cap, 1, 4) != 0)
     return result_OOM;
@@ -191,8 +191,8 @@ result_t wuss_iconbar_icon_create(wuss_t                         *wuss,
     return result_OOM;
 
   it->spec        = *spec;
-  it->spec.text   = wuss__alloc_strdup(&wuss->alloc,
-                                       spec->text != NULL ? spec->text : "");
+  it->spec.text   = alloc_strdup(&wuss->alloc,
+                                 spec->text != NULL ? spec->text : "");
   it->owner       = owner;
 
   if (it->spec.text == NULL)

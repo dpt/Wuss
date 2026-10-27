@@ -8,6 +8,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Breaking:** `wuss_alloc_t` and `wuss_alloc` move to DPTLib as `alloc_t`
+  and `alloc_default` (`utils/alloc.h`). `wuss_create()` takes a
+  `const alloc_t *`. Internally `wuss__alloc_strdup` and `wuss__array_grow`
+  give way to DPTLib's `alloc_strdup` and `array_grow_alloc`.
+
 ## [0.23.0] - 2026-10-23
 
 ### Added

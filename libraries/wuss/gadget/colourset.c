@@ -44,7 +44,7 @@
  * nearest "rgb", for the menu's tick and wuss_colourset_get_colour. */
 struct wuss_colourset
 {
-  wuss_alloc_t                 alloc;  /* copied hooks; wuss_t not retained */
+  alloc_t                      alloc;  /* copied hooks; wuss_t not retained */
   wuss_window_t               *window;
   wuss_icon_t                 *field;
   wuss_icon_t                 *button;

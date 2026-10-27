@@ -18,11 +18,12 @@ result_t wuss_create(screen_t               *scr,
                      const colour_t         *palette,
                      int                     npalette,
                      const wuss_config_t    *config,
-                     const wuss_alloc_t     *alloc,
+                     const alloc_t          *alloc,
+                     const char             *resources,
                      wuss_t                **wuss);
 ```
 
-`fonts` (or `nfonts` 0) may be NULL, for unlabelled titlebars; `palette` may be NULL for a built-in default palette; `alloc` may be NULL for plain stdlib `malloc`/`realloc`/`free`. `config` may be NULL for default titlebar height/colours. `config->backdrop` is a `wuss_backdrop_t` — a flat colour, or an 8x8 fill pattern — painted behind windows on every redraw; set its `colour` to `wuss_NO_BACKGROUND` (the default when `config` is NULL) to leave the background untouched and require the caller to repaint it itself. A non-`screen_PATTERN_SOLID` `pattern` tiles that pattern in `colour` over `pattern_bg`, phased to a fixed screen origin so it does not crawl between full and dirty-region redraws.
+`fonts` (or `nfonts` 0) may be NULL, for unlabelled titlebars; `palette` may be NULL for a built-in default palette; `alloc` (DPTLib's `utils/alloc.h`) may be NULL for plain stdlib `malloc`/`realloc`/`free`. `config` may be NULL for default titlebar height/colours. `config->backdrop` is a `wuss_backdrop_t` — a flat colour, or an 8x8 fill pattern — painted behind windows on every redraw; set its `colour` to `wuss_NO_BACKGROUND` (the default when `config` is NULL) to leave the background untouched and require the caller to repaint it itself. A non-`screen_PATTERN_SOLID` `pattern` tiles that pattern in `colour` over `pattern_bg`, phased to a fixed screen origin so it does not crawl between full and dirty-region redraws.
 
 ### Fonts
 

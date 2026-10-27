@@ -71,7 +71,7 @@ static const stack_item_t saveas_layout[SA__LIMIT] =
  * no other component composes with it, so nothing needs its layout. */
 struct wuss_saveas
 {
-  wuss_alloc_t             alloc;   /* copied hooks; wuss_t itself not retained */
+  alloc_t                  alloc;   /* copied hooks; wuss_t itself not retained */
   wuss_t                  *wuss;
   wuss_task_t             *task;
   wuss_dialogue_t         *dialogue;
@@ -305,7 +305,7 @@ failure:
 
 void wuss_saveas_destroy(wuss_saveas_t *doomed)
 {
-  wuss_alloc_t alloc;
+  alloc_t alloc;
 
   if (doomed == NULL)
     return;

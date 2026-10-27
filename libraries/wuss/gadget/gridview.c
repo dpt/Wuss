@@ -43,7 +43,7 @@ static void gridview_reflow(wuss_gridview_t *gv);
 
 struct wuss_gridview
 {
-  wuss_alloc_t                  alloc;   /* copied hooks; wuss_t not retained */
+  alloc_t                       alloc;   /* copied hooks; wuss_t not retained */
   wuss_window_t                 *window;
   int                            count;
   wuss_gridview_item_fn_t       *item_fn;

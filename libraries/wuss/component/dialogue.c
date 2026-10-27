@@ -30,7 +30,7 @@
  * other component's own destroy call to close. */
 struct wuss_dialogue
 {
-  wuss_alloc_t                alloc;   /* copied hooks; wuss_t itself not retained */
+  alloc_t                     alloc;   /* copied hooks; wuss_t itself not retained */
   wuss_window_t              *window;
   int                         owns_window;
   wuss_dialogue_fillout_fn_t *fillout;
@@ -42,7 +42,7 @@ struct wuss_dialogue
 
 /* ----------------------------------------------------------------------- */
 
-static wuss_dialogue_t *dialogue_alloc(wuss_alloc_t                alloc,
+static wuss_dialogue_t *dialogue_alloc(alloc_t                     alloc,
                                        wuss_dialogue_fillout_fn_t *fillout,
                                        void                       *opaque)
 {
@@ -124,7 +124,7 @@ result_t wuss_dialogue_create_on_window(wuss_dialogue_t           **out,
 
 void wuss_dialogue_destroy(wuss_dialogue_t *doomed)
 {
-  wuss_alloc_t alloc;
+  alloc_t alloc;
 
   if (doomed == NULL)
     return;

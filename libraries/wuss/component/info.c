@@ -49,7 +49,7 @@
  * icons on this window" call. */
 struct wuss_info
 {
-  wuss_alloc_t   alloc;              /* copied hooks; wuss_t itself not retained */
+  alloc_t        alloc;              /* copied hooks; wuss_t itself not retained */
   wuss_window_t *window;             /* owned; closed by wuss_info_destroy */
   wuss_icon_t   *icons[INFO_MAX_ROWS * 2];
   int            nicons;
@@ -236,7 +236,7 @@ result_t wuss_info_set_rows(wuss_info_t           *info,
 
 void wuss_info_destroy(wuss_info_t *doomed)
 {
-  wuss_alloc_t alloc;
+  alloc_t alloc;
 
   if (doomed == NULL)
     return;

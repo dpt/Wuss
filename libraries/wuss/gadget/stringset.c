@@ -34,7 +34,7 @@
  * chain is freed by then and wuss_menu_close would dereference it. */
 struct wuss_stringset
 {
-  wuss_alloc_t                 alloc;  /* copied hooks; wuss_t not retained */
+  alloc_t                      alloc;  /* copied hooks; wuss_t not retained */
   wuss_window_t               *window;
   wuss_icon_t                 *field;
   wuss_icon_t                 *arrow;

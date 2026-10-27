@@ -29,7 +29,7 @@ result_t wuss_icon_create(wuss_window_t          *window,
   if (rc != result_OK)
     return rc;
 
-  if (wuss__array_grow(&w->alloc, (void **) &window->icons,
+  if (array_grow_alloc(&w->alloc, (void **) &window->icons,
                        sizeof(*window->icons), window->nicons,
                        &window->cap_icons, 1, 4) != 0)
     return result_OOM;
@@ -49,7 +49,7 @@ result_t wuss_icon_create(wuss_window_t          *window,
   }
   else
   {
-    it->spec.text = wuss__alloc_strdup(&w->alloc, scratch.spec.text);
+    it->spec.text = alloc_strdup(&w->alloc, scratch.spec.text);
   }
   if (it->spec.text == NULL)
   {

@@ -29,7 +29,7 @@ static unsigned int next_ref(wuss_t *wuss)
 /* Append "msg" to the tail of the queue. Returns result_OK or result_OOM. */
 static result_t enqueue(wuss_t *wuss, const wuss_message_t *msg)
 {
-  if (wuss__array_grow(&wuss->alloc, (void **) &wuss->msg.queue,
+  if (array_grow_alloc(&wuss->alloc, (void **) &wuss->msg.queue,
                        sizeof(*wuss->msg.queue), wuss->msg.count,
                        &wuss->msg.cap, 1, 8) != 0)
     return result_OOM;

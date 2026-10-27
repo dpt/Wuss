@@ -28,7 +28,7 @@ result_t wuss_icon_set_text(wuss_window_t *window,
     return result_OK;
   }
 
-  dup = wuss__alloc_strdup(&w->alloc, text != NULL ? text : "");
+  dup = alloc_strdup(&w->alloc, text != NULL ? text : "");
   if (dup == NULL)
     return result_OOM;
 

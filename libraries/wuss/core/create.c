@@ -12,20 +12,13 @@
 
 #include "impl.h"
 
-/* The default allocator: plain stdlib. wuss_create copies this in when its
- * alloc argument is NULL. */
-const wuss_alloc_t wuss_alloc =
-{
-  malloc, realloc, free
-};
-
 result_t wuss_create(screen_t               *scr,
                      const wuss_font_desc_t *fonts,
                      int                     nfonts,
                      const colour_t         *palette,
                      int                     npalette,
                      const wuss_config_t    *config,
-                     const wuss_alloc_t     *alloc,
+                     const alloc_t          *alloc,
                      const char             *resources,
                      wuss_t                **wuss)
 {
@@ -37,11 +30,11 @@ result_t wuss_create(screen_t               *scr,
     { 0xFFFFFFFF }  /* 1: white */
   };
 
-  result_t     rc;
-  wuss_alloc_t al;
-  wuss_t      *w;
-  int          s;
-  int          i;
+  result_t rc;
+  alloc_t  al;
+  wuss_t  *w;
+  int      s;
+  int      i;
 
   assert(scr  != NULL);
   assert(wuss != NULL);
@@ -49,7 +42,7 @@ result_t wuss_create(screen_t               *scr,
   if (nfonts < 0 || nfonts > wuss_MAX_FONTS || (nfonts > 0 && fonts == NULL))
     return result_BAD_ARG;
 
-  al = (alloc != NULL) ? *alloc : wuss_alloc;
+  al = (alloc != NULL) ? *alloc : alloc_default;
 
   w = al.malloc(sizeof(*w));
   if (w == NULL)

@@ -170,7 +170,7 @@ struct wuss
   bmfontcache_t              *font_cache;
   /* malloc/realloc/free hooks, copied in by wuss_create; used for every heap
    * block this wuss_t owns. */
-  wuss_alloc_t                alloc;
+  alloc_t                     alloc;
 
   /* ----- palette and colours ----- */
 
@@ -283,7 +283,7 @@ struct wuss
 
   struct
   {
-    /* Owned; array grown by wuss__array_grow, FIFO -- consumed from the
+    /* Owned; array grown by array_grow_alloc, FIFO -- consumed from the
      * front, see wuss__message_drain. */
     wuss_message_t       *queue;
     int                   count;

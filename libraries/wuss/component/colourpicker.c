@@ -87,7 +87,7 @@ static const cp_model_t cp_models[CP_NMODELS] =
 
 struct wuss_colourpicker
 {
-  wuss_alloc_t                    alloc;  /* copied hooks */
+  alloc_t                         alloc;  /* copied hooks */
   wuss_t                         *wuss;
   wuss_task_t                    *task;
   wuss_dialogue_t                *dialogue;
@@ -709,7 +709,7 @@ failure:
 
 void wuss_colourpicker_destroy(wuss_colourpicker_t *doomed)
 {
-  wuss_alloc_t alloc;
+  alloc_t alloc;
 
   if (doomed == NULL)
     return;

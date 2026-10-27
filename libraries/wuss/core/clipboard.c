@@ -17,7 +17,7 @@ result_t wuss_clipboard_set(wuss_t *wuss, const char *utf8)
   }
   else
   {
-    copy = wuss__alloc_strdup(&wuss->alloc, utf8);
+    copy = alloc_strdup(&wuss->alloc, utf8);
     if (copy == NULL)
       return result_OOM;
   }

@@ -28,7 +28,7 @@
  * needed. */
 static struct
 {
-  wuss_alloc_t         alloc;   /* copied hooks; wuss_t itself not retained */
+  alloc_t              alloc;   /* copied hooks; wuss_t itself not retained */
   wuss_task_t         *task;    /* home task the dialogue was built on */
   wuss_info_t         *info;
   wuss_dialogue_t     *dialogue;
