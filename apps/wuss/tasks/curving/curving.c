@@ -17,6 +17,7 @@
 #include "framebuf/curve.h"
 #include "framebuf/palettes.h"
 #include "geom/box.h"
+#include "geom/hull.h"
 #include "utils/fxp.h"
 #include "wuss/wuss.h"
 
@@ -62,58 +63,6 @@ static const char *const curving_width_names[CURVING_NWIDTHS] =
 #define CURVING_SEGMENTS_DEFAULT 32
 #define CURVING_SEGMENTS_MIN     4
 #define CURVING_SEGMENTS_MAX     128
-
-/* 2D cross product of (b - a) and (c - a); > 0 for a left (counter-clockwise)
- * turn, < 0 for a right turn, 0 if collinear. long to keep the products of
- * two point coordinates from overflowing an int. */
-static long curving_cross(point_t a, point_t b, point_t c)
-{
-  return (long) (b.x - a.x) * (c.y - a.y) - (long) (b.y - a.y) * (c.x - a.x);
-}
-
-static int curving_point_cmp(const void *va, const void *vb)
-{
-  const point_t *a = va;
-  const point_t *b = vb;
-
-  if (a->x != b->x)
-    return a->x - b->x;
-  return a->y - b->y;
-}
-
-/* Andrew's monotone chain: fill "hull" (capacity 2 * n + 1) with the convex
- * hull of the first n of "src" as a closed polyline (first point repeated at
- * the end) and return its point count. n < 3, or all points collinear,
- * degenerates to the sorted span, still returned closed. */
-static int curving_convex_hull(const point_t *src, int n, point_t *hull)
-{
-  point_t pts[CURVING_MAXCONTROLPTS];
-  int     k, i;
-
-  memcpy(pts, src, (size_t) n * sizeof(*pts));
-  qsort(pts, (size_t) n, sizeof(*pts), curving_point_cmp);
-
-  k = 0;
-  for (i = 0; i < n; i++) /* lower hull */
-  {
-    while (k >= 2 && curving_cross(hull[k - 2], hull[k - 1], pts[i]) <= 0)
-      k--;
-    hull[k++] = pts[i];
-  }
-  {
-    int lower, j;
-
-    lower = k + 1;
-    for (j = n - 2; j >= 0; j--) /* upper hull */
-    {
-      while (k >= lower && curving_cross(hull[k - 2], hull[k - 1], pts[j]) <= 0)
-        k--;
-      hull[k++] = pts[j];
-    }
-  }
-
-  return k; /* hull[0] == hull[k - 1], a closed loop */
-}
 
 /* put every control point back at its starting position */
 static void curving_reset_points(curving_task_t *task)
@@ -347,10 +296,13 @@ static result_t curving_redraw(const wuss_event_t *event,
    * sit on top of it */
   if (task->hull)
   {
+    point_t pts[CURVING_MAXCONTROLPTS];
     point_t hull[2 * CURVING_MAXCONTROLPTS + 1];
     int     nhull, k;
 
-    nhull = curving_convex_hull(task->points, task->npoints, hull);
+    /* hull_convex sorts its input, so give it a copy */
+    memcpy(pts, task->points, (size_t) task->npoints * sizeof(*pts));
+    nhull = hull_convex(pts, task->npoints, hull);
     for (k = 0; k < nhull; k++)
     {
       hull[k].x += bounds->x0 - sx;
