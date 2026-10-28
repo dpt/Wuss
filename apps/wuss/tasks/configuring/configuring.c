@@ -476,19 +476,19 @@ static const configuring_section_t g_configuring_sections[CONFIGURING_SECTION__L
 {
   [CONFIGURING_SECTION_MOUSING] =
   {
-    "Mousing", "pointer",
+    "Mousing", "mousing",
     { CONFIGURING_ST_SYSTEM, CONFIGURING_ST_TIMING },
     CONFIGURING_ICON_SYSTEM_FRAME, CONFIGURING_ICON_FONT_FRAME
   },
   [CONFIGURING_SECTION_FONTS] =
   {
-    "Fonts", "app_chars",
+    "Fonts", "fonts",
     { CONFIGURING_ST_FONT, -1 },
     CONFIGURING_ICON_FONT_FRAME, CONFIGURING_ICON_BACKDROP_FRAME
   },
   [CONFIGURING_SECTION_BACKDROP] =
   {
-    "Backdrop", "app_patterns",
+    "Backdrop", "backdrop",
     { CONFIGURING_ST_BACKDROP, -1 },
     CONFIGURING_ICON_BACKDROP_FRAME, CONFIGURING_NICONS
   },
@@ -882,6 +882,16 @@ result_t configuring_create(wuss_t *wuss, configuring_task_t **out)
   }
 
   task->delegate = delegate;
+
+  /* the section glyphs live in the task's private pool */
+  rc = wuss_task_iconpool_load(delegate,
+                               pathf("%s/resources/wuss-tasks/configuring",
+                                     wuss_get_resources(wuss)));
+  if (rc != result_OK)
+  {
+    wuss_task_destroy(delegate); /* unregister; its QUIT frees the task block */
+    return rc;
+  }
 
   for (i = 0; i < CONFIGURING_SECTION__LIMIT; i++)
     task->glyphs[i] = wuss_task_iconpool_find(delegate,
