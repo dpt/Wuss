@@ -34,24 +34,35 @@ static void restack_one(wuss_window_t *window, wuss_zorder_t reason)
   }
 }
 
-/* A toolbar group restacks as one: the toolbars stay directly above their
- * parent, the last attached frontmost. */
-void wuss_window_restack(wuss_window_t *window, wuss_zorder_t reason)
+/* Restack the members of window's group that are panes (panes != 0) or
+ * toolbars (panes == 0), in attach order. */
+static void restack_members(wuss_window_t *window,
+                            int            panes,
+                            wuss_zorder_t  reason)
 {
   wuss_window_t *tb;
 
+  for (tb = wuss__next_member(window->toolbar.first, panes); tb != NULL;
+       tb = wuss__next_member(tb->toolbar.next, panes))
+    restack_one(tb, reason);
+}
+
+/* A toolbar group restacks as one: the panes stay directly above their
+ * parent, as part of it, and the toolbars above the panes. */
+void wuss_window_restack(wuss_window_t *window, wuss_zorder_t reason)
+{
   window = wuss__toolbar_root(window);
 
   if (reason == wuss_ZORDER_FRONT)
   {
     restack_one(window, reason);
-    for (tb = window->toolbar.first; tb != NULL; tb = tb->toolbar.next)
-      restack_one(tb, reason);
+    restack_members(window, 1, reason);
+    restack_members(window, 0, reason);
   }
   else
   {
-    for (tb = window->toolbar.first; tb != NULL; tb = tb->toolbar.next)
-      restack_one(tb, reason);
+    restack_members(window, 0, reason);
+    restack_members(window, 1, reason);
     restack_one(window, reason);
   }
 }

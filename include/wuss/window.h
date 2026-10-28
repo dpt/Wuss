@@ -519,7 +519,8 @@ const char *wuss_window_get_title(const wuss_window_t *window);
 
 /* ----------------------------------------------------------------------- */
 
-/** The edge of a parent window that a toolbar attaches to. */
+/** The edge of a parent window that a toolbar or pane attaches to. The
+ * descriptions are for a toolbar; a pane goes just inside the edge. */
 typedef enum wuss_edge
 {
   wuss_EDGE_LEFT,   /**< Against the parent's left edge. */
@@ -576,10 +577,55 @@ result_t wuss_window_attach(wuss_window_t *toolbar,
                             int            offset);
 
 /**
- * Detach a toolbar from its parent. It stays where it is as an ordinary
- * window; the parent's other toolbars close up.
+ * Attach a window to an edge of another window as a pane: a toolbar inside
+ * the parent rather than outside it.
  *
- * \param[in] toolbar Toolbar to detach. A window that is not a toolbar is
+ * The pane takes a strip off \p edge of the parent's content area, plus a
+ * one-pixel divider the parent draws between the two, and the content area
+ * shrinks to suit while the parent's footprint stays as it is. The pane runs
+ * the full length of the content on that axis, and Wuss resizes it to match
+ * whenever the parent resizes. Its thickness across the edge is its own
+ * width (left or right edge) or height (top or bottom edge); a
+ * wuss_window_resize on the pane changes only that and the content area
+ * re-shrinks. The parent's scrollbars keep their full length beside the
+ * panes. Each pane takes its strip from what the panes attached before it
+ * left, so the first attached runs across the corners and later ones fit
+ * between; several on one edge stack inwards. A hidden pane gives its room
+ * back to the content.
+ *
+ * The parent's document extent, minimum size and scroll offset all refer to
+ * its shrunken content area: a resize-drag or toggle-size grows the
+ * footprint by the panes' room on top. A change in the panes' room keeps the
+ * scroll offset, so the document slides with the content's edge, and
+ * repaints the whole content area. Outside toolbars on the same parent keep
+ * aligning against the content area as it would be without its panes.
+ *
+ * Otherwise a pane behaves as a toolbar (see wuss_window_attach): it moves,
+ * stacks, hides and closes with its parent, passes the input focus to it
+ * unless wuss_WINDOW_FOCUSABLE, and is detached with wuss_window_detach,
+ * which gives its room back.
+ *
+ * \param[in] pane   Window to attach. Must have been created with
+ *                   wuss_WINDOW_NO_TITLEBAR and wuss_WINDOW_NO_OUTLINE, and
+ *                   with no scrollbars or resize icon.
+ * \param[in] parent Window to attach it to. Must belong to the same task.
+ * \param[in] edge   Parent edge to attach to.
+ * \return \ref result_OK on success, \ref result_BAD_ARG if the windows
+ *         belong to different tasks, either is already a toolbar or pane,
+ *         pane has toolbars or panes of its own, or pane has any furniture,
+ *         or \ref result_WUSS_TOO_SMALL if the parent's content is too small
+ *         to keep its minimum size beside the pane.
+ */
+result_t wuss_window_attach_pane(wuss_window_t *pane,
+                                 wuss_window_t *parent,
+                                 wuss_edge_t    edge);
+
+/**
+ * Detach a toolbar or pane from its parent. It stays where it is as an
+ * ordinary window; the parent's other toolbars close up, and a pane's room
+ * goes back to the parent's content.
+ *
+ * \param[in] toolbar Toolbar or pane to detach. A window that is neither is
  *                    left alone.
  */
 void wuss_window_detach(wuss_window_t *toolbar);

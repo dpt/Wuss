@@ -3,7 +3,7 @@
 #include "../impl.h"
 
 /* p is the window's content top-left; the furniture offset (outline plus
- * any titlebar) is constant for a given window, so the footprint just
+ * any titlebar, plus any left and top panes) is constant for a given window, so the footprint just
  * follows it. The cached furniture layout is translated in place below
  * rather than invalidated -- a pure move changes no piece's size, so there
  * is nothing to rebuild. */
@@ -24,6 +24,10 @@ void wuss__window_move(wuss_window_t *window, point_t p)
   outline_px      = wuss__outline_px(window);
   titlebar_height = wuss__titlebar_height(window);
   before          = window->visible;
+
+  /* work from the inner box's top-left, outside any panes */
+  p.x -= window->panes.x0;
+  p.y -= window->panes.y0;
 
   /* a drag delivers one call per pointer-move event, not one per actual
    * change of position -- a window pinned against the screen edge, or a

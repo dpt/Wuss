@@ -31,7 +31,7 @@ static void invalidate_grown_or_shrunk(wuss_window_t *window,
   }
 }
 
-static result_t window_resize(wuss_window_t *window, size2d_t size)
+result_t wuss__window_resize(wuss_window_t *window, size2d_t size)
 {
   int      outline_px, titlebar_height;
   box_t    before;
@@ -59,7 +59,7 @@ static result_t window_resize(wuss_window_t *window, size2d_t size)
   before          = window->visible;
   old_scroll      = window->scroll;
   wuss__content_box(window, &before_content);
-  wuss__furniture_carve_for(window->flags, wuss__button_size(window), &carve);
+  wuss__chrome_carve(window, &carve);
 
   /* a resize drag delivers one call per pointer-move event, not one per
    * actual change of size -- a window pinned against the screen edge or
@@ -219,7 +219,7 @@ result_t wuss_window_resize(wuss_window_t *window, size2d_t size)
 {
   result_t rc;
 
-  rc = window_resize(window, size);
+  rc = wuss__window_resize(window, size);
   if (rc != result_OK)
     return rc;
 

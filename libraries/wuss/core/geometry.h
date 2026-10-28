@@ -17,14 +17,86 @@ void            wuss__titlebar_box(const wuss_window_t *window, box_t *out);
 void            wuss__title_hit_box(const wuss_window_t *window, box_t *out);
 void            wuss__close_box(const wuss_window_t *window, box_t *out);
 void            wuss__close_hit_box(const wuss_window_t *window, box_t *out);
-void            wuss__content_box(const wuss_window_t *window, box_t *out);
+void            wuss__inner_box(const wuss_window_t *window, box_t *out);
+
+/* rule between a pane and the content it borders, drawn by the parent */
+#define WUSS__PANE_DIVIDER_PX WUSS_DIVIDER_PX
 #else
-/* No furniture: the content area is the whole visible footprint. */
-static inline void wuss__content_box(const wuss_window_t *window, box_t *out)
+/* No furniture: the inner area is the whole visible footprint. */
+static inline void wuss__inner_box(const wuss_window_t *window, box_t *out)
 {
   *out = window->visible;
 }
+
+/* nothing draws a divider without furniture, so leave no room for one */
+#define WUSS__PANE_DIVIDER_PX 0
 #endif
+
+/* The content area: the inner box (the footprint less its furniture) less
+ * whatever room the window's panes take. */
+static inline void wuss__content_box(const wuss_window_t *window, box_t *out)
+{
+  wuss__inner_box(window, out);
+  out->x0 += window->panes.x0;
+  out->y0 += window->panes.y0;
+  out->x1 -= window->panes.x1;
+  out->y1 -= window->panes.y1;
+}
+
+/* Non-zero if "window" is attached inside its parent as a pane. */
+static inline int wuss__window_is_pane(const wuss_window_t *window)
+{
+  return (window->state & wuss_WINDOW_STATE_PANE) != 0;
+}
+
+/* The first window from "tb" on along a parent's toolbar list that is a
+ * pane (panes != 0) or an outside toolbar (panes == 0), or NULL. Walk one
+ * kind with:
+ *   for (tb = wuss__next_member(parent->toolbar.first, panes); tb != NULL;
+ *        tb = wuss__next_member(tb->toolbar.next, panes)) */
+static inline wuss_window_t *wuss__next_member(wuss_window_t *tb, int panes)
+{
+  while (tb != NULL && !wuss__window_is_pane(tb) != !panes)
+    tb = tb->toolbar.next;
+
+  return tb;
+}
+
+/* How much of a window's width/height its panes take, dividers included. */
+static inline void wuss__pane_carve(const wuss_window_t *window,
+                                    point_t             *carve)
+{
+  carve->x = window->panes.x0 + window->panes.x1;
+  carve->y = window->panes.y0 + window->panes.y1;
+}
+
+/* The divider strip along the content-facing side of a pane at "pane" on
+ * "edge". */
+static inline void wuss__pane_divider_box(const box_t *pane,
+                                          wuss_edge_t  edge,
+                                          box_t       *out)
+{
+  *out = *pane;
+  switch (edge)
+  {
+  case wuss_EDGE_LEFT:
+    out->x0 = pane->x1;
+    out->x1 = pane->x1 + WUSS__PANE_DIVIDER_PX;
+    break;
+  case wuss_EDGE_RIGHT:
+    out->x1 = pane->x0;
+    out->x0 = pane->x0 - WUSS__PANE_DIVIDER_PX;
+    break;
+  case wuss_EDGE_TOP:
+    out->y0 = pane->y1;
+    out->y1 = pane->y1 + WUSS__PANE_DIVIDER_PX;
+    break;
+  case wuss_EDGE_BOTTOM:
+    out->y1 = pane->y0;
+    out->y0 = pane->y0 - WUSS__PANE_DIVIDER_PX;
+    break;
+  }
+}
 
 /* Map screen point "p" to "window"'s virtual document space: the one place
  * the content origin and scroll offset are applied, so hit-testing,
@@ -181,6 +253,20 @@ static inline void wuss__furniture_carve_for(wuss_window_flags_t flags,
 }
 #endif /* WUSS_FURNITURE */
 
+/* How much of a window's width/height lies between its outline and its
+ * content beyond the titlebar: the furniture carve plus the panes'. For
+ * turning a content size into a footprint and back. */
+static inline void wuss__chrome_carve(const wuss_window_t *window,
+                                      point_t             *carve)
+{
+  point_t panes;
+
+  wuss__furniture_carve_for(window->flags, wuss__button_size(window), carve);
+  wuss__pane_carve(window, &panes);
+  carve->x += panes.x;
+  carve->y += panes.y;
+}
+
 /* The floor a resize-drag or toggle-size will shrink a window's content to:
  * the client's min_doc where it set one, but never below what the window's
  * furniture needs -- its titlebar icons side by side, both arrows of each
@@ -237,7 +323,7 @@ static inline void wuss__max_content_on_screen(const wuss_window_t *window,
 
   outline_px      = wuss__outline_px(window);
   titlebar_height = wuss__titlebar_height(window);
-  wuss__furniture_carve_for(window->flags, wuss__button_size(window), &carve);
+  wuss__chrome_carve(window, &carve);
 
   max->w = window->wuss->scr->size.w - window->visible.x0
          - 2 * outline_px - carve.x;
@@ -263,7 +349,7 @@ static inline void wuss__max_content_anywhere_on_screen(const wuss_window_t *win
 
   outline_px      = wuss__outline_px(window);
   titlebar_height = wuss__titlebar_height(window);
-  wuss__furniture_carve_for(window->flags, wuss__button_size(window), &carve);
+  wuss__chrome_carve(window, &carve);
 
   max->w = window->wuss->scr->size.w - 2 * outline_px - carve.x;
   max->h = window->wuss->scr->size.h

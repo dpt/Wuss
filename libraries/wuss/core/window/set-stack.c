@@ -30,9 +30,11 @@ static void set_stack_one(wuss_window_t *window, wuss_stack_t stack)
     wuss__invalidate_uncovered(window);
 }
 
-/* A toolbar group moves stack as one, toolbars landing above the parent. */
+/* A toolbar group moves stack as one, panes landing above the parent and
+ * toolbars above the panes. */
 void wuss_window_set_stack(wuss_window_t *window, wuss_stack_t stack)
 {
+  int            panes;
   wuss_window_t *tb;
 
   assert((int) stack >= 0 && (int) stack < WUSS_STACK_COUNT);
@@ -40,6 +42,8 @@ void wuss_window_set_stack(wuss_window_t *window, wuss_stack_t stack)
   window = wuss__toolbar_root(window);
 
   set_stack_one(window, stack);
-  for (tb = window->toolbar.first; tb != NULL; tb = tb->toolbar.next)
-    set_stack_one(tb, stack);
+  for (panes = 1; panes >= 0; panes--)
+    for (tb = wuss__next_member(window->toolbar.first, panes); tb != NULL;
+         tb = wuss__next_member(tb->toolbar.next, panes))
+      set_stack_one(tb, stack);
 }

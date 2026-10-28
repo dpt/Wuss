@@ -139,6 +139,24 @@ void     wuss_window_detach(wuss_window_t *toolbar);
 
 A click in a toolbar's content area does not bring the group to the front, just as for any window's content area.
 
+### Panes
+
+A pane is a toolbar attached inside its parent, along one edge of the parent's content area. It takes its room from the content rather than sitting outside the window:
+
+```C
+result_t wuss_window_attach_pane(wuss_window_t *pane, wuss_window_t *parent,
+                                 wuss_edge_t edge);
+```
+
+- **Carving.** The parent's footprint stays the same and its content area shrinks by the pane's thickness plus a one-pixel divider, which the parent draws as part of its furniture. A click on a divider counts as one on the frame, as a bare outline pixel does: on the titlebar if the parent has one, otherwise on the content. `wuss_window_get_content_bounds`, redraws, the scroll origin and the scrollbar sausages all use what is left. The scrollbars, the resize button and any outside toolbars still span the whole box inside the furniture.
+- **Size.** Wuss sets a pane's length to match the parent's content along its edge. Its thickness is its own: `wuss_window_resize` on a pane changes only that. A pane grown, or shown, past what the parent can spare is thinned so the content keeps its minimum size.
+- **Order.** Panes carve in the order they were attached. The first spans the corners; later panes fit between those already there, and panes on the same edge stack inwards.
+- **Sizing the parent.** `doc`, `min_doc`, `wuss_window_resize` and the scroll limits all refer to the carved content area. The panes' room is added on top, for the resize floor, toggle-size and the largest size on screen alike. Attaching a pane to a parent too small to hold it gives `result_WUSS_TOO_SMALL`.
+- **Furniture.** A pane must be created with `wuss_WINDOW_NO_TITLEBAR` and `wuss_WINDOW_NO_OUTLINE`. It may also have `wuss_WINDOW_HIDDEN`, `wuss_WINDOW_NO_REDRAW`, `wuss_WINDOW_NO_RESIZE_BLIT` and `wuss_WINDOW_FOCUSABLE`; other flags give `result_BAD_ARG`. So does attaching a pane or a toolbar to a pane, or a pane to a toolbar.
+- **Changes.** A pane hidden on its own gives its room back to the content; one hidden along with its parent keeps it. When a pane is shown, hidden, resized or detached, the parent keeps its scroll offset (clamped to the new limits), repaints the whole area inside its furniture and gets a `wuss_EVENT_OPEN`.
+
+Otherwise a pane behaves as a toolbar: it moves, stacks, hides, closes and passes on the focus with its parent, and `wuss_window_detach` returns it to an ordinary window. Being part of the parent, panes stack directly in front of it and behind all of its toolbars. Panes are part of the core, so they work without `WUSS_FURNITURE`, where the divider takes no room.
+
 ## Task callbacks
 
 ```C
@@ -340,7 +358,7 @@ Terms as this document and the API use them. Several are RISC OS conventions, wh
 - **Backdrop** — the desktop background colour painted behind all windows, set by `config->backdrop` at `wuss_create` time. `wuss_NO_BACKGROUND` leaves the area behind windows untouched, making it the caller's to repaint.
 - **Button flags** — `wuss_button_t` values are flags (Select 4, Menu 2, Adjust 1), OR'd together so a chord can be reported. Test a reported button with `&`, never for equality.
 - **Chord** — two or more mouse buttons held together, e.g. Select+Adjust. Wuss's own furniture handling resolves an ambiguous chord in Select's favour.
-- **Content area** — the part of a window belonging to its task. Its bounds are exactly what was passed to `wuss_window_create`, furniture being added outside it; read back with `wuss_window_get_content_bounds`.
+- **Content area** — the part of a window belonging to its task. Its bounds are exactly what was passed to `wuss_window_create`, furniture being added outside it, less any room its panes take; read back with `wuss_window_get_content_bounds`.
 - **Dirty region** — the accumulated set of screen-space boxes needing repaint, coalesced as they accumulate. `wuss_redraw_dirty` repaints and clears it.
 - **Font slot** — one of up to `wuss_MAX_FONTS` `wuss_font_desc_t` entries passed to `wuss_create` and owned by the `libraries/wuss/font/` module. Slot 0 is the system font, slot 1 the bold weight, slot 2 (`WUSS_SYMBOL_FONT`) an optional glyph font for menu decoration. Read back with `wuss_get_font` / `wuss_get_font_n`. See "Fonts".
 - **Document extent** — `doc`, the size of a task's virtual content space, fixed at window creation. Sets how far a window can scroll, the scrollbar sausages' proportions, and the size a resize-drag or toggle-size can grow the content area to.
@@ -352,6 +370,7 @@ Terms as this document and the API use them. Several are RISC OS conventions, wh
 - **Invalidate** — mark a region dirty for the next `wuss_redraw_dirty`. Window management does this for its own changes; a task must do it for its own content changes.
 - **Menu** — the middle mouse button, `wuss_BUTTON_MENU`. Routed like any other button; Wuss provides no menu widget of its own.
 - **Outline** — the 1px border drawn around a window, suppressed by `wuss_WINDOW_NO_OUTLINE`.
+- **Pane** — a toolbar attached inside a parent window with `wuss_window_attach_pane`, along one edge of its content area, which shrinks to make room. See "Panes".
 - **Sausage** — the draggable thumb within a scrollbar well, sized in proportion to how much of the document extent the content area shows.
 - **Screen space** — coordinates in the underlying `screen_t`, origin at its top-left. Visible and content bounds are in screen space.
 - **Select** — the primary mouse button, `wuss_BUTTON_SELECT`. Performs the plain action, and raises a window when used on its titlebar.

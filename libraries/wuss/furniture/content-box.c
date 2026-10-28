@@ -3,7 +3,9 @@
 #include "../core/types.h"
 #include "../core/geometry.h"
 
-void wuss__content_box(const wuss_window_t *window, box_t *out)
+/* The footprint less its furniture: the content box before any panes take
+ * their room (see wuss__content_box). */
+void wuss__inner_box(const wuss_window_t *window, box_t *out)
 {
   int     outline_px;
   point_t carve;

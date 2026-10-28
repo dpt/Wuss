@@ -50,6 +50,10 @@ result_t wuss_window_create(wuss_task_t        *task,
   win->visible.y0 = content->y0 - outline_px - titlebar_height;
   win->visible.x1 = content->x1 + outline_px + carve.x;
   win->visible.y1 = content->y1 + outline_px + carve.y;
+  win->panes.x0   = 0; /* read by the on-screen clamp below */
+  win->panes.y0   = 0;
+  win->panes.x1   = 0;
+  win->panes.y1   = 0;
 
   if (flags & wuss_WINDOW_STACK_TOP)
     win->stack = wuss_STACK_TOP;

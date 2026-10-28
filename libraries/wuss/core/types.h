@@ -107,7 +107,8 @@ typedef enum wuss_window_state
   wuss_WINDOW_STATE_NONE    = 0,
   wuss_WINDOW_STATE_TOGGLED = 1 << 0, /* currently at TOGGLE_SIZE's "full" size */
   wuss_WINDOW_STATE_TASK_HIDDEN = 1 << 1, /* hidden by wuss_task_set_hidden */
-  wuss_WINDOW_STATE_PARENT_HIDDEN = 1 << 2 /* toolbar hidden along with its parent */
+  wuss_WINDOW_STATE_PARENT_HIDDEN = 1 << 2, /* toolbar hidden along with its parent */
+  wuss_WINDOW_STATE_PANE = 1 << 3 /* toolbar attached inside its parent; see wuss_window_attach_pane */
 }
 wuss_window_state_t;
 
@@ -492,6 +493,9 @@ struct wuss_window
     int               offset; /* along the edge, after aligning */
   }
   toolbar;
+  box_t               panes;  /* room the visible panes take in from each
+                               * edge of the inner box (x0 left, y0 top, x1
+                               * right, y1 bottom), dividers included */
 #ifdef WUSS_FURNITURE
   box_t               pre_toggle;   /* visible bounds to restore on the next toggle */
   char                title[WUSS_TITLE_MAX + 1];

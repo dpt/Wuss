@@ -45,8 +45,11 @@ wuss__furniture_piece_t;
 /* Upper bound on pieces a single window's furniture can contribute:
  * titlebar(1) + close/back/toggle(3) + no-scroll resize bands(2) +
  * resize icon + its two seams(3) + v/h scroll arrows+well(3+3) +
- * two interior rules(2) + four outline edges(4) = 21. Round up. */
-#define WUSS__FURNITURE_MAX_PIECES 24
+ * two interior rules(2) + four outline edges(4) = 21, plus a divider per
+ * visible pane. Round up.
+ * ponytail: leaves room for 11 visible panes; past that the extra dividers
+ * are dropped, size this from a pane count if a window ever needs more. */
+#define WUSS__FURNITURE_MAX_PIECES 32
 
 /* Internal wuss__furniture_layout::flags bits. */
 enum

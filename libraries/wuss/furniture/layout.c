@@ -40,13 +40,15 @@ void wuss__furniture_layout_build(wuss_window_t *window)
   point_t                   carve;
   int                       outline_px;
   int                       i;
+  wuss_window_t            *pane;
 
   layout          = &window->furniture_layout;
   layout->npieces = 0;
   layout->flags  &= ~wuss_FURNITURE_LAYOUT__HAS_TITLEBAR;
 
   outline_px = wuss__outline_px(window);
-  wuss__content_box(window, &content);
+  /* the furniture borders the content as it would be without panes */
+  wuss__inner_box(window, &content);
   wuss__furniture_carve_for(window->flags, wuss__button_size(window), &carve);
 
   /* titlebar fill + its dividing rule ---------------------------------- */
@@ -213,6 +215,19 @@ void wuss__furniture_layout_build(wuss_window_t *window)
     rule.x1 = content.x1 + ((carve.x > 0) ? WUSS_DIVIDER_PX : 0); /* meet the vertical rule at the corner */
     rule.y0 = content.y1;
     rule.y1 = content.y1 + WUSS_DIVIDER_PX;
+    push_piece(layout, &rule, wuss__FURNITURE_PAINT_OUTLINE);
+  }
+
+  /* rules between the panes and the content they border -------------- */
+  for (pane = wuss__next_member(window->toolbar.first, 1); pane != NULL;
+       pane = wuss__next_member(pane->toolbar.next, 1))
+  {
+    box_t rule;
+
+    if (pane->flags & wuss_WINDOW_HIDDEN)
+      continue;
+
+    wuss__pane_divider_box(&pane->visible, pane->toolbar.edge, &rule);
     push_piece(layout, &rule, wuss__FURNITURE_PAINT_OUTLINE);
   }
 

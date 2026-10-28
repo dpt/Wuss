@@ -29,7 +29,7 @@ void wuss__furniture_toggle_size(wuss_window_t *window)
 
     outline_px      = wuss__outline_px(window);
     titlebar_height = wuss__titlebar_height(window);
-    wuss__furniture_carve_for(window->flags, wuss__button_size(window), &carve);
+    wuss__chrome_carve(window, &carve);
 
     /* Toggle grows the window to the whole screen (not just the space left
      * from its current top-left), capped per axis at the window's own doc

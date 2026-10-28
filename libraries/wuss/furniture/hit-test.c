@@ -17,7 +17,7 @@ static wuss_furniture_region_t nearest_edge_region(const wuss_window_t *window,
   box_t content;
   int   has_v, has_h, has_title;
 
-  wuss__content_box(window, &content);
+  wuss__inner_box(window, &content);
 
   has_v     = (window->flags & wuss_WINDOW_VSCROLL) != 0;
   has_h     = (window->flags & wuss_WINDOW_HSCROLL) != 0;
@@ -72,10 +72,18 @@ wuss_furniture_region_t wuss__furniture_hit_test(const wuss_window_t *window,
   /* The grown boxes cover every chrome pixel except the outline band on an edge
    * with no scrollbar and no resize icon. Attribute that to the nearest
    * furniture rather than letting it fall through to the workarea. */
-  wuss__content_box(window, &box);
+  wuss__inner_box(window, &box);
   if (box_contains_point(&window->visible, p.x, p.y) &&
       !box_contains_point(&box, p.x, p.y))
     return nearest_edge_region(window, p);
+
+  /* what the inner box has outside the content is the panes, which sit
+   * above this window, and their dividers: frame, like a bare outline */
+  wuss__content_box(window, &box);
+  if (box_contains_point(&window->visible, p.x, p.y) &&
+      !box_contains_point(&box, p.x, p.y)        &&
+      !(window->flags & wuss_WINDOW_NO_TITLEBAR))
+    return wuss_FURNITURE_TITLE;
 
   return wuss_FURNITURE_CONTENT;
 }

@@ -58,6 +58,11 @@ result_t wuss__window_set_hidden_ex(wuss_window_t *window, int hidden);
  * Defined in window/move.c. */
 void wuss__window_move(wuss_window_t *window, point_t p);
 
+/* wuss_window_resize's real body, without the toolbar handling: resizes any
+ * window and leaves its toolbars where they are. Defined in
+ * window/resize.c. */
+result_t wuss__window_resize(wuss_window_t *window, size2d_t size);
+
 /* The window whose toolbar group "window" belongs to: its parent if it is a
  * toolbar, else itself. */
 static inline wuss_window_t *wuss__toolbar_root(wuss_window_t *window)
@@ -66,7 +71,8 @@ static inline wuss_window_t *wuss__toolbar_root(wuss_window_t *window)
 }
 
 /* Move every toolbar of "parent" to where it belongs against the parent's
- * current footprint and the screen edges. A hidden toolbar takes no room,
+ * current footprint and the screen edges, and every pane to its slot inside
+ * the parent, carving the content to suit. A hidden toolbar takes no room,
  * except "reveal" (NULL for none), a hidden toolbar about to be shown, which
  * is laid out as if visible. A no-op for a window with no toolbars. Defined
  * in window/attach.c. */
