@@ -70,7 +70,6 @@
 #define SB_LABEL_GAP   4   /* between a setting's label and its control */
 #define SB_SETTING_GAP 10  /* between settings */
 #define SB_SLIDER_W    58
-#define SB_READOUT_W   28  /* a slider's value, wide enough for "100%" */
 #define SB_NOZZLE_W    76  /* the nozzle button, wide enough for "Backslash" */
 #define SB_W           420 /* wide enough for the widest tool's settings */
 #define SB_H           (SB_MARGIN + SB_ROW_H + SB_MARGIN)
@@ -229,6 +228,8 @@ static result_t painting_sizebar_build(painting_task_t *pt)
   const char      *label;
   int              w;
   box_t            control;
+  char             widest[WUSS_SLIDER_ROW_BUF];
+  int              rw;
   wuss_icon_t     *icons[PAINTING_SIZEBAR_ICONS];
 
   for (i = 0; i < pt->nsizebar_icons; i++)
@@ -266,12 +267,19 @@ static result_t painting_sizebar_build(painting_task_t *pt)
     }
     else
     {
+      /* size the readout to its widest value, the max, so a short one
+       * leaves no gap */
+      snprintf(widest, sizeof(widest),
+               painting_settings[s].fmt ? painting_settings[s].fmt : "%d",
+               painting_settings[s].max);
+      rw = task_text_width(pt->wuss, widest) + 2;
+
       wuss_icon_spec_slider_row(&specs[n], &specs[n + 1],
                                 (box_t) BOX_POS_SIZE(x, SB_MARGIN,
                                                      SB_SLIDER_W, SB_ROW_H),
                                 (box_t) BOX_POS_SIZE(x + SB_SLIDER_W + 2,
                                                      SB_MARGIN,
-                                                     SB_READOUT_W, SB_ROW_H),
+                                                     rw, SB_ROW_H),
                                 wuss_SLIDER_HORIZONTAL,
                                 painting_settings[s].min,
                                 painting_settings[s].max,
@@ -280,7 +288,7 @@ static result_t painting_sizebar_build(painting_task_t *pt)
                                 painting_settings[s].fmt, 0,
                                 pt->row_text[s], sizeof(pt->row_text[s]));
       n += 2;
-      x += SB_SLIDER_W + 2 + SB_READOUT_W;
+      x += SB_SLIDER_W + 2 + rw;
     }
     x += SB_SETTING_GAP;
   }
