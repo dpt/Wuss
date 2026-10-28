@@ -201,6 +201,33 @@ static void painting_swatches_track(painting_task_t *pt)
   pt->swatches.colours = wuss_get_palette(pt->wuss, &pt->swatches.ncolours);
 }
 
+/* lay out the stage around the canvas, at its smallest, into boxes, noting
+ * where the canvas lands. The stage lays out with y up, so flip it. Returns
+ * the stage's size, the window's document */
+static size2d_t painting_stage(painting_task_t *pt,
+                               stagebox_t      *boxes,
+                               size_t          *nboxes)
+{
+  const bitmap_t *bm;
+  size2d_t        sz;
+
+  bm = paintingdoc_bitmap(pt->doc);
+  stage_generate(&pt->stagecfg, 0, 0, bm->size.w, bm->size.h,
+                 &sz.w, &sz.h, boxes, nboxes);
+  pt->page = POINT(boxes[0].box.x0, sz.h - boxes[0].box.y1); /* content */
+
+  return sz;
+}
+
+/* as painting_stage, for its size alone */
+static size2d_t painting_stage_size(painting_task_t *pt)
+{
+  stagebox_t boxes[stage_MAX_BOXES];
+  size_t     nboxes;
+
+  return painting_stage(pt, boxes, &nboxes);
+}
+
 /* ----------------------------------------------------------------------- */
 
 /* where a slider setting's value lives */
@@ -407,8 +434,9 @@ static result_t painting_saveas_save(const char *path, void *opaque)
   return result_OK;
 }
 
-/* load the PNG at path as the canvas, shrinking the window to the image if
- * that is smaller than the usual view. A failure keeps the current canvas */
+/* load the PNG at path as the canvas, shrinking the window to the image's
+ * stage if that is smaller than the usual view. A failure keeps the current
+ * canvas */
 static result_t painting_load(painting_task_t *pt, const char *path)
 {
   result_t rc;
@@ -423,7 +451,7 @@ static result_t painting_load(painting_task_t *pt, const char *path)
   painting_set_path(pt, path);
   painting_title(pt);
 
-  size = paintingdoc_bitmap(pt->doc)->size;
+  size = painting_stage_size(pt);
 
   rc = wuss_window_resize(pt->window,
                           SIZE2D(MIN(size.w, PAINTING_VIEW_W),
@@ -454,6 +482,7 @@ result_t painting_create_with(wuss_t                     *wuss,
   wuss_task_t     *delegate;
   wuss_task_desc_t delegate_desc;
   wuss_place_t     place;
+  size2d_t         stage;
   int              i;
 
   task = calloc(1, sizeof(*task));
@@ -487,7 +516,13 @@ result_t painting_create_with(wuss_t                     *wuss,
     return rc;
   }
 
-  /* painting_redraw copies the canvas over the whole content area */
+  stageconfig_init(&task->stagecfg);
+  task->stagecfg.pasteboard_min = 128;
+  
+  stage = painting_stage_size(task);
+
+  /* painting_redraw draws the stage and the canvas on it over the whole
+   * content area */
   delegate_desc.handle    = painting_handle;
   delegate_desc.task_data = task;
   delegate_desc.name      = "painting";
@@ -507,12 +542,12 @@ result_t painting_create_with(wuss_t                     *wuss,
   place.extra.y1 = OB_H + 1;
   rc = wuss_window_create_at(delegate,
                              &place,
-                             SIZE2D(MIN(params->size.w, PAINTING_VIEW_W),
-                                    MIN(params->size.h, PAINTING_VIEW_H)),
+                             SIZE2D(MIN(stage.w, PAINTING_VIEW_W),
+                                    MIN(stage.h, PAINTING_VIEW_H)),
                              "Painting",
                              wuss_WINDOW_DEFAULT | wuss_WINDOW_FOCUSABLE,
                              wuss_NO_BACKDROP,
-                             params->size,
+                             stage,
                              SIZE2D(0, 0),
                              &task->window);
   if (rc != result_OK)
@@ -570,8 +605,8 @@ result_t painting_create_with(wuss_t                     *wuss,
     rc = wuss_window_attach_pane(task->sizebar, task->window, wuss_EDGE_TOP);
   if (rc == result_OK)
     rc = wuss_window_resize(task->window,
-                            SIZE2D(MIN(params->size.w, PAINTING_VIEW_W),
-                                   MIN(params->size.h, PAINTING_VIEW_H)));
+                            SIZE2D(MIN(stage.w, PAINTING_VIEW_W),
+                                   MIN(stage.h, PAINTING_VIEW_H)));
   if (rc != result_OK)
   {
     wuss_task_destroy(delegate); /* closes the canvas, QUIT frees the block */
@@ -812,10 +847,17 @@ static box_t painting_span_box(point_t a, point_t b)
   return box;
 }
 
+/* redraw a box of the canvas, which sits at pt->page on the stage */
 static void painting_invalidate_box(painting_task_t *pt, const box_t *box)
 {
-  if (!box_is_empty(box))
-    wuss_window_invalidate(pt->window, box);
+  box_t b;
+
+  if (box_is_empty(box))
+    return;
+
+  b = (box_t) { box->x0 + pt->page.x, box->y0 + pt->page.y,
+                box->x1 + pt->page.x, box->y1 + pt->page.y };
+  wuss_window_invalidate(pt->window, &b);
 }
 
 /* the colour a stroke in progress paints: the eraser always wipes to
@@ -983,6 +1025,38 @@ static void painting_draw_ants(const painting_task_t *pt,
   }
 }
 
+/* the stage around the canvas: everything but its content box */
+static void painting_redraw_stage(painting_task_t *pt,
+                                  screen_t        *scr,
+                                  int              ox,
+                                  int              oy)
+{
+  stagebox_t boxes[stage_MAX_BOXES];
+  size_t     nboxes;
+  size2d_t   sz;
+  size_t     i;
+  box_t      b;
+  colour_t   colour;
+
+  sz = painting_stage(pt, boxes, &nboxes);
+
+  for (i = 0; i < nboxes; i++)
+  {
+    switch (boxes[i].kind)
+    {
+    case stageboxkind_CONTENT:    continue;
+    case stageboxkind_STROKE:     colour = colour_rgb(0, 0, 0);       break;
+    case stageboxkind_SHADOW:     colour = colour_rgb(96, 96, 96);    break;
+    case stageboxkind_MARGIN:     colour = colour_rgb(255, 255, 255); break;
+    default:                      colour = colour_rgb(192, 192, 192); break;
+    }
+
+    b = (box_t) { ox + boxes[i].box.x0, oy + sz.h - boxes[i].box.y1,
+                  ox + boxes[i].box.x1, oy + sz.h - boxes[i].box.y0 };
+    screen_fill_rects(scr, &b, 1, colour);
+  }
+}
+
 static result_t painting_redraw(painting_task_t    *pt,
                                 const wuss_event_t *event)
 {
@@ -998,6 +1072,12 @@ static result_t painting_redraw(painting_task_t    *pt,
   bounds = event->data.redraw.bounds;
   ox     = bounds->x0 - event->data.redraw.scroll.x;
   oy     = bounds->y0 - event->data.redraw.scroll.y;
+
+  painting_redraw_stage(pt, scr, ox, oy);
+
+  /* from here on, draw relative to the canvas */
+  ox    += pt->page.x;
+  oy    += pt->page.y;
   bm     = paintingdoc_bitmap(pt->doc);
   canvas = (box_t) BOX_POS_SIZE(ox, oy, bm->size.w, bm->size.h);
 
@@ -1252,7 +1332,8 @@ static result_t painting_mouse(painting_task_t    *pt,
   point_t  p;
   colour_t colour;
 
-  p = event->data.mouse.point;
+  p = POINT(event->data.mouse.point.x - pt->page.x,
+            event->data.mouse.point.y - pt->page.y); /* canvas pixels */
 
   switch (event->data.mouse.action)
   {
@@ -1357,7 +1438,7 @@ static result_t painting_mouse(painting_task_t    *pt,
     else if (painting_is_rubber_band(pt))
     {
       old = painting_band_box(pt);
-      wuss_window_invalidate(pt->window, &old);
+      painting_invalidate_box(pt, &old);
       pt->last = p;
       pt->mods = event->data.mouse.modifiers;
       dirty    = painting_band_box(pt);
@@ -1398,7 +1479,7 @@ static result_t painting_mouse(painting_task_t    *pt,
 
       /* the preview is no longer drawn over the canvas */
       old = painting_points_box(pt);
-      wuss_window_invalidate(pt->window, &old);
+      painting_invalidate_box(pt, &old);
 
       dirty = paintingdoc_path(pt->doc, pt->lasso, pt->nlasso, pt->size,
                                pt->tool == painting_TOOL_PATH_FILL,
@@ -1409,7 +1490,7 @@ static result_t painting_mouse(painting_task_t    *pt,
     {
       /* the band is no longer drawn over the canvas */
       old = painting_band_box(pt);
-      wuss_window_invalidate(pt->window, &old);
+      painting_invalidate_box(pt, &old);
 
       pt->last = p;
       pt->mods = event->data.mouse.modifiers;
@@ -1423,8 +1504,7 @@ static result_t painting_mouse(painting_task_t    *pt,
     return result_OK;
   }
 
-  if (!box_is_empty(&dirty))
-    wuss_window_invalidate(pt->window, &dirty);
+  painting_invalidate_box(pt, &dirty);
 
   painting_title(pt);
 
@@ -1460,8 +1540,7 @@ static result_t painting_undo(painting_task_t *pt)
   pt->held = 0; /* abandon any stroke in progress */
 
   dirty = paintingdoc_undo(pt->doc);
-  if (!box_is_empty(&dirty))
-    wuss_window_invalidate(pt->window, &dirty);
+  painting_invalidate_box(pt, &dirty);
 
   painting_menu_shade(pt);
   painting_title(pt);
@@ -1656,7 +1735,7 @@ result_t painting_handle(wuss_window_t      *window,
       pt->ants_phase = (pt->ants_phase + 1) & 7;
 
       bounds = paintingdoc_selection_bounds(pt->doc);
-      wuss_window_invalidate(pt->window, &bounds);
+      painting_invalidate_box(pt, &bounds);
     }
     return result_OK;
 

@@ -7,6 +7,7 @@
 
 #include "framebuf/colour.h"
 #include "geom/point.h"
+#include "geom/stage.h"
 #include "io/path.h"
 #include "wuss/icon.h"
 #include "wuss/icon-spec.h"
@@ -108,6 +109,9 @@ typedef struct painting_task
                                  * closed */
   wuss_window_t     *sizebar;   /* the tool settings pane; NULL once closed */
   paintingdoc_t     *doc;
+  stageconfig_t      stagecfg;  /* the pasteboard, border and shadow around
+                                 * the canvas */
+  point_t            page;      /* the canvas's origin in the window */
   wuss_saveas_t     *saveas;
   char               path[DPTLIB_MAXPATH]; /* document's file; "" until
                                             * loaded or saved */
