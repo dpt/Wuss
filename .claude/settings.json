@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cmake --build build-asan:*)",
+      "Bash(cmake --build build-sdl:*)",
+      "Bash(./build-asan/WussTest-debug:*)",
+      "Bash(SDL_VIDEODRIVER=dummy build-sdl/wuss:*)",
+      "Bash(python3 tools/fmt/:*)",
+      "Bash(sips:*)"
+    ]
+  }
+}

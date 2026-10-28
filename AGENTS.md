@@ -20,7 +20,7 @@ Build directories are per-config; there is **no** plain `build/` — never invok
 
 - `build-asan/`  — **default**. Debug, tests (`BUILD_TESTS=YES`), ASan + UBSan on (`USE_ASAN=YES`). Use this unless told otherwise.
 - `build-sdl/`   — Release, ASan on, tests and apps on (`BUILD_APPS=ON`). Needed for the interactive `wuss` app (target `wuss`) and anything under `apps/wuss/tasks/`.
-- `build-wuss-min/` — Release, tests with `WUSS_FURNITURE=OFF`. Checks the subsystem options still build when trimmed. (`wuss-menu` fails its tick check in this config; this predates the split.)
+- `build-wuss-min/` — Release, tests with `WUSS_FURNITURE=OFF`. Checks the subsystem options still build when trimmed. (`wuss-menu` fails its tick check in this config; this predates the split.) If missing, configure with `cmake -B build-wuss-min -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTS=YES -DWUSS_FURNITURE=OFF -DFETCHCONTENT_SOURCE_DIR_DPTLIB=../DPTLib`.
 - RISC OS: GCCSDK cross build via `cmake/riscos.cmake`; no build dir is kept. Leave alone unless working on RISC OS.
 - `build-emscripten/` — WebAssembly build of the demo. If missing, configure with `emcmake cmake -B build-emscripten -G Ninja -DBUILD_APPS=ON -DBUILD_TESTS=OFF`, build with `cmake --build build-emscripten --target wuss`, then serve the dir and open `wuss.html` (e.g. `python3 -m http.server -d build-emscripten`). Uses Emscripten's bundled SDL3 and libpng ports (`-sUSE_SDL=3`, `-sUSE_LIBPNG=1`); the browser owns the main loop via `emscripten_set_main_loop_arg`; `resources/` is baked into `wuss.data` and mounted at MEMFS `/resources`. `.github/workflows/pages.yml` publishes this build.
 
@@ -56,6 +56,8 @@ The binary name carries a per-config suffix: `WussTest-debug` in Debug dirs (`bu
 Success prints `++ Tests completed in Ns: N of N tests passed.`
 
 To drive the real demo headless, write a script (`move`, `click`, `key`, `wait N`, `dump`, `png FILE`, `quit`; see `apps/wuss/script.h`) and run `SDL_VIDEODRIVER=dummy build-sdl/wuss --script FILE` from the repo root. `png` dumps the framebuffer, not the desktop.
+
+Painting demo: `SDL_VIDEODRIVER=dummy build-sdl/wuss --tasks Painting --script FILE`; open a canvas with `click select 488 450`, `wait 5`, `click select 608 411`, `wait 10`. The canvas content starts at y=117; the size bar pane is 222,90–622,116. Slider end caps ignore clicks: click inside the trough. Crop/zoom screenshots with `sips` (no PIL).
 
 ### Adding a new test
 
@@ -112,3 +114,6 @@ When the user says "commit": stage the relevant files and `git commit` with the
 message passed via repeated `-m` flags (subject, then body). Do **not** write a
 `COMMIT_MSG` / `COMMIT_MSG_TMP` file. Never `git push` unless explicitly asked —
 pushing prompts for an SSH key passphrase and will hang.
+
+Commits are SSH-signed. Run `git commit … </dev/null` with a 30 s timeout; if it
+times out, the agent lacks the key — ask the user to `ssh-add`, do not retry.
