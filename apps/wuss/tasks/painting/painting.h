@@ -24,6 +24,20 @@
 #define PAINTING_SIZE_MIN 1
 #define PAINTING_SIZE_MAX 32
 
+/* the settings a tool may show on the size bar, left to right in this order */
+typedef enum painting_setting
+{
+  painting_SETTING_SIZE,      /* brush and outline width, spray radius */
+  painting_SETTING_NOZZLE,    /* the paintbrush's nozzle, a button */
+  painting_SETTING_DENSITY,   /* the spray's dots per call, as a percentage */
+  painting_SETTING_TOLERANCE, /* the wand's colour tolerance, 0..255 */
+  painting_SETTING__COUNT
+}
+painting_setting_t;
+
+/* the most icons the size bar holds: a label, slider and readout each */
+#define PAINTING_SIZEBAR_ICONS (3 * painting_SETTING__COUNT)
+
 /* the toolbox's radio buttons, in this order */
 typedef enum painting_tool
 {
@@ -71,11 +85,11 @@ enum
 
 /* a 640x480 white canvas in a scrollable window, with a toolbox of tools on
  * its left edge, an option bar of colours on its bottom edge and a size bar
- * pane holding the size slider across its top. Select paints with the
- * foreground colour and Adjust with the background colour; clicking an
- * option bar swatch sets either. The canvas has alpha: a checkerboard shows
- * through its transparent pixels, which the eraser makes. Closing the canvas
- * window closes the toolbars and pane too */
+ * pane holding the current tool's settings across its top. Select paints
+ * with the foreground colour and Adjust with the background colour; clicking
+ * an option bar swatch sets either. The canvas has alpha: a checkerboard
+ * shows through its transparent pixels, which the eraser makes. Closing the
+ * canvas window closes the toolbars and pane too */
 typedef struct painting_task
 {
   wuss_t            *wuss;
@@ -84,7 +98,7 @@ typedef struct painting_task
   wuss_window_t     *toolbox;   /* the tools toolbar; NULL once closed */
   wuss_window_t     *optionbar; /* the colours and options toolbar; NULL once
                                  * closed */
-  wuss_window_t     *sizebar;   /* the size slider pane; NULL once closed */
+  wuss_window_t     *sizebar;   /* the tool settings pane; NULL once closed */
   paintingdoc_t     *doc;
   wuss_saveas_t     *saveas;
   char               path[DPTLIB_MAXPATH]; /* document's file; "" until
@@ -93,6 +107,8 @@ typedef struct painting_task
   painting_tool_t    tool;
   paintingdoc_nozzle_t nozzle;  /* the paintbrush's current nozzle */
   int                size;      /* brush and outline width in pixels */
+  int                density;   /* the spray's density, percent */
+  int                tolerance; /* the wand's colour tolerance, 0..255 */
   int                held;      /* button of the stroke in progress, or 0 */
   point_t            anchor;    /* where the stroke began */
   point_t            last;      /* where the stroke last reached */
@@ -105,7 +121,13 @@ typedef struct painting_task
   rng_t              rng;        /* the spray's scatter */
   paintingdoc_wobble_t wobble;   /* the wobbly stroke in progress */
   wuss_icon_t       *tool_icons[painting_TOOL__COUNT];
-  wuss_slider_row_t  size_row;
+  wuss_icon_t       *sizebar_icons[PAINTING_SIZEBAR_ICONS]; /* the current
+                                 * tool's settings, which a tool change
+                                 * replaces */
+  int                nsizebar_icons;
+  wuss_icon_t       *nozzle_icon; /* the nozzle button, or NULL if not shown */
+  wuss_slider_row_t  rows[painting_SETTING__COUNT]; /* live only for the
+                                 * slider settings the current tool shows */
   wuss_menu_handle_t menu_handle; /* live only between open and a pick */
   wuss_menu_item_t   menu_items[PAINTING_MENU__COUNT];
   wuss_menu_t        menu;
@@ -115,7 +137,7 @@ typedef struct painting_task
   wuss_menu_t        nozzle_menu;
   dithermenu_t       dither;
   screen_dither_t    dithering; /* how the canvas is blitted */
-  char               size_text[WUSS_SLIDER_ROW_BUF];
+  char               row_text[painting_SETTING__COUNT][WUSS_SLIDER_ROW_BUF];
   wuss_swatches_t    swatches;  /* the desktop palette, as a colour grid */
 }
 painting_task_t;

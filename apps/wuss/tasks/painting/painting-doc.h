@@ -138,11 +138,13 @@ box_t paintingdoc_wobble(paintingdoc_t        *doc,
                          paintingdoc_wobble_t *wobble);
 
 /* scatter dots of colour over the disc of the given radius in pixels centred
- * on p. each call adds a light, even dusting, so repeat it to build up. the
- * caller takes the checkpoint, as for paintingdoc_stroke */
+ * on p. each call aims a dot at density percent of the disc's pixels, so
+ * repeat it to build up. the caller takes the checkpoint, as for
+ * paintingdoc_stroke */
 box_t paintingdoc_spray(paintingdoc_t *doc,
                         point_t        p,
                         int            radius,
+                        int            density,
                         colour_t       colour,
                         rng_t         *rng);
 

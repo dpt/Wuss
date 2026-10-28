@@ -636,6 +636,7 @@ box_t paintingdoc_wobble(paintingdoc_t        *doc,
 box_t paintingdoc_spray(paintingdoc_t *doc,
                         point_t        p,
                         int            radius,
+                        int            density,
                         colour_t       colour,
                         rng_t         *rng)
 {
@@ -645,8 +646,10 @@ box_t paintingdoc_spray(paintingdoc_t *doc,
   radius = MAX(radius, 1);
   w      = 2 * radius + 1;
 
-  /* about one dot per four pixels of the disc's area, at least a few */
-  n = MAX(radius * radius * 3 / 4, 3);
+  /* aim at density percent of the square round the disc, at least a few
+   * dots: those landing outside the disc are dropped, so about that share of
+   * the disc's own pixels are hit */
+  n = MAX(w * w * density / 100, 3);
 
   while (n-- > 0)
   {
