@@ -72,7 +72,7 @@
 #define SB_SLIDER_W    58
 #define SB_READOUT_W   28  /* a slider's value, wide enough for "100%" */
 #define SB_NOZZLE_W    76  /* the nozzle button, wide enough for "Backslash" */
-#define SB_W           320 /* wide enough for the widest tool's settings */
+#define SB_W           420 /* wide enough for the widest tool's settings */
 #define SB_H           (SB_MARGIN + SB_ROW_H + SB_MARGIN)
 
 #define PAINTING_ANTS_IDLES 6 /* idles between steps of the marching ants */
@@ -123,7 +123,8 @@ painting_settings[painting_SETTING__COUNT] =
   [painting_SETTING_SIZE]      = { "Size", PAINTING_SIZE_MIN, PAINTING_SIZE_MAX,
                                    NULL },
   [painting_SETTING_NOZZLE]    = { "Nozzle", 0, 0, NULL },
-  [painting_SETTING_DENSITY]   = { "Density", 1, 100, "%d%%" },
+  [painting_SETTING_DENSITY]   = { "Density", 1, 20, "%d%%" },
+  [painting_SETTING_RATE]      = { "Rate", 20, 100, "%d%%" },
   [painting_SETTING_TOLERANCE] = { "Tolerance", 0, 255, NULL }
 };
 
@@ -141,7 +142,8 @@ static const unsigned int painting_tool_settings[painting_TOOL__COUNT] =
   [painting_TOOL_RECT]       = SETTING(SIZE),
   [painting_TOOL_ELLIPSE]    = SETTING(SIZE),
   [painting_TOOL_PATH]       = SETTING(SIZE),
-  [painting_TOOL_SPRAY]      = SETTING(SIZE) | SETTING(DENSITY),
+  [painting_TOOL_SPRAY]      = SETTING(SIZE) | SETTING(DENSITY) |
+                               SETTING(RATE),
   [painting_TOOL_WAND]       = SETTING(TOLERANCE)
 };
 
@@ -203,6 +205,7 @@ static int *painting_setting_value(painting_task_t *pt, painting_setting_t s)
   switch (s)
   {
   case painting_SETTING_DENSITY:   return &pt->density;
+  case painting_SETTING_RATE:      return &pt->rate;
   case painting_SETTING_TOLERANCE: return &pt->tolerance;
   default:                         return &pt->size;
   }
@@ -449,6 +452,7 @@ result_t painting_create_with(wuss_t                     *wuss,
   rng_seed(&task->rng, 1);
   task->size      = 3;
   task->density   = 20; /* about the old fixed dusting */
+  task->rate      = 100;
   task->tolerance = 16;
   task->dithering = screen_DITHER_NEAREST; /* painted colours stay exact */
 
@@ -823,6 +827,20 @@ static box_t painting_stroke_segment(painting_task_t *pt,
 
   return paintingdoc_stroke(pt->doc, a, b, pt->size,
                             painting_stroke_colour(pt));
+}
+
+/* spray at p on rate percent of the calls, made per move and idle while the
+ * button is held, returning the dirty box */
+static box_t painting_spray(painting_task_t *pt, point_t p)
+{
+  pt->spray_tick += pt->rate;
+  if (pt->spray_tick < 100)
+    return (box_t) BOX_INIT;
+
+  pt->spray_tick -= 100;
+
+  return paintingdoc_spray(pt->doc, p, pt->size * PAINTING_SPRAY_SCALE,
+                           pt->density, painting_stroke_colour(pt), &pt->rng);
 }
 
 /* the canvas box the rubber band at its current size may cover */
@@ -1271,9 +1289,8 @@ static result_t painting_mouse(painting_task_t    *pt,
         pt->held = 0;
         return result_OK;
       }
-      dirty = paintingdoc_spray(pt->doc, p, pt->size * PAINTING_SPRAY_SCALE,
-                                pt->density, painting_stroke_colour(pt),
-                                &pt->rng);
+      pt->spray_tick = 100 - pt->rate; /* the press always sprays */
+      dirty          = painting_spray(pt, p);
       break;
 
     case painting_TOOL_BRUSH:
@@ -1316,9 +1333,7 @@ static result_t painting_mouse(painting_task_t    *pt,
     }
     else if (pt->tool == painting_TOOL_SPRAY)
     {
-      dirty    = paintingdoc_spray(pt->doc, p, pt->size * PAINTING_SPRAY_SCALE,
-                                   pt->density, painting_stroke_colour(pt),
-                                   &pt->rng);
+      dirty    = painting_spray(pt, p);
       pt->last = p;
     }
     else
@@ -1584,9 +1599,7 @@ result_t painting_handle(wuss_window_t      *window,
     {
       box_t dirty;
 
-      dirty = paintingdoc_spray(pt->doc, pt->last,
-                                pt->size * PAINTING_SPRAY_SCALE, pt->density,
-                                painting_stroke_colour(pt), &pt->rng);
+      dirty = painting_spray(pt, pt->last);
       painting_invalidate_box(pt, &dirty);
       painting_title(pt);
     }

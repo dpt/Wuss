@@ -30,6 +30,8 @@ typedef enum painting_setting
   painting_SETTING_SIZE,      /* brush and outline width, spray radius */
   painting_SETTING_NOZZLE,    /* the paintbrush's nozzle, a button */
   painting_SETTING_DENSITY,   /* the spray's dots per call, as a percentage */
+  painting_SETTING_RATE,      /* the share of moves and idles the held spray
+                               * fires on */
   painting_SETTING_TOLERANCE, /* the wand's colour tolerance, 0..255 */
   painting_SETTING__COUNT
 }
@@ -108,6 +110,9 @@ typedef struct painting_task
   paintingdoc_nozzle_t nozzle;  /* the paintbrush's current nozzle */
   int                size;      /* brush and outline width in pixels */
   int                density;   /* the spray's density, percent */
+  int                rate;      /* the spray's rate, percent */
+  int                spray_tick; /* rate summed over moves and idles; sprays
+                                  * at 100 */
   int                tolerance; /* the wand's colour tolerance, 0..255 */
   int                held;      /* button of the stroke in progress, or 0 */
   point_t            anchor;    /* where the stroke began */
