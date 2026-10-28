@@ -32,6 +32,10 @@ typedef enum painting_setting
   painting_SETTING_DENSITY,   /* the spray's dots per call, as a percentage */
   painting_SETTING_RATE,      /* the share of moves and idles the held spray
                                * fires on */
+  painting_SETTING_EDGE,      /* how far the wobbly brush's edges wobble,
+                               * percent of the usual */
+  painting_SETTING_WANDER,    /* how far the wobbly brush drifts across its
+                               * path, percent of the usual */
   painting_SETTING_TOLERANCE, /* the wand's colour tolerance, 0..255 */
   painting_SETTING__COUNT
 }
@@ -111,6 +115,8 @@ typedef struct painting_task
   int                size;      /* brush and outline width in pixels */
   int                density;   /* the spray's density, percent */
   int                rate;      /* the spray's rate, percent */
+  int                edge;      /* the wobbly brush's edge wobble, percent */
+  int                wander;    /* the wobbly brush's drift, percent */
   int                spray_tick; /* rate summed over moves and idles; sprays
                                   * at 100 */
   int                tolerance; /* the wand's colour tolerance, 0..255 */

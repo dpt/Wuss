@@ -191,8 +191,8 @@ result_t paintingdoc_test(const char *resources)
   CHECK(paintingdoc_create(SIZE2D(80, 30), &doc) == result_OK);
   wobble.seed = 1;
   wobble.step = 0;
-  dirty = paintingdoc_wobble(doc, POINT(10, 15), POINT(70, 15), 12, black(),
-                             &wobble);
+  dirty = paintingdoc_wobble(doc, POINT(10, 15), POINT(70, 15), 12, 100, 100,
+                             black(), &wobble);
   CHECK(wobble.step == 60);
   lo = 30;
   hi = -1;

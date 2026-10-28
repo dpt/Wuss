@@ -587,6 +587,8 @@ box_t paintingdoc_wobble(paintingdoc_t        *doc,
                          point_t               a,
                          point_t               b,
                          int                   width,
+                         int                   edge,
+                         int                   wander,
                          colour_t              colour,
                          paintingdoc_wobble_t *wobble)
 {
@@ -594,9 +596,9 @@ box_t paintingdoc_wobble(paintingdoc_t        *doc,
   int   r, as, aj, ao, ps, pj, dx, dy, n, i, s, rr, o, cx, cy;
 
   r  = MAX(width, 1) / 2;
-  as = r / 4;           /* how far the slow swell moves the radius */
-  aj = (r + 4) / 5;     /* how far the fast jitter moves it */
-  ao = r / 4;           /* how far the centre wanders */
+  as = r * edge / 400;       /* how far the slow swell moves the radius */
+  aj = (r + 4) * edge / 500; /* how far the fast jitter moves it */
+  ao = r * wander / 400;     /* how far the centre wanders */
   ps = MAX(3 * r, 8);   /* steps between the swell's knots */
   pj = MAX(r / 2, 2);   /* steps between the jitter's knots */
   dx = b.x - a.x;

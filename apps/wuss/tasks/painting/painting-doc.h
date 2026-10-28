@@ -129,11 +129,16 @@ paintingdoc_wobble_t;
 
 /* draw a stroke segment a to b about width pixels wide whose two edges
  * wander in and out independently, like an inked line drawn with a shaky
- * hand. the caller takes the checkpoint, as for paintingdoc_stroke */
+ * hand. edge scales how far the width swells and jitters and wander how far
+ * the stroke drifts across its path, each a percentage of the usual: 100 for
+ * the usual, 0 for none. the caller takes the checkpoint, as for
+ * paintingdoc_stroke */
 box_t paintingdoc_wobble(paintingdoc_t        *doc,
                          point_t               a,
                          point_t               b,
                          int                   width,
+                         int                   edge,
+                         int                   wander,
                          colour_t              colour,
                          paintingdoc_wobble_t *wobble);
 
