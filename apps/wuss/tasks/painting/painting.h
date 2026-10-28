@@ -70,11 +70,12 @@ enum
 };
 
 /* a 640x480 white canvas in a scrollable window, with a toolbox of tools on
- * its left edge and an option bar of colours and tool options on its bottom
- * edge. Select paints with the foreground colour and Adjust with the
- * background colour; clicking an option bar swatch sets either. The canvas
- * has alpha: a checkerboard shows through its transparent pixels, which the
- * eraser makes. Closing the canvas window closes both toolbars too */
+ * its left edge, an option bar of colours on its bottom edge and a size bar
+ * pane holding the size slider across its top. Select paints with the
+ * foreground colour and Adjust with the background colour; clicking an
+ * option bar swatch sets either. The canvas has alpha: a checkerboard shows
+ * through its transparent pixels, which the eraser makes. Closing the canvas
+ * window closes the toolbars and pane too */
 typedef struct painting_task
 {
   wuss_t            *wuss;
@@ -83,6 +84,7 @@ typedef struct painting_task
   wuss_window_t     *toolbox;   /* the tools toolbar; NULL once closed */
   wuss_window_t     *optionbar; /* the colours and options toolbar; NULL once
                                  * closed */
+  wuss_window_t     *sizebar;   /* the size slider pane; NULL once closed */
   paintingdoc_t     *doc;
   wuss_saveas_t     *saveas;
   char               path[DPTLIB_MAXPATH]; /* document's file; "" until

@@ -46,8 +46,8 @@
                       (TB_GROUPS - 1) * TB_GROUP_GAP + TB_MARGIN)
 
 /* Option bar layout, in its window's content space: from the left, the
- * current colours, a single row of colour swatches and the size slider. The
- * swatches are a wuss_swatches_t gadget and the colour chips are drawn by
+ * current colours and a single row of colour swatches. The swatches are a
+ * wuss_swatches_t gadget and the colour chips are drawn by
  * painting_optionbar_redraw, not icons */
 #define OB_MARGIN      4
 #define OB_CHIP        16  /* the square fg and bg colour chips */
@@ -59,11 +59,18 @@
 #define OB_SWATCH_Y    9
 #define OB_SWATCH_ROW  (OB_SWATCHES * (OB_SWATCH + OB_SWATCH_GAP) - \
                         OB_SWATCH_GAP) /* swatch row's width */
-#define OB_SLIDER_X    (OB_SWATCH_X + OB_SWATCH_ROW + 6)
-#define OB_SLIDER_Y    7
-#define OB_READOUT_W   16  /* the size slider's value, wide enough for "32" */
-#define OB_W           (OB_SLIDER_X + 60 + OB_READOUT_W + OB_MARGIN)
+#define OB_W           (OB_SWATCH_X + OB_SWATCH_ROW + OB_MARGIN)
 #define OB_H           32
+
+/* Size bar layout, in its pane's content space: the size slider and its
+ * readout at the left */
+#define SB_MARGIN      4
+#define SB_SLIDER_W    58
+#define SB_SLIDER_H    18
+#define SB_READOUT_X   (SB_MARGIN + SB_SLIDER_W + 2)
+#define SB_READOUT_W   16  /* the size slider's value, wide enough for "32" */
+#define SB_W           (SB_READOUT_X + SB_READOUT_W + SB_MARGIN)
+#define SB_H           (SB_MARGIN + SB_SLIDER_H + SB_MARGIN)
 
 #define PAINTING_ANTS_IDLES 6 /* idles between steps of the marching ants */
 
@@ -154,7 +161,7 @@ static void painting_swatches_track(painting_task_t *pt)
 
 /* ----------------------------------------------------------------------- */
 
-/* the tool buttons on the toolbox and the size slider on the option bar */
+/* the tool buttons on the toolbox and the size slider on the size bar */
 static result_t painting_toolbar_icons(painting_task_t *pt)
 {
   result_t         rc;
@@ -197,16 +204,16 @@ static result_t painting_toolbar_icons(painting_task_t *pt)
 
   memset(specs, 0, 2 * sizeof(*specs));
   wuss_icon_spec_slider_row(&specs[0], &specs[1],
-                            (box_t) BOX_POS_SIZE(OB_SLIDER_X, OB_SLIDER_Y,
-                                                 58, 18),
-                            (box_t) BOX_POS_SIZE(OB_SLIDER_X + 60, OB_SLIDER_Y,
-                                                 OB_READOUT_W, 18),
+                            (box_t) BOX_POS_SIZE(SB_MARGIN, SB_MARGIN,
+                                                 SB_SLIDER_W, SB_SLIDER_H),
+                            (box_t) BOX_POS_SIZE(SB_READOUT_X, SB_MARGIN,
+                                                 SB_READOUT_W, SB_SLIDER_H),
                             wuss_SLIDER_HORIZONTAL,
                             PAINTING_SIZE_MIN, PAINTING_SIZE_MAX, pt->size,
                             NULL, 0,
                             pt->size_text, sizeof(pt->size_text));
 
-  rc = wuss_icon_create_array(pt->optionbar, specs, 2, icons);
+  rc = wuss_icon_create_array(pt->sizebar, specs, 2, icons);
   if (rc != result_OK)
     return rc;
 
@@ -391,6 +398,26 @@ result_t painting_create_with(wuss_t                     *wuss,
   if (rc == result_OK)
     rc = wuss_window_attach(task->optionbar, task->window, wuss_EDGE_BOTTOM,
                             wuss_ALIGN_LEFT, 0);
+  /* the size bar is a pane across the top of the canvas, which is then
+   * resized so that the view keeps its size below it */
+  if (rc == result_OK)
+    rc = wuss_window_create_at(delegate,
+                               &place,
+                               SIZE2D(SB_W, SB_H),
+                               NULL,
+                               wuss_WINDOW_NO_TITLEBAR |
+                               wuss_WINDOW_NO_OUTLINE  |
+                               wuss_WINDOW_NO_REDRAW,
+                               wuss_BACKDROP_COLOUR(wuss_COLOUR_WINDOW),
+                               SIZE2D(SB_W, SB_H),
+                               SIZE2D(0, 0),
+                               &task->sizebar);
+  if (rc == result_OK)
+    rc = wuss_window_attach_pane(task->sizebar, task->window, wuss_EDGE_TOP);
+  if (rc == result_OK)
+    rc = wuss_window_resize(task->window,
+                            SIZE2D(MIN(params->size.w, PAINTING_VIEW_W),
+                                   MIN(params->size.h, PAINTING_VIEW_H)));
   if (rc != result_OK)
   {
     wuss_task_destroy(delegate); /* closes the canvas, QUIT frees the block */
@@ -940,7 +967,7 @@ static result_t painting_toolbar_icon(painting_task_t    *pt,
   wuss_icon_t *icon;
   int          i, size;
 
-  if (wuss_slider_row_event(pt->optionbar, &pt->size_row, event, &size))
+  if (wuss_slider_row_event(pt->sizebar, &pt->size_row, event, &size))
   {
     pt->size = size;
     return result_OK;
@@ -1215,7 +1242,7 @@ static void painting_set_tool(painting_task_t *pt, painting_tool_t tool)
 static void painting_step_size(painting_task_t *pt, int delta)
 {
   pt->size = CLAMP(pt->size + delta, PAINTING_SIZE_MIN, PAINTING_SIZE_MAX);
-  (void) wuss_slider_row_set(pt->optionbar, &pt->size_row, pt->size);
+  (void) wuss_slider_row_set(pt->sizebar, &pt->size_row, pt->size);
 }
 
 /* B, H, E, L, R, X, C, D, N, M, F, G, P, S, O, W and I pick the matching
@@ -1317,8 +1344,8 @@ result_t painting_handle(wuss_window_t      *window,
 
     if (window == pt->optionbar)
       return painting_optionbar_mouse(pt, event);
-    if (window == pt->toolbox)
-      return result_OK; /* between the tool buttons */
+    if (window == pt->toolbox || window == pt->sizebar)
+      return result_OK; /* between the buttons */
     return painting_mouse(pt, event);
 
   case wuss_EVENT_ICON:
@@ -1419,10 +1446,11 @@ result_t painting_handle(wuss_window_t      *window,
                              event);
 
   case wuss_EVENT_CLOSE:
-    /* the toolbars belong to the canvas, so they close with it */
+    /* the toolbars and pane belong to the canvas, so they close with it */
     pt->window    = NULL;
     pt->toolbox   = NULL;
     pt->optionbar = NULL;
+    pt->sizebar   = NULL;
     return result_OK;
 
   case wuss_EVENT_QUIT:
