@@ -513,9 +513,11 @@ result_t painting_create_with(wuss_t                     *wuss,
                              SIZE2D(TB_W, TB_H),
                              SIZE2D(0, 0),
                              &task->toolbox);
+  /* toolbars align against the content without its panes, so drop the
+   * toolbox to share its top outline with the size bar's bottom edge */
   if (rc == result_OK)
     rc = wuss_window_attach(task->toolbox, task->window, wuss_EDGE_LEFT,
-                            wuss_ALIGN_TOP, 0);
+                            wuss_ALIGN_TOP, SB_H + 1);
   if (rc == result_OK)
     rc = wuss_window_create_at(delegate,
                                &place,
