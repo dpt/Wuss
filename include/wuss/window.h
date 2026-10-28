@@ -396,6 +396,16 @@ void wuss_window_get_max_content(const wuss_window_t *window, size2d_t *max);
 void wuss_window_restack(wuss_window_t *window, wuss_zorder_t reason);
 
 /**
+ * Whether a window is the frontmost visible window of its own stack (see
+ * wuss_stack_t). A toolbar group counts as one window, so a window with its
+ * toolbars and panes in front of it is still frontmost.
+ *
+ * \param[in] window Window to test.
+ * \return Non-zero if frontmost, else zero. Zero if \p window is hidden.
+ */
+int wuss_window_is_front(wuss_window_t *window);
+
+/**
  * Move a window to the front of another stack (see wuss_stack_t). A no-op if
  * it is already in \p stack. A visible window repaints whatever its new
  * position uncovers or covers; a hidden one is only relinked.

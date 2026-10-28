@@ -19,6 +19,23 @@ wuss_window_t *wuss__z_first(wuss_t *wuss)
   return first_from(wuss, 0);
 }
 
+int wuss_window_is_front(wuss_window_t *window)
+{
+  list_t        *l;
+  wuss_window_t *front;
+
+  window = wuss__toolbar_root(window);
+
+  for (l = window->wuss->z_order[window->stack].next; l != NULL; l = l->next)
+  {
+    front = wuss__window_from_link(l);
+    if (!(front->flags & wuss_WINDOW_HIDDEN))
+      return wuss__toolbar_root(front) == window;
+  }
+
+  return 0;
+}
+
 wuss_window_t *wuss__z_below(const wuss_window_t *window)
 {
   if (window->link.next != NULL)

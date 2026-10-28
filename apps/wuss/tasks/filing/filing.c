@@ -115,6 +115,24 @@ static filing_window_t *filing_find_by_window(filing_task_t       *task,
   return NULL;
 }
 
+/* the open window on the root, or NULL. Canonicalised as filing_open_path
+ * does, so "." finds the window titled with its full path. */
+static filing_window_t *filing_find_root(filing_task_t *task)
+{
+  const char *path;
+#ifndef __riscos
+  char        canon[DPTLIB_MAXPATH];
+#endif
+
+  path = filing_root();
+#ifndef __riscos
+  if (realpath(path, canon) != NULL)
+    path = canon;
+#endif
+
+  return filing_find_window(task, path);
+}
+
 static void filing_rescan(filing_window_t *fw)
 {
   dirlist_t *fresh;
@@ -868,6 +886,9 @@ result_t filing_handle(wuss_window_t      *window,
   }
 
   case wuss_EVENT_ICON:
+  {
+    filing_window_t *fw;
+
     if (window != NULL)
       return result_OK; /* not the icon bar icon */
     if (event->data.iconbar_icon.action != wuss_MOUSE_UP)
@@ -876,13 +897,22 @@ result_t filing_handle(wuss_window_t      *window,
       return filing_iconbar_menu_open(task);
     if (filing_hidden(task)) /* the click only reveals; it opens nothing new */
       return filing_set_hidden(task, 0);
-    if ((event->data.iconbar_icon.button & wuss_BUTTON_SELECT) == 0 ||
-        wuss_task_front(task->wuss, task->delegate))
+    if ((event->data.iconbar_icon.button & wuss_BUTTON_SELECT) == 0)
       return result_OK;
+    /* as the RISC OS Filer: open the root, or bring it forward, whatever
+     * other directory displays are open. With the root already in front,
+     * bring every display forward. */
+    fw = filing_find_root(task);
+    if (fw != NULL && wuss_window_is_front(fw->window))
+    {
+      (void) wuss_task_front(task->wuss, task->delegate);
+      return result_OK;
+    }
     rc = filing_open_path(task, filing_root(), NULL, 0);
-    if (rc == result_OK) /* focus the new window */
+    if (rc == result_OK) /* focus the root's window */
       (void) wuss_task_focus_front(task->wuss, task->delegate);
     return rc;
+  }
 
   case wuss_EVENT_MENU_SELECT:
   {

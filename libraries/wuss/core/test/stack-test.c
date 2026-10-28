@@ -97,6 +97,11 @@ result_t wuss_stack_test(const char *resources)
     order[1] = mid_a; order[2] = mid_b;
     if (!z_order_is(wuss, order, 4)) goto Failure;
 
+    /* frontmost is per stack */
+    if (!wuss_window_is_front(mid_a) || wuss_window_is_front(mid_b) ||
+        !wuss_window_is_front(top) || !wuss_window_is_front(back))
+      goto Failure;
+
     wuss_window_restack(back, wuss_ZORDER_FRONT);
     wuss_window_restack(top, wuss_ZORDER_BACK);
     if (!z_order_is(wuss, order, 4)) goto Failure; /* each alone in its stack */

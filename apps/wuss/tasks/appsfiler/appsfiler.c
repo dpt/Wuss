@@ -297,11 +297,19 @@ static result_t apps_handle(wuss_window_t      *window,
       return apps_menu_open(task);
     if (apps_hidden(task)) /* the click only reveals; it opens nothing new */
       return apps_set_hidden(task, 0);
-    if ((event->data.iconbar_icon.button & wuss_BUTTON_SELECT) == 0 ||
-        wuss_task_front(task->wuss, task->delegate))
+    if ((event->data.iconbar_icon.button & wuss_BUTTON_SELECT) == 0)
       return result_OK;
+    /* as the filer: open the root, or bring it forward, whatever category
+     * windows are open. With the root already in front, bring every window
+     * forward. */
+    if (task->windows[0].window != NULL &&
+        wuss_window_is_front(task->windows[0].window))
+    {
+      (void) wuss_task_front(task->wuss, task->delegate);
+      return result_OK;
+    }
     rc = apps_open(task, -1, NULL, 0);
-    if (rc == result_OK) /* focus the new window */
+    if (rc == result_OK) /* focus the root's window */
       (void) wuss_task_focus_front(task->wuss, task->delegate);
     return rc;
 
