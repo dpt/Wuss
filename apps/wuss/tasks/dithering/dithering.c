@@ -44,6 +44,7 @@ static const char *const dithering_method_names[dither__LIMIT] =
   [dither_BAYER_16]            = "Bayer 16x16",
   [dither_BLUE_NOISE]          = "Blue noise",
   [dither_KNOLL]               = "Knoll",
+  [dither_YLILUOMA]            = "Yliluoma",
 
   [dither_FLOYD_STEINBERG]     = "Floyd-Steinberg",
   [dither_JARVIS_JUDICE_NINKE] = "Jarvis-Judice-Ninke",
@@ -73,6 +74,7 @@ static const dither_method_t dithering_family_methods[] =
   dither_BAYER_16,
   dither_BLUE_NOISE,          /* Ulichney, 1993 */
   dither_KNOLL,               /* Knoll, 1999 */
+  dither_YLILUOMA,            /* Yliluoma, 2011 */
 
   dither_FLOYD_STEINBERG,     /* 1976 */
   dither_JARVIS_JUDICE_NINKE, /* 1976 */
@@ -90,7 +92,7 @@ static const dither_method_t dithering_family_methods[] =
   dither_ZHOU_FANG            /* 2003 */
 };
 
-#define DITHERING_NORDERED 8 /* leading ordered entries in the table above */
+#define DITHERING_NORDERED 9 /* leading ordered entries in the table above */
 
 /* a method's index in dithering_family_methods, or -1 for Nearest */
 static int dithering_family_index(dither_method_t method)
@@ -104,9 +106,9 @@ static int dithering_family_index(dither_method_t method)
   return -1;
 }
 
-/* ordered methods, Knoll's included, carry no error between pixels, so
- * Serpentine and Linear light do nothing for them. Riemersma walks a curve
- * rather than rows, so it has no use for Serpentine alone. */
+/* ordered methods, Knoll's and Yliluoma's included, carry no error between
+ * pixels, so Serpentine and Linear light do nothing for them. Riemersma walks
+ * a curve rather than rows, so it has no use for Serpentine alone. */
 static int dithering_ordered(dither_method_t method)
 {
   int i;
