@@ -261,6 +261,25 @@ box_t paintingdoc_selection_bounds(const paintingdoc_t *doc);
  * until the selection changes */
 const box_t *paintingdoc_selection_outline(const paintingdoc_t *doc, int *n);
 
+/* moving the selection: lift its pixels, place them as often as the drag
+ * needs, then drop them. a new selection or a loaded PNG also drops them */
+
+/* lift the selected pixels to move them, taking a checkpoint first. fails
+ * with result_BAD_ARG if there is no selection, or result_OOM */
+result_t paintingdoc_lift(paintingdoc_t *doc);
+
+/* place the lifted pixels dx,dy from where they were lifted, filling where
+ * they were with *leave, or leaving them there as a copy if leave is NULL,
+ * and move the selection with them. pixels moved off the canvas are lost
+ * once dropped. does nothing unless lifted */
+box_t paintingdoc_place(paintingdoc_t  *doc,
+                        int             dx,
+                        int             dy,
+                        const colour_t *leave);
+
+/* drop the lifted pixels where they were last placed */
+void paintingdoc_drop(paintingdoc_t *doc);
+
 /* non-zero if there is a step to undo */
 int paintingdoc_can_undo(const paintingdoc_t *doc);
 

@@ -32,6 +32,9 @@ struct paintingdoc
   box_t    *outline;
   int       noutline;
   uint8_t  *pre;
+  /* the selection as paintingdoc_lift found it, or NULL if not lifted. its
+   * pixels are in pre */
+  region_t *lifted;
   /* changed since the last load or paintingdoc_set_saved */
   int       edited;
 };
@@ -209,6 +212,7 @@ static box_t clipped_box(const paintingdoc_t *doc,
 
 void paintingdoc_select_none(paintingdoc_t *doc)
 {
+  paintingdoc_drop(doc);
   region_destroy(doc->sel);
   free(doc->outline);
   free(doc->pre);
@@ -216,6 +220,31 @@ void paintingdoc_select_none(paintingdoc_t *doc)
   doc->outline  = NULL;
   doc->noutline = 0;
   doc->pre      = NULL;
+}
+
+/* make a freshly built region (NULL for none) the selection, keeping pre */
+static result_t sel_replace(paintingdoc_t *doc, region_t *sel)
+{
+  result_t rc;
+
+  region_destroy(doc->sel);
+  free(doc->outline);
+  doc->sel      = NULL;
+  doc->outline  = NULL;
+  doc->noutline = 0;
+
+  if (sel == NULL)
+    return result_OK;
+
+  rc = region_outline(sel, &doc->outline, &doc->noutline);
+  if (rc != result_OK)
+  {
+    region_destroy(sel);
+    return rc;
+  }
+
+  doc->sel = sel;
+  return result_OK;
 }
 
 /* take a freshly built region (NULL for none) as, into or out of the
@@ -241,19 +270,7 @@ static result_t sel_adopt(paintingdoc_t      *doc,
   }
 
   paintingdoc_select_none(doc);
-
-  if (sel == NULL)
-    return result_OK;
-
-  rc = region_outline(sel, &doc->outline, &doc->noutline);
-  if (rc != result_OK)
-  {
-    region_destroy(sel);
-    return rc;
-  }
-
-  doc->sel = sel;
-  return result_OK;
+  return sel_replace(doc, sel);
 }
 
 result_t paintingdoc_select_rect(paintingdoc_t      *doc,
@@ -936,4 +953,109 @@ int paintingdoc_pick(const paintingdoc_t *doc, point_t p, colour_t *colour)
                         px >> 24);
 
   return 1;
+}
+
+/* ----------------------------------------------------------------------- */
+
+result_t paintingdoc_lift(paintingdoc_t *doc)
+{
+  result_t rc;
+  box_t    canvas;
+
+  if (doc->sel == NULL)
+    return result_BAD_ARG;
+
+  paintingdoc_drop(doc);
+
+  /* the checkpoint copies the canvas, the lifted pixels included, into pre */
+  rc = paintingdoc_checkpoint(doc);
+  if (rc != result_OK)
+    return rc;
+  if (doc->pre == NULL)
+    return result_OOM;
+
+  canvas = canvas_box(doc);
+  return region_translate(doc->sel, 0, 0, &canvas, &doc->lifted);
+}
+
+box_t paintingdoc_place(paintingdoc_t  *doc,
+                        int             dx,
+                        int             dy,
+                        const colour_t *leave)
+{
+  box_t           dirty;
+  box_t           canvas;
+  region_t       *moved;
+  box_t           from, to, was;
+  uint32_t        fill;
+  int             y;
+  int             n, i;
+  const int      *runs;
+  uint32_t       *row;
+  int             x;
+  const uint32_t *src;
+  int             x0, x1;
+
+  dirty = (box_t) BOX_INIT;
+  if (doc->lifted == NULL)
+    return dirty;
+
+  canvas = canvas_box(doc);
+  if (region_translate(doc->lifted, dx, dy, &canvas, &moved) != result_OK)
+  {
+    logf_warning("painting: no memory to move the selection");
+    return dirty;
+  }
+
+  /* everything the lifted pixels have covered since the lift */
+  from = region_bounds(doc->lifted);
+  to   = region_bounds(moved);
+  was  = region_bounds(doc->sel);
+  box_union(&from, &to, &dirty);
+  box_union(&dirty, &was, &dirty);
+
+  memcpy(doc->bm.base, doc->pre,
+         (size_t) doc->bm.rowbytes * (size_t) doc->bm.size.h);
+
+  /* a copy leaves the lifted pixels as they were */
+  if (leave == NULL)
+    from = (box_t) BOX_INIT;
+  else
+    fill = screen_colour_to_pixel(&doc->scr, *leave);
+  for (y = from.y0; y < from.y1; y++)
+  {
+    n   = region_row(doc->lifted, y, &runs);
+    row = pixel_row(doc, y);
+    for (i = 0; i < n; i++)
+      for (x = runs[i * 2]; x < runs[i * 2 + 1]; x++)
+        row[x] = fill;
+  }
+
+  /* the moved selection is the lifted one clipped to the canvas, so copy
+   * its runs from where they were lifted */
+  for (y = to.y0; y < to.y1; y++)
+  {
+    n   = region_row(moved, y, &runs);
+    row = pixel_row(doc, y);
+    src = (const uint32_t *) (doc->pre +
+                              (size_t) (y - dy) * doc->bm.rowbytes);
+    for (i = 0; i < n; i++)
+    {
+      x0 = runs[i * 2];
+      x1 = runs[i * 2 + 1];
+      memcpy(row + x0, src + x0 - dx, (size_t) (x1 - x0) * sizeof(*row));
+    }
+  }
+
+  if (sel_replace(doc, moved) != result_OK)
+    logf_warning("painting: no memory to outline the selection");
+
+  doc->edited = 1;
+  return dirty;
+}
+
+void paintingdoc_drop(paintingdoc_t *doc)
+{
+  region_destroy(doc->lifted);
+  doc->lifted = NULL;
 }

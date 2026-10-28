@@ -74,6 +74,7 @@ result_t paintingdoc_test(const char *resources)
   uint32_t             before, after;
   paintingdoc_wobble_t wobble;
   int                  lo, hi;
+  colour_t             leave;
 
   printf("test: create makes a white bgra8888 canvas; a bad size is "
          "rejected\n");
@@ -598,6 +599,52 @@ result_t paintingdoc_test(const char *resources)
   CHECK(paintingdoc_select_similar(doc, POINT(4, 4), 255,
                                    paintingdoc_SELOP_SUBTRACT) == result_OK);
   CHECK(!paintingdoc_has_selection(doc));
+
+  paintingdoc_destroy(doc);
+
+  printf("test: lifting and placing the selection moves its pixels and "
+         "leaves the colour given behind\n");
+
+  CHECK(paintingdoc_create(SIZE2D(8, 8), &doc) == result_OK);
+
+  /* nothing to lift without a selection */
+  CHECK(paintingdoc_lift(doc) == result_BAD_ARG);
+
+  paintingdoc_rect(doc, POINT(0, 0), POINT(1, 1), 1, 1, red());
+  CHECK(paintingdoc_select_rect(doc, (box_t) { 0, 0, 2, 2 },
+                                paintingdoc_SELOP_REPLACE) == result_OK);
+  CHECK(paintingdoc_lift(doc) == result_OK);
+
+  /* placing twice starts from the lift each time, not the last place */
+  leave = black();
+  dirty = paintingdoc_place(doc, 1, 1, &leave);
+  dirty = paintingdoc_place(doc, 3, 2, &leave);
+  CHECK(dirty.x0 == 0 && dirty.y0 == 0 && dirty.x1 == 5 && dirty.y1 == 4);
+  paintingdoc_drop(doc);
+
+  CHECK(px(doc, 0, 0) == BLACK && px(doc, 1, 1) == BLACK);
+  CHECK(px(doc, 3, 2) == RED && px(doc, 4, 3) == RED);
+  CHECK(px(doc, 2, 2) == WHITE && px(doc, 5, 4) == WHITE);
+  dirty = paintingdoc_selection_bounds(doc);
+  CHECK(dirty.x0 == 3 && dirty.y0 == 2 && dirty.x1 == 5 && dirty.y1 == 4);
+
+  /* dropped, so placing does nothing; one undo puts it all back */
+  dirty = paintingdoc_place(doc, 0, 0, &leave);
+  CHECK(box_is_empty(&dirty));
+  paintingdoc_undo(doc);
+  CHECK(px(doc, 0, 0) == RED && px(doc, 3, 2) == WHITE);
+
+  /* copied partly off the canvas: the original stays and the selection is
+   * clipped */
+  CHECK(paintingdoc_select_rect(doc, (box_t) { 0, 0, 2, 2 },
+                                paintingdoc_SELOP_REPLACE) == result_OK);
+  CHECK(paintingdoc_lift(doc) == result_OK);
+  paintingdoc_place(doc, 7, 7, NULL);
+  paintingdoc_drop(doc);
+  dirty = paintingdoc_selection_bounds(doc);
+  CHECK(dirty.x0 == 7 && dirty.y0 == 7 && dirty.x1 == 8 && dirty.y1 == 8);
+  CHECK(px(doc, 7, 7) == RED);
+  CHECK(px(doc, 0, 0) == RED && px(doc, 1, 1) == RED);
 
   paintingdoc_destroy(doc);
 

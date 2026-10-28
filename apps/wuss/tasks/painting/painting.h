@@ -65,6 +65,8 @@ typedef enum painting_tool
   painting_TOOL_LASSO,  /* drag out a freeform selection */
   painting_TOOL_WAND,   /* select the similar colour around a click */
   painting_TOOL_PICK,   /* take the fg (Select) or bg (Adjust) from the canvas */
+  painting_TOOL_MOVE,   /* drag the selection's pixels: Select moves them,
+                         * leaving bg behind, and Adjust copies them */
   painting_TOOL__COUNT
 }
 painting_tool_t;
