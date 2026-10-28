@@ -10,33 +10,53 @@
  * plus the terminator. */
 #define CONFIGURING_FIELD_BUF  6
 
+#include "framebuf/bitmap.h"
 #include "framebuf/pattern.h"
 #include "geom/box.h"
+#include "wuss/gadget/gridview.h"
 #include "wuss/icon.h"
 #include "wuss/menu.h"
 #include "wuss/task.h"
 #include "wuss/window.h"
 #include "wuss/wuss.h"
 
-/* Startup settings window: a "System" frame with the two original option
- * icons (right/middle mouse button swap -- g_tasks.swap_mouse_buttons, read
- * by each frontend's raw-button translator -- and reversed scroll direction
- * -- g_tasks.reverse_scroll, read where each frontend fills
- * wuss_input_event_t.wheel), a "Font" frame showing the system font with a
- * "Choose" action opening the font menu (a pick is applied via
- * wuss_set_font), a "Timing" frame with three writable fields
+/* The sections, each an icon in the root window and a window of its own. */
+enum
+{
+  CONFIGURING_SECTION_MOUSING,
+  CONFIGURING_SECTION_FONTS,
+  CONFIGURING_SECTION_BACKDROP,
+  CONFIGURING_SECTION__LIMIT
+};
+
+/* Startup settings: a root window, a grid of one icon per section, and a
+ * window per section opened by clicking its icon.
+ *
+ * "Mousing" has a "Buttons" frame with two option icons (right/middle mouse
+ * button swap -- g_tasks.swap_mouse_buttons, read by each frontend's
+ * raw-button translator -- and reversed scroll direction --
+ * g_tasks.reverse_scroll, read where each frontend fills
+ * wuss_input_event_t.wheel) and a "Timing" frame with three writable fields
  * (double-click interval/distance, drag threshold) applied via an "Apply"
- * action calling wuss_set_config, plus a "Backdrop" frame: a foreground and
- * a background colour swatch row, a fill-pattern grid, a result swatch
- * mixing the three, and a "Set backdrop" action applying the result via
- * wuss_set_backdrop. Opened once from run_wuss, not from the task launcher
- * menu. */
+ * action calling wuss_set_config. "Fonts" shows the system font with a
+ * "Choose" action opening the font menu (a pick is applied via
+ * wuss_set_font). "Backdrop" has a foreground and a background colour swatch
+ * row, a fill-pattern grid, a result swatch mixing the three, and a "Set
+ * backdrop" action applying the result via wuss_set_backdrop. Opened once
+ * from run_wuss, and from the icon bar. */
 typedef struct configuring_task
 {
   wuss_t             *wuss;     /* for wuss_get_pointer when opening the
                                  * menu */
   wuss_task_t        *delegate; /* the task that owns the menu */
-  wuss_window_t      *window;
+  wuss_window_t      *window;   /* the root: one icon per section */
+  wuss_gridview_t    *gridview; /* its grid */
+  const bitmap_t     *glyphs[CONFIGURING_SECTION__LIMIT]; /* borrowed from
+                                                           * the icon pool */
+  wuss_window_t      *windows[CONFIGURING_SECTION__LIMIT]; /* NULL when
+                                                            * closed */
+
+  /* each section's icons are NULL while its window is closed */
   wuss_icon_t         *swap_icon;
   wuss_icon_t         *reverse_scroll_icon;
   wuss_icon_t         *font_name_icon;

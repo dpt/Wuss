@@ -431,13 +431,10 @@ static const stack_item_t g_configuring_stack[CONFIGURING_ST__LIMIT] =
  * configuring_click. */
 enum
 {
+  /* Mousing */
   CONFIGURING_ICON_SYSTEM_FRAME,
   CONFIGURING_ICON_SWAP,
   CONFIGURING_ICON_REVERSE_SCROLL,
-  CONFIGURING_ICON_FONT_FRAME,
-  CONFIGURING_ICON_FONT_LABEL,
-  CONFIGURING_ICON_FONT_NAME,
-  CONFIGURING_ICON_FONT_CHOOSE,
   CONFIGURING_ICON_TIMING_FRAME,
   CONFIGURING_ICON_DBL_MS_LABEL,
   CONFIGURING_ICON_DBL_MS_FIELD,
@@ -449,6 +446,12 @@ enum
   CONFIGURING_ICON_DRAG_PX_FIELD,
   CONFIGURING_ICON_DRAG_PX_UNIT,
   CONFIGURING_ICON_APPLY_TIMING,
+  /* Fonts */
+  CONFIGURING_ICON_FONT_FRAME,
+  CONFIGURING_ICON_FONT_LABEL,
+  CONFIGURING_ICON_FONT_NAME,
+  CONFIGURING_ICON_FONT_CHOOSE,
+  /* Backdrop */
   CONFIGURING_ICON_BACKDROP_FRAME,
   CONFIGURING_ICON_FG_LABEL,
   CONFIGURING_ICON_BG_LABEL,
@@ -456,6 +459,42 @@ enum
   CONFIGURING_ICON_SET_BACKDROP,
   CONFIGURING_NICONS
 };
+
+/* Each section's window holds its frames (stack items whose parent is the
+ * root) with everything inside them, and its run of icons. */
+typedef struct
+{
+  const char *name;
+  const char *glyph;      /* icon pool name */
+  int         frames[2];  /* -1 for none */
+  int         first_icon;
+  int         last_icon;  /* exclusive */
+}
+configuring_section_t;
+
+static const configuring_section_t g_configuring_sections[CONFIGURING_SECTION__LIMIT] =
+{
+  [CONFIGURING_SECTION_MOUSING] =
+  {
+    "Mousing", "pointer",
+    { CONFIGURING_ST_SYSTEM, CONFIGURING_ST_TIMING },
+    CONFIGURING_ICON_SYSTEM_FRAME, CONFIGURING_ICON_FONT_FRAME
+  },
+  [CONFIGURING_SECTION_FONTS] =
+  {
+    "Fonts", "app_chars",
+    { CONFIGURING_ST_FONT, -1 },
+    CONFIGURING_ICON_FONT_FRAME, CONFIGURING_ICON_BACKDROP_FRAME
+  },
+  [CONFIGURING_SECTION_BACKDROP] =
+  {
+    "Backdrop", "app_patterns",
+    { CONFIGURING_ST_BACKDROP, -1 },
+    CONFIGURING_ICON_BACKDROP_FRAME, CONFIGURING_NICONS
+  },
+};
+
+#define CONFIGURING_LABEL_CHARS 12
 
 /* The system font faces this task has handed to wuss_set_font, and their
  * names: wuss borrows both, so they live here rather than in any one
@@ -497,45 +536,15 @@ static void configuring_grid_cell(int i, int *col, int *row)
 
 /* ----------------------------------------------------------------------- */
 
-result_t configuring_create(wuss_t *wuss, configuring_task_t **out)
+/* g_configuring_stack with each label at its natural width; the size group
+ * widens the rest to match */
+static void configuring_label_widths(const wuss_t *wuss, stack_item_t *items)
 {
-  result_t            rc;
-  configuring_task_t *task;
-  wuss_task_t        *delegate;
-  wuss_task_desc_t    delegate_desc;
-  box_t               boxes[CONFIGURING_ST__LIMIT];
-  box_t               root;
-  box_t               backdrop_frame;
-  wuss_icon_spec_t    specs[CONFIGURING_NICONS];
-  wuss_icon_t        *icons[CONFIGURING_NICONS];
-  stack_item_t        items[CONFIGURING_ST__LIMIT];
-  size2d_t            doc;
-  size2d_t            min_sz;
-  const char         *font_name;
-
-  task = calloc(1, sizeof(*task));
-  if (task == NULL)
-    return result_OOM;
-
-  task->wuss    = wuss;
-  task->fg      = wuss_COLOUR_BLACK;
-  task->bg      = wuss_COLOUR_WHITE;
-  task->pattern = screen_PATTERN_SOLID;
-
-  delegate_desc.handle    = configuring_handle;
-  delegate_desc.task_data = task;
-  delegate_desc.name      = "configuring";
-  rc = wuss_task_create(wuss, &delegate_desc, &delegate);
-  if (rc != result_OK)
-  {
-    free(task); /* nothing registered yet; the spawner will not free it */
-    return rc;
-  }
-
-  task->delegate = delegate;
-
-  /* each label's natural width; the size group widens the rest to match */
-  memcpy(items, g_configuring_stack, sizeof(items));
+  memcpy(items, g_configuring_stack, sizeof(g_configuring_stack));
+  items[CONFIGURING_ST_SWAP].cross_size = wuss_STD_GLYPH_SIZE + wuss_STD_GAP +
+    task_text_width(wuss, "Swap right/middle mouse buttons");
+  items[CONFIGURING_ST_REVERSE_SCROLL].cross_size = wuss_STD_GLYPH_SIZE +
+    wuss_STD_GAP + task_text_width(wuss, "Reverse mouse scroll direction");
   items[CONFIGURING_ST_FG_LABEL].axis_size =
     task_text_width(wuss, "Foreground");
   items[CONFIGURING_ST_BG_LABEL].axis_size =
@@ -553,44 +562,107 @@ result_t configuring_create(wuss_t *wuss, configuring_task_t **out)
   items[CONFIGURING_ST_DBL_MS_UNIT].axis_size  = task_text_width(wuss, "ms");
   items[CONFIGURING_ST_DBL_PX_UNIT].axis_size  = task_text_width(wuss, "px");
   items[CONFIGURING_ST_DRAG_PX_UNIT].axis_size = task_text_width(wuss, "px");
+}
 
-  rc = stack_smallest(items, NELEMS(items), &min_sz);
-  if (rc != result_OK)
-    goto fail_delegate;
+/* Copy into out the root of items and the section's frames with everything
+ * inside them, reparented to match; map[j] is the index in items of out[j].
+ * Parents still come before children. Returns how many were copied. */
+static int configuring_section_items(const stack_item_t *items,
+                                     int                 section,
+                                     stack_item_t       *out,
+                                     int                *map)
+{
+  const configuring_section_t *sec;
+  int                          index[CONFIGURING_ST__LIMIT];
+  int                          n;
+  int                          i;
+  int                          keep;
 
-  doc = min_sz;
-
-  rc = wuss_window_create_at(delegate,
-                             &task_place,
-                             doc,
-                             "Configuring",
-                             wuss_WINDOW_DEFAULT | wuss_WINDOW_FOCUSABLE,
-                             wuss_BACKDROP_COLOUR(wuss_COLOUR_WINDOW),
-                             doc,
-                             SIZE2D(0, 0),
-                             &task->window);
-  if (rc != result_OK)
+  sec = &g_configuring_sections[section];
+  n   = 0;
+  for (i = 0; i < CONFIGURING_ST__LIMIT; i++)
   {
-    wuss_task_destroy(delegate); /* unregister; its QUIT frees the task block */
-    return rc;
+    if (i == CONFIGURING_ST_ROOT)
+      keep = 1;
+    else if (items[i].parent == CONFIGURING_ST_ROOT)
+      keep = i == sec->frames[0] || i == sec->frames[1];
+    else
+      keep = index[items[i].parent] >= 0;
+
+    index[i] = -1;
+    if (!keep)
+      continue;
+
+    out[n] = items[i];
+    if (i != CONFIGURING_ST_ROOT)
+      out[n].parent = index[items[i].parent];
+    map[n]   = i;
+    index[i] = n++;
   }
 
-  root = (box_t) BOX_POS_SIZE(0, 0, doc.w, doc.h);
-  rc = stack_solve(items, NELEMS(items), &root, boxes);
-  if (rc != result_OK)
-    goto fail_delegate;
+  return n;
+}
 
-  backdrop_frame  = boxes[CONFIGURING_ST_BACKDROP];
-  task->swatch_x  = boxes[CONFIGURING_ST_FG_ROW].x0;
-  task->fg_y      = boxes[CONFIGURING_ST_FG_ROW].y0;
-  task->bg_y      = boxes[CONFIGURING_ST_BG_ROW].y0;
-  task->grid_y    = boxes[CONFIGURING_ST_GRID].y0;
-  task->result_y  = boxes[CONFIGURING_ST_RESULT].y0;
+/* Fill the specs of section's icons from boxes (indexed as
+ * g_configuring_stack), and the task state they and redraw read */
+static void configuring_section_specs(configuring_task_t *task,
+                                      int                 section,
+                                      const box_t        *boxes,
+                                      wuss_icon_spec_t   *specs)
+{
+  const char *font_name;
 
-  memset(specs, 0, sizeof(specs));
+  if (section == CONFIGURING_SECTION_FONTS)
+  {
+    wuss_icon_spec_frame(&specs[CONFIGURING_ICON_FONT_FRAME],
+                         boxes[CONFIGURING_ST_FONT], "Font");
+
+    wuss_icon_spec_label(&specs[CONFIGURING_ICON_FONT_LABEL],
+                         boxes[CONFIGURING_ST_FONT_LABEL],
+                         "System font", wuss_ICON_FLAGS_JUSTIFY_RIGHT);
+
+    font_name = wuss_get_font_name_n(task->wuss, 0);
+    wuss_icon_spec_display(&specs[CONFIGURING_ICON_FONT_NAME],
+                           boxes[CONFIGURING_ST_FONT_NAME],
+                           (font_name != NULL) ? font_name : "", 0);
+
+    wuss_icon_spec_action(&specs[CONFIGURING_ICON_FONT_CHOOSE],
+                          boxes[CONFIGURING_ST_FONT_BUTTON],
+                          "Choose", 0);
+    return;
+  }
+
+  if (section == CONFIGURING_SECTION_BACKDROP)
+  {
+    task->swatch_x = boxes[CONFIGURING_ST_FG_ROW].x0;
+    task->fg_y     = boxes[CONFIGURING_ST_FG_ROW].y0;
+    task->bg_y     = boxes[CONFIGURING_ST_BG_ROW].y0;
+    task->grid_y   = boxes[CONFIGURING_ST_GRID].y0;
+    task->result_y = boxes[CONFIGURING_ST_RESULT].y0;
+
+    wuss_icon_spec_frame(&specs[CONFIGURING_ICON_BACKDROP_FRAME],
+                         boxes[CONFIGURING_ST_BACKDROP], "Backdrop");
+
+    wuss_icon_spec_label(&specs[CONFIGURING_ICON_FG_LABEL],
+                         boxes[CONFIGURING_ST_FG_LABEL],
+                         "Foreground", wuss_ICON_FLAGS_JUSTIFY_RIGHT);
+
+    wuss_icon_spec_label(&specs[CONFIGURING_ICON_BG_LABEL],
+                         boxes[CONFIGURING_ST_BG_LABEL],
+                         "Background", wuss_ICON_FLAGS_JUSTIFY_RIGHT);
+
+    wuss_icon_spec_label(&specs[CONFIGURING_ICON_PATTERNS_LABEL],
+                         boxes[CONFIGURING_ST_GRID_LABEL],
+                         "Patterns", wuss_ICON_FLAGS_JUSTIFY_RIGHT);
+
+    wuss_icon_spec_action(&specs[CONFIGURING_ICON_SET_BACKDROP],
+                          boxes[CONFIGURING_ST_BUTTON],
+                          "Set backdrop", 0);
+    return;
+  }
 
   wuss_icon_spec_frame(&specs[CONFIGURING_ICON_SYSTEM_FRAME],
-                       boxes[CONFIGURING_ST_SYSTEM], "System");
+                       boxes[CONFIGURING_ST_SYSTEM], "Buttons");
 
   wuss_icon_spec_option(&specs[CONFIGURING_ICON_SWAP], boxes[CONFIGURING_ST_SWAP],
                         "Swap right/middle mouse buttons");
@@ -599,22 +671,6 @@ result_t configuring_create(wuss_t *wuss, configuring_task_t **out)
                         boxes[CONFIGURING_ST_REVERSE_SCROLL],
                         "Reverse mouse scroll direction");
 
-  wuss_icon_spec_frame(&specs[CONFIGURING_ICON_FONT_FRAME],
-                       boxes[CONFIGURING_ST_FONT], "Font");
-
-  wuss_icon_spec_label(&specs[CONFIGURING_ICON_FONT_LABEL],
-                       boxes[CONFIGURING_ST_FONT_LABEL],
-                       "System font", wuss_ICON_FLAGS_JUSTIFY_RIGHT);
-
-  font_name = wuss_get_font_name_n(wuss, 0);
-  wuss_icon_spec_display(&specs[CONFIGURING_ICON_FONT_NAME],
-                         boxes[CONFIGURING_ST_FONT_NAME],
-                         (font_name != NULL) ? font_name : "", 0);
-
-  wuss_icon_spec_action(&specs[CONFIGURING_ICON_FONT_CHOOSE],
-                        boxes[CONFIGURING_ST_FONT_BUTTON],
-                        "Choose", 0);
-
   wuss_icon_spec_frame(&specs[CONFIGURING_ICON_TIMING_FRAME],
                        boxes[CONFIGURING_ST_TIMING], "Timing");
 
@@ -622,8 +678,6 @@ result_t configuring_create(wuss_t *wuss, configuring_task_t **out)
                        boxes[CONFIGURING_ST_DBL_MS_LABEL],
                        "Double-click", wuss_ICON_FLAGS_JUSTIFY_RIGHT);
 
-  snprintf(task->double_click_ms_text, sizeof(task->double_click_ms_text),
-          "%d", CONFIGURING_DOUBLE_CLICK_MS_DEFAULT);
   wuss_icon_spec_writable(&specs[CONFIGURING_ICON_DBL_MS_FIELD],
                           boxes[CONFIGURING_ST_DBL_MS_FIELD],
                           task->double_click_ms_text,
@@ -636,8 +690,6 @@ result_t configuring_create(wuss_t *wuss, configuring_task_t **out)
                        boxes[CONFIGURING_ST_DBL_PX_LABEL],
                        "Double-click", wuss_ICON_FLAGS_JUSTIFY_RIGHT);
 
-  snprintf(task->double_click_px_text, sizeof(task->double_click_px_text),
-          "%d", CONFIGURING_DOUBLE_CLICK_PX_DEFAULT);
   wuss_icon_spec_writable(&specs[CONFIGURING_ICON_DBL_PX_FIELD],
                           boxes[CONFIGURING_ST_DBL_PX_FIELD],
                           task->double_click_px_text,
@@ -650,9 +702,6 @@ result_t configuring_create(wuss_t *wuss, configuring_task_t **out)
                        boxes[CONFIGURING_ST_DRAG_PX_LABEL],
                        "Drag threshold", wuss_ICON_FLAGS_JUSTIFY_RIGHT);
 
-  snprintf(task->drag_threshold_px_text,
-          sizeof(task->drag_threshold_px_text),
-          "%d", CONFIGURING_DRAG_THRESHOLD_PX_DEFAULT);
   wuss_icon_spec_writable(&specs[CONFIGURING_ICON_DRAG_PX_FIELD],
                           boxes[CONFIGURING_ST_DRAG_PX_FIELD],
                           task->drag_threshold_px_text,
@@ -664,44 +713,194 @@ result_t configuring_create(wuss_t *wuss, configuring_task_t **out)
   wuss_icon_spec_action(&specs[CONFIGURING_ICON_APPLY_TIMING],
                         boxes[CONFIGURING_ST_TIMING_BUTTON],
                         "Apply", 0);
+}
 
-  wuss_icon_spec_frame(&specs[CONFIGURING_ICON_BACKDROP_FRAME], backdrop_frame,
-                       "Backdrop");
+/* Point section's icon fields at icons (indexed by CONFIGURING_ICON_*), or
+ * clear them when icons is NULL, its window having closed */
+static void configuring_section_bind(configuring_task_t *task,
+                                     int                 section,
+                                     wuss_icon_t *const *icons)
+{
+#define CONFIGURING_BIND(i) (icons != NULL ? icons[i] : NULL)
 
-  wuss_icon_spec_label(&specs[CONFIGURING_ICON_FG_LABEL],
-                       boxes[CONFIGURING_ST_FG_LABEL],
-                       "Foreground", wuss_ICON_FLAGS_JUSTIFY_RIGHT);
+  switch (section)
+  {
+  case CONFIGURING_SECTION_MOUSING:
+    task->swap_icon              = CONFIGURING_BIND(CONFIGURING_ICON_SWAP);
+    task->reverse_scroll_icon    = CONFIGURING_BIND(CONFIGURING_ICON_REVERSE_SCROLL);
+    task->double_click_ms_icon   = CONFIGURING_BIND(CONFIGURING_ICON_DBL_MS_FIELD);
+    task->double_click_px_icon   = CONFIGURING_BIND(CONFIGURING_ICON_DBL_PX_FIELD);
+    task->drag_threshold_px_icon = CONFIGURING_BIND(CONFIGURING_ICON_DRAG_PX_FIELD);
+    task->apply_timing_icon      = CONFIGURING_BIND(CONFIGURING_ICON_APPLY_TIMING);
+    break;
 
-  wuss_icon_spec_label(&specs[CONFIGURING_ICON_BG_LABEL],
-                       boxes[CONFIGURING_ST_BG_LABEL],
-                       "Background", wuss_ICON_FLAGS_JUSTIFY_RIGHT);
+  case CONFIGURING_SECTION_FONTS:
+    task->font_name_icon   = CONFIGURING_BIND(CONFIGURING_ICON_FONT_NAME);
+    task->choose_font_icon = CONFIGURING_BIND(CONFIGURING_ICON_FONT_CHOOSE);
+    break;
 
-  wuss_icon_spec_label(&specs[CONFIGURING_ICON_PATTERNS_LABEL],
-                       boxes[CONFIGURING_ST_GRID_LABEL],
-                       "Patterns", wuss_ICON_FLAGS_JUSTIFY_RIGHT);
+  case CONFIGURING_SECTION_BACKDROP:
+    task->set_backdrop_icon = CONFIGURING_BIND(CONFIGURING_ICON_SET_BACKDROP);
+    break;
+  }
 
-  wuss_icon_spec_action(&specs[CONFIGURING_ICON_SET_BACKDROP],
-                        boxes[CONFIGURING_ST_BUTTON],
-                        "Set backdrop", 0);
+#undef CONFIGURING_BIND
+}
 
-  rc = wuss_icon_create_array(task->window, specs, CONFIGURING_NICONS, icons);
+/* Open section's window, or bring it to the front if open */
+static result_t configuring_section_open(configuring_task_t *task,
+                                         int                 section)
+{
+  result_t                     rc;
+  const configuring_section_t *sec;
+  stack_item_t                 all[CONFIGURING_ST__LIMIT];
+  stack_item_t                 items[CONFIGURING_ST__LIMIT];
+  int                          map[CONFIGURING_ST__LIMIT];
+  int                          n;
+  size2d_t                     doc;
+  wuss_place_t                 place;
+  wuss_window_t               *window;
+  box_t                        root;
+  box_t                        solved[CONFIGURING_ST__LIMIT];
+  box_t                        boxes[CONFIGURING_ST__LIMIT];
+  int                          i;
+  wuss_icon_spec_t             specs[CONFIGURING_NICONS];
+  wuss_icon_t                 *icons[CONFIGURING_NICONS];
+
+  if (task->windows[section] != NULL)
+  {
+    wuss_window_restack(task->windows[section], wuss_ZORDER_FRONT);
+    return wuss_set_focus(task->wuss, task->windows[section]);
+  }
+
+  sec = &g_configuring_sections[section];
+
+  configuring_label_widths(task->wuss, all);
+  n = configuring_section_items(all, section, items, map);
+
+  rc = stack_smallest(items, (size_t) n, &doc);
   if (rc != result_OK)
-    goto fail_delegate;
+    return rc;
 
-  task->set_backdrop_icon       = icons[CONFIGURING_ICON_SET_BACKDROP];
-  task->swap_icon               = icons[CONFIGURING_ICON_SWAP];
-  task->reverse_scroll_icon     = icons[CONFIGURING_ICON_REVERSE_SCROLL];
-  task->font_name_icon          = icons[CONFIGURING_ICON_FONT_NAME];
-  task->choose_font_icon        = icons[CONFIGURING_ICON_FONT_CHOOSE];
-  task->double_click_ms_icon    = icons[CONFIGURING_ICON_DBL_MS_FIELD];
-  task->double_click_px_icon    = icons[CONFIGURING_ICON_DBL_PX_FIELD];
-  task->drag_threshold_px_icon  = icons[CONFIGURING_ICON_DRAG_PX_FIELD];
-  task->apply_timing_icon       = icons[CONFIGURING_ICON_APPLY_TIMING];
+  place = task_place_after(task->window);
+  rc = wuss_window_create_at(task->delegate,
+                             &place,
+                             doc,
+                             sec->name,
+                             wuss_WINDOW_DEFAULT | wuss_WINDOW_FOCUSABLE,
+                             wuss_BACKDROP_COLOUR(wuss_COLOUR_WINDOW),
+                             doc,
+                             SIZE2D(0, 0),
+                             &window);
+  if (rc != result_OK)
+    return rc;
 
-  wuss_icon_set_selected(task->window, task->swap_icon,
-                        g_tasks.swap_mouse_buttons);
-  wuss_icon_set_selected(task->window, task->reverse_scroll_icon,
-                        g_tasks.reverse_scroll);
+  root = (box_t) BOX_POS_SIZE(0, 0, doc.w, doc.h);
+  rc = stack_solve(items, (size_t) n, &root, solved);
+  if (rc != result_OK)
+    goto failure;
+
+  memset(boxes, 0, sizeof(boxes));
+  for (i = 0; i < n; i++)
+    boxes[map[i]] = solved[i];
+
+  memset(specs, 0, sizeof(specs));
+  memset(icons, 0, sizeof(icons));
+  configuring_section_specs(task, section, boxes, specs);
+
+  rc = wuss_icon_create_array(window, &specs[sec->first_icon],
+                              sec->last_icon - sec->first_icon,
+                              &icons[sec->first_icon]);
+  if (rc != result_OK)
+    goto failure;
+
+  task->windows[section] = window;
+  configuring_section_bind(task, section, icons);
+
+  if (section == CONFIGURING_SECTION_MOUSING)
+  {
+    wuss_icon_set_selected(window, task->swap_icon,
+                           g_tasks.swap_mouse_buttons);
+    wuss_icon_set_selected(window, task->reverse_scroll_icon,
+                           g_tasks.reverse_scroll);
+  }
+
+  return wuss_set_focus(task->wuss, window);
+
+failure:
+  wuss_window_close(window);
+  return rc;
+}
+
+/* ----------------------------------------------------------------------- */
+
+static void configuring_item(int                   index,
+                             void                 *opaque,
+                             wuss_gridview_item_t *out)
+{
+  configuring_task_t *task;
+
+  task = opaque;
+
+  out->label = g_configuring_sections[index].name;
+  out->glyph = task->glyphs[index];
+}
+
+result_t configuring_create(wuss_t *wuss, configuring_task_t **out)
+{
+  result_t            rc;
+  configuring_task_t *task;
+  wuss_task_t        *delegate;
+  wuss_task_desc_t    delegate_desc;
+  int                 i;
+
+  task = calloc(1, sizeof(*task));
+  if (task == NULL)
+    return result_OOM;
+
+  task->wuss    = wuss;
+  task->fg      = wuss_COLOUR_BLACK;
+  task->bg      = wuss_COLOUR_WHITE;
+  task->pattern = screen_PATTERN_SOLID;
+
+  snprintf(task->double_click_ms_text, sizeof(task->double_click_ms_text),
+           "%d", CONFIGURING_DOUBLE_CLICK_MS_DEFAULT);
+  snprintf(task->double_click_px_text, sizeof(task->double_click_px_text),
+           "%d", CONFIGURING_DOUBLE_CLICK_PX_DEFAULT);
+  snprintf(task->drag_threshold_px_text,
+           sizeof(task->drag_threshold_px_text),
+           "%d", CONFIGURING_DRAG_THRESHOLD_PX_DEFAULT);
+
+  delegate_desc.handle    = configuring_handle;
+  delegate_desc.task_data = task;
+  delegate_desc.name      = "configuring";
+  rc = wuss_task_create(wuss, &delegate_desc, &delegate);
+  if (rc != result_OK)
+  {
+    free(task); /* nothing registered yet; the spawner will not free it */
+    return rc;
+  }
+
+  task->delegate = delegate;
+
+  for (i = 0; i < CONFIGURING_SECTION__LIMIT; i++)
+    task->glyphs[i] = wuss_task_iconpool_find(delegate,
+                                              g_configuring_sections[i].glyph);
+
+  rc = wuss_gridview_window_create(&task->gridview, delegate, &task_place,
+                                   "Configuring", CONFIGURING_SECTION__LIMIT,
+                                   configuring_item, CONFIGURING_LABEL_CHARS,
+                                   NULL, task, 0, &task->window);
+  if (rc != result_OK)
+  {
+    wuss_task_destroy(delegate); /* unregister; its QUIT frees the task block */
+    return rc;
+  }
+
+  /* a click opens a section, so there is no selection to show */
+  wuss_gridview_set_draw(task->gridview, NULL, 0);
+  wuss_gridview_fit_window(task->gridview, CONFIGURING_SECTION__LIMIT, 1,
+                           &task_place);
 
   /* fully built: from here a last-window close reaps the task and its
    * wuss_EVENT_QUIT frees task_data */
@@ -711,10 +910,6 @@ result_t configuring_create(wuss_t *wuss, configuring_task_t **out)
     *out = task;
 
   return result_OK;
-
-fail_delegate:
-  wuss_task_destroy(delegate); /* unregister; its QUIT frees the task block */
-  return rc;
 }
 
 static const taskapp_desc_t configuring_desc =
@@ -749,6 +944,7 @@ result_t configuring_open(wuss_t *wuss)
 
 void configuring_destroy(configuring_task_t *task)
 {
+  wuss_gridview_destroy(task->gridview);
   free(task);
 }
 
@@ -798,11 +994,13 @@ static result_t configuring_redraw(configuring_task_t *task,
                                    const wuss_event_t *event)
 {
   result_t         rc;
+  wuss_window_t   *window;
   wuss_icon_spec_t spec;
   const box_t     *bounds;
   point_t          scroll;
   int              col, i;
 
+  window = task->windows[CONFIGURING_SECTION_BACKDROP];
   bounds = event->data.redraw.bounds;
   scroll = event->data.redraw.scroll;
 
@@ -811,7 +1009,7 @@ static result_t configuring_redraw(configuring_task_t *task,
 
   for (col = 0; col < CONFIGURING_NCOLOURS; col++)
   {
-    rc = configuring_plot_swatch(task->window,
+    rc = configuring_plot_swatch(window,
                             task->swatch_x + col * CONFIGURING_CELL,
                             task->fg_y,
                             (wuss_colour_t) col, col == task->fg,
@@ -820,7 +1018,7 @@ static result_t configuring_redraw(configuring_task_t *task,
     if (rc != result_OK)
       return rc;
 
-    rc = configuring_plot_swatch(task->window,
+    rc = configuring_plot_swatch(window,
                             task->swatch_x + col * CONFIGURING_CELL,
                             task->bg_y,
                             (wuss_colour_t) col, col == task->bg,
@@ -843,7 +1041,7 @@ static result_t configuring_redraw(configuring_task_t *task,
                                      CONFIGURING_CELL, CONFIGURING_CELL);
     spec.u.pattern.tile = configuring_grid_pattern(i);
 
-    rc = wuss_icon_plot(task->window, &spec, bounds, scroll);
+    rc = wuss_icon_plot(window, &spec, bounds, scroll);
     if (rc != result_OK)
       return rc;
   }
@@ -851,7 +1049,7 @@ static result_t configuring_redraw(configuring_task_t *task,
   spec.bbox = (box_t) BOX_POS_SIZE(task->swatch_x, task->result_y,
                                    CONFIGURING_RESULT, CONFIGURING_RESULT);
   spec.u.pattern.tile = task->pattern;
-  rc = wuss_icon_plot(task->window, &spec, bounds, scroll);
+  rc = wuss_icon_plot(window, &spec, bounds, scroll);
   if (rc != result_OK)
     return rc;
 
@@ -974,11 +1172,12 @@ static result_t configuring_set_font(configuring_task_t *task,
 
   bmfontfamily_destroy(family);
 
-  if (task->window != NULL)
+  if (task->font_name_icon != NULL)
   {
     result_t trc;
 
-    trc = wuss_icon_set_text(task->window, task->font_name_icon,
+    trc = wuss_icon_set_text(task->windows[CONFIGURING_SECTION_FONTS],
+                             task->font_name_icon,
                              g.names[0]);
     if (trc != result_OK && rc == result_OK)
       rc = trc;
@@ -1084,7 +1283,7 @@ static result_t configuring_click(configuring_task_t *task,
     return result_OK;
   }
 
-  wuss_window_invalidate_extent(task->window);
+  wuss_window_invalidate_extent(task->windows[CONFIGURING_SECTION_BACKDROP]);
   return result_OK;
 }
 
@@ -1093,19 +1292,52 @@ result_t configuring_handle(wuss_window_t      *window,
                             void               *task_data)
 {
   configuring_task_t *cc;
+  int                 i;
 
   cc = task_data;
+
+  if (window != NULL && window == cc->window)
+  {
+    if (event->kind == wuss_EVENT_CLOSE)
+    {
+      wuss_gridview_destroy(cc->gridview);
+      cc->gridview = NULL;
+      cc->window   = NULL;
+      return result_OK;
+    }
+
+    (void) wuss_gridview_handle_event(cc->gridview, event);
+
+    /* as RISC OS Configure: one click opens a section */
+    if (event->kind == wuss_EVENT_MOUSE &&
+        event->data.mouse.action == wuss_MOUSE_DOWN &&
+        (event->data.mouse.button & (wuss_BUTTON_SELECT | wuss_BUTTON_ADJUST)))
+    {
+      i = wuss_gridview_hit_test(cc->gridview, event->data.mouse.point);
+      if (i >= 0)
+        return configuring_section_open(cc, i);
+    }
+
+    if (event->kind == wuss_EVENT_KEY)
+      return result_WUSS_KEY_UNCLAIMED;
+
+    return result_OK;
+  }
 
   switch (event->kind)
   {
   case wuss_EVENT_REDRAW:
+    if (window != cc->windows[CONFIGURING_SECTION_BACKDROP])
+      return result_OK;
+
     return configuring_redraw(cc, event);
 
   case wuss_EVENT_ICON:
     return configuring_icon(event, task_data);
 
   case wuss_EVENT_MOUSE:
-    if (event->data.mouse.action == wuss_MOUSE_DOWN &&
+    if (window == cc->windows[CONFIGURING_SECTION_BACKDROP] &&
+        event->data.mouse.action == wuss_MOUSE_DOWN &&
         (event->data.mouse.button & wuss_BUTTON_SELECT))
       return configuring_click(cc, event);
 
@@ -1123,8 +1355,14 @@ result_t configuring_handle(wuss_window_t      *window,
     }
 
   case wuss_EVENT_CLOSE:
-    if (window == cc->window)
-      cc->window = NULL;
+    for (i = 0; i < CONFIGURING_SECTION__LIMIT; i++)
+    {
+      if (window == cc->windows[i])
+      {
+        cc->windows[i] = NULL;
+        configuring_section_bind(cc, i, NULL);
+      }
+    }
     return result_OK;
 
   case wuss_EVENT_QUIT:
