@@ -9,51 +9,6 @@
  * redraw_from repaints them: a task that leaves gaps via
  * wuss_NO_BACKGROUND won't get those gaps refreshed by this either. */
 
-/* Append "piece" minus its intersection "cut" with an occluder to "out", as
- * up to four non-overlapping bands. Returns 0 and appends nothing further
- * once "out" (capacity WUSS_MAX_INVALIDATE_PIECES) is full, so the caller can
- * fall back rather than silently under-drawing. */
-static int box_subtract_into(const box_t *piece,
-                             const box_t *cut,
-                             box_t       *out,
-                             int         *pnout)
-{
-  if (cut->y0 > piece->y0)
-  {
-    if (*pnout >= WUSS_MAX_INVALIDATE_PIECES)
-      return 0;
-    out[*pnout].x0 = piece->x0; out[*pnout].y0 = piece->y0;
-    out[*pnout].x1 = piece->x1; out[*pnout].y1 = cut->y0;
-    (*pnout)++;
-  }
-  if (cut->y1 < piece->y1)
-  {
-    if (*pnout >= WUSS_MAX_INVALIDATE_PIECES)
-      return 0;
-    out[*pnout].x0 = piece->x0; out[*pnout].y0 = cut->y1;
-    out[*pnout].x1 = piece->x1; out[*pnout].y1 = piece->y1;
-    (*pnout)++;
-  }
-  if (cut->x0 > piece->x0)
-  {
-    if (*pnout >= WUSS_MAX_INVALIDATE_PIECES)
-      return 0;
-    out[*pnout].x0 = piece->x0; out[*pnout].y0 = cut->y0;
-    out[*pnout].x1 = cut->x0;   out[*pnout].y1 = cut->y1;
-    (*pnout)++;
-  }
-  if (cut->x1 < piece->x1)
-  {
-    if (*pnout >= WUSS_MAX_INVALIDATE_PIECES)
-      return 0;
-    out[*pnout].x0 = cut->x1;   out[*pnout].y0 = cut->y0;
-    out[*pnout].x1 = piece->x1; out[*pnout].y1 = cut->y1;
-    (*pnout)++;
-  }
-
-  return 1;
-}
-
 /* Shared ping-pong carve loop: whittle "box" down by subtracting, in turn,
  * each of "ncuts" cut boxes fetched one at a time via "get_cut" (opaque
  * "ctx" threaded through), writing the surviving pieces to "out" (capacity
@@ -106,20 +61,15 @@ static int carve_by_cuts(const box_t *box,
 
     for (p = 0; p < ncur && !overflowed; p++)
     {
-      box_t cut;
+      box_t bands[4];
+      int   nbands, b;
 
-      if (box_intersection(&occluder, &cur[p], &cut))
-      {
-        if (nnext >= WUSS_MAX_INVALIDATE_PIECES)
-          overflowed = 1;
-        else
-          nxt[nnext++] = cur[p]; /* no overlap: piece survives untouched */
-      }
+      nbands = box_subtract(&cur[p], &occluder, bands);
+      if (nnext + nbands > WUSS_MAX_INVALIDATE_PIECES)
+        overflowed = 1;
       else
-      {
-        if (!box_subtract_into(&cur[p], &cut, nxt, &nnext))
-          overflowed = 1;
-      }
+        for (b = 0; b < nbands; b++)
+          nxt[nnext++] = bands[b];
     }
 
     if (overflowed)
@@ -476,18 +426,11 @@ void wuss__invalidate_minus(wuss_t      *wuss,
                             const box_t *whole,
                             const box_t *keep)
 {
-  box_t pieces[WUSS_MAX_INVALIDATE_PIECES];
-  box_t cut;
+  box_t pieces[4];
   int   npieces, i;
 
-  if (box_intersection(keep, whole, &cut))
-  {
-    wuss_invalidate(wuss, whole); /* no overlap: all of "whole" is vacated */
-    return;
-  }
-
-  npieces = 0;
-  box_subtract_into(whole, &cut, pieces, &npieces);
+  /* no overlap leaves all of "whole" vacated */
+  npieces = box_subtract(whole, keep, pieces);
 
   for (i = 0; i < npieces; i++)
     wuss_invalidate(wuss, &pieces[i]);
