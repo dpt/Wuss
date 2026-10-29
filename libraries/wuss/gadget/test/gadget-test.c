@@ -578,6 +578,38 @@ StringSetOK: ;
     wuss_gridview_select(gv, -1);
     wuss_gridview_select(gv, (int) NELEMS(gridview_test_labels));
     if (!wuss_gridview_is_selected(gv, 2)) goto GridViewFail;
+
+    /* arrows move the selection from item 2 in the one column: Up selects
+     * only item 1; Down stops at the last item and Left at the column's
+     * edge, both still consumed; a Ctrl chord is declined */
+    ev.kind               = wuss_EVENT_KEY;
+    ev.data.key.code      = wuss_KEY_UP;
+    ev.data.key.modifiers = 0;
+    if (!wuss_gridview_handle_event(gv, &ev)) goto GridViewFail;
+    if (wuss_gridview_selected_count(gv) != 1 ||
+        !wuss_gridview_is_selected(gv, 1)) goto GridViewFail;
+    ev.data.key.code = wuss_KEY_DOWN;
+    (void) wuss_gridview_handle_event(gv, &ev);
+    if (!wuss_gridview_handle_event(gv, &ev)) goto GridViewFail;
+    if (!wuss_gridview_is_selected(gv, 2)) goto GridViewFail;
+    ev.data.key.code = wuss_KEY_LEFT;
+    if (!wuss_gridview_handle_event(gv, &ev)) goto GridViewFail;
+    if (!wuss_gridview_is_selected(gv, 2)) goto GridViewFail;
+    ev.data.key.code      = wuss_KEY_UP;
+    ev.data.key.modifiers = wuss_KEY_MOD_CTRL;
+    if (wuss_gridview_handle_event(gv, &ev)) goto GridViewFail;
+    if (!wuss_gridview_is_selected(gv, 2)) goto GridViewFail;
+
+    /* Return activates and deselects item 2; with nothing selected it is
+     * declined */
+    activated             = -1;
+    ev.data.key.code      = wuss_KEY_RETURN;
+    ev.data.key.modifiers = 0;
+    if (!wuss_gridview_handle_event(gv, &ev)) goto GridViewFail;
+    if (activated != 2 || wuss_gridview_selected_count(gv) != 0)
+      goto GridViewFail;
+    if (wuss_gridview_handle_event(gv, &ev)) goto GridViewFail;
+    wuss_gridview_select(gv, 2);
     wuss_gridview_clear_selection(gv);
 
     /* a changed item list re-measures the cell: dropping the long label

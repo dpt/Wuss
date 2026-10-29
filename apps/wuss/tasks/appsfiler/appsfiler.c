@@ -387,6 +387,9 @@ static result_t apps_handle(wuss_window_t      *window,
     return result_OK;
 
   case wuss_EVENT_KEY:
+    aw = apps_find(task, window);
+    if (aw != NULL && wuss_gridview_handle_event(aw->gridview, event))
+      return result_OK;
     return result_WUSS_KEY_UNCLAIMED;
 
   default:

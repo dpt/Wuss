@@ -50,6 +50,8 @@ struct wuss_gridview
   wuss_gridview_activate_fn_t   *activate;
   wuss_gridview_drag_fn_t       *drag;    /* NULL: items are not draggable */
   int                            press_index; /* item pressed, -1 for none */
+  int                            cursor;  /* item arrow keys move from, -1
+                                           * for none */
   int                            menu_index; /* item selected only for an
                                               * open menu, -1 for none */
   int                            menu_closed; /* that menu has picked and
@@ -187,6 +189,7 @@ result_t wuss_gridview_create(wuss_gridview_t            **out,
   gv->activate    = activate;
   gv->drag        = NULL;
   gv->press_index = -1;
+  gv->cursor      = -1;
   gv->menu_index  = -1;
   gv->menu_closed = 0;
   gv->opaque      = opaque;
@@ -397,6 +400,103 @@ static void gridview_clear_selected(wuss_gridview_t *gv)
 
   bitvec_clear_all(gv->selected);
   gv->menu_index = -1;
+}
+
+/* Scroll the window the least that brings cell "index" fully into view. */
+static void gridview_scroll_to(wuss_gridview_t *gv, int index)
+{
+  box_t   cell;
+  box_t   content;
+  point_t scroll;
+  int     h;
+
+  cell = gridview_cell_box(gv, index);
+  wuss_window_get_content_bounds(gv->window, &content);
+  wuss_window_get_scroll(gv->window, &scroll);
+  h = content.y1 - content.y0;
+
+  if (cell.y0 < scroll.y)
+    scroll.y = cell.y0;
+  else if (cell.y1 > scroll.y + h)
+    scroll.y = cell.y1 - h;
+  else
+    return;
+
+  wuss_window_set_scroll(gv->window, scroll);
+}
+
+/* Return: activate the cursor item if selected, else the first selected one,
+ * deselecting it first as a double-click does. Returns 1 if consumed. */
+static int gridview_return(wuss_gridview_t *gv)
+{
+  int index;
+
+  if (gv->activate == NULL)
+    return 0;
+
+  index = gv->cursor;
+  if (index < 0 || index >= gv->count ||
+      !bitvec_get(gv->selected, (bitvec_index_t) index))
+    index = bitvec_next(gv->selected, -1);
+  if (index < 0 || index >= gv->count)
+    return 0;
+
+  /* before the call: it may rescan or reorder the items */
+  bitvec_clear(gv->selected, (bitvec_index_t) index);
+  gridview_invalidate_cell(gv, index);
+
+  gv->activate(gv, index, wuss_BUTTON_SELECT | wuss_BUTTON_DOUBLE,
+               gv->opaque);
+  return 1;
+}
+
+/* An arrow key: select only the item beside the cursor, or the first selected
+ * item (or item 0) if there is no cursor yet. Return activates. Returns 1 if
+ * consumed. */
+static int gridview_key(wuss_gridview_t *gv, int code)
+{
+  int index;
+
+  if (!gv->selectable || gv->count == 0 || gv->columns == 0)
+    return 0;
+
+  if (code == wuss_KEY_RETURN)
+    return gridview_return(gv);
+
+  if (code != wuss_KEY_LEFT && code != wuss_KEY_RIGHT &&
+      code != wuss_KEY_UP && code != wuss_KEY_DOWN)
+    return 0;
+
+  index = gv->cursor;
+  if (index < 0 || index >= gv->count)
+  {
+    index = bitvec_next(gv->selected, -1);
+    if (index < 0 || index >= gv->count)
+      index = 0;
+  }
+  else if (code == wuss_KEY_LEFT && index % gv->columns > 0)
+  {
+    index--;
+  }
+  else if (code == wuss_KEY_RIGHT && index % gv->columns < gv->columns - 1 &&
+           index + 1 < gv->count)
+  {
+    index++;
+  }
+  else if (code == wuss_KEY_UP && index >= gv->columns)
+  {
+    index -= gv->columns;
+  }
+  else if (code == wuss_KEY_DOWN &&
+           index / gv->columns < (gv->count - 1) / gv->columns)
+  {
+    /* into a short last row: the last item */
+    index = MIN(index + gv->columns, gv->count - 1);
+  }
+
+  wuss_gridview_select(gv, index);
+  gridview_scroll_to(gv, index);
+  return 1;
 }
 
 /* ----------------------------------------------------------------------- */
@@ -623,6 +723,7 @@ int wuss_gridview_handle_event(wuss_gridview_t    *gv,
     }
     else if (event->data.mouse.button & wuss_BUTTON_ADJUST)
     {
+      gv->cursor = index;
       if (bitvec_get(gv->selected, (bitvec_index_t) index))
         bitvec_clear(gv->selected, (bitvec_index_t) index);
       else
@@ -637,6 +738,7 @@ int wuss_gridview_handle_event(wuss_gridview_t    *gv,
       gridview_clear_selected(gv);
       (void) bitvec_set(gv->selected, (bitvec_index_t) index);
       gridview_invalidate_cell(gv, index);
+      gv->cursor = index;
     }
 
     if ((event->data.mouse.button & wuss_BUTTON_DOUBLE) &&
@@ -668,6 +770,11 @@ int wuss_gridview_handle_event(wuss_gridview_t    *gv,
      * window during must end here or the next hover would start a drag */
     gv->press_index = -1;
     return 0;
+
+  case wuss_EVENT_KEY:
+    if (event->data.key.modifiers & (wuss_KEY_MOD_CTRL | wuss_KEY_MOD_ALT))
+      return 0; /* leave chords to shortcuts */
+    return gridview_key(gv, event->data.key.code);
 
   default:
     return 0;
@@ -712,6 +819,7 @@ void wuss_gridview_select(wuss_gridview_t *gv, int index)
   gridview_clear_selected(gv);
   (void) bitvec_set(gv->selected, (bitvec_index_t) index);
   gridview_invalidate_cell(gv, index);
+  gv->cursor = index;
 }
 
 int wuss_gridview_selected_count(const wuss_gridview_t *gv)

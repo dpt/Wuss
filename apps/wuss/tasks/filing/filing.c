@@ -1045,9 +1045,17 @@ result_t filing_handle(wuss_window_t      *window,
     return result_OK;
 
   case wuss_EVENT_KEY:
+  {
+    filing_window_t *fw;
+
+    fw = filing_find_by_window(task, window);
+    if (fw != NULL && wuss_gridview_handle_event(fw->gridview, event))
+      return result_OK;
+
     task->menu_window = window;
     filing_menu_update(task);
     return wuss_menu_dispatch_shortcut(task->delegate, &task->menu, event);
+  }
 
   default:
     return result_OK;

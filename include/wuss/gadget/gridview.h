@@ -29,6 +29,13 @@
  * nothing. A double-click (wuss_BUTTON_DOUBLE) on an item deselects it, then
  * calls the activate callback.
  *
+ * Arrow keys (wuss_EVENT_KEY, without Ctrl or Alt) select only the item
+ * beside the last one clicked or selected, scrolling it into view; with none
+ * yet, the first selected item, else item 0. Down into a short last row
+ * lands on the last item. Return activates the item last clicked or moved
+ * to, if selected, or else the first selected item, as a Select double-click
+ * on it would; with nothing selected it is declined.
+ *
  * Built only when WUSS_GADGETS is defined.
  */
 
@@ -237,21 +244,24 @@ void wuss_gridview_destroy(wuss_gridview_t *doomed);
 
 /**
  * Offer an event from the task's own handler: a wuss_EVENT_REDRAW,
- * wuss_EVENT_MOUSE or wuss_EVENT_OPEN on the gadget's window. Also offer
- * wuss_EVENT_MENU_CLOSED (any window): a MENU click over an unselected item
- * with nothing selected selects that item. It is deselected when the menu
- * closes without a pick, or at the first event after a pick, so the pick's
- * action still sees it. Offer a MENU click before opening the menu, so the
- * menu sees the selection. wuss_EVENT_OPEN reflows the grid's columns to the
- * window's current visible width and updates its document extent -- offer it
- * whenever the window's width may have changed, not only on the first open.
+ * wuss_EVENT_MOUSE, wuss_EVENT_OPEN or wuss_EVENT_KEY on the gadget's
+ * window. Also offer wuss_EVENT_MENU_CLOSED (any window): a MENU click over
+ * an unselected item with nothing selected selects that item. It is
+ * deselected when the menu closes without a pick, or at the first event
+ * after a pick, so the pick's action still sees it. Offer a MENU click
+ * before opening the menu, so the menu sees the selection. wuss_EVENT_OPEN
+ * reflows the grid's columns to the window's current visible width and
+ * updates its document extent -- offer it whenever the window's width may
+ * have changed, not only on the first open.
  *
  * \param[in] gridview Handle.
  * \param[in] event    The event, of any kind.
  * \return 1 if the event was the gadget's and was consumed, else 0. A REDRAW
  *         is consumed only when it targets this gadget's window; a MOUSE
  *         DOWN outside every cell is consumed too, since it clears the
- *         selection.
+ *         selection. A KEY is consumed only if it is an arrow, even one that
+ *         cannot move past the grid's edge, or a Return that activated an
+ *         item.
  */
 int wuss_gridview_handle_event(wuss_gridview_t    *gridview,
                                const wuss_event_t *event);
