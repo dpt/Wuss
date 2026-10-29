@@ -46,40 +46,25 @@ icons_load_t;
 /* The RLE blit (screen_copy_bitmap_rle) decodes straight into the screen's
  * byte layout -- no per-pixel format convert -- so a compressed icon must
  * already be in screen order. bitmap_load_png yields rgb(x|a)8888; the screen
- * is usually bgr(x|a)8888. Swap R and B in place (byte 0 <-> byte 2; the
- * alpha/pad byte is untouched, so this maps rgbx<->bgrx and rgba<->bgra) and
- * relabel the format. Bitmap must be uncompressed and 32bpp.
- * ponytail: lives here until a second caller needs rgb<->bgr; then fold into
- * bitmap_convert. */
-static void icons_swap_rb(bitmap_t *bm)
+ * is usually bgr(x|a)8888. Swap R and B in place, keeping the alpha/pad byte
+ * (rgbx<->bgrx, rgba<->bgra). Bitmap must be uncompressed and one of those
+ * four formats. */
+static result_t icons_swap_rb(bitmap_t *bm)
 {
-  unsigned char *row;
-  int            x, y;
+  pixelfmt_t to;
 
   assert(!pixelfmt_is_rle(bm->format));
-  assert(pixelfmt_log2bpp(bm->format) == 5);
-
-  for (y = 0; y < bm->size.h; y++)
-  {
-    row = (unsigned char *) bm->base + (size_t) y * bm->rowbytes;
-    for (x = 0; x < bm->size.w; x++)
-    {
-      unsigned char t;
-
-      t          = row[x * 4 + 0];
-      row[x * 4 + 0] = row[x * 4 + 2];
-      row[x * 4 + 2] = t;
-    }
-  }
 
   switch (bm->format)
   {
-  case pixelfmt_rgbx8888: bm->format = pixelfmt_bgrx8888; break;
-  case pixelfmt_rgba8888: bm->format = pixelfmt_bgra8888; break;
-  case pixelfmt_bgrx8888: bm->format = pixelfmt_rgbx8888; break;
-  case pixelfmt_bgra8888: bm->format = pixelfmt_rgba8888; break;
-  default: break;
+  case pixelfmt_rgbx8888: to = pixelfmt_bgrx8888; break;
+  case pixelfmt_rgba8888: to = pixelfmt_bgra8888; break;
+  case pixelfmt_bgrx8888: to = pixelfmt_rgbx8888; break;
+  case pixelfmt_bgra8888: to = pixelfmt_rgba8888; break;
+  default: return result_NOT_SUPPORTED;
   }
+
+  return bitmap_convert_in_place(bm, to);
 }
 
 /* The RLE codec only turns wholly-zero pixels into skip runs, and the 32bpp
@@ -156,7 +141,7 @@ static result_t icons_load_entry(const char *leaf, void *opaque)
    * format needs nothing, anything else is left for the blit to reject. */
   if (pixelfmt_log2bpp(bm.format) == 5 &&
       icons_rb_swapped(bm.format, icons_order_for(st->wuss->scr->format)))
-    icons_swap_rb(&bm);
+    (void) icons_swap_rb(&bm); /* icons_rb_swapped admits only its formats */
 
   icons_clear_transparent(&bm);
 
@@ -252,7 +237,9 @@ static result_t icons_match_pool(pixelfmt_t            order,
     if (rc != result_OK)
       return rc;
 
-    icons_swap_rb(bm);
+    rc = icons_swap_rb(bm);
+    if (rc != result_OK)
+      return rc;
 
     rc = bitmap_compress(bm);
     if (rc != result_OK)
