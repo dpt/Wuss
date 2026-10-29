@@ -158,6 +158,32 @@ static void store_palette(wuss_frontend_t *fe,
   memcpy(fe->palette, palette, fe->npalette * sizeof(*palette));
 }
 
+/* Confine the mouse to the screen. A mode change doesn't reliably reset the
+ * bounding box, so a box left from an earlier mode would trap the pointer.
+ * OS_Word 21,1 takes left, bottom, right, top in OS units as little-endian
+ * 16-bit pairs. */
+static void set_mouse_bounds(const wuss_frontend_t *fe)
+{
+  int           right;
+  int           top;
+  unsigned char block[9];
+
+  right = (fe->scr_width  << fe->xeig) - 1;
+  top   = (fe->scr_height << fe->yeig) - 1;
+
+  block[0] = 1; /* reason: set mouse bounding box */
+  block[1] = 0;
+  block[2] = 0;
+  block[3] = 0;
+  block[4] = 0;
+  block[5] = (unsigned char) (right & 0xFF);
+  block[6] = (unsigned char) ((right >> 8) & 0xFF);
+  block[7] = (unsigned char) (top & 0xFF);
+  block[8] = (unsigned char) ((top >> 8) & 0xFF);
+
+  _swix(OS_Word, _INR(0,1), 21, block);
+}
+
 /* Select a width x height mode at `depth` and point fe at it. On failure
  * writes the reason to msg and leaves fe untouched, though the screen mode
  * may already have changed. */
@@ -236,7 +262,7 @@ static result_t set_mode(wuss_frontend_t *fe,
   fe->depth       = depth;
   fe->log2bpp     = vals[4];
   fe->fmt         = g_depths[d].fmt;
-  fe->xeig       = vals[1];
+  fe->xeig        = vals[1];
   fe->yeig        = vals[2];
   fe->rowbytes    = vals[3];
   fe->screen_base = (void *) vals[7];
@@ -254,6 +280,8 @@ static result_t set_mode(wuss_frontend_t *fe,
    * arrow shape (*Pointer 1 == OS_Byte 106, 1). wuss draws no cursor of its
    * own, so this is the pointer the user sees. */
   _swix(OS_Byte, _INR(0,1), 106, 1);
+
+  set_mouse_bounds(fe);
 
   return result_OK;
 }
