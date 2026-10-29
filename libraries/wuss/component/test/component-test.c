@@ -1292,11 +1292,12 @@ ColourSetOK: ;
     }
 
     /* the file icon follows the filetype: b60 has its own, data falls back
-     * to the generic one fff had */
+     * to the generic one */
     {
       filetype_t ft;
       int        generic;
 
+      wuss_saveas_set_filetype(sa, NULL);
       generic   = sawin->icons[0]->spec.u.bitmap.set;
       ft.riscos = 0xb60;
       ft.ext    = "png";
