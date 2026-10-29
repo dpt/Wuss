@@ -125,10 +125,12 @@ typedef void (wuss_gridview_draw_fn_t)(wuss_gridview_t    *gridview,
  * \param[in] gridview The grid view.
  * \param[in] index    The pressed item's index.
  * \param[in] opaque   As passed to \ref wuss_gridview_create.
- * \return Non-zero to start a core drag (see wuss_drag_start) sized to the
- *         cell, originating from the grid's window and holding the cell
- *         where it was pressed; the wuss_EVENT_DRAG_END then goes to the
- *         window's task. Zero to decline, so the item cannot be dragged.
+ * \return Non-zero to start a core drag originating from the grid's window
+ *         and held where the item was pressed: a bitmap drag of the item's
+ *         glyph (see wuss_drag_start_bitmap; the glyph must stay valid until
+ *         the drag ends), or an ants box the size of the cell for an item
+ *         with no glyph. The wuss_EVENT_DRAG_END then goes to the window's
+ *         task. Zero to decline, so the item cannot be dragged.
  */
 typedef int (wuss_gridview_drag_fn_t)(wuss_gridview_t *gridview,
                                       int              index,

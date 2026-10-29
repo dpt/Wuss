@@ -190,7 +190,13 @@ static result_t mouse_move(wuss_t *wuss, point_t p, wuss_window_t **hit)
         wuss->pressed.icon   = NULL;
         wuss->pressed.window = NULL;
 
-        (void) wuss_drag_start(wuss, win, size, hotspot);
+        /* drag the icon's own image, drawn at its bbox's top-left, so the
+         * same hotspot holds; with no image, the ants of its bbox */
+        if (icon->spec.u.bitmap.image != NULL)
+          (void) wuss_drag_start_bitmap(wuss, win, icon->spec.u.bitmap.image,
+                                        hotspot);
+        else
+          (void) wuss_drag_start(wuss, win, size, hotspot);
         wuss->drag.button = wuss->pressed.button;
       }
 

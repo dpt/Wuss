@@ -353,19 +353,21 @@ static void gridview_invalidate_cell(wuss_gridview_t *gv, int index)
 }
 
 /* The pointer moved with an item pressed: past the drag threshold, offer the
- * item to the drag callback and, if it takes it, start a core drag sized to
- * the cell. Hover moves also arrive here, so a press the pointer left the
- * window during (see wuss_EVENT_POINTER_EXIT) must already have been
- * forgotten. */
+ * item to the drag callback and, if it takes it, start a core drag of the
+ * item's glyph (as redraw places it), or of the cell's ants with no glyph.
+ * Hover moves also arrive here, so a press the pointer left the window
+ * during (see wuss_EVENT_POINTER_EXIT) must already have been forgotten. */
 static void gridview_drag_maybe(wuss_gridview_t *gv, point_t point)
 {
-  wuss_t *wuss;
-  box_t   cell;
-  point_t hotspot;
-  int     threshold;
-  int     index;
-  int     dx;
-  int     dy;
+  result_t             rc;
+  wuss_t              *wuss;
+  box_t                cell;
+  point_t              hotspot;
+  wuss_gridview_item_t item;
+  int                  threshold;
+  int                  index;
+  int                  dx;
+  int                  dy;
 
   if (gv->press_index < 0)
     return;
@@ -385,7 +387,18 @@ static void gridview_drag_maybe(wuss_gridview_t *gv, point_t point)
 
   cell    = gridview_cell_box(gv, index);
   hotspot = POINT(gv->press_point.x - cell.x0, gv->press_point.y - cell.y0);
-  if (wuss_drag_start(wuss, gv->window, gv->cell, hotspot) == result_OK)
+  gv->item_fn(index, gv->opaque, &item);
+  if (item.glyph != NULL)
+  {
+    hotspot.x -= (gv->cell.w - item.glyph->size.w) / 2;
+    hotspot.y -= gv->pad_y;
+    rc = wuss_drag_start_bitmap(wuss, gv->window, item.glyph, hotspot);
+  }
+  else
+  {
+    rc = wuss_drag_start(wuss, gv->window, gv->cell, hotspot);
+  }
+  if (rc == result_OK)
     wuss->drag.button = gv->press_button; /* as an icon drag does */
 }
 

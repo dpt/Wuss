@@ -1,5 +1,6 @@
 /* core/test/drag-test.c -- wuss core drag and mouse capture tests */
 
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -10,6 +11,8 @@
 
 #include "base/result.h"
 #include "base/utils.h"
+#include "framebuf/bitmap.h"
+#include "framebuf/pixelfmt.h"
 #include "geom/box.h"
 #include "wuss/wuss.h"
 #include "wuss/task.h"
@@ -25,6 +28,29 @@
 
 /* ----------------------------------------------------------------------- */
 
+typedef struct object_draw
+{
+  int   count;
+  box_t box;
+  box_t clip;
+}
+object_draw_t;
+
+static void record_object_draw(screen_t *scr, const box_t *box, void *opaque)
+{
+  object_draw_t *od = opaque;
+
+  od->count++;
+  od->box  = *box;
+  od->clip = scr->clip;
+}
+
+/* The fixture's bgrx8888 pixel at (x, y), less its unused byte. */
+static uint32_t pixel_at(const wuss_fixture_t *fixture, int x, int y)
+{
+  return ((const uint32_t *) fixture->pixels)[y * fixture->bm.size.w + x] &
+         0x00FFFFFF;
+}
 
 /* ----------------------------------------------------------------------- */
 
@@ -208,6 +234,144 @@ result_t wuss_drag_test(const char *resources)
       goto Failure;
   }
 
+  printf("test: solid drags -- a bitmap drag paints its image at the box, "
+         "repaints what it leaves, falls back to ants under outline_drags, "
+         "and an object drag's drawer is clipped to its box\n");
+
+  {
+    wuss_task_t   *painter;
+    wuss_window_t *win_d;
+    box_t          box_d;
+    uint32_t       green_px[8 * 8];
+    bitmap_t       green;
+    wuss_config_t  config;
+    uint32_t       under;
+    object_draw_t  od;
+    int            i;
+
+    painter = mk_task(wuss, paint_handle, NULL);
+    if (painter == NULL) goto Failure;
+
+    box_d = (box_t) BOX_POS_SIZE(0, 100, 100, 100);
+    rc = wuss_window_create(painter, &box_d, "D", wuss_WINDOW_DEFAULT,
+                            wuss_NO_BACKDROP, box_size(&box_d), SIZE2D(0, 0),
+                            &win_d);
+    if (rc != result_OK)
+      goto Failure;
+
+    for (i = 0; i < 8 * 8; i++)
+      green_px[i] = 0x0000FF00;
+    rc = bitmap_init(&green, SIZE2D(8, 8), pixelfmt_bgrx8888, 8 * 4, NULL,
+                     green_px);
+    if (rc != result_OK)
+      goto Failure;
+
+    rc = wuss_drag_start_bitmap(wuss, win_a, NULL, POINT(0, 0));
+    if (rc != result_BAD_ARG)
+      goto Failure;
+    rc = wuss_drag_start_object(wuss, win_a, SIZE2D(8, 8), POINT(0, 0),
+                                NULL, NULL);
+    if (rc != result_BAD_ARG)
+      goto Failure;
+
+    rc = wuss_mouse_move(wuss, POINT(50, 150), NULL); /* over D's content */
+    if (rc != result_OK)
+      goto Failure;
+    rc = wuss_redraw(wuss);
+    if (rc != result_OK)
+      goto Failure;
+    under = pixel_at(&fixture, 50, 150);
+    if (under == 0x0000FF00)
+      goto Failure;
+
+    rc = wuss_drag_start_bitmap(wuss, win_a, &green, POINT(4, 4));
+    if (rc != result_OK)
+      goto Failure;
+    rc = wuss_redraw_dirty(wuss);
+    if (rc != result_OK)
+      goto Failure;
+    if (pixel_at(&fixture, 46, 146) != 0x0000FF00 ||
+        pixel_at(&fixture, 53, 153) != 0x0000FF00 ||
+        pixel_at(&fixture, 54, 154) != under)
+      goto Failure;
+
+    rc = wuss_mouse_move(wuss, POINT(70, 170), NULL);
+    if (rc != result_OK)
+      goto Failure;
+    rc = wuss_idle(wuss); /* the tick catches the painted box up */
+    if (rc != result_OK)
+      goto Failure;
+    rc = wuss_redraw_dirty(wuss);
+    if (rc != result_OK)
+      goto Failure;
+    if (pixel_at(&fixture, 50, 150) != under ||
+        pixel_at(&fixture, 70, 170) != 0x0000FF00)
+      goto Failure;
+
+    rc = wuss_key(wuss, wuss_KEY_ESCAPE, wuss_KEY_MOD_NONE, NULL);
+    if (rc != result_OK || wuss_is_dragging(wuss))
+      goto Failure;
+    rc = wuss_redraw_dirty(wuss);
+    if (rc != result_OK)
+      goto Failure;
+    if (pixel_at(&fixture, 70, 170) != under)
+      goto Failure;
+
+    /* outline_drags: the ants of the bitmap's size, its interior untouched */
+    wuss_get_config(wuss, &config);
+    config.mouse.outline_drags = 1;
+    rc = wuss_set_config(wuss, &config);
+    if (rc != result_OK)
+      goto Failure;
+    rc = wuss_redraw_dirty(wuss);
+    if (rc != result_OK)
+      goto Failure;
+
+    rc = wuss_drag_start_bitmap(wuss, win_a, &green, POINT(4, 4));
+    if (rc != result_OK)
+      goto Failure;
+    rc = wuss_redraw_dirty(wuss);
+    if (rc != result_OK)
+      goto Failure;
+    if (pixel_at(&fixture, 70, 170) != under ||
+        pixel_at(&fixture, 66, 166) == under) /* an ants corner */
+      goto Failure;
+    rc = wuss_key(wuss, wuss_KEY_ESCAPE, wuss_KEY_MOD_NONE, NULL);
+    if (rc != result_OK)
+      goto Failure;
+
+    config.mouse.outline_drags = 0;
+    rc = wuss_set_config(wuss, &config);
+    if (rc != result_OK)
+      goto Failure;
+    rc = wuss_redraw_dirty(wuss);
+    if (rc != result_OK)
+      goto Failure;
+
+    /* object drag: the drawer sees its box and a clip inside it */
+    memset(&od, 0, sizeof(od));
+    rc = wuss_drag_start_object(wuss, win_a, SIZE2D(10, 6), POINT(0, 0),
+                                record_object_draw, &od);
+    if (rc != result_OK)
+      goto Failure;
+    rc = wuss_redraw_dirty(wuss);
+    if (rc != result_OK)
+      goto Failure;
+    if (od.count == 0 ||
+        !box_equal(&od.box, &(box_t) BOX_POS_SIZE(70, 170, 10, 6)) ||
+        od.clip.x0 < od.box.x0 || od.clip.y0 < od.box.y0 ||
+        od.clip.x1 > od.box.x1 || od.clip.y1 > od.box.y1)
+      goto Failure;
+    rc = wuss_key(wuss, wuss_KEY_ESCAPE, wuss_KEY_MOD_NONE, NULL);
+    if (rc != result_OK)
+      goto Failure;
+
+    wuss_window_close(win_d);
+    rc = wuss_mouse_move(wuss, POINT(50, 50), NULL);
+    if (rc != result_OK)
+      goto Failure;
+  }
+
   printf("test: a DRAGGABLE icon starts a core drag once the pointer clears "
         "drag_threshold_px from the press, sized to its bbox\n");
 
@@ -253,6 +417,9 @@ result_t wuss_drag_test(const char *resources)
     if (!wuss_is_dragging(wuss))
       goto Failure;
 
+    if (wuss->drag.draw != NULL)
+      goto Failure; /* no image: the ants */
+
     rc = wuss_mouse_click(wuss, POINT(11 + dconfig.mouse.drag_threshold_px + 1, 31),
                           wuss_BUTTON_SELECT, wuss_MOUSE_UP, NULL);
     if (rc != result_OK)
@@ -260,6 +427,49 @@ result_t wuss_drag_test(const char *resources)
     if (wuss_is_dragging(wuss))
       goto Failure;
     if (tc_a.drag_end_count != drag_end_before + 1)
+      goto Failure;
+
+    wuss_icon_delete(win_a, draggable);
+  }
+
+  printf("test: a DRAGGABLE icon with an image drags that image\n");
+
+  {
+    wuss_icon_spec_t spec;
+    wuss_icon_t     *draggable;
+    uint32_t         image_px[6 * 5];
+    bitmap_t         image;
+
+    memset(image_px, 0, sizeof(image_px));
+    rc = bitmap_init(&image, SIZE2D(6, 5), pixelfmt_bgrx8888, 6 * 4, NULL,
+                     image_px);
+    if (rc != result_OK)
+      goto Failure;
+
+    memset(&spec, 0, sizeof(spec));
+    spec.bbox              = (box_t) BOX_POS_SIZE(10, 10, 20, 20);
+    spec.type              = wuss_ICON_TYPE_DRAGGABLE;
+    spec.u.bitmap.image    = &image;
+    rc = wuss_icon_create(win_a, &spec, &draggable);
+    if (rc != result_OK)
+      goto Failure;
+
+    rc = wuss_mouse_click(wuss, POINT(11, 31), wuss_BUTTON_SELECT,
+                          wuss_MOUSE_DOWN, NULL);
+    if (rc != result_OK)
+      goto Failure;
+    rc = wuss_mouse_move(wuss, POINT(31, 31), NULL);
+    if (rc != result_OK)
+      goto Failure;
+    if (!wuss_is_dragging(wuss) || wuss->drag.draw == NULL ||
+        wuss->drag.opaque != &image ||
+        wuss->drag.size.w != 6 || wuss->drag.size.h != 5 ||
+        wuss->drag.hotspot.x != 0 || wuss->drag.hotspot.y != 0)
+      goto Failure;
+
+    rc = wuss_mouse_click(wuss, POINT(31, 31), wuss_BUTTON_SELECT,
+                          wuss_MOUSE_UP, NULL);
+    if (rc != result_OK)
       goto Failure;
 
     wuss_icon_delete(win_a, draggable);

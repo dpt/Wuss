@@ -199,6 +199,18 @@ For `wuss_EVENT_MOUSE` and `wuss_EVENT_SCROLL`, `event->data.mouse.point` and `e
 
 Feed mouse events in with `wuss_mouse_click` (action `wuss_MOUSE_DOWN` or `wuss_MOUSE_UP`) and `wuss_mouse_move`, and scroll events with `wuss_scroll`, each hit-testing the topmost window at `(x, y)` and delivering to its task in window-local coordinates. All three take an optional `wuss_window_t **hit` out-parameter naming the window under the pointer (or being dragged). Events are dropped if the hit window has no handle callback, or (for scroll) the pointer is over its titlebar.
 
+### Drag looks
+
+A core drag (see `wuss_drag_start`) takes over the pointer until a release or Escape ends it with `wuss_EVENT_DRAG_END`. There are three ways to start one. They differ only in what follows the pointer:
+
+- `wuss_drag_start(wuss, window, size, hotspot)` draws a marching-ants box. Only its edges are repainted each frame.
+- `wuss_drag_start_bitmap(wuss, window, bitmap, hotspot)` draws a bitmap at its own size, honouring its alpha. This is the equivalent of RISC OS's DragASprite.
+- `wuss_drag_start_object(wuss, window, size, hotspot, draw, opaque)` calls `draw(scr, box, opaque)` to paint the image. This is the equivalent of DragAnObject. The callback runs last in `wuss_redraw_dirty`, with the clip already narrowed to the box. It must only paint.
+
+The bitmap and `opaque` are borrowed until the drag ends. A solid image repaints its old and new boxes once a frame, and only when it has moved. Windows underneath repaint through the normal dirty path; there is no save-under.
+
+When `wuss_config_t::mouse.outline_drags` is set (the Configure task's "Solid drags" option, unticked), solid drags show ants of the same size instead. A DRAGGABLE icon drags its image and a gridview drags the item's glyph. Each falls back to ants when there is no image.
+
 ## Scrolling
 
 Each window carries a scroll offset, `(0, 0)` by default: the point in the task's virtual content space that appears at the content area's top-left. `wuss_window_set_scroll(window, x, y)` moves it (invalidating the content area so the next redraw picks it up); `wuss_window_get_scroll` reads it back. `wuss_scroll` applies this offset itself as Wuss's default scroll action, clamped to `doc` (set at window creation), before also delivering `wuss_EVENT_SCROLL` to the task if it has a handle:

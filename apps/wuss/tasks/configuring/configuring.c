@@ -84,6 +84,7 @@ enum
   CONFIGURING_ST_SYSTEM,
   CONFIGURING_ST_SWAP,
   CONFIGURING_ST_REVERSE_SCROLL,
+  CONFIGURING_ST_SOLID_DRAGS,
   CONFIGURING_ST_FONT,
   CONFIGURING_ST_FONT_HBOX,
   CONFIGURING_ST_FONT_LABEL,
@@ -165,6 +166,11 @@ static const stack_item_t g_configuring_stack[CONFIGURING_ST__LIMIT] =
                                           CONFIGURING_ROW,
                                           0,
                                           stack_ALIGN_FILL),
+
+  [CONFIGURING_ST_SOLID_DRAGS] = STACK_LEAF(CONFIGURING_ST_SYSTEM,
+                                            CONFIGURING_ROW,
+                                            0,
+                                            stack_ALIGN_FILL),
 
   [CONFIGURING_ST_FONT] =
   {
@@ -435,6 +441,7 @@ enum
   CONFIGURING_ICON_SYSTEM_FRAME,
   CONFIGURING_ICON_SWAP,
   CONFIGURING_ICON_REVERSE_SCROLL,
+  CONFIGURING_ICON_SOLID_DRAGS,
   CONFIGURING_ICON_TIMING_FRAME,
   CONFIGURING_ICON_DBL_MS_LABEL,
   CONFIGURING_ICON_DBL_MS_FIELD,
@@ -545,6 +552,8 @@ static void configuring_label_widths(const wuss_t *wuss, stack_item_t *items)
     task_text_width(wuss, "Swap right/middle mouse buttons");
   items[CONFIGURING_ST_REVERSE_SCROLL].cross_size = wuss_STD_GLYPH_SIZE +
     wuss_STD_GAP + task_text_width(wuss, "Reverse mouse scroll direction");
+  items[CONFIGURING_ST_SOLID_DRAGS].cross_size = wuss_STD_GLYPH_SIZE +
+    wuss_STD_GAP + task_text_width(wuss, "Solid drags");
   items[CONFIGURING_ST_FG_LABEL].axis_size =
     task_text_width(wuss, "Foreground");
   items[CONFIGURING_ST_BG_LABEL].axis_size =
@@ -671,6 +680,9 @@ static void configuring_section_specs(configuring_task_t *task,
                         boxes[CONFIGURING_ST_REVERSE_SCROLL],
                         "Reverse mouse scroll direction");
 
+  wuss_icon_spec_option(&specs[CONFIGURING_ICON_SOLID_DRAGS],
+                        boxes[CONFIGURING_ST_SOLID_DRAGS], "Solid drags");
+
   wuss_icon_spec_frame(&specs[CONFIGURING_ICON_TIMING_FRAME],
                        boxes[CONFIGURING_ST_TIMING], "Timing");
 
@@ -728,6 +740,7 @@ static void configuring_section_bind(configuring_task_t *task,
   case CONFIGURING_SECTION_MOUSING:
     task->swap_icon              = CONFIGURING_BIND(CONFIGURING_ICON_SWAP);
     task->reverse_scroll_icon    = CONFIGURING_BIND(CONFIGURING_ICON_REVERSE_SCROLL);
+    task->solid_drags_icon       = CONFIGURING_BIND(CONFIGURING_ICON_SOLID_DRAGS);
     task->double_click_ms_icon   = CONFIGURING_BIND(CONFIGURING_ICON_DBL_MS_FIELD);
     task->double_click_px_icon   = CONFIGURING_BIND(CONFIGURING_ICON_DBL_PX_FIELD);
     task->drag_threshold_px_icon = CONFIGURING_BIND(CONFIGURING_ICON_DRAG_PX_FIELD);
@@ -819,10 +832,15 @@ static result_t configuring_section_open(configuring_task_t *task,
 
   if (section == CONFIGURING_SECTION_MOUSING)
   {
+    wuss_config_t config;
+
     wuss_icon_set_selected(window, task->swap_icon,
                            g_tasks.swap_mouse_buttons);
     wuss_icon_set_selected(window, task->reverse_scroll_icon,
                            g_tasks.reverse_scroll);
+    wuss_get_config(task->wuss, &config);
+    wuss_icon_set_selected(window, task->solid_drags_icon,
+                           !config.mouse.outline_drags);
   }
 
   return wuss_set_focus(task->wuss, window);
@@ -1211,6 +1229,14 @@ static result_t configuring_icon(const wuss_event_t *event, void *task_data)
   else if (icon == cc->reverse_scroll_icon)
   {
     g_tasks.reverse_scroll = !!wuss_icon_get_selected(icon);
+  }
+  else if (icon == cc->solid_drags_icon)
+  {
+    wuss_config_t config;
+
+    wuss_get_config(cc->wuss, &config);
+    config.mouse.outline_drags = !wuss_icon_get_selected(icon);
+    return wuss_set_config(cc->wuss, &config);
   }
   else if (icon == cc->choose_font_icon)
   {

@@ -59,6 +59,7 @@ typedef struct configuring_task
   /* each section's icons are NULL while its window is closed */
   wuss_icon_t         *swap_icon;
   wuss_icon_t         *reverse_scroll_icon;
+  wuss_icon_t         *solid_drags_icon;
   wuss_icon_t         *font_name_icon;
   wuss_icon_t         *choose_font_icon;
   wuss_icon_t         *double_click_ms_icon;

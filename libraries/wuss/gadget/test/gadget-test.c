@@ -763,6 +763,30 @@ StringSetOK: ;
         goto GridViewFail;
       }
 
+      /* dragging an item with a glyph drags the glyph, not the cell */
+      wuss_gridview_set_drag(glyph_gv, gridview_test_accept_drag);
+      ev.kind              = wuss_EVENT_MOUSE;
+      ev.data.mouse.action = wuss_MOUSE_DOWN;
+      ev.data.mouse.point  = POINT(2, 2);
+      ev.data.mouse.button = wuss_BUTTON_SELECT;
+      (void) wuss_gridview_handle_event(glyph_gv, &ev);
+      ev.data.mouse.action = wuss_MOUSE_MOVE;
+      ev.data.mouse.point  = POINT(30, 2);
+      (void) wuss_gridview_handle_event(glyph_gv, &ev);
+      if (!wuss_is_dragging(gvwuss) || gvwuss->drag.draw == NULL ||
+          gvwuss->drag.opaque != &glyph ||
+          gvwuss->drag.size.w != 4 || gvwuss->drag.size.h != 4)
+      {
+        wuss_gridview_destroy(glyph_gv);
+        goto GridViewFail;
+      }
+      rc = wuss_key(gvwuss, wuss_KEY_ESCAPE, wuss_KEY_MOD_NONE, &claimed);
+      if (rc != result_OK || wuss_is_dragging(gvwuss))
+      {
+        wuss_gridview_destroy(glyph_gv);
+        goto GridViewFail;
+      }
+
       wuss_gridview_destroy(glyph_gv);
       wuss_window_close(glyph_win);
     }

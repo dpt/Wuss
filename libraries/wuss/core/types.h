@@ -264,6 +264,7 @@ struct wuss
     int double_click_ms;
     int double_click_px;
     int drag_threshold_px;
+    int outline_drags;
   }
   input;
 #ifdef WUSS_FURNITURE
@@ -458,6 +459,11 @@ struct wuss
     box_t          drawn;
     /* Counts wuss_idle calls while dragging, for the ants' marching phase. */
     int            frame;
+    /* Solid image drawer, called with "opaque"; NULL draws the ants.
+     * wuss_drag_start_bitmap sets a built-in that plots the bitmap passed
+     * as "opaque". */
+    wuss_drag_draw_fn_t *draw;
+    void                *opaque;
   }
   drag;
 };

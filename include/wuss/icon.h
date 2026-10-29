@@ -130,7 +130,8 @@ typedef enum wuss_icon_type
   wuss_ICON_TYPE_DISPLAY,
   /** Drawn as wuss_ICON_TYPE_BITMAP (spec.u.bitmap). Once the pointer clears
    *  wuss_config_t::mouse.drag_threshold_px from a Select/Adjust press, starts a
-   *  core drag (see wuss_drag_start) sized to the icon's bounding box,
+   *  core drag of the icon's image (see wuss_drag_start_bitmap), or with no
+   *  image an ants box the size of its bounding box (see wuss_drag_start),
    *  hotspot at the press point; a click with no such movement behaves like
    *  an ordinary press and raises wuss_EVENT_ICON on release as usual. */
   wuss_ICON_TYPE_DRAGGABLE,

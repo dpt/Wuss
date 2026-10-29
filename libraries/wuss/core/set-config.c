@@ -247,6 +247,8 @@ result_t wuss__apply_config(wuss_t *w, const wuss_config_t *config)
   else
     w->input.drag_threshold_px = WUSS_DEFAULT_DRAG_THRESHOLD_PX;
 
+  w->input.outline_drags = (config != NULL && config->mouse.outline_drags);
+
 #ifdef WUSS_ICONS
   {
     wuss_colour_t track, value, surround;

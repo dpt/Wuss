@@ -38,4 +38,5 @@ void wuss_get_config(const wuss_t *wuss, wuss_config_t *config)
   config->mouse.double_click_ms   = wuss->input.double_click_ms;
   config->mouse.double_click_px   = wuss->input.double_click_px;
   config->mouse.drag_threshold_px = wuss->input.drag_threshold_px;
+  config->mouse.outline_drags     = wuss->input.outline_drags;
 }

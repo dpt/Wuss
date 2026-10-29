@@ -608,6 +608,14 @@ typedef struct wuss_config
      * rather than a plain click, or 0 for the default (4).
      */
     int drag_threshold_px;
+
+    /**
+     * Non-zero to draw every core drag as a marching-ants outline, so that
+     * wuss_drag_start_bitmap and wuss_drag_start_object show an ants box of
+     * the same size instead of their image. 0 (the default) draws solid
+     * drags.
+     */
+    int outline_drags;
   }
   mouse;
 }
@@ -1299,7 +1307,8 @@ result_t wuss_key_up(wuss_t              *wuss,
 /**
  * Start a core drag session: from the next wuss_mouse_move onward, wuss
  * takes over input and draws a marching-ants box of the given size, its
- * hotspot held under the pointer, painted last in wuss_redraw_dirty.
+ * hotspot held under the pointer, painted last in wuss_redraw_dirty (see
+ * wuss_drag_start_bitmap and wuss_drag_start_object for solid drag images).
  * Furniture drags and menu hover tracking pause; POINTER_ENTER/EXIT for the
  * windows the ants cross are deferred and settled at drag end; a MOUSE_UP
  * ends the drag instead of being delivered as one, and Escape (wuss_key,
@@ -1328,6 +1337,63 @@ result_t wuss_drag_start(wuss_t        *wuss,
                          wuss_window_t *window,
                          size2d_t       size,
                          point_t        hotspot);
+
+/**
+ * Draws the image of a solid core drag (see wuss_drag_start_object). Called
+ * from wuss_redraw_dirty, last, over every window, with scr->clip already
+ * set to \p box intersected with the region being redrawn. Must only paint:
+ * it must not invalidate, move or close windows, or end the drag.
+ *
+ * \param[in] scr    Screen to draw on.
+ * \param[in] box    Where the drag image sits, screen space.
+ * \param[in] opaque Value passed to wuss_drag_start_object.
+ */
+typedef void (wuss_drag_draw_fn_t)(screen_t    *scr,
+                                   const box_t *box,
+                                   void        *opaque);
+
+/**
+ * Start a core drag that shows \p bitmap under the pointer instead of an
+ * ants box (the equivalent of RISC OS's DragASprite). Otherwise as
+ * wuss_drag_start, with the box sized to the bitmap. Alpha in the bitmap is
+ * honoured. When wuss_config_t::mouse.outline_drags is set, an ants box of
+ * the bitmap's size is drawn instead.
+ *
+ * \param[in] wuss    Window manager.
+ * \param[in] window  As wuss_drag_start.
+ * \param[in] bitmap  Image to drag. Borrowed, not copied: it must outlive
+ *                    the drag, until wuss_EVENT_DRAG_END or the window
+ *                    closes.
+ * \param[in] hotspot Offset within the bitmap that tracks the pointer.
+ * \return \ref result_OK on success, \ref result_BAD_ARG if bitmap is NULL
+ *         or as wuss_drag_start.
+ */
+result_t wuss_drag_start_bitmap(wuss_t         *wuss,
+                                wuss_window_t  *window,
+                                const bitmap_t *bitmap,
+                                point_t         hotspot);
+
+/**
+ * Start a core drag whose image is painted by \p draw (the equivalent of
+ * RISC OS's DragAnObject). Otherwise as wuss_drag_start. When
+ * wuss_config_t::mouse.outline_drags is set, an ants box of \p size is drawn
+ * instead and \p draw is never called.
+ *
+ * \param[in] wuss    Window manager.
+ * \param[in] window  As wuss_drag_start.
+ * \param[in] size    Size of the image, screen pixels.
+ * \param[in] hotspot Offset within the image that tracks the pointer.
+ * \param[in] draw    Paints the image; see wuss_drag_draw_fn_t.
+ * \param[in] opaque  Passed to \p draw. Borrowed: it must outlive the drag.
+ * \return \ref result_OK on success, \ref result_BAD_ARG if draw is NULL or
+ *         as wuss_drag_start.
+ */
+result_t wuss_drag_start_object(wuss_t              *wuss,
+                                wuss_window_t       *window,
+                                size2d_t             size,
+                                point_t              hotspot,
+                                wuss_drag_draw_fn_t *draw,
+                                void                *opaque);
 
 /**
  * Whether a core drag session (see wuss_drag_start) is currently active.
