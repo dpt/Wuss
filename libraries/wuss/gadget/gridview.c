@@ -131,6 +131,10 @@ static void gridview_measure_items(wuss_gridview_t *gv)
     }
   }
 
+  /* labels are drawn with a space either side */
+  if (label_w > 0)
+    label_w += 2 * (int) wuss__text_width(font, " ");
+
   if (gv->count == 0)
     glyph_h = GRIDVIEW_EMPTY_GLYPH_H;
 
@@ -526,10 +530,11 @@ static void gridview_draw_cell(wuss_gridview_t    *gv,
   screen_t             clipped;
   colour_t             fg, bg;
   point_t              pos;
-  bmfont_width_t       w;
-  int                  len, split, ascent, height;
+  bmfont_width_t       w, space_w;
+  int                  len, split, ascent, height, avail;
   int                  glyph_x, glyph_y, label_y;
   char                 buf[64];
+  char                *text;
 
   wuss = gv->window->task->wuss;
   scr  = event->data.redraw.scr;
@@ -580,31 +585,39 @@ static void gridview_draw_cell(wuss_gridview_t    *gv,
   {
     bmfont_get_info(font, NULL, &height, &ascent, NULL);
 
+    /* the label goes in buf between a space either side, so text is the
+     * label's part of buf and has room for sizeof(buf) - 3 characters */
+    text    = buf + 1;
+    space_w = wuss__text_width(font, " ");
+    avail   = gv->cell.w - 2 * gv->pad_x - 2 * (int) space_w;
+
     len = (int) strlen(item.label);
-    if (len >= (int) sizeof(buf))
-      len = (int) sizeof(buf) - 1;
+    if (len > (int) sizeof(buf) - 3)
+      len = (int) sizeof(buf) - 3;
     wuss__text_measure(font, item.label, len, INT_MAX, NULL, &w);
-    if ((int) w > gv->cell.w - 2 * gv->pad_x)
+    if ((int) w > avail)
     {
       bmfont_width_t ellipsis_w, target;
 
       wuss__text_measure(font, GRIDVIEW_ELLIPSIS,
                         (int) strlen(GRIDVIEW_ELLIPSIS), INT_MAX, NULL,
                         &ellipsis_w);
-      target = (bmfont_width_t) MAX(gv->cell.w - 2 * gv->pad_x -
-                                    (int) ellipsis_w, 0);
+      target = (bmfont_width_t) MAX(avail - (int) ellipsis_w, 0);
       wuss__text_measure(font, item.label, len, target, &split, &w);
-      if (split > (int) sizeof(buf) - (int) sizeof(GRIDVIEW_ELLIPSIS))
-        split = (int) sizeof(buf) - (int) sizeof(GRIDVIEW_ELLIPSIS);
-      memcpy(buf, item.label, (size_t) split);
-      memcpy(buf + split, GRIDVIEW_ELLIPSIS, sizeof(GRIDVIEW_ELLIPSIS));
+      if (split > (int) sizeof(buf) - 2 - (int) sizeof(GRIDVIEW_ELLIPSIS))
+        split = (int) sizeof(buf) - 2 - (int) sizeof(GRIDVIEW_ELLIPSIS);
+      memcpy(text, item.label, (size_t) split);
+      memcpy(text + split, GRIDVIEW_ELLIPSIS, sizeof(GRIDVIEW_ELLIPSIS) - 1);
       len = split + (int) sizeof(GRIDVIEW_ELLIPSIS) - 1;
-      wuss__text_measure(font, buf, len, INT_MAX, NULL, &w);
     }
     else
     {
-      memcpy(buf, item.label, (size_t) len);
+      memcpy(text, item.label, (size_t) len);
     }
+    buf[0]       = ' ';
+    text[len]    = ' ';
+    len         += 2;
+    wuss__text_measure(font, buf, len, INT_MAX, NULL, &w);
 
     label_y = screen_box.y1 - gv->pad_y - height;
     pos.x   = screen_box.x0 + (gv->cell.w - (int) w) / 2;
