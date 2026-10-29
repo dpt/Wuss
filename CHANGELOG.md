@@ -8,14 +8,131 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.23.0] - 2026-10-29
+
+### Added
+
+- Icon bar placement by priority or beside an anchor:
+  `wuss_iconbar_icon_spec_t` gains `priority`, `scan`, `anchor` and
+  `beside`. Higher priorities sit further outward on their side; an anchor
+  places an icon directly left or right of an existing one. A zeroed spec
+  packs as before. `taskapp_desc_t` gains `iconbar_priority`: Task Manager,
+  Display and Palette sit outermost on the right, Filing then Apps on the
+  left. Display and Palette always load at startup.
+- `wuss_task_focus_front()` focuses an app's frontmost window without
+  restacking.
+- Mouse events carry the modifier keys last passed to
+  `wuss_set_modifiers()`; the frontends report them on pointer moves too.
+- `wuss_furniture_palette_t` gains `scroll.active`, painting a scroll
+  sausage while it is held or dragged.
+- `wuss_colourset_button()` lets a caller take over a colour set's button.
+  Orbing picks every colour with the 24-bit colour picker.
+- `wuss_MESSAGE_FILER_OPEN_DIR`: Adjust on a document window's close icon
+  opens the document's directory in the Filer and closes the document
+  unless Shift is held. Viewing, Reading, Painting, Tiling, Resizing,
+  Dithering and Effecting do so.
+- Single-document tasks title their window "LEAF: APP" once a file is
+  loaded. Painting starts as "<Untitled>: Painting" and marks unsaved
+  changes with a `*`.
+- Filing closes a directory display after a file Adjust-dragged out of it
+  is accepted, as RISC OS does.
+- Painting: alpha transparency (a bgra8888 canvas, transparent New canvases,
+  PNGs with alpha, a checkerboard behind transparent pixels; the eraser
+  wipes to transparent); a gradient fill tool (G); ellipse, filled ellipse,
+  path and filled path tools, with Shift squaring shapes and snapping
+  gradients to 22.5 degree steps and Ctrl drawing from the centre.
+- Dithering offers every DPTLib method: Bayer at 2x2, 4x4, 8x8 and 16x16,
+  blue noise, clustered dot, random, Knoll and Yliluoma under Ordered;
+  Sierra Two-Row and Sierra Lite, Fan, Shiau-Fan, Riemersma, Ostromoukhov
+  and Zhou-Fang under Error diffusion, with Serpentine and a new Linear
+  light toggle. The Palette menu splits into Computed and Fixed submenus,
+  with fixed palettes grouped by colour count. Show palette opens a window
+  of the target palette's swatches, Animate strength bounces Strength while
+  idle, and the image is labelled when the method is Nearest.
+- Palette: 32 more `.hex` palettes, among them Amber, Phosphor, CGA, C64,
+  Game Boy, DB16, Sweetie-16, MSX, Apple II, Nord, Gruvbox, Tango,
+  RISC OS 256, xterm-256, RGBW and RGBK. A Menu click on the Screen window
+  loads a palette matched to the screen's depth.
+- Viewing draws transparent images over a checkerboard.
+- Ball picks its colours from the palette, never the background colour,
+  with radii of 5, 7, 8, 12 or 14 to 20 pixels.
+- `wuss_window_attach_pane()`: a pane sits inside its parent along one
+  edge. The parent's footprint stays the same and its content area shrinks
+  by the pane's thickness plus a divider. Panes carve in attach order, stack
+  directly above the parent and below its toolbars, and give their room
+  back when hidden.
+- `wuss_window_is_front()` asks whether a window is the frontmost visible
+  one of its stack, counting a toolbar group as one window.
+- `wuss_gridview` keyboard navigation: arrow keys move the selection and
+  scroll it into view; Return activates it as a Select double-click does.
+  Filing and Apps offer key presses to their grids first.
+- `wuss_swatches_t` dithers each swatch from two palette entries on a
+  paletted screen rather than snapping to the nearest.
+- Painting: a magic wand selection tool (W) with a tolerance; Shift adds to
+  and Alt subtracts from the selection; a move tool (V) lifts the selection
+  (Select moves, Adjust copies); a wobbly brush (K) in the manner of Ellis
+  Nadler with Wobble and Wander settings; a spray Rate setting. The size
+  slider becomes a size bar pane showing the current tool's settings. The
+  toolbox groups selection, painting and shape tools. The canvas sits on a
+  stage (pasteboard, border, margin and drop shadow) as in Viewing, and the
+  colour chips dither on paletted screens.
+- Dithering offers Yliluoma's positional dither under Ordered.
+- Configuring becomes a gridview of section icons (Mousing, Fonts and
+  Backdrop), each opening its own window. The icons come from the task's
+  private icon pool.
+- Filing: text (`.txt`) and Markdown (`.md`) file icons. A Select click on
+  the Filing or Apps icon bar icon opens the root window even when other
+  windows are open; with the root already frontmost it brings all the
+  task's windows to the front.
+
 ### Changed
 
 - **Breaking:** `wuss_alloc_t` and `wuss_alloc` move to DPTLib as `alloc_t`
   and `alloc_default` (`utils/alloc.h`). `wuss_create()` takes a
   `const alloc_t *`. Internally `wuss__alloc_strdup` and `wuss__array_grow`
   give way to DPTLib's `alloc_strdup` and `array_grow_alloc`.
+- Hand-rolled helpers give way to DPTLib's: flood fill, linear gradients,
+  selection clipping, convex hulls, Bayer thresholds, UTF-8 word movement,
+  HSV conversion, `.hex` palette loading, Markdown parsing, box subtraction,
+  R/B swapping, colour-key clearing, path parents, font label splitting,
+  checkerboards, ellipses, bitmap cloning and deep PNG loading.
+  Reading's header lines no longer yield overlapping spans. Tasks draw
+  randomness from their own `rng_t` rather than `rand()`.
+- Requires DPTLib 0.7.0.
+- Icon bar clicks: Select or Adjust on a hidden app's icon shows it again.
+  Otherwise Select brings all the app's windows to the front or, with none,
+  opens a new instance; Adjust does nothing. App menus gain a New row for
+  apps allowing more than one instance. Display keeps a single instance.
+- Oscillating moves into Toys, Orbing into Image and Pooling into System.
+- Reading caches its layout and draws only the lines a redraw touches.
+  Dithering reuses its palette while Strength changes.
+- The Pages workflow deploys from `main` only.
 
-## [0.23.0] - 2026-10-23
+### Fixed
+
+- Gridview item drags record the button that started them, so
+  `wuss_EVENT_DRAG_END` no longer reports `wuss_BUTTON_NONE`.
+- `wuss_task_front()` reports whether the app has visible windows, so apps
+  with no focusable windows (Chars) no longer open a new instance on every
+  click.
+- `wuss_set_palette()` rebuilds fills after the palette broadcast, and a
+  Screen menu pick rematches them, so fills no longer track the previous
+  palette.
+- Painting's New dialogue keeps the focus it took.
+- Reading resets its extent when a font change alters the document
+  height.
+- Dithering, Resizing, Effecting and Tiling no longer fill the backdrop
+  under a full-window image, which flickered on RISC OS.
+- Loading a PNG to a deep format no longer leaks the palette on a
+  conversion failure.
+- Painting: a second button pressed mid-stroke no longer restarts the
+  stroke and strands its rubber band. The toolbox lines up under the size
+  bar, and size bar readouts fit their widest value.
+
+## [0.22.0] - 2026-10-23
+
+Changes up to and including 0.22.0. Earlier releases were not recorded
+separately.
 
 ### Added
 
