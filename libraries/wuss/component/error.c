@@ -139,19 +139,6 @@ static int error_button_width(const wuss_t *wuss,
          2 * border;
 }
 
-static char *error_dup(alloc_t alloc, const char *text)
-{
-  char  *copy;
-  size_t n;
-
-  n    = strlen(text) + 1;
-  copy = alloc.malloc(n);
-  if (copy != NULL)
-    memcpy(copy, text, n);
-
-  return copy;
-}
-
 static void error_report_free(error_report_t *report)
 {
   g.alloc.free(report->title);
@@ -505,12 +492,12 @@ result_t wuss_error_report(wuss_t                 *wuss,
     return result_BAD_ARG;
   }
 
-  report.title   = error_dup(g.alloc, title != NULL ? title : "Error");
-  report.message = error_dup(g.alloc, message);
-  report.app_icon = app_icon != NULL ? error_dup(g.alloc, app_icon) : NULL;
-  report.buttons = buttons;
-  report.fn      = fn;
-  report.opaque  = opaque;
+  report.title    = alloc_strdup(&g.alloc, title != NULL ? title : "Error");
+  report.message  = alloc_strdup(&g.alloc, message);
+  report.app_icon = alloc_strdup(&g.alloc, app_icon);
+  report.buttons  = buttons;
+  report.fn       = fn;
+  report.opaque   = opaque;
   rc = result_OOM;
   if (report.title == NULL || report.message == NULL ||
       (app_icon != NULL && report.app_icon == NULL))
