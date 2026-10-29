@@ -1,4 +1,4 @@
-# [DPTLib](https://github.com/dpt/DPTLib) > wuss > painting
+# [Wuss](https://github.com/dpt/Wuss) > painting
 
 Painting is a basic painting task in the `wuss` demo. It is also a worked example
 of a task that draws into its own bitmap, captures the mouse during a stroke

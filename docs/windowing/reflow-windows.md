@@ -1,4 +1,4 @@
-# [DPTLib](https://github.com/dpt/DPTLib) > wuss > reflowable windows
+# [Wuss](https://github.com/dpt/Wuss) > reflowable windows
 
 A *reflowable* window lays its content out as a grid of equal cells and
 re-wraps that grid to fit whatever width the user gives it. It never shows a

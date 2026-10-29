@@ -1,4 +1,4 @@
-# [DPTLib](https://github.com/dpt/DPTLib) > wuss > Menu standard
+# [Wuss](https://github.com/dpt/Wuss) > Menu standard
 
 Every wuss app's window menu follows this arrangement, so the same thing sits
 in the same place from one app to the next. It follows the RISC OS Style

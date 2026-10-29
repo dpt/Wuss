@@ -1,4 +1,4 @@
-# wuss > key reference
+# [Wuss](https://github.com/dpt/Wuss) > key reference
 
 Survey of every key the wuss demo (`apps/wuss`) and its libraries react to, split into **system** keys (handled by wuss or the launcher whatever is focused) and **application** keys (handled by one task when its window has the focus). Ends with proposed standard keys (RISC OS style first, macOS where the guide is silent).
 

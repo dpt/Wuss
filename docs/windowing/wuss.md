@@ -1,4 +1,4 @@
-# [DPTLib](https://github.com/dpt/DPTLib) > wuss
+# [Wuss](https://github.com/dpt/Wuss)
 
 "wuss" is a minimal window manager. It owns window creation, positioning, sizing, z-ordering, mouse/scroll event routing and dragging. Window contents are entirely delegated to tasks, which supply a single event-handling callback.
 
