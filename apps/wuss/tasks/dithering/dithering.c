@@ -16,6 +16,7 @@
 #include "framebuf/bmfont.h"
 #include "framebuf/dither.h"
 #include "framebuf/octree.h"
+#include "framebuf/pixelfmt.h"
 #include "io/namelist.h"
 #include "io/path.h"
 #include "wuss/gadget/swatches.h"
@@ -26,6 +27,7 @@
 #include "../palette/palette.h"
 
 #include "dithering.h"
+#include "../tasks.h"
 #include "../common/snapshot.h"
 #include "../common/taskapp.h"
 
@@ -107,8 +109,8 @@ static int dithering_family_index(dither_method_t method)
 }
 
 /* ordered methods, Knoll's and Yliluoma's included, carry no error between
- * pixels, so Serpentine and Linear light do nothing for them. Riemersma walks
- * a curve rather than rows, so it has no use for Serpentine alone. */
+ * rows, so Serpentine does nothing for them. Riemersma walks a curve rather
+ * than rows, so it has no use for Serpentine either. */
 static int dithering_ordered(dither_method_t method)
 {
   int i;
@@ -167,7 +169,8 @@ static result_t dithering_dither(dithering_task_t *dt, int keep_palette)
   if (dt->source.base == NULL)
     return result_OK;
 
-  if (keep_palette && dt->ntarget > 0)
+  keep_palette = keep_palette && dt->ntarget > 0;
+  if (keep_palette)
   {
     ncolours = dt->ntarget;
     memcpy(palette, dt->target, ncolours * sizeof(*palette));
@@ -184,6 +187,19 @@ static result_t dithering_dither(dithering_task_t *dt, int keep_palette)
     ncolours = MIN(ncolours, 256);
     memcpy(palette, desktop, ncolours * sizeof(*palette));
     rc = result_OK;
+  }
+  else if (dt->palette == DITHERING_PALETTE_CURRENT)
+  {
+    ncolours = pixelfmt_paletted_nentries(g_tasks.bm->format);
+    if (g_tasks.bm->palette == NULL || ncolours == 0)
+    {
+      rc = result_NOT_SUPPORTED; /* a direct-colour mode has no palette */
+    }
+    else
+    {
+      memcpy(palette, g_tasks.bm->palette, ncolours * sizeof(*palette));
+      rc = result_OK;
+    }
   }
   else
   {
@@ -218,7 +234,9 @@ static result_t dithering_dither(dithering_task_t *dt, int keep_palette)
 
   if (dt->window)
     wuss_window_invalidate_visible(dt->window);
-  if (dt->palette_window)
+  /* a reused palette leaves the swatches as they were, unless the dither
+   * failed and they go blank */
+  if (dt->palette_window && (!keep_palette || rc != result_OK))
     wuss_window_invalidate_visible(dt->palette_window);
 
   return result_OK;
@@ -460,7 +478,8 @@ static void dithering_group_palettes(dithering_task_t *dt)
   }
 }
 
-/* the group holding the current palette, or -1 for Optimal or Desktop */
+/* the group holding the current palette, or -1 for Optimal, Desktop or
+ * Current */
 static int dithering_current_group(const dithering_task_t *dt)
 {
   int file;
@@ -489,6 +508,8 @@ static int dithering_fixed_row(const dithering_task_t *dt)
 
   if (dt->palette == DITHERING_PALETTE_DESKTOP)
     return DITHERING_FIXED_DESKTOP;
+  if (dt->palette == DITHERING_PALETTE_CURRENT)
+    return DITHERING_FIXED_CURRENT;
 
   group = dithering_current_group(dt);
   return group < 0 ? -1 : DITHERING_FIXED_FIRST_GROUP + group;
@@ -518,8 +539,8 @@ result_t dithering_create(wuss_t *wuss, dithering_task_t **out)
                 ".hex", task->palettes[0], sizeof(task->palettes[0]),
                 PALETTE_MAX_FILES, 1 /* sorted */, &task->npalettes);
 
-  /* a diffusion method's row sits after the options' rows, the first of
-   * them below a rule */
+  /* a diffusion method's row sits after the option's row, the first of them
+   * below a rule */
   for (i = 0; i < (int) NELEMS(dithering_family_methods); i++)
     WUSS_MENU_ITEM(task->family_items,
                    i < DITHERING_NORDERED ? i : i + DITHERING_DIFFUSION_FIRST,
@@ -529,9 +550,6 @@ result_t dithering_create(wuss_t *wuss, dithering_task_t **out)
   WUSS_MENU_ITEM(task->family_items,
                  DITHERING_NORDERED + DITHERING_DIFFUSION_SERPENTINE,
                  "Serpentine", wuss_MENU_ITEM_NONE);
-  WUSS_MENU_ITEM(task->family_items,
-                 DITHERING_NORDERED + DITHERING_DIFFUSION_LINEAR,
-                 "Linear light", wuss_MENU_ITEM_NONE);
   WUSS_MENU_TITLE(task->ordered_menu, "Ordered", task->family_items,
                   DITHERING_NORDERED);
   WUSS_MENU_TITLE(task->diffusion_menu, "Error diffusion",
@@ -546,6 +564,8 @@ result_t dithering_create(wuss_t *wuss, dithering_task_t **out)
   WUSS_MENU_ITEM_MENU(task->method_items, DITHERING_METHOD_DIFFUSION,
                       "Error diffusion", wuss_MENU_ITEM_NONE,
                       &task->diffusion_menu);
+  WUSS_MENU_ITEM(task->method_items, DITHERING_METHOD_LINEAR, "Linear light",
+                 wuss_MENU_ITEM_DASHED);
   WUSS_MENU_TITLE(task->method_menu, "Method", task->method_items,
                   DITHERING_METHOD__LIMIT);
 
@@ -558,6 +578,8 @@ result_t dithering_create(wuss_t *wuss, dithering_task_t **out)
                   DITHERING_COMPUTED__LIMIT);
 
   WUSS_MENU_ITEM(task->fixed_items, DITHERING_FIXED_DESKTOP, "Desktop",
+                 wuss_MENU_ITEM_NONE);
+  WUSS_MENU_ITEM(task->fixed_items, DITHERING_FIXED_CURRENT, "Current",
                  wuss_MENU_ITEM_NONE);
   dithering_group_palettes(task);
   WUSS_MENU_TITLE(task->fixed_menu, "Fixed", task->fixed_items,
@@ -715,6 +737,36 @@ static void dithering_redraw_palette(dithering_task_t   *dt,
   wuss_swatches_draw(&swatches, event);
 }
 
+/* True if the screen can show every target colour near enough: always in a
+ * direct-colour mode, else each must have a close entry in the screen's
+ * palette, or the dither's careful mix is lost to nearest-colour mapping. */
+static int dithering_screen_shows(const dithering_task_t *dt,
+                                  const screen_t         *scr)
+{
+  int            n;
+  int            i;
+  pixelfmt_any_t idx;
+  unsigned int   tr, tg, tb;
+  unsigned int   sr, sg, sb;
+
+  n = pixelfmt_paletted_nentries(scr->format);
+  if (scr->palette == NULL || n == 0)
+    return 1;
+
+  for (i = 0; i < dt->ntarget; i++)
+  {
+    idx = colour_to_pixel(scr->palette, n, dt->target[i], scr->format);
+    colour_get_rgb(&dt->target[i], &tr, &tg, &tb);
+    colour_get_rgb(&scr->palette[idx], &sr, &sg, &sb);
+    if (abs((int) tr - (int) sr) > DITHERING_SCREEN_TOLERANCE ||
+        abs((int) tg - (int) sg) > DITHERING_SCREEN_TOLERANCE ||
+        abs((int) tb - (int) sb) > DITHERING_SCREEN_TOLERANCE)
+      return 0;
+  }
+
+  return 1;
+}
+
 static result_t dithering_redraw(dithering_task_t   *dt,
                                  wuss_window_t      *window,
                                  const wuss_event_t *event)
@@ -723,6 +775,7 @@ static result_t dithering_redraw(dithering_task_t   *dt,
   const box_t    *bounds;
   const bitmap_t *bm;
   int             x, y;
+  const char     *label;
   bmfont_t       *font;
   int             ascent;
   point_t         pos;
@@ -743,18 +796,27 @@ static result_t dithering_redraw(dithering_task_t   *dt,
   x  = bounds->x0 - event->data.redraw.scroll.x;
   y  = bounds->y0 - event->data.redraw.scroll.y;
   rc = screen_copy_bitmap(event->data.redraw.scr, x, y, bm);
-  if (rc != result_OK || !dt->show_original)
+  if (rc != result_OK)
     return rc;
 
-  /* Nearest does no diffusion: say so over the image's top left */
+  /* say over the image's top left when it isn't the dither, or the screen
+   * can't show the dither faithfully */
+  if (dt->show_original)
+    label = "(Dither disabled)";
+  else if (bm == dt->dithered &&
+           !dithering_screen_shows(dt, event->data.redraw.scr))
+    label = "(Screen mode can't show this palette)";
+  else
+    return result_OK;
+
   font = wuss_get_font(dt->wuss);
   if (font == NULL)
     return result_OK;
 
   bmfont_get_info(font, NULL, NULL, &ascent, NULL);
   pos = POINT(x + 2, y + 2 + ascent);
-  return wuss_text_draw(dt->wuss, 0, event->data.redraw.scr, "(Dither disabled)", 17,
-                        colour_rgb(0x00, 0x00, 0x00),
+  return wuss_text_draw(dt->wuss, 0, event->data.redraw.scr, label,
+                        (int) strlen(label), colour_rgb(0x00, 0x00, 0x00),
                         colour_rgb(0xFF, 0xFF, 0xFF), &pos, NULL);
 }
 
@@ -782,9 +844,9 @@ static int dithering_diffusion_row(dither_method_t method)
 /* Set the submenus' ticks and the rows' disabled states from the task. Run
  * on open and after every pick: a submenu reopened within the same chain
  * (hover away and back) is built afresh from these items, so the live ticks
- * alone would go stale. Colours only applies to the optimal palette, and
- * Serpentine only to methods which scan rows, so each is disabled
- * otherwise. */
+ * alone would go stale. Colours only applies to the optimal palette,
+ * Serpentine only to methods which scan rows and Current only to a paletted
+ * screen mode, so each is disabled otherwise. */
 static void dithering_menu_refresh(dithering_task_t *dt)
 {
   int family;
@@ -793,6 +855,8 @@ static void dithering_menu_refresh(dithering_task_t *dt)
 
   dithering_menu_disable(&dt->computed_items[DITHERING_COMPUTED_COLOURS],
                          dt->palette != DITHERING_PALETTE_OPTIMAL);
+  dithering_menu_disable(&dt->fixed_items[DITHERING_FIXED_CURRENT],
+                         g_tasks.bm->palette == NULL);
   dithering_menu_disable(&dt->family_items[DITHERING_NORDERED +
                                            DITHERING_DIFFUSION_SERPENTINE],
                          !dithering_rows(dt->method));
@@ -801,14 +865,13 @@ static void dithering_menu_refresh(dithering_task_t *dt)
   family = dithering_family_index(dt->method);
   wuss_menu_tick_exclusive(&dt->method_menu,
                            dithering_method_row(dt->method));
+  wuss_menu_tick_item(&dt->method_menu, DITHERING_METHOD_LINEAR, dt->linear);
   wuss_menu_tick_exclusive(&dt->ordered_menu,
                            family < DITHERING_NORDERED ? family : -1);
   wuss_menu_tick_exclusive(&dt->diffusion_menu,
                            dithering_diffusion_row(dt->method));
   wuss_menu_tick_item(&dt->diffusion_menu, DITHERING_DIFFUSION_SERPENTINE,
                       dt->serpentine);
-  wuss_menu_tick_item(&dt->diffusion_menu, DITHERING_DIFFUSION_LINEAR,
-                      dt->linear);
 
   /* a palette's tick shows on its own row and on every row leading to it */
   group = dithering_current_group(dt);
@@ -877,13 +940,13 @@ static result_t dithering_menu_select(dithering_task_t   *dt,
 
   if (menu == &dt->method_menu && index == DITHERING_METHOD_NEAREST)
     dt->method = dither_NONE;
+  else if (menu == &dt->method_menu && index == DITHERING_METHOD_LINEAR)
+    dt->linear = !dt->linear;
   else if (menu == &dt->ordered_menu)
     dt->method = dithering_family_methods[index];
   else if (menu == &dt->diffusion_menu &&
            index == DITHERING_DIFFUSION_SERPENTINE)
     dt->serpentine = !dt->serpentine;
-  else if (menu == &dt->diffusion_menu && index == DITHERING_DIFFUSION_LINEAR)
-    dt->linear = !dt->linear;
   else if (menu == &dt->diffusion_menu)
     dt->method = dithering_family_methods[DITHERING_NORDERED + index -
                                           DITHERING_DIFFUSION_FIRST];
@@ -891,6 +954,8 @@ static result_t dithering_menu_select(dithering_task_t   *dt,
     dt->palette = DITHERING_PALETTE_OPTIMAL;
   else if (menu == &dt->fixed_menu && index == DITHERING_FIXED_DESKTOP)
     dt->palette = DITHERING_PALETTE_DESKTOP;
+  else if (menu == &dt->fixed_menu && index == DITHERING_FIXED_CURRENT)
+    dt->palette = DITHERING_PALETTE_CURRENT;
   else if (group < dt->ngroups)
     dt->palette = DITHERING_PALETTE_FIRST_HEX + dt->groups[group].start +
                   index;
@@ -906,15 +971,13 @@ static result_t dithering_menu_select(dithering_task_t   *dt,
                               !dithering_rows(dt->method));
   if (menu == &dt->diffusion_menu)
   {
-    /* the method's tick and the options' ticks are independent */
+    /* the method's tick and the option's tick are independent */
     wuss_menu_tick_exclusive_live(dt->menu_handle, menu,
                                   dithering_diffusion_row(dt->method));
     wuss_menu_tick_item_live(dt->menu_handle, menu,
                              DITHERING_DIFFUSION_SERPENTINE, dt->serpentine);
-    wuss_menu_tick_item_live(dt->menu_handle, menu,
-                             DITHERING_DIFFUSION_LINEAR, dt->linear);
   }
-  else
+  else if (menu != &dt->method_menu)
   {
     wuss_menu_tick_exclusive_live(dt->menu_handle, menu, index);
   }
@@ -927,23 +990,52 @@ static result_t dithering_menu_select(dithering_task_t   *dt,
     wuss_menu_tick_exclusive_live(dt->menu_handle, &dt->fixed_menu,
                                   dithering_fixed_row(dt));
   }
-  if (menu == &dt->ordered_menu || menu == &dt->diffusion_menu)
+  if (menu == &dt->method_menu || menu == &dt->ordered_menu ||
+      menu == &dt->diffusion_menu)
+  {
+    /* Linear light's tick is independent of the method's */
     wuss_menu_tick_exclusive_live(dt->menu_handle, &dt->method_menu,
                                   dithering_method_row(dt->method));
+    wuss_menu_tick_item_live(dt->menu_handle, &dt->method_menu,
+                             DITHERING_METHOD_LINEAR, dt->linear);
+  }
 
   return dithering_apply(dt);
 }
 
-/* Animate strength: bounce strength between 0 and 100 a step per idle tick,
- * re-dithering each time. The dialogue's slider follows, in case it is
- * open. */
+/* True if the Current palette no longer matches the screen's: a mode or
+ * screen palette change sends tasks no event of its own. */
+static int dithering_current_stale(const dithering_task_t *dt)
+{
+  int n;
+
+  if (dt->palette != DITHERING_PALETTE_CURRENT)
+    return 0;
+
+  n = pixelfmt_paletted_nentries(g_tasks.bm->format);
+  if (g_tasks.bm->palette == NULL || n == 0)
+    return dt->ntarget > 0; /* now direct colour: drop the old dither */
+
+  return n != dt->ntarget ||
+         memcmp(dt->target, g_tasks.bm->palette, n * sizeof(*dt->target)) != 0;
+}
+
+/* Re-dither if Current has gone stale. Animate strength: bounce strength
+ * between 0 and 100 a step per idle tick, re-dithering each time. The
+ * dialogue's slider follows, in case it is open. */
 static result_t dithering_idle(dithering_task_t *dt)
 {
   result_t rc;
   int      next;
 
   /* the dialogues outlive the main window until they close too */
-  if (!dt->animate || dt->window == NULL || dt->source.base == NULL)
+  if (dt->window == NULL || dt->source.base == NULL)
+    return result_OK;
+
+  if (dithering_current_stale(dt))
+    return dithering_apply(dt);
+
+  if (!dt->animate)
     return result_OK;
 
   next = dt->strength + dt->strength_step;

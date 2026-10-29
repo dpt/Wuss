@@ -21,12 +21,18 @@
 #define DITHERING_SWATCHES_W   128 /* Show palette window's initial side */
 #define DITHERING_COLOURS_STEPS 8 /* Colours slider positions per doubling */
 #define DITHERING_STRENGTH_STEP 1 /* Animate strength: percent per tick */
+/* ponytail: largest per-channel miss (0..255) a screen palette may make on a
+ * target colour before the dither is flagged as unshowable. A plain RGB
+ * distance; a perceptual one if the warning proves too eager or lax. */
+#define DITHERING_SCREEN_TOLERANCE 32
 
-/* dithering_task_t.palette: one of these two, or DITHERING_PALETTE_FIRST_HEX
- * plus an index into palettes[] */
+/* dithering_task_t.palette: one of these three, or
+ * DITHERING_PALETTE_FIRST_HEX plus an index into palettes[]. Current is the
+ * screen mode's own palette, so it needs a paletted mode. */
 #define DITHERING_PALETTE_OPTIMAL 0
 #define DITHERING_PALETTE_DESKTOP 1
-#define DITHERING_PALETTE_FIRST_HEX 2
+#define DITHERING_PALETTE_CURRENT 2
+#define DITHERING_PALETTE_FIRST_HEX 3
 
 /* Palette submenu rows: a submenu per kind of palette */
 enum
@@ -44,24 +50,26 @@ enum
   DITHERING_COMPUTED__LIMIT
 };
 
-/* Fixed submenu rows: Desktop, then one "N-colour" submenu per *.hex file
- * size */
+/* Fixed submenu rows: Desktop, Current, then one "N-colour" submenu per *.hex
+ * file size */
 #define DITHERING_FIXED_DESKTOP     0
-#define DITHERING_FIXED_FIRST_GROUP 1
+#define DITHERING_FIXED_CURRENT     1
+#define DITHERING_FIXED_FIRST_GROUP 2
 
-/* Method submenu rows: Nearest alone, then a submenu per family */
+/* Method submenu rows: Nearest alone, then a submenu per family, then
+ * Linear light, which applies to both families */
 enum
 {
   DITHERING_METHOD_NEAREST,
   DITHERING_METHOD_ORDERED,
   DITHERING_METHOD_DIFFUSION,
+  DITHERING_METHOD_LINEAR,
   DITHERING_METHOD__LIMIT
 };
 
-/* Error diffusion submenu rows: these options, then a row per method */
+/* Error diffusion submenu rows: this option, then a row per method */
 #define DITHERING_DIFFUSION_SERPENTINE 0
-#define DITHERING_DIFFUSION_LINEAR     1
-#define DITHERING_DIFFUSION_FIRST      2
+#define DITHERING_DIFFUSION_FIRST      1
 
 /* ponytail: fixed cap on distinct *.hex sizes; files of any further size
  * are left out of the menu. Raise it if resources/palettes grows more. */
@@ -118,7 +126,7 @@ typedef struct dithering_task
   int                animate;  /* cycle strength up and down while idle */
   int                strength_step; /* animated change per idle tick */
   int                serpentine;
-  int                linear;   /* diffuse in linear light */
+  int                linear;   /* dither in linear light */
 
   char               path[DPTLIB_MAXPATH]; /* file shown; "" until the
                                 * first DataLoad */
