@@ -1,6 +1,6 @@
 # Welcome to Wuss
 
-**Wuss** is a small portable window manager environment that currently lives inside my code library *DPTLib*. It's something like a fanboy recreation of the RISC OS Window Manager (the _Wimp_ - hence "Wuss") with a few other inspirations thrown in.
+**Wuss** is a small, portable window manager environment. It's something like a fanboy recreation of the RISC OS Window Manager (the _Wimp_ - hence "Wuss") with a few other inspirations thrown in.
 
 Like its inspiration it draws into a plain framebuffer, so it runs anywhere from a desktop to a web browser and even on RISC OS itself.
 
