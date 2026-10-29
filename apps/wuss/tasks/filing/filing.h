@@ -118,6 +118,8 @@ struct filing_task
   const bitmap_t        *glyph_directory_open; /* for a directory with a
                                                 * window open on it */
   const bitmap_t        *glyph_png;
+  const bitmap_t        *glyph_text;
+  const bitmap_t        *glyph_markdown;
 
   char                   drag_path[DPTLIB_MAXPATH]; /* file being dragged,
                                        * or "" */
