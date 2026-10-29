@@ -566,36 +566,6 @@ box_t paintingdoc_brush(paintingdoc_t       *doc,
 
 /* ----------------------------------------------------------------------- */
 
-/* a well-mixed 32-bit value for knot k of the noise seeded by seed */
-static uint32_t wobble_hash(uint32_t seed, int k)
-{
-  uint32_t h;
-
-  h  = seed ^ ((uint32_t) k * 0x9E3779B9u);
-  h ^= h >> 16;
-  h *= 0x7FEB352Du;
-  h ^= h >> 15;
-  h *= 0x846CA68Bu;
-  h ^= h >> 16;
-
-  return h;
-}
-
-/* smooth value noise at step s (>= 0), -256..256, with a random knot every
- * period steps eased into the next */
-static int wobble_noise(uint32_t seed, int s, int period)
-{
-  int k, f, v0, v1, t;
-
-  k  = s / period;
-  f  = s % period;
-  v0 = (int) (wobble_hash(seed, k) & 511) - 256;
-  v1 = (int) (wobble_hash(seed, k + 1) & 511) - 256;
-  t  = 256 * f * f * (3 * period - 2 * f) / (period * period * period);
-
-  return v0 + (v1 - v0) * t / 256;
-}
-
 /* stamp a disc at every pixel step: its radius wanders, moving both edges
  * apart and together, and its centre wanders across the stroke, moving them
  * together, so each edge wobbles on its own. the radius swells slowly and
@@ -625,12 +595,12 @@ box_t paintingdoc_wobble(paintingdoc_t        *doc,
   for (i = 0; i <= n; i++)
   {
     s  = wobble->step + i;
-    rr = wobble_noise(wobble->seed, s, ps) * as +
-         wobble_noise(wobble->seed ^ 0x27D4EB2Fu, s, pj) * aj;
+    rr = rng_noise1d(wobble->seed, s, ps) * as +
+         rng_noise1d(wobble->seed ^ 0x27D4EB2Fu, s, pj) * aj;
     rr = r + (rr >= 0 ? rr + 128 : rr - 128) / 256; /* rounded: a thin
                                                       * line's one-pixel
                                                       * jitter survives */
-    o  = wobble_noise(wobble->seed ^ 0x5BD1E995u, s, ps) * ao;
+    o  = rng_noise1d(wobble->seed ^ 0x5BD1E995u, s, ps) * ao;
     o  = (o >= 0 ? o + 128 : o - 128) / 256;
     cx = a.x;
     cy = a.y;
