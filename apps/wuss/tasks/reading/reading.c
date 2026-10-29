@@ -53,223 +53,21 @@ static const reading_spacing_preset_t reading_spacing_presets[] =
 
 #define READING_DEFAULT_SPACING 0 /* "Normal" */
 
-/* fixed tint colours reading__markdown_parse assigns to styled runs --
- * palette-independent. Bold runs are also drawn in the family's Bold face
- * where it has one; other emphasis is shown by colour alone. */
-#define READING_MD_HEADER_COLOUR colour_rgb(0x20, 0x60, 0xd0)
-#define READING_MD_BOLD_COLOUR   colour_rgb(0xd0, 0x20, 0x20)
-#define READING_MD_ITALIC_COLOUR colour_rgb(0x20, 0x90, 0x40)
-#define READING_MD_CODE_COLOUR   colour_rgb(0x90, 0x40, 0xc0)
-
 #define READING_MD_MAX_SPANS 128 /* styled runs are few; overflow is
                                * dropped */
 
-/* is c the start of an ATX header line ("#" through "######" then a
- * space), given p points at the first "#" and is known to be at a line
- * start? advances *p past the "# " prefix and returns true if so. */
-static bool reading__markdown_header_prefix(const char **p, const char *end)
+/* fixed tint colour of each mdspans_style_t -- palette-independent. Bold
+ * runs are also drawn in the family's Bold face where it has one; other
+ * emphasis is shown by colour alone. */
+static colour_t reading__span_colour(mdspans_style_t style)
 {
-  const char *q;
-
-  q = *p;
-  while (q < end && *q == '#')
-    q++;
-  if (q == *p || q >= end || *q != ' ')
-    return false;
-
-  *p = q + 1;
-  return true;
-}
-
-/* scan an inline emphasis/code marker starting at *p (which must point at
- * "**", "*", "_" or "`"), find its matching close on the same line, and if
- * found append the run's text (marker stripped) to out/outlen with colour
- * span colour, advance *p past the closing marker, and return true. false
- * (with *p unchanged) if no matching close exists before newline or end. */
-static bool reading__markdown_emphasis(const char    **p,
-                                       const char     *end,
-                                       char           *out,
-                                       int            *outlen,
-                                       reading_span_t *spans,
-                                       int            *nspans,
-                                       int             maxspans)
-{
-  const char *start;
-  const char *marker;
-  int         markerlen;
-  colour_t    colour;
-  bool        bold;
-  const char *close;
-  const char *run;
-  int         runlen;
-
-  start = *p;
-  if (start[0] == '*' && start[1] == '*')
+  switch (style)
   {
-    markerlen = 2;
-    colour    = READING_MD_BOLD_COLOUR;
-    bold      = true;
+  case mdspans_HEADER: return colour_rgb(0x20, 0x60, 0xd0);
+  case mdspans_BOLD:   return colour_rgb(0xd0, 0x20, 0x20);
+  case mdspans_ITALIC: return colour_rgb(0x20, 0x90, 0x40);
+  default:             return colour_rgb(0x90, 0x40, 0xc0);
   }
-  else if (start[0] == '*' || start[0] == '_')
-  {
-    markerlen = 1;
-    colour    = READING_MD_ITALIC_COLOUR;
-    bold      = false;
-  }
-  else /* '`' */
-  {
-    markerlen = 1;
-    colour    = READING_MD_CODE_COLOUR;
-    bold      = false;
-  }
-  marker = start;
-  run    = start + markerlen;
-
-  close = run;
-  for (;;)
-  {
-    if (close + markerlen > end || *close == '\n')
-      return false;
-    if (memcmp(close, marker, (size_t) markerlen) == 0)
-      break;
-    close++;
-  }
-
-  runlen = (int) (close - run);
-  memcpy(out + *outlen, run, (size_t) runlen);
-  if (*nspans < maxspans)
-  {
-    spans[*nspans].start  = *outlen;
-    spans[*nspans].len    = runlen;
-    spans[*nspans].colour = colour;
-    spans[*nspans].bold   = bold;
-    (*nspans)++;
-  }
-  *outlen += runlen;
-  *p = close + markerlen;
-  return true;
-}
-
-/* reading__markdown_parse's per-character state: which kind of line the
- * cursor is currently in. LINE_START only ever lasts for the header-prefix
- * check on the first character of a line; every other character on a line
- * is scanned in HEADER or BODY. */
-typedef enum reading_md_state
-{
-  READING_MD_LINE_START,
-  READING_MD_HEADER,
-  READING_MD_BODY
-}
-reading_md_state_t;
-
-/* emit the pending header span for the line running [line_start, textlen)
- * into text, if state says it's a header and the line isn't empty */
-static void reading__markdown_emit_header(reading_md_state_t state,
-                                          int                line_start,
-                                          int                textlen,
-                                          reading_span_t    *spans,
-                                          int               *nspans)
-{
-  if (state != READING_MD_HEADER || line_start >= textlen ||
-      *nspans >= READING_MD_MAX_SPANS)
-    return;
-
-  spans[*nspans].start  = line_start;
-  spans[*nspans].len    = textlen - line_start;
-  spans[*nspans].colour = READING_MD_HEADER_COLOUR;
-  spans[*nspans].bold   = false;
-  (*nspans)++;
-}
-
-/* parse Markdown source into a freshly malloc'd plain-text buffer (headers'
- * "#" prefixes and inline "**"/"*"/"_"/"`" markers stripped) plus a
- * freshly malloc'd array of styled runs (headers and inline emphasis/code)
- * into that buffer. *out_text and *out_spans are NULL on failure (OOM);
- * caller frees both with free(). Headers get a run for their whole
- * (marker-stripped) line; inline markers must close on the same line as
- * they open or are left as literal text. */
-static result_t reading__markdown_parse(const char      *md,
-                                        int              mdlen,
-                                        char           **out_text,
-                                        reading_span_t **out_spans,
-                                        int             *out_nspans)
-{
-  char              *text;
-  reading_span_t    *spans;
-  int                nspans;
-  int                textlen;
-  const char        *p;
-  const char        *end;
-  reading_md_state_t state;
-  int                line_start;
-
-  text = malloc((size_t) mdlen + 1);
-  if (text == NULL)
-    goto oom;
-
-  spans = malloc(READING_MD_MAX_SPANS * sizeof(*spans));
-  if (spans == NULL)
-  {
-    free(text);
-    goto oom;
-  }
-
-  nspans     = 0;
-  textlen    = 0;
-  p          = md;
-  end        = md + mdlen;
-  state      = READING_MD_LINE_START;
-  line_start = 0;
-
-  while (p < end)
-  {
-    switch (state)
-    {
-    case READING_MD_LINE_START:
-      if (*p == '#' && reading__markdown_header_prefix(&p, end))
-        state = READING_MD_HEADER;
-      else
-        state = READING_MD_BODY;
-      break;
-
-    case READING_MD_HEADER:
-    case READING_MD_BODY:
-      if (*p == '\n')
-      {
-        reading__markdown_emit_header(state, line_start, textlen, spans,
-                                   &nspans);
-        text[textlen++] = *p++;
-        line_start      = textlen;
-        state           = READING_MD_LINE_START;
-      }
-      else if ((*p == '*' || *p == '_' || *p == '`') &&
-              reading__markdown_emphasis(&p, end, text, &textlen, spans,
-                                      &nspans, READING_MD_MAX_SPANS))
-      {
-        /* state unchanged: stay in HEADER or BODY */
-      }
-      else
-      {
-        text[textlen++] = *p++;
-      }
-      break;
-    }
-  }
-
-  reading__markdown_emit_header(state, line_start, textlen, spans, &nspans);
-
-  text[textlen] = '\0';
-
-  *out_text   = text;
-  *out_spans  = spans;
-  *out_nspans = nspans;
-  return result_OK;
-
-oom:
-  *out_text   = NULL;
-  *out_spans  = NULL;
-  *out_nspans = 0;
-  return result_OOM;
 }
 
 /* index into task->top_items[] of the "Font" leaf */
@@ -440,12 +238,12 @@ static result_t reading__load_text(reading_task_t *task,
                                    const char     *path,
                                    bool            markdown)
 {
-  result_t        rc;
-  char           *raw;
-  int             rawlen;
-  char           *text;
-  reading_span_t *spans;
-  int             nspans;
+  result_t  rc;
+  char     *raw;
+  int       rawlen;
+  char     *text;
+  mdspan_t *spans;
+  int       nspans;
 
   rc = reading__load_file(path, &raw, &rawlen);
   if (rc != result_OK)
@@ -456,7 +254,8 @@ static result_t reading__load_text(reading_task_t *task,
   nspans = 0;
   if (markdown)
   {
-    rc = reading__markdown_parse(raw, rawlen, &text, &spans, &nspans);
+    rc = mdspans_parse(raw, rawlen, READING_MD_MAX_SPANS, &text, &spans,
+                       &nspans);
     free(raw);
     if (rc != result_OK)
       return rc;
@@ -854,10 +653,10 @@ void reading_destroy(reading_task_t *task)
 /* the face a run is drawn in: a bold span's in tcx->bold where the family
  * has one, everything else in tcx->font */
 static bmfont_t *reading__run_font(const reading_task_t *tcx,
-                                   const reading_span_t *span)
+                                   const mdspan_t       *span)
 {
-  return span != NULL && span->bold && tcx->bold != NULL ? tcx->bold
-                                                         : tcx->font;
+  return span != NULL && span->style == mdspans_BOLD && tcx->bold != NULL
+         ? tcx->bold : tcx->font;
 }
 
 /* split off the next run of up to len bytes at byte offset off of tcx->text:
@@ -865,15 +664,15 @@ static bmfont_t *reading__run_font(const reading_task_t *tcx,
  * span, or NULL for unstyled text, and sets *run_len. Spans are sorted and
  * never overlap, so their ends rise too: tcx->span_cursor is stepped back or
  * forward to the first span ending after off. */
-static const reading_span_t *reading__run(reading_task_t *tcx,
-                                          int             off,
-                                          int             len,
-                                          int            *run_len)
+static const mdspan_t *reading__run(reading_task_t *tcx,
+                                    int             off,
+                                    int             len,
+                                    int            *run_len)
 {
-  const reading_span_t *spans;
-  int                   n;
-  int                   c;
-  const reading_span_t *s;
+  const mdspan_t *spans;
+  int             n;
+  int             c;
+  const mdspan_t *s;
 
   spans = tcx->markdown_spans;
   n     = tcx->markdown_nspans;
@@ -920,10 +719,10 @@ static result_t reading__measure(const char     *text,
   width  = 0;
   while (cursor < len)
   {
-    const reading_span_t *span;
-    int                   run_len;
-    int                   split;
-    bmfont_width_t        run_width;
+    const mdspan_t *span;
+    int             run_len;
+    int             split;
+    bmfont_width_t  run_width;
 
     span = reading__run(tcx, (int) (text - tcx->text) + cursor, len - cursor,
                         &run_len);
@@ -981,13 +780,14 @@ static void reading__draw_styled(reading_task_t      *tcx,
 
     while (cursor < line_len)
     {
-      const reading_span_t *span;
-      int                   run_len;
+      const mdspan_t *span;
+      int             run_len;
 
       span = reading__run(tcx, line_off + cursor, line_len - cursor,
                           &run_len);
       bmfont_draw(reading__run_font(tcx, span), scr, line_str + cursor,
-                  run_len, span != NULL ? span->colour : fg, bg,
+                  run_len, span != NULL ? reading__span_colour(span->style)
+                                        : fg, bg,
                   &tcx->spacing, &pos, &pos);
       cursor += run_len;
     }

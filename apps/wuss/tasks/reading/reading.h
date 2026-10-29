@@ -11,24 +11,12 @@
 #include "framebuf/colour.h"
 #include "io/path.h"
 #include "text/bmtext.h"
+#include "text/mdspans.h"
 #include "wuss/component/colourmenu.h"
 #include "wuss/component/fontmenu.h"
 #include "wuss/menu.h"
 #include "wuss/task.h"
 #include "wuss/window.h"
-
-/* one styled run within a task's markdown_text, produced by
- * reading__markdown_parse: [start, start+len) is drawn in colour instead of
- * the paragraph's normal foreground, and in the bold face if bold is set.
- * Runs never overlap and are sorted by start. */
-typedef struct reading_span
-{
-  int      start;
-  int      len;
-  colour_t colour;
-  bool     bold;
-}
-reading_span_t;
 
 /* window B's task: flows a text file dropped on its icon or window
  * (DataLoad) over its wuss-filled background, one line per bmfont_draw call.
@@ -96,8 +84,8 @@ typedef struct reading_task
                                    * draws: the dropped file's contents,
                                    * stripped of Markdown markers if it is
                                    * ".md"; NULL until the first DataLoad */
-  reading_span_t        *markdown_spans; /* owned array of styled runs into
-                                   * text, from reading__markdown_parse; NULL
+  mdspan_t           *markdown_spans; /* owned array of styled runs into
+                                   * text, from mdspans_parse; NULL
                                    * when the current file isn't
                                    * Markdown */
   int                 markdown_nspans; /* length of markdown_spans */
