@@ -780,12 +780,12 @@ static void wuss__icon_draw_slider(const icon_draw_ctx_t *c)
   light    = c->wuss->palette[c->wuss->bevel.light];
   dark     = c->wuss->palette[c->wuss->bevel.dark];
 
-  surround_box = box_grown(&c->b, -2); /* inset by bevel width to avoid overdraw */
+  surround_box = box_grown(&c->b, -WUSS_SLIDER_BEVEL); /* avoid overdraw */
   wuss__fill_colour(c->wuss, c->scr, &surround_box, surround, c->origin);
 
   screen_draw_bevel_edge(c->scr, &c->b, dark, light);
 
-  wuss__slider_groove_box(&surround_box, &groove);
+  wuss__slider_groove_box(&c->b, &groove);
 
   lo = MIN(icon->u.slider.min, icon->u.slider.max);
   hi = MAX(icon->u.slider.min, icon->u.slider.max);

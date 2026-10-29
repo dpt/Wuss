@@ -119,12 +119,12 @@ result_t wuss_slider_test(const char *resources)
   if (rc != result_OK)
     goto Failure;
 
-  /* grooves 100 pixels long over 0..100, so a pixel is a unit */
-  wuss_icon_spec_slider(&spec, (box_t) { 0, 0, 108, 20 },
+  /* grooves 101 pixels long over 0..100, so a pixel is a unit */
+  wuss_icon_spec_slider(&spec, (box_t) { 0, 0, 113, 20 },
                         wuss_SLIDER_HORIZONTAL, 0, 100, 50);
   rc = wuss_icon_create(window, &spec, &across);
   if (rc != result_OK) goto Failure;
-  wuss_icon_spec_slider(&spec, (box_t) { 120, 0, 140, 108 },
+  wuss_icon_spec_slider(&spec, (box_t) { 120, 0, 140, 113 },
                         wuss_SLIDER_VERTICAL, 0, 100, 50);
   rc = wuss_icon_create(window, &spec, &up);
   if (rc != result_OK) goto Failure;
@@ -198,7 +198,7 @@ result_t wuss_slider_test(const char *resources)
 
   press(wuss, POINT(mid, g.y0));
   if (wuss_icon_get_value(up) != 100) FAIL("press at the top");
-  wuss_mouse_move(wuss, POINT(mid, g.y1 - 30), NULL);
+  wuss_mouse_move(wuss, POINT(mid, g.y1 - 1 - 30), NULL);
   if (wuss_icon_get_value(up) != 30 || log.icon != up) FAIL("drag down");
   wuss_mouse_move(wuss, POINT(mid, g.y1 + 50), NULL);
   if (wuss_icon_get_value(up) != 0) FAIL("drag past the bottom");
@@ -207,7 +207,7 @@ result_t wuss_slider_test(const char *resources)
   printf("test: min > max runs the slider backwards\n");
 
   wuss_icon_delete(window, across);
-  wuss_icon_spec_slider(&spec, (box_t) { 0, 0, 108, 20 },
+  wuss_icon_spec_slider(&spec, (box_t) { 0, 0, 113, 20 },
                         wuss_SLIDER_HORIZONTAL, 100, 0, 0);
   rc = wuss_icon_create(window, &spec, &across);
   if (rc != result_OK) goto Failure;

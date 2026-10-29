@@ -662,7 +662,7 @@ result_t wuss_icon_draw_test(const char *resources)
 
   {
     colour_t track, value;
-    box_t    groove, inner;
+    box_t    groove;
 
     track = wuss->palette[wuss->slider.track];
     value = wuss->palette[wuss->slider.value];
@@ -671,8 +671,7 @@ result_t wuss_icon_draw_test(const char *resources)
                           wuss_SLIDER_HORIZONTAL, 0, 100, 50);
     rc = draw(&env, &spec, &icon, &b);
     if (rc != result_OK) goto Failure;
-    inner = box_grown(&b, -2);
-    wuss__slider_groove_box(&inner, &groove);
+    wuss__slider_groove_box(&b, &groove);
     if (px(&env, groove.x0 + 1, groove.y0) != pixel_of(&env, value) ||
         px(&env, groove.x1 - 2, groove.y0) != pixel_of(&env, track))
       FAIL("horizontal slider");
@@ -698,8 +697,7 @@ result_t wuss_icon_draw_test(const char *resources)
                           wuss_SLIDER_VERTICAL, 0, 100, 50);
     rc = draw(&env, &spec, &icon, &b);
     if (rc != result_OK) goto Failure;
-    inner = box_grown(&b, -2);
-    wuss__slider_groove_box(&inner, &groove);
+    wuss__slider_groove_box(&b, &groove);
     if (px(&env, groove.x0, groove.y1 - 2) != pixel_of(&env, value) ||
         px(&env, groove.x0, groove.y0 + 1) != pixel_of(&env, track))
       FAIL("vertical slider");

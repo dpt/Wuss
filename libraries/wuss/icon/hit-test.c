@@ -3,6 +3,7 @@
 #include "geom/box.h"
 
 #include "../core/types.h"
+#include "../icon.h"
 
 wuss_icon_t *wuss__icon_hit_test(wuss_window_t *window, point_t doc_point)
 {
@@ -36,14 +37,10 @@ wuss_icon_t *wuss__icon_hit_test(wuss_window_t *window, point_t doc_point)
     if (it->spec.flags & (wuss_ICON_FLAGS_HIDDEN | wuss_ICON_FLAGS_DISABLED))
       continue;
 
-    /* only the inner rect (bbox inset by the gap) reacts to clicks; the
-     * surround and the gap around it are decorative only */
+    /* only a slider's groove reacts to clicks; its surround is decorative */
     if (it->spec.type == wuss_ICON_TYPE_SLIDER)
     {
-      box.x0 = it->spec.bbox.x0 + WUSS_SLIDER_GAP;
-      box.y0 = it->spec.bbox.y0 + WUSS_SLIDER_GAP;
-      box.x1 = it->spec.bbox.x1 - WUSS_SLIDER_GAP;
-      box.y1 = it->spec.bbox.y1 - WUSS_SLIDER_GAP;
+      wuss__slider_groove_box(&it->spec.bbox, &box);
     }
     else
     {

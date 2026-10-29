@@ -92,7 +92,8 @@
 #define WUSS_FRAME_CAPTION_INSET 8  /* x offset of a wuss_ICON_TYPE_FRAME caption from the frame's left edge */
 #define WUSS_FRAME_CAPTION_PAD   22 /* gap left in the frame's top edge either side of the caption */
 
-#define WUSS_SLIDER_GAP 4 /* fixed inset on all four sides of a wuss_ICON_TYPE_SLIDER bbox, between the surround and the inner (clickable) rect */
+#define WUSS_SLIDER_BEVEL 2 /* width of a wuss_ICON_TYPE_SLIDER's bevel edge, around its surround */
+#define WUSS_SLIDER_GAP   4 /* fixed inset on all four sides of a wuss_ICON_TYPE_SLIDER's surround, between it and the inner (clickable) rect */
 
 #endif
 #define WUSS_MIN_CONTENT  20 /* resize-drag floor: content can never be squeezed smaller than this */

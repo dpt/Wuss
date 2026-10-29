@@ -167,10 +167,10 @@ void wuss__icon_box_to_screen(const box_t *content,
  * gives it. */
 
 /* The inner rect: "screen_box" (the icon's full bbox) inset by
- * WUSS_SLIDER_GAP on all four sides. This is both the groove drawn inside it
- * and the only area wuss__icon_hit_test accepts clicks/drags on; the gap and
- * the rest of "screen_box" are painted with slider.surround and never
- * interactive. */
+ * WUSS_SLIDER_BEVEL + WUSS_SLIDER_GAP on all four sides. This is both the
+ * groove drawn inside it and the only area wuss__icon_hit_test accepts
+ * clicks/drags on; the bevel, the gap and the rest of "screen_box" are
+ * decorative only. Works on a box in any space. */
 void wuss__slider_groove_box(const box_t *screen_box, box_t *out);
 
 /* Convert "value" (clamped to [lo,hi], lo <= hi) to a fill length in pixels
@@ -186,7 +186,8 @@ int wuss__slider_value_to_px(const box_t              *groove,
 
 /* Convert a screen-space point's long-axis coordinate back to a value in
  * [lo,hi] (lo <= hi), inverting wuss__slider_value_to_px (same pixel-0 end
- * per orientation). */
+ * per orientation). The groove's first pixel reads lo and its last hi;
+ * points beyond either end clamp. */
 int wuss__slider_px_to_value(const box_t              *groove,
                              wuss_slider_orientation_t orientation,
                              point_t                   screen_point,

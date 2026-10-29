@@ -135,8 +135,6 @@ result_t wuss_pointer_bounds_test(const char *resources)
   wuss__icon_box_to_screen(&content, POINT(0, 0), &slider->spec.bbox,
                            &screen_box);
   wuss__slider_groove_box(&screen_box, &want);
-  want.x1++;
-  want.y1++;
 
   press(wuss, POINT(want.x0 + 5, want.y0 + 5));
   if (!wuss_get_pointer_bounds(wuss, &bounds) || !box_equal(&bounds, &want))

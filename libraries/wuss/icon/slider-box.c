@@ -8,10 +8,7 @@
 
 void wuss__slider_groove_box(const box_t *screen_box, box_t *out)
 {
-  out->x0 = screen_box->x0 + WUSS_SLIDER_GAP;
-  out->y0 = screen_box->y0 + WUSS_SLIDER_GAP;
-  out->x1 = screen_box->x1 - WUSS_SLIDER_GAP;
-  out->y1 = screen_box->y1 - WUSS_SLIDER_GAP;
+  *out = box_grown(screen_box, -(WUSS_SLIDER_BEVEL + WUSS_SLIDER_GAP));
 }
 
 int wuss__slider_value_to_px(const box_t              *groove,
@@ -46,13 +43,16 @@ int wuss__slider_px_to_value(const box_t              *groove,
          ? groove->x1 - groove->x0
          : groove->y1 - groove->y0;
   /* screen y grows downward but value grows upward for a vertical slider, so
-   * pixel 0 is the groove's bottom (y1), mirroring HORIZONTAL's pixel 0 at
-   * its left (x0) */
+   * pixel 0 is the groove's bottom row (y1 - 1), mirroring HORIZONTAL's pixel
+   * 0 at its left (x0) */
   px     = (orientation == wuss_SLIDER_HORIZONTAL)
          ? screen_point.x - groove->x0
-         : groove->y1 - screen_point.y;
+         : groove->y1 - 1 - screen_point.y;
   span   = hi - lo;
 
+  /* the groove's first pixel reads lo and its last hi, so both ends are
+   * reachable without leaving it */
+  extent--;
   if (extent <= 0)
     return lo;
 
@@ -98,9 +98,4 @@ void wuss__slider_pointer_bounds(wuss_window_t     *window,
   wuss__icon_box_to_screen(&content, window->scroll, &icon->spec.bbox,
                            &screen_box);
   wuss__slider_groove_box(&screen_box, out);
-
-  /* wuss__slider_px_to_value reads the far end (x1 or y1) itself as a full
-   * groove, so take it in: box_t's maxima are exclusive */
-  out->x1++;
-  out->y1++;
 }
