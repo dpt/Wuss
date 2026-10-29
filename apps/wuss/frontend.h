@@ -53,13 +53,13 @@ wuss_input_t;
 /* Open a drawing surface `width` x `height` pixels.
  *
  * `palette` / `npalette` are the initial system palette: a backend that owns
- * the physical palette (RISC OS 16-colour mode) programmes it here.
+ * the physical palette (RISC OS paletted modes) programmes it here.
  *
  * `depth` is the framebuffer's bits per pixel: 32 for a direct-colour
  * surface (no per-frame conversion), 4 for a paletted one (exercises the
- * nibble-packed blit path), 15 for rgbx5551 (32K colours) and 16 for rgb565
- * (64K colours). The SDL backend accepts 1, 2, 4, 8, 15, 16 and 32; a
- * backend with a fixed format (RISC OS 16-colour mode) ignores it.
+ * nibble-packed blit path), 15 for 32K colours and 16 for 64K colours. Both
+ * backends accept 1, 2, 4, 8, 15, 16 and 32; the direct-colour formats may
+ * differ (RISC OS gives rgbx5551, rgb565 and rgbx8888).
  *
  * `scale` is the initial integer window zoom (device pixels per screen
  * pixel) for backends with a resizable window; <= 0 means "backend default".
@@ -103,8 +103,8 @@ void wuss_frontend_present(wuss_frontend_t *frontend,
  * *pixels / *rowbytes / *fmt describe the new backing storage exactly as
  * wuss_frontend_open's did -- any previous *pixels value is invalid whether
  * or not it happened to be reused. Returns result_BAD_ARG for an unsupported
- * depth and result_NOT_SUPPORTED on a backend with a fixed screen mode
- * (RISC OS), leaving the surface untouched either way. */
+ * depth and result_NOT_SUPPORTED for a screen mode the machine can't
+ * provide (RISC OS), leaving the surface untouched either way. */
 result_t wuss_frontend_resize(wuss_frontend_t *frontend,
                               int              width,
                               int              height,

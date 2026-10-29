@@ -723,6 +723,7 @@ static result_t run_wuss(const char *resources,
     scr_nentries = NELEMS(scr_palette);
   tasks_build_screen_palette(scr_palette, scr_nentries,
                              palette, NELEMS(palette));
+  wuss_frontend_set_palette(frontend, scr_palette, scr_nentries);
 
   rc = bitmap_init(&g.bm, SIZE2D(scr_width, scr_height), fmt, rowbytes,
                    scr_palette, pixels);
@@ -924,6 +925,7 @@ result_t app_set_mode(size2d_t size, int depth)
   {
     tasks_build_screen_palette(scr_palette, scr_nentries, palette, npalette);
     bitmap_set_palette(&g.bm, scr_palette);
+    wuss_frontend_set_palette(g_tasks.frontend, scr_palette, scr_nentries);
   }
 
   screen_for_bitmap(&g.scr, &g.bm);

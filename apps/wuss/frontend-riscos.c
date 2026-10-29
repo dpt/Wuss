@@ -5,6 +5,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "kernel.h"
 
@@ -14,6 +15,7 @@
 
 #include "swis.h"
 
+#include "base/debug.h"
 #include "base/result.h"
 #include "base/utils.h"
 #include "framebuf/bitmap.h"
@@ -25,26 +27,54 @@
 #include "frontend.h"
 #include "tasks/tasks.h" /* g_tasks.swap_mouse_buttons */
 
-/* This backend takes over the whole screen: it selects a 16-colour linear
- * mode, points wuss's framebuffer straight at screen memory (so a redraw
- * lands on the display with no blit) and polls OS_Mouse / the keyboard each
- * frame. It restores the entry mode on close. There is no Wimp task here --
- * wuss's own window furniture is the entire UI. */
+/* This backend takes over the whole screen: it selects a linear mode of the
+ * requested size and depth (by mode selector, so RISC OS 3.5 or later),
+ * points wuss's framebuffer straight at screen memory (so a redraw lands on
+ * the display with no blit) and polls OS_Mouse / the keyboard each frame.
+ * wuss_frontend_resize selects a new mode; close restores the entry mode.
+ * There is no Wimp task here -- wuss's own window furniture is the entire
+ * UI. */
 
 /* OS_ReadVduVariables indices we ask for, in this order. */
 enum
 {
-  VDUVAR_XEIG      = 4,   /* OS-units-per-pixel shift, x */
-  VDUVAR_YEIG      = 5,   /* OS-units-per-pixel shift, y */
-  VDUVAR_LINE_LEN  = 6,   /* bytes per screen row */
-  VDUVAR_YWIND_LIM = 11,  /* max Y in OS units (screen height - 1, << YEIG) */
-  VDUVAR_DISPLAY_START = 149 /* base address of screen memory */
+  VDUVAR_MODE_FLAGS    = 0,   /* ModeFlags */
+  VDUVAR_XEIG          = 4,   /* OS-units-per-pixel shift, x */
+  VDUVAR_YEIG          = 5,   /* OS-units-per-pixel shift, y */
+  VDUVAR_LINE_LEN      = 6,   /* bytes per screen row */
+  VDUVAR_LOG2BPP       = 9,   /* log2 bits per pixel */
+  VDUVAR_XWIND_LIM     = 11,  /* rightmost pixel column (width - 1) */
+  VDUVAR_YWIND_LIM     = 12,  /* top pixel row (height - 1) */
+  VDUVAR_DISPLAY_START = 149  /* base address of screen memory */
 };
 
-/* A 16-colour mode 640 x 480. Mode 27 is 640x480x16 on RISC OS; if a given
- * machine lacks it, OS_ScreenMode substitutes the closest match and the code
- * below reads back whatever it actually got. */
-#define WUSS_RISCOS_MODE 27
+/* ModeFlags bit 7: a full 256-entry palette at 8bpp, 565 rather than 1555
+ * at 16bpp */
+#define MODE_FLAG_FULL_PALETTE_OR_565 (1 << 7)
+
+/* the depths a mode selector can ask for, and the pixel format each gives */
+static const struct
+{
+  int        depth;   /* as wuss_frontend_open's `depth` */
+  int        log2bpp;
+  int        ncolour; /* NColour mode variable */
+  int        flags;   /* ModeFlags mode variable */
+  pixelfmt_t fmt;
+}
+g_depths[] =
+{
+  {  1, 0,     1, 0,                             pixelfmt_p1       },
+  {  2, 1,     3, 0,                             pixelfmt_p2       },
+  {  4, 2,    15, 0,                             pixelfmt_p4       },
+  {  8, 3,   255, MODE_FLAG_FULL_PALETTE_OR_565, pixelfmt_p8       },
+  { 15, 4, 65535, 0,                             pixelfmt_rgbx5551 },
+  { 16, 4, 65535, MODE_FLAG_FULL_PALETTE_OR_565, pixelfmt_rgb565   },
+  { 32, 5,    -1, 0,                             pixelfmt_rgbx8888 }
+};
+
+/* words in a copied mode selector: flags, x, y, log2bpp, frame rate, up to
+ * 32 mode variable pairs, then the -1 terminator */
+#define MODE_SEL_MAX (5 + 32 * 2 + 1)
 
 /* Keyboard set-up applied on open and undone on close: OS_Byte reason and
  * value. The function, cursor and Copy keys all insert NUL then a code, as
@@ -71,29 +101,42 @@ g_kbd[] =
 
 struct wuss_frontend
 {
-  int   entry_mode;   /* mode number to restore on close */
-  int   scr_width;
-  int   scr_height;
-  void *screen_base;  /* screen memory: wuss draws here directly */
-  int   rowbytes;
-  int   xeig, yeig;   /* OS_Mouse returns OS units; >> eig gives pixels */
-  int   last_buttons; /* OS_Mouse button state at the previous poll */
-  int   kbd_saved[NELEMS(g_kbd)]; /* g_kbd's OS_Byte values on entry */
+  int        entry_mode;   /* mode number, or >= 256 for entry_sel */
+  int        entry_sel[MODE_SEL_MAX]; /* copy of the entry mode selector: the
+                                       * OS's own block is reused by later
+                                       * mode changes */
+  int        mode_sel[10]; /* selector for the current mode */
+  int        depth;        /* as wuss_frontend_open's `depth` */
+  int        log2bpp;
+  pixelfmt_t fmt;
+  int        scr_width;
+  int        scr_height;
+  void      *screen_base;  /* screen memory: wuss draws here directly */
+  int        rowbytes;
+  int        xeig, yeig;   /* OS_Mouse returns OS units; >> eig gives pixels */
+  int        last_buttons; /* OS_Mouse button state at the previous poll */
+  int        kbd_saved[NELEMS(g_kbd)]; /* g_kbd's OS_Byte values on entry */
+  colour_t   palette[256]; /* reprogrammed after each mode change */
+  int        npalette;
 };
 
 /* ----------------------------------------------------------------------- */
 
-/* Program the hardware palette from wuss's colour_t[]. colour_t.primary is
+/* Program the hardware palette from fe->palette. colour_t.primary is
  * pixelfmt_rgba8888: R in the low byte, then G, then B -- the same byte order
- * OS_Word 12's palette block wants. */
-static void set_hw_palette(const colour_t *palette, int npalette)
+ * OS_Word 12's palette block wants. Direct-colour modes have no palette. */
+static void program_palette(const wuss_frontend_t *fe)
 {
   int i;
-  int n = MIN(npalette, 16);
+  int n;
 
+  if (fe->log2bpp > 3)
+    return;
+
+  n = MIN(fe->npalette, 1 << (1 << fe->log2bpp));
   for (i = 0; i < n; i++)
   {
-    unsigned int  rgba = palette[i].primary;
+    unsigned int  rgba = fe->palette[i].primary;
     unsigned char block[5];
 
     /* block = logical colour, 16 (set both flash states), R, G, B */
@@ -105,6 +148,120 @@ static void set_hw_palette(const colour_t *palette, int npalette)
 
     _swix(OS_Word, _INR(0,1), 12, block);
   }
+}
+
+static void store_palette(wuss_frontend_t *fe,
+                          const colour_t  *palette,
+                          int              npalette)
+{
+  fe->npalette = MIN(npalette, (int) NELEMS(fe->palette));
+  memcpy(fe->palette, palette, fe->npalette * sizeof(*palette));
+}
+
+/* Select a width x height mode at `depth` and point fe at it. On failure
+ * writes the reason to msg and leaves fe untouched, though the screen mode
+ * may already have changed. */
+static result_t set_mode(wuss_frontend_t *fe,
+                         int              width,
+                         int              height,
+                         int              depth,
+                         char            *msg,
+                         size_t           msgsz)
+{
+  int              d;
+  int             *sel;
+  _kernel_oserror *err;
+  int              vars[9]; /* 8 indices + a -1 terminator */
+  int              vals[8];
+
+  for (d = 0; d < (int) NELEMS(g_depths); d++)
+    if (g_depths[d].depth == depth)
+      break;
+  if (d == (int) NELEMS(g_depths))
+  {
+    snprintf(msg, msgsz, "unsupported depth %d", depth);
+    return result_BAD_ARG;
+  }
+
+  sel = fe->mode_sel;
+  sel[0] = 1; /* selector format 0 */
+  sel[1] = width;
+  sel[2] = height;
+  sel[3] = g_depths[d].log2bpp;
+  sel[4] = -1; /* highest frame rate available */
+  sel[5] = VDUVAR_MODE_FLAGS;
+  sel[6] = g_depths[d].flags;
+  sel[7] = 3; /* NColour */
+  sel[8] = g_depths[d].ncolour;
+  sel[9] = -1;
+  err = _swix(OS_ScreenMode, _INR(0,1), 0, sel);
+  if (err != NULL)
+  {
+    snprintf(msg, msgsz, "OS_ScreenMode %dx%d depth %d: %s", width, height,
+             depth, err->errmess);
+    return result_NOT_SUPPORTED;
+  }
+
+  /* read back the mode we actually got */
+  vars[0] = VDUVAR_MODE_FLAGS;
+  vars[1] = VDUVAR_XEIG;
+  vars[2] = VDUVAR_YEIG;
+  vars[3] = VDUVAR_LINE_LEN;
+  vars[4] = VDUVAR_LOG2BPP;
+  vars[5] = VDUVAR_XWIND_LIM;
+  vars[6] = VDUVAR_YWIND_LIM;
+  vars[7] = VDUVAR_DISPLAY_START;
+  vars[8] = -1; /* OS_ReadVduVariables scans until it hits -1 */
+  err = _swix(OS_ReadVduVariables, _INR(0,1), vars, vals);
+  if (err != NULL)
+  {
+    snprintf(msg, msgsz, "OS_ReadVduVariables: %s", err->errmess);
+    return result_NOT_SUPPORTED;
+  }
+
+  /* a substituted mode of the wrong format or too small would have the
+   * tasks draw garbage or off the end of screen memory */
+  if (vals[4] != g_depths[d].log2bpp ||
+      ((vals[4] == 3 || vals[4] == 4) &&
+       (vals[0] & MODE_FLAG_FULL_PALETTE_OR_565) != g_depths[d].flags) ||
+      vals[5] + 1 < width || vals[6] + 1 < height)
+  {
+    snprintf(msg, msgsz,
+             "asked for %dx%d depth %d, got %dx%d log2bpp %d flags 0x%X",
+             width, height, depth, vals[5] + 1, vals[6] + 1, vals[4],
+             vals[0]);
+    return result_NOT_SUPPORTED;
+  }
+
+  fe->depth       = depth;
+  fe->log2bpp     = vals[4];
+  fe->fmt         = g_depths[d].fmt;
+  fe->xeig       = vals[1];
+  fe->yeig        = vals[2];
+  fe->rowbytes    = vals[3];
+  fe->screen_base = (void *) vals[7];
+  fe->scr_width   = width;
+  fe->scr_height  = height;
+
+  /* a mode change resets the palette */
+  program_palette(fe);
+
+  /* hide the text cursor: VDU 23,1,0 -- wuss draws over the whole screen and
+   * a blinking caret in the corner would show through */
+  _swix(OS_WriteN, _INR(0,1), "\x17\x01\x00\x00\x00\x00\x00\x00\x00\x00", 10);
+
+  /* OS_ScreenMode leaves the pointer off. Turn on pointer 1 with the default
+   * arrow shape (*Pointer 1 == OS_Byte 106, 1). wuss draws no cursor of its
+   * own, so this is the pointer the user sees. */
+  _swix(OS_Byte, _INR(0,1), 106, 1);
+
+  return result_OK;
+}
+
+static void restore_entry_mode(const wuss_frontend_t *fe)
+{
+  _swix(OS_ScreenMode, _INR(0,1), 0,
+        (fe->entry_mode < 256) ? fe->entry_mode : (int) fe->entry_sel);
 }
 
 /* ----------------------------------------------------------------------- */
@@ -120,16 +277,14 @@ result_t wuss_frontend_open(int               width,
                             pixelfmt_t       *fmt,
                             wuss_frontend_t **frontend)
 {
+  result_t         rc;
   wuss_frontend_t *fe;
-  int              vars[6]; /* 5 indices + a -1 terminator */
-  int              vals[5];
   _kernel_oserror *err;
   char             msg[160]; /* deferred so it prints after the mode restore */
+  const int       *sel;
   int              i;
 
-  /* this backend is locked to the 16-colour Wimp mode with a fixed 1:1
-   * window; -depth and -scale only make sense for the SDL backend */
-  NOT_USED(depth);
+  /* the screen mode is the whole display: there is no window to zoom */
   NOT_USED(scale);
 
   msg[0] = '\0';
@@ -143,68 +298,23 @@ result_t wuss_frontend_open(int               width,
   if (err != NULL)
   {
     snprintf(msg, sizeof(msg), "OS_ScreenMode read: %s", err->errmess);
+    rc = result_TEST_FAILED;
     goto failure;
   }
-
-  /* switch to the 16-colour demo mode */
-  err = _swix(OS_ScreenMode, _INR(0,1), 0, WUSS_RISCOS_MODE);
-  if (err != NULL)
+  if (fe->entry_mode >= 256)
   {
-    snprintf(msg, sizeof(msg), "OS_ScreenMode set mode %d: %s",
-             WUSS_RISCOS_MODE, err->errmess);
-    goto failure;
+    /* copy the selector: fixed words, then variable pairs up to -1 */
+    sel = (const int *) fe->entry_mode;
+    for (i = 0; i < MODE_SEL_MAX - 1 && (i < 5 || sel[i] != -1); i++)
+      fe->entry_sel[i] = sel[i];
+    fe->entry_sel[i] = -1;
   }
 
-  /* read back the geometry we actually got */
-  vars[0] = VDUVAR_XEIG;
-  vars[1] = VDUVAR_YEIG;
-  vars[2] = VDUVAR_LINE_LEN;
-  vars[3] = VDUVAR_YWIND_LIM;
-  vars[4] = VDUVAR_DISPLAY_START;
-  vars[5] = -1; /* OS_ReadVduVariables scans until it hits -1 */
-  err = _swix(OS_ReadVduVariables, _INR(0,1), vars, vals);
-  if (err != NULL)
-  {
-    snprintf(msg, sizeof(msg), "OS_ReadVduVariables: %s", err->errmess);
+  store_palette(fe, palette, npalette);
+
+  rc = set_mode(fe, width, height, depth, msg, sizeof(msg));
+  if (rc != result_OK)
     goto failure_restore;
-  }
-
-  fe->xeig        = vals[0];
-  fe->yeig        = vals[1];
-  fe->rowbytes    = vals[2];
-  /* VDU var 11 (YWindLimit) is the top pixel row, in pixels not OS units */
-  fe->scr_height  = vals[3] + 1;
-  fe->screen_base = (void *) vals[4];
-  fe->scr_width   = fe->rowbytes * 2; /* 4bpp: 2 pixels per byte */
-  fe->last_buttons = 0;
-
-  /* the demo asks for a fixed size; if the mode came out smaller the tasks
-   * would draw off-screen, so bail rather than corrupt memory */
-  if (fe->scr_width < width || fe->scr_height < height)
-  {
-    snprintf(msg, sizeof(msg),
-             "mode %d gave %dx%d (xeig=%d yeig=%d linelen=%d ywindlim=%d),"
-             " need %dx%d",
-             WUSS_RISCOS_MODE, fe->scr_width, fe->scr_height,
-             vals[0], vals[1], vals[2], vals[3], width, height);
-    goto failure_restore;
-  }
-
-  /* the mode may be bigger than the demo; hand wuss only the area it asked
-   * for so a redraw can never run off the end of screen memory */
-  fe->scr_width  = width;
-  fe->scr_height = height;
-
-  set_hw_palette(palette, npalette);
-
-  /* hide the text cursor: VDU 23,1,0 -- wuss draws over the whole screen and
-   * a blinking caret in the corner would show through */
-  _swix(OS_WriteN, _INR(0,1), "\x17\x01\x00\x00\x00\x00\x00\x00\x00\x00", 10);
-
-  /* OS_ScreenMode leaves the pointer off. Turn on pointer 1 with the default
-   * arrow shape (*Pointer 1 == OS_Byte 106, 1) and confine it to the screen.
-   * wuss draws no cursor of its own, so this is the pointer the user sees. */
-  _swix(OS_Byte, _INR(0,1), 106, 1);
 
   for (i = 0; i < (int) NELEMS(g_kbd); i++)
     _swix(OS_Byte, _INR(0,2) | _OUT(1), g_kbd[i].reason, g_kbd[i].value, 0,
@@ -213,14 +323,14 @@ result_t wuss_frontend_open(int               width,
 
   *pixels   = fe->screen_base;
   *rowbytes = fe->rowbytes;
-  *fmt      = pixelfmt_p4; /* RISC OS 4bpp: leftmost pixel in the low nibble */
+  *fmt      = fe->fmt;
   *frontend = fe;
   return result_OK;
 
 
 failure_restore:
 
-  _swix(OS_ScreenMode, _INR(0,1), 0, fe->entry_mode);
+  restore_entry_mode(fe);
 
 failure:
 
@@ -228,7 +338,7 @@ failure:
   if (msg[0] != '\0')
     fprintf(stderr, "wuss: frontend_open: %s\n", msg);
   free(fe);
-  return result_TEST_FAILED;
+  return rc;
 }
 
 /* Map an OS_Mouse button word (bit 2 = Select/left, bit 1 = Menu/middle,
@@ -265,17 +375,26 @@ result_t wuss_frontend_resize(wuss_frontend_t *fe,
                               int             *rowbytes,
                               pixelfmt_t      *fmt)
 {
-  NOT_USED(fe);
-  NOT_USED(width);
-  NOT_USED(height);
-  NOT_USED(depth);
-  NOT_USED(pixels);
-  NOT_USED(rowbytes);
-  NOT_USED(fmt);
+  result_t rc;
+  char     msg[160];
 
-  /* RISC OS runs in a fixed screen mode chosen at wuss_frontend_open time;
-   * there is no runtime path to change it here. */
-  return result_NOT_SUPPORTED;
+  rc = set_mode(fe, width, height, depth, msg, sizeof(msg));
+  if (rc != result_OK)
+  {
+    logf_error("wuss: frontend_resize: %s", msg);
+    /* no mode change was attempted for a bad depth; otherwise put the old
+     * one back so the caller's surface stays valid */
+    if (rc != result_BAD_ARG &&
+        set_mode(fe, fe->scr_width, fe->scr_height, fe->depth, msg,
+                 sizeof(msg)) != result_OK)
+      logf_error("wuss: frontend_resize: restore: %s", msg);
+    return rc;
+  }
+
+  *pixels   = fe->screen_base;
+  *rowbytes = fe->rowbytes;
+  *fmt      = fe->fmt;
+  return result_OK;
 }
 
 static bool key_down(int scan)
@@ -484,8 +603,8 @@ void wuss_frontend_set_palette(wuss_frontend_t *fe,
                                const colour_t  *palette,
                                int              npalette)
 {
-  NOT_USED(fe);
-  set_hw_palette(palette, npalette);
+  store_palette(fe, palette, npalette);
+  program_palette(fe);
 }
 
 void wuss_frontend_zoom(wuss_frontend_t *fe, int delta)
@@ -558,7 +677,7 @@ void wuss_frontend_close(wuss_frontend_t *fe)
   _swix(OS_Byte, _INR(0,1), 106, 0); /* *Pointer 0: turn the pointer off */
   _swix(OS_WriteN, _INR(0,1),        /* VDU 23,1,1: text cursor back on */
         "\x17\x01\x01\x00\x00\x00\x00\x00\x00\x00", 10);
-  _swix(OS_ScreenMode, _INR(0,1), 0, fe->entry_mode);
+  restore_entry_mode(fe);
   free(fe);
 }
 

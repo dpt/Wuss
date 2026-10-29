@@ -279,8 +279,8 @@ result_t task_handle_event(wuss_window_t      *window,
     {
       tasks_build_screen_palette(scr_palette, scr_nentries, palette, npalette);
       bitmap_set_palette(g_tasks.bm, scr_palette);
+      wuss_frontend_set_palette(g_tasks.frontend, scr_palette, scr_nentries);
     }
-    wuss_frontend_set_palette(g_tasks.frontend, palette, npalette);
     return result_OK;
   }
 

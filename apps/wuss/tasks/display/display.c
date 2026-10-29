@@ -95,7 +95,7 @@ enum
 
 /* fixed set of depths the Colours picker offers, in bits per pixel;
  * app_set_mode rejects (via wuss_frontend_resize) anything a backend can't
- * honour, e.g. RISC OS's fixed screen mode */
+ * honour, e.g. a screen mode the RISC OS machine lacks */
 static const int g_display_depths[] =
 {
   1, 2, 4, 8, app_DEPTH_GREY256, 15, 16, 32
