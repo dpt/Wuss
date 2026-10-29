@@ -57,9 +57,8 @@ static long palette_hex_size(const char *resources, const char *name)
   return size;
 }
 
-/* Parse a *.hex file: one "rrggbb" line per colour, no leading '#'. Fails
- * (leaving *out untouched) unless the file is 1..max well-formed lines,
- * setting *n to the count. */
+/* Load a *.hex file of 1..max colours, setting *n to the count. *out may be
+ * partly written on failure. */
 
 result_t palette_load_hex_n(const char *resources,
                             const char *name,
@@ -67,44 +66,12 @@ result_t palette_load_hex_n(const char *resources,
                             int         max,
                             int        *n)
 {
-  const char *path;
-  FILE       *fp;
-  long        size;
-  int         count;
-  char        line[16];
-  int         i;
-  unsigned    r, g, b;
+  result_t rc;
 
-  path = pathf("%s/resources/wuss-tasks/palettes/%s.hex", resources, name);
-
-  fp = fopen(path, "r");
-  if (fp == NULL)
-    return result_FILE_NOT_FOUND;
-
-  /* each line is "rrggbb\n": 7 bytes */
-  if (fseek(fp, 0, SEEK_END) != 0 ||
-      (size = ftell(fp)) <= 0 || size % 7 != 0 || size / 7 > max ||
-      fseek(fp, 0, SEEK_SET) != 0)
-  {
-    fclose(fp);
-    return result_WUSS_BAD_PALETTE;
-  }
-
-  count = (int) (size / 7);
-  for (i = 0; i < count; i++)
-  {
-    if (fgets(line, sizeof(line), fp) == NULL ||
-        sscanf(line, "%2x%2x%2x", &r, &g, &b) != 3)
-    {
-      fclose(fp);
-      return result_WUSS_BAD_PALETTE;
-    }
-    out[i] = colour_rgb((int) r, (int) g, (int) b);
-  }
-
-  fclose(fp);
-  *n = count;
-  return result_OK;
+  rc = palettes_load_hex(pathf("%s/resources/wuss-tasks/palettes/%s.hex",
+                               resources, name),
+                         out, max, n);
+  return rc == result_BAD_ARG ? result_WUSS_BAD_PALETTE : rc;
 }
 
 /* As palette_load_hex_n, but exactly PALETTE_NCOLOURS lines, so a
