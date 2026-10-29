@@ -1308,11 +1308,13 @@ ColourSetOK: ;
       if (sawin->icons[0]->spec.u.bitmap.set != generic) goto SaveAsFail;
     }
 
-    /* opened standalone, the dialogue is centred on the pointer; Escape
-     * cancels and closes it */
+    /* opened standalone, the dialogue is centred on the pointer; dragging
+     * its file icon drags the icon's image; Escape cancels and closes it */
     {
-      box_t content;
-      int   cx, cy;
+      box_t        content;
+      int          cx, cy;
+      wuss_icon_t *file;
+      point_t      press;
 
       rc = wuss_mouse_move(sawuss, POINT(100, 100), NULL);
       if (rc == result_OK)
@@ -1323,6 +1325,22 @@ ColourSetOK: ;
       cx = (content.x0 + content.x1) / 2;
       cy = (content.y0 + content.y1) / 2;
       if (cx < 99 || cx > 101 || cy < 99 || cy > 101) goto SaveAsFail;
+
+      file  = sawin->icons[0];
+      press = POINT(content.x0 - sawin->scroll.x + file->spec.bbox.x0 + 4,
+                    content.y0 - sawin->scroll.y + file->spec.bbox.y0 + 4);
+      rc = wuss_mouse_click(sawuss, press, wuss_BUTTON_SELECT,
+                            wuss_MOUSE_DOWN, NULL);
+      if (rc == result_OK)
+        rc = wuss_mouse_move(sawuss, POINT(press.x + 20, press.y), NULL);
+      if (rc != result_OK) goto SaveAsFail;
+      if (!wuss_is_dragging(sawuss) || sawuss->drag.draw == NULL ||
+          sawuss->drag.opaque != file->spec.u.bitmap.image ||
+          sawuss->drag.hotspot.x != 4 || sawuss->drag.hotspot.y != 4)
+        goto SaveAsFail;
+      rc = wuss_key(sawuss, wuss_KEY_ESCAPE, wuss_KEY_MOD_NONE, NULL);
+      if (rc != result_OK) goto SaveAsFail;
+      if (wuss_is_dragging(sawuss)) goto SaveAsFail;
 
       ev.kind          = wuss_EVENT_KEY;
       ev.data.key.code = wuss_KEY_ESCAPE;
