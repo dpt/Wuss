@@ -145,8 +145,6 @@ static void filing_rescan(filing_window_t *fw)
   (void) wuss_gridview_set_count(fw->gridview, dirlist_count(fresh));
 }
 
-static int filing_parent_path(const char *path, char *out, size_t cap);
-
 /* whether a window is open on the directory leaf within dir. Matched by
  * parent and leaf rather than by joining them, as joining onto "/" gives
  * "//leaf". */
@@ -160,7 +158,7 @@ static int filing_is_open(const filing_task_t *task,
   for (i = 0; i < task->nwindows; i++)
     if (task->windows[i].window != NULL &&
         strcmp(path_leaf(task->windows[i].path), leaf) == 0 &&
-        filing_parent_path(task->windows[i].path, parent, sizeof(parent)) &&
+        path_parent(task->windows[i].path, parent, sizeof(parent)) &&
         strcmp(parent, dir) == 0)
       return 1;
 
@@ -174,7 +172,7 @@ static void filing_invalidate_parent(filing_task_t *task, const char *path)
   char             parent[DPTLIB_MAXPATH];
   filing_window_t *fw;
 
-  if (!filing_parent_path(path, parent, sizeof(parent)))
+  if (!path_parent(path, parent, sizeof(parent)))
     return;
 
   fw = filing_find_window(task, parent);
@@ -673,35 +671,6 @@ static int filing_download_selection(const filing_window_t *fw, int download)
 }
 #endif
 
-/* the directory holding path, in out (capacity cap). Returns zero if path is
- * the root or has no parent to give. */
-static int filing_parent_path(const char *path, char *out, size_t cap)
-{
-  const char *slash;
-#ifndef __riscos
-  size_t      len;
-#endif
-
-#ifdef __riscos
-  /* "adfs::Disc.$.Dir" -> "adfs::Disc.$"; stop at the root or a bare name */
-  slash = strrchr(path, '.');
-  if (slash == NULL || slash == path)
-    return 0;
-
-  return snprintf(out, cap, "%.*s", (int) (slash - path), path) < (int) cap;
-#else
-  slash = strrchr(path, '/');
-  if (slash == NULL || (slash == path && path[1] == '\0'))
-    return 0;
-
-  len = (size_t) (slash - path);
-  if (len == 0)
-    len = 1; /* the parent of "/a" is "/" */
-
-  return snprintf(out, cap, "%.*s", (int) len, path) < (int) cap;
-#endif
-}
-
 /* shade or unshade a menu row, on screen too if the menu is open */
 static void filing_menu_enable(filing_task_t *task, int row, int enabled)
 {
@@ -732,7 +701,7 @@ static void filing_menu_update(filing_task_t *task)
   filing_menu_enable(task, FILING_MENU_CLEAR_SELECTION, selected > 0);
   filing_menu_enable(task, FILING_MENU_OPEN_PARENT,
                     fw != NULL &&
-                    filing_parent_path(fw->path, parent, sizeof(parent)));
+                    path_parent(fw->path, parent, sizeof(parent)));
 #ifdef __EMSCRIPTEN__
   filing_menu_enable(task, FILING_MENU_DOWNLOAD,
                     fw != NULL && filing_download_selection(fw, 0) > 0);
@@ -965,7 +934,7 @@ result_t filing_handle(wuss_window_t      *window,
       return result_OK;
 
     case FILING_MENU_OPEN_PARENT:
-      if (fw != NULL && filing_parent_path(fw->path, parent, sizeof(parent)))
+      if (fw != NULL && path_parent(fw->path, parent, sizeof(parent)))
         return filing_open_path(task, parent, fw->window, 0);
       return result_OK;
 
@@ -1035,7 +1004,7 @@ result_t filing_handle(wuss_window_t      *window,
       return result_OK;
 
     keep = (event->data.close_adjust.modifiers & wuss_KEY_MOD_SHIFT) != 0;
-    if (filing_parent_path(fw->path, parent, sizeof(parent)))
+    if (path_parent(fw->path, parent, sizeof(parent)))
       (void) filing_open_path(task, parent, fw->window, !keep);
     if (!keep)
       return wuss_window_try_close(window);
