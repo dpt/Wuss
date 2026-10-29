@@ -162,12 +162,140 @@ void wuss__window_move(wuss_window_t *window, point_t p)
   (void) ncopied; /* move.c repairs via the sliver logic above, not "copied" */
 }
 
+/* ----------------------------------------------------------------------- */
+
+/* The member of the toolbar group of "parent" after "member": the parent
+ * first, then its toolbars and panes in attach order. */
+static wuss_window_t *next_member(wuss_window_t *parent,
+                                  wuss_window_t *member)
+{
+  return member == parent ? parent->toolbar.first : member->toolbar.next;
+}
+
+/* Shift the footprint of "window" by (dx, dy) without touching the screen. */
+static void shift(wuss_window_t *window, int dx, int dy)
+{
+  box_translated(&window->visible, dx, dy, &window->visible);
+  wuss__notify_open(window);
+
+  if (window->flags & wuss_WINDOW_HIDDEN)
+    wuss__chrome_invalidate_layout(window);
+#ifdef WUSS_FURNITURE
+  else if (window->furniture_layout.flags & wuss_FURNITURE_LAYOUT__VALID)
+    wuss__furniture_layout_translate(window, dx, dy);
+#endif
+}
+
+/* Slide "parent" and its whole toolbar group by (dx, dy) as one. Moving the
+ * members one at a time would have the parent's move invalidate the ground
+ * under its toolbars, which then have no settled pixels left to slide and
+ * repaint whole. Mirrors wuss__window_move, with the clean pieces of every
+ * member pooled into one blit. The group is contiguous in the z-order, so
+ * its frontmost member's occluders are the group's. */
+static void move_group(wuss_window_t *parent, int dx, int dy)
+{
+  box_t          src[WUSS_MAX_INVALIDATE_PIECES];
+  box_t          dest[WUSS_MAX_INVALIDATE_PIECES];
+  box_t          copied[WUSS_MAX_INVALIDATE_PIECES];
+  box_t          pieces[WUSS_MAX_INVALIDATE_PIECES];
+  wuss_t        *wuss;
+  wuss_window_t *top;
+  wuss_window_t *m;
+  int            nsrc, npieces, ncopied, blitted, i, j;
+  box_t          before, moved;
+
+  wuss = parent->wuss;
+
+  for (top = wuss__z_first(wuss); wuss__toolbar_root(top) != parent;
+       top = wuss__z_below(top))
+    ;
+
+  /* a piece that doesn't fit is left out of the blit and repainted below */
+  nsrc = 0;
+  for (m = parent; m != NULL; m = next_member(parent, m))
+  {
+    if (m->flags & wuss_WINDOW_HIDDEN)
+      continue;
+
+    npieces = wuss__clip_to_visible(m, &m->visible, pieces, 0);
+    npieces = wuss__filter_settled(pieces, npieces, wuss->dirty.box,
+                                   wuss->dirty.n);
+    for (i = 0; i < npieces && nsrc < WUSS_MAX_INVALIDATE_PIECES; i++)
+      src[nsrc++] = pieces[i];
+  }
+
+  for (m = parent; m != NULL; m = next_member(parent, m))
+    shift(m, dx, dy);
+
+  for (i = 0; i < nsrc; i++)
+    box_translated(&src[i], dx, dy, &dest[i]);
+
+  blitted = nsrc > 0 &&
+            wuss__blit_pieces(top, src, nsrc, dx, dy, NULL, copied, &ncopied);
+  if (!blitted && nsrc > 0)
+    logf_warning("wuss_window_move: group blit failed, repainting the whole "
+                 "footprint (nsrc=%d)", nsrc);
+
+  for (m = parent; m != NULL; m = next_member(parent, m))
+  {
+    if (m->flags & wuss_WINDOW_HIDDEN)
+      continue;
+
+    box_translated(&m->visible, -dx, -dy, &before);
+    if (!blitted)
+    {
+      box_union(&before, &m->visible, &moved);
+      wuss__invalidate_clipped(m, &moved);
+      continue;
+    }
+
+    /* what no member had settled pixels for needs a genuine repaint */
+    npieces = wuss__subtract_boxes(&before, src, nsrc, pieces, 1);
+    for (i = 0; i < npieces; i++)
+    {
+      box_translated(&pieces[i], dx, dy, &moved);
+      wuss__invalidate_clipped(m, &moved);
+    }
+  }
+
+  if (!blitted)
+    return;
+
+  /* the vacated slivers, as in wuss__window_move */
+  for (i = 0; i < nsrc; i++)
+  {
+    npieces = wuss__subtract_boxes(&src[i], dest, nsrc, pieces, 1);
+    for (j = 0; j < npieces; j++)
+      wuss_invalidate(wuss, &pieces[j]);
+  }
+}
+
 /* A toolbar only moves with its parent; a parent takes its toolbars along. */
 void wuss_window_move(wuss_window_t *window, point_t p)
 {
+  int dx, dy;
+
   if (window->toolbar.parent != NULL)
     return;
 
-  wuss__window_move(window, p);
+  if (window->toolbar.first == NULL ||
+      (window->flags & wuss_WINDOW_PINNED))
+  {
+    wuss__window_move(window, p);
+    wuss__toolbars_layout(window, NULL);
+    return;
+  }
+
+  /* p is the content top-left, as for wuss__window_move */
+  dx = p.x - window->panes.x0 - wuss__outline_px(window) - window->visible.x0;
+  dy = p.y - window->panes.y0 - wuss__outline_px(window) -
+       wuss__titlebar_height(window) - window->visible.y0;
+  if (dx == 0 && dy == 0)
+    return;
+
+  move_group(window, dx, dy);
+
+  /* re-clamp toolbars against the screen edges; a no-op for any already in
+   * place */
   wuss__toolbars_layout(window, NULL);
 }

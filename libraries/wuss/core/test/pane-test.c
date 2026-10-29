@@ -93,7 +93,7 @@ result_t wuss_pane_test(const char *resources)
     wuss_task_t   *owner;
     wuss_window_t *parent, *top, *left, *bottom, *bad, *toolbar;
     box_t          box, inner, pv0, pv, pc, vt, vl, vb;
-    int            dw, dh;
+    int            dw, dh, i;
     size2d_t       min;
 
     owner = mk_task(wuss, paint_handle, NULL);
@@ -276,6 +276,28 @@ result_t wuss_pane_test(const char *resources)
 
     rc = wuss_redraw_dirty(wuss);
     if (rc != result_OK) goto Failure;
+
+    /* the group slides as one: only the ground it vacates is repainted, not
+     * its panes */
+    wuss_window_move(parent, POINT(pc.x0 + 20, pc.y0 + 15));
+    wuss_window_get_visible_bounds(parent, &pv);
+    for (i = 0; i < wuss->dirty.n; i++)
+      if (box_intersects(&wuss->dirty.box[i], &pv)) goto Failure;
+    rc = wuss_redraw_dirty(wuss);
+    if (rc != result_OK) goto Failure;
+
+    /* likewise when part of it slides wholly off the screen */
+    wuss_window_get_content_bounds(parent, &pc);
+    wuss_window_move(parent, POINT(pc.x0 + 160, pc.y0 + 150));
+    wuss_window_get_visible_bounds(parent, &pv);
+    box = (box_t) BOX_POS_SIZE(0, 0, 300, 300);
+    box_intersection(&pv, &box, &pv);
+    for (i = 0; i < wuss->dirty.n; i++)
+      if (box_intersects(&wuss->dirty.box[i], &pv)) goto Failure;
+    wuss_window_move(parent, POINT(pc.x0, pc.y0));
+    rc = wuss_redraw_dirty(wuss);
+    if (rc != result_OK) goto Failure;
+    wuss_window_get_content_bounds(parent, &pc);
 
     /* a detached pane gives its room back and becomes an ordinary window */
     wuss_window_get_visible_bounds(parent, &pv0);

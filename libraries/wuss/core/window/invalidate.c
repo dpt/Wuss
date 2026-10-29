@@ -284,7 +284,8 @@ int wuss__order_pieces(const box_t *clean,
  * piece budget overflowed, no clobber-free order exists, or screen_copy_rect
  * declined -- e.g. a paletted screen with no blit path): the caller must
  * fall back to invalidating its whole dirty region. A piece copied only
- * partially (its far edge slid off-screen) still has the uncovered remainder
+ * partially (its far edge slid off-screen), or not at all (one end wholly
+ * off-screen), still has the uncovered remainder of its destination
  * invalidated here, since that ground was already clipped clear of every
  * occluder. A caller that already invalidates its whole affected region
  * against "copied" afterwards just sees those strips folded into the dirty
@@ -302,7 +303,7 @@ int wuss__blit_pieces(wuss_window_t *window,
   box_t blit_dest[WUSS_MAX_INVALIDATE_PIECES];
   int   order[WUSS_MAX_INVALIDATE_PIECES];
   int   nblit, overflow, i, j, idx;
-  box_t saved_clip;
+  box_t saved_clip, screen;
 
   *ncopied = 0;
 
@@ -353,6 +354,20 @@ int wuss__blit_pieces(wuss_window_t *window,
     box_t got;
 
     idx = order[i];
+
+    /* A piece whose source or destination lies wholly off-screen has nothing
+     * to copy, and screen_copy_rect would decline it, sinking the whole
+     * blit: skip it instead, repainting whatever of its destination is on
+     * the screen, as that has no source pixels. Safe raw, as below. */
+    if (screen_get_clip(window->wuss->scr, &screen) == 0 &&
+        (box_intersection(&screen, &blit_src[idx], &got) ||
+         box_intersection(&screen, &blit_dest[idx], &got)))
+    {
+      if (!box_intersection(&screen, &blit_dest[idx], &got))
+        wuss_invalidate(window->wuss, &got);
+      continue;
+    }
+
     if (screen_copy_rect(window->wuss->scr, &blit_src[idx],
                          POINT(blit_dest[idx].x0, blit_dest[idx].y0),
                          &got) != result_OK)
