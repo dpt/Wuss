@@ -10,8 +10,10 @@
 
 void wuss__furniture_toggle_size(wuss_window_t *window)
 {
-  box_t before, before_content, new_visible, dirty, copied, blit_src, blit_dst;
-  int   dx, dy, blitted, scroll_reclamped;
+  box_t before, before_content, new_visible, dirty, blit_src;
+  box_t src[WUSS_MAX_INVALIDATE_PIECES];
+  box_t copied[WUSS_MAX_INVALIDATE_PIECES];
+  int   dx, dy, blitted, scroll_reclamped, nsrc, ncopied;
 
   before = window->visible;
   wuss__content_box(window, &before_content);
@@ -153,9 +155,12 @@ void wuss__furniture_toggle_size(wuss_window_t *window)
   {
     wuss_window_t *above;
 
+    /* the window's own toolbars and panes sit above it too, but are laid out
+     * afresh below, so they don't block the blit either */
     for (above = wuss__z_first(window->wuss);
-        above != window && (above->flags & wuss_WINDOW_HIDDEN);
-        above = wuss__z_below(above))
+         above != window && ((above->flags & wuss_WINDOW_HIDDEN) ||
+                             wuss__toolbar_root(above) == window);
+         above = wuss__z_below(above))
       ;
 
     if (above == window)
@@ -166,22 +171,18 @@ void wuss__furniture_toggle_size(wuss_window_t *window)
 
       /* the part of the old content box that, slid by (dx,dy), lands within
        * the new content box: its pixels are the valid source for that
-       * overlap */
+       * overlap, less any covered by the window's own toolbars (one clamped
+       * on screen over it) or not yet repainted. wuss__blit_pieces clips
+       * the destinations clear of those toolbars where they still are. */
       box_translated(&new_content, -dx, -dy, &shifted);
-      if (box_intersection(&before_content, &shifted, &blit_src) == 0 &&
-          !box_is_empty(&blit_src))
+      if (box_intersection(&before_content, &shifted, &blit_src) == 0)
       {
-        box_translated(&blit_src, dx, dy, &blit_dst);
-        if (screen_copy_rect(window->wuss->scr, &blit_src,
-                             POINT(blit_dst.x0, blit_dst.y0),
-                             &copied) == result_OK)
-        {
-          /* "copied" is already correct on screen -- the blit reused it --
-           * but a frontend re-uploading only wuss_get_touched_extent still
-           * needs to know it moved. */
-          wuss__touch(window->wuss, &copied);
-          blitted = 1;
-        }
+        nsrc = wuss__clip_to_visible(window, &blit_src, src, 0);
+        nsrc = wuss__filter_settled(src, nsrc, window->wuss->dirty.box,
+                                    window->wuss->dirty.n);
+        blitted = nsrc > 0 &&
+                  wuss__blit_pieces(window, src, nsrc, dx, dy, NULL, copied,
+                                    &ncopied);
       }
     }
   }
@@ -189,6 +190,8 @@ void wuss__furniture_toggle_size(wuss_window_t *window)
   if (blitted)
   {
     box_t new_content;
+    box_t exposed[WUSS_MAX_INVALIDATE_PIECES];
+    int   nexposed, i;
 
     wuss__content_box(window, &new_content);
 
@@ -197,18 +200,25 @@ void wuss__furniture_toggle_size(wuss_window_t *window)
      * longer does at all -- nothing else touches this, so without it the
      * vacated old furniture/content strip was never repainted and just sat
      * there stale. A no-op on grow, where "before" is already inside the
-     * new visible box. Raw, not the content box: the vacated furniture
-     * strips outside the new visible box are just as stale as the content
-     * was, and this box sits entirely outside window->visible, so it can't
-     * overlap wuss__furniture_invalidate below (which only marks inside the
-     * *new* visible box). */
-    wuss__invalidate_minus(window->wuss, &before, &window->visible);
+     * new visible box. The whole footprint, not the content box: the vacated
+     * furniture strips outside the new visible box are just as stale as the
+     * content was, and this box sits entirely outside window->visible, so it
+     * can't overlap wuss__furniture_invalidate below (which only marks inside
+     * the *new* visible box). Clipped, as for the exposed content below. */
+    nexposed = box_subtract(&before, &window->visible, exposed);
+    for (i = 0; i < nexposed; i++)
+      wuss__invalidate_clipped(window, &exposed[i]);
     /* the new content box minus what the blit filled: newly-exposed content.
      * Disjoint from the furniture invalidate below by construction (see
      * furniture/invalidate.c: its pieces are carved to exclude the content
      * box), and disjoint from the strip above since this box sits entirely
-     * inside window->visible. */
-    wuss__invalidate_minus(window->wuss, &new_content, &copied);
+     * inside window->visible. Clipped clear of the window's own toolbars
+     * where they still are: their moves below repaint what they vacate, and
+     * marking their pixels stale would make those moves repaint them whole
+     * rather than slide them. */
+    nexposed = wuss__subtract_boxes(&new_content, copied, ncopied, exposed, 1);
+    for (i = 0; i < nexposed; i++)
+      wuss__invalidate_clipped(window, &exposed[i]);
     /* furniture always reflows -- repaint it at the new position outright. */
     wuss__furniture_invalidate(window);
   }

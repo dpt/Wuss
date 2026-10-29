@@ -225,8 +225,14 @@ result_t wuss_pane_test(const char *resources)
       goto Failure;
     if (width(&vt) != 40 + 17) goto Failure;
 
-    /* toggle-size keeps the whole footprint on screen */
+    /* toggle-size keeps the whole footprint on screen; the panes above the
+     * parent don't stop its content sliding, so not all of it is repainted */
+    rc = wuss_redraw_dirty(wuss);
+    if (rc != result_OK) goto Failure;
     wuss__furniture_toggle_size(parent);
+    wuss_window_get_content_bounds(parent, &pc);
+    for (i = 0; i < wuss->dirty.n; i++)
+      if (box_contains_point(&wuss->dirty.box[i], pc.x0, pc.y0)) goto Failure;
     wuss_window_get_visible_bounds(parent, &pv);
     wuss_window_get_content_bounds(parent, &pc);
     if (pv.x0 < 0 || pv.y0 < 0 || pv.x1 > 300 || pv.y1 > 300) goto Failure;
