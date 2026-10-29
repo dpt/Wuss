@@ -156,7 +156,6 @@ g_utilities_tasks[] =
 {
   { "Chars", chars_app_create },
   { "Clock", clock_app_create },
-  { "Pooling", pooling_app_create },
   { "Shortcuts", shortcuts_app_create }
 },
 g_visuals_tasks[] =
@@ -181,6 +180,7 @@ g_system_tasks[] =
   { "Configuring", configuring_app_create },
   { "Display", display_app_create },
   { "Palette", palette_app_create },
+  { "Pooling", pooling_app_create },
 #ifdef WUSS_ICONBAR
   { "Filing", filing_app_create }
 #endif
