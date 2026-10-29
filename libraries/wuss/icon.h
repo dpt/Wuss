@@ -201,6 +201,13 @@ int wuss__slider_value_for_point(wuss_window_t     *window,
                                  const wuss_icon_t *icon,
                                  point_t            screen_point);
 
+/* The screen box a drag of slider "icon" (on "window") locks the pointer to:
+ * its groove, with the far edges taken in so every value stays reachable.
+ * Set as wuss_t::pointer_bounds by a press on the slider. */
+void wuss__slider_pointer_bounds(wuss_window_t     *window,
+                                 const wuss_icon_t *icon,
+                                 box_t             *out);
+
 /* Invalidate exactly this icon's bbox on "window", via wuss_window_invalidate,
  * so a set_text / pressed-state / hide change repaints just the icon. "icon"
  * must be an icon of "window". */

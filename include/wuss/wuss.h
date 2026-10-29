@@ -1313,7 +1313,8 @@ result_t wuss_key_up(wuss_t              *wuss,
  * windows the ants cross are deferred and settled at drag end; a MOUSE_UP
  * ends the drag instead of being delivered as one, and Escape (wuss_key,
  * wuss_KEY_ESCAPE) cancels it. The SDL frontend should capture the mouse for
- * the duration so motion past the window edge still arrives.
+ * the duration so motion past the window edge still arrives. The pointer is
+ * unbounded until the caller sets bounds with wuss_set_pointer_bounds.
  *
  * Ends with a wuss_EVENT_DRAG_END delivered to "window" -- on a MOUSE_UP,
  * data.drag_end.drop is the window under the pointer (NULL over bare
@@ -1407,12 +1408,41 @@ int wuss_is_dragging(const wuss_t *wuss);
  * Whether a window holds the mouse capture. A Select or Adjust press on a
  * window's plain content (not on an icon or furniture) captures the mouse:
  * that window then receives every \ref wuss_EVENT_MOUSE, with points that
- * may lie outside its content box, until the button is released.
+ * may lie outside its content box, until the button is released. Its task
+ * may lock the pointer meanwhile with wuss_set_pointer_bounds.
  *
  * \param[in] wuss Window manager.
  * \return Non-zero while a window holds the capture.
  */
 int wuss_is_capturing(const wuss_t *wuss);
+
+/**
+ * Lock the pointer to \p bounds for the rest of the current core drag (see
+ * wuss_drag_start) or mouse capture (see wuss_is_capturing). The lock ends
+ * with the drag or capture. wuss itself never moves the pointer: the host
+ * applies the lock (see wuss_get_pointer_bounds).
+ *
+ * \param[in] wuss   Window manager.
+ * \param[in] bounds Box the pointer's hotspot must stay in, screen space,
+ *                   maxima exclusive. NULL removes the lock.
+ * \return \ref result_OK, or \ref result_BAD_ARG if no drag or capture is
+ *         active.
+ */
+result_t wuss_set_pointer_bounds(wuss_t *wuss, const box_t *bounds);
+
+/**
+ * The box the pointer is locked to while a press is held: a slider's groove,
+ * the travel of a scroll sausage or resize, or what a task set with
+ * wuss_set_pointer_bounds. A host drawing its own pointer clamps the pointer
+ * to it, and feeds wuss the clamped position. A host with a hardware pointer
+ * may ignore it.
+ *
+ * \param[in]  wuss   Window manager.
+ * \param[out] bounds Set to the box, screen space, maxima exclusive, when
+ *                    locked.
+ * \return Non-zero while the pointer is locked.
+ */
+int wuss_get_pointer_bounds(const wuss_t *wuss, box_t *bounds);
 
 #ifdef __cplusplus
 }

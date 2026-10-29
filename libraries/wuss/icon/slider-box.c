@@ -87,3 +87,20 @@ int wuss__slider_value_for_point(wuss_window_t     *window,
 
   return value;
 }
+
+void wuss__slider_pointer_bounds(wuss_window_t     *window,
+                                 const wuss_icon_t *icon,
+                                 box_t             *out)
+{
+  box_t content, screen_box;
+
+  wuss__content_box(window, &content);
+  wuss__icon_box_to_screen(&content, window->scroll, &icon->spec.bbox,
+                           &screen_box);
+  wuss__slider_groove_box(&screen_box, out);
+
+  /* wuss__slider_px_to_value reads the far end (x1 or y1) itself as a full
+   * groove, so take it in: box_t's maxima are exclusive */
+  out->x1++;
+  out->y1++;
+}

@@ -360,6 +360,11 @@ struct wuss
    * it receives every mouse event, wherever the pointer goes, until the
    * matching MOUSE_UP. NULL when none. See capture.c. */
   wuss_window_t              *capture;
+  /* Screen box the host should keep the pointer in while a press is held
+   * (see wuss_get_pointer_bounds); empty when none. Set by a slider, scroll
+   * sausage or resize press, or by wuss_set_pointer_bounds; reset by the
+   * next press made with nothing held and by wuss_drag_start. */
+  box_t                       pointer_bounds;
 #ifdef WUSS_ICONS
   /* Button icon held down; released on any MOUSE_UP even if a new window now
    * covers its owner. */

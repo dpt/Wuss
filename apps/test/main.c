@@ -36,6 +36,7 @@ static const test_t tests[] =
   { "wuss",       wuss_test       },
   { "wuss-menu",  wuss_menu_test  },
   { "wuss-pointer", wuss_pointer_test },
+  { "wuss-pointer-bounds", wuss_pointer_bounds_test },
   { "wuss-message", wuss_message_test },
   { "wuss-drag", wuss_drag_test },
   { "wuss-task", wuss_task_test },

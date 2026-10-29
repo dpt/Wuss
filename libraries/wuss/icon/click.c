@@ -69,8 +69,11 @@ int wuss__icon_click(wuss_window_t      *window,
      * completed press/release, and keeps updating on MOVE while held
      * (core/mouse-move.c) */
     if (icon->spec.type == wuss_ICON_TYPE_SLIDER)
+    {
       wuss__icon_set_value(window, icon,
                            wuss__slider_value_for_point(window, icon, p));
+      wuss__slider_pointer_bounds(window, icon, &wuss->pointer_bounds);
+    }
 
     /* a writable takes the caret at the click, if the press above gave its
      * window the focus */

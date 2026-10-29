@@ -284,6 +284,23 @@ bool app_set_pointer(bool on)
   return wuss_frontend_hide_pointer(g_tasks.frontend, on && g.pointer.loaded);
 }
 
+/* Hold "p" inside the box wuss locks the pointer to during a drag, if any.
+ * Only the software pointer can be held: the hardware one goes where the
+ * mouse does. ponytail: the arrow sticks at the edge while the mouse runs on
+ * past it, then jumps to the mouse when the drag ends; warp the hidden
+ * hardware pointer back if that dead zone grates. */
+static point_t pointer_clamp(wuss_t *wuss, point_t p)
+{
+  box_t bounds;
+
+  if (!g_tasks.pointer || !wuss_get_pointer_bounds(wuss, &bounds))
+    return p;
+
+  p.x = CLAMP(p.x, bounds.x0, bounds.x1 - 1);
+  p.y = CLAMP(p.y, bounds.y0, bounds.y1 - 1);
+  return p;
+}
+
 /* ----------------------------------------------------------------------- */
 
 #ifndef __EMSCRIPTEN__
@@ -362,6 +379,12 @@ static void wuss_frame(void *arg)
   scripting = g.scripted;
   while (frame_poll(c, &scripting, &ev))
   {
+    if (ev.kind == wuss_INPUT_MOUSE_MOVE ||
+        ev.kind == wuss_INPUT_MOUSE_DOWN ||
+        ev.kind == wuss_INPUT_MOUSE_UP ||
+        ev.kind == wuss_INPUT_WHEEL)
+      ev.pos = pointer_clamp(c->wuss, ev.pos);
+
     if (ev.kind == wuss_INPUT_MOUSE_MOVE)
     {
       g.pointer.pos       = ev.pos;

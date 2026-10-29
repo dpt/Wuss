@@ -58,6 +58,7 @@ result_t wuss__furniture_press_resize(wuss_window_t                   *win,
   wuss__content_box(win, &content);
   wuss->furniture.drag_offset.x = p.x - content.x1;
   wuss->furniture.drag_offset.y = p.y - content.y1;
+  wuss__furniture_resize_bounds(win, &wuss->pointer_bounds);
 
   wuss__furniture_set_pressed(win, element->region);
 

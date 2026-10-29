@@ -33,7 +33,6 @@ LAYER 4 - WINDOW FURNITURE & INTERACTION (needs bug layer, text layer)
   (outline-click bug fixed; unblocked)
 - Furniture colour selection needs improvements (e.g. losing menu
   readability when palette changed)
-- Mouse clamping when the software mouse pointer is enabled
 - Window placement:
   - Safe area concept (e.g. where menus overlap the icon bar)
   - Factor out window placement. It's a negotiation between "I need to

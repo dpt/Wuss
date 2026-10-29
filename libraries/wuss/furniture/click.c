@@ -76,7 +76,11 @@ void wuss__furniture_arm_drag(wuss_window_t             *win,
 
   if (kind == wuss_FURNITURE_DRAG_VSCROLL_SAUSAGE ||
       kind == wuss_FURNITURE_DRAG_HSCROLL_SAUSAGE)
+  {
     invalidate_sausages(win);
+    wuss__furniture_sausage_bounds(win, kind, wuss->furniture.drag_both, p,
+                                   &wuss->pointer_bounds);
+  }
 }
 
 wuss_window_t *wuss__furniture_release(wuss_t             *wuss,

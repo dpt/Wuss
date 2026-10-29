@@ -68,6 +68,9 @@ static result_t drag_start(wuss_t              *wuss,
    * window starting the drag must not keep intercepting moves and the release */
   wuss->capture = NULL;
 
+  /* nor keep the bounds of the press that led here: the drag sets its own */
+  wuss->pointer_bounds = (box_t) BOX_INIT;
+
   wuss->drag.window  = window;
   wuss->drag.button  = wuss_BUTTON_NONE; /* set by the icon drag caller */
   wuss->drag.size    = size;

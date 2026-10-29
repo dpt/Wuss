@@ -16,6 +16,11 @@ static result_t mouse_click(wuss_t             *wuss,
 
   wuss->pointer = p;
 
+  /* A fresh press drops whatever bounds the last one left behind; the
+   * handlers below may set new ones. */
+  if (action == wuss_MOUSE_DOWN && !wuss__pointer_held(wuss))
+    wuss->pointer_bounds = (box_t) BOX_INIT;
+
   /* Core owns all input while a drag is active: releasing the button that
    * started it (any button, if unknown) ends it, dropping on whatever's under
    * the pointer; any other click is swallowed rather than reaching a window

@@ -38,6 +38,11 @@ result_t wuss__capture_deliver(wuss_t             *wuss,
                                wuss_mouse_action_t action);
 void wuss__capture_forget_window(wuss_t *wuss, wuss_window_t *window);
 
+/* Pointer bounds (pointer-bounds.c): whether a press is held that pointer
+ * bounds can belong to -- a core drag, a capture, a furniture drag or a held
+ * icon. wuss_t::pointer_bounds count only while it is. */
+int wuss__pointer_held(const wuss_t *wuss);
+
 /* Move the "pointer is inside this window's footprint" tracker to "now"
  * (which may be NULL). If it changed, deliver wuss_EVENT_POINTER_EXIT to the
  * window it left and wuss_EVENT_POINTER_ENTER to the one it reached, in that

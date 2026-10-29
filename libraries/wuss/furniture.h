@@ -270,6 +270,17 @@ void wuss__furniture_drag_sausage(wuss_window_t *window,
                                   int            scroll_start,
                                   int            horizontal);
 
+/* Pointer bounds for a drag just armed (see wuss_t::pointer_bounds): the
+ * pointer positions that take a resize from the minimum to the maximum
+ * content size, on screen; and those that run a sausage drag of "kind" (an
+ * Adjust drag when "both") pressed at "p" from no scroll to the furthest. */
+void wuss__furniture_resize_bounds(const wuss_window_t *window, box_t *out);
+void wuss__furniture_sausage_bounds(const wuss_window_t       *window,
+                                    wuss_furniture_drag_kind_t kind,
+                                    int                        both,
+                                    point_t                    p,
+                                    box_t                     *out);
+
 /* Pointer clicks (furniture/click.c), called from core/mouse-click.c. */
 
 /* On a MOUSE_UP, end any held furniture press: clear the pressed highlight and
