@@ -526,6 +526,13 @@ void wuss_frontend_capture_mouse(wuss_frontend_t *fe, bool capture)
    * screen-global */
 }
 
+void wuss_frontend_warp_pointer(wuss_frontend_t *fe, point_t p)
+{
+  NOT_USED(fe);
+  NOT_USED(p);
+  /* the hardware pointer is never hidden here, so is never clamped */
+}
+
 unsigned int wuss_frontend_ms(wuss_frontend_t *fe)
 {
   unsigned int cs;

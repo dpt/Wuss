@@ -737,6 +737,22 @@ void wuss_frontend_capture_mouse(wuss_frontend_t *fe, bool capture)
   SDL_CaptureMouse(capture);
 }
 
+void wuss_frontend_warp_pointer(wuss_frontend_t *fe, point_t p)
+{
+  int win_w, win_h;
+
+  SDL_GetWindowSize(fe->window, &win_w, &win_h);
+
+  win_w -= 2 * WUSS_SDL_BORDER;
+  win_h -= 2 * WUSS_SDL_BORDER;
+
+  /* the inverse of sdl_pos_to_scr, aimed at the middle of the screen pixel
+   * so its floor lands back on "p" */
+  SDL_WarpMouseInWindow(fe->window,
+                        WUSS_SDL_BORDER + (p.x + 0.5f) * win_w / fe->scr_width,
+                        WUSS_SDL_BORDER + (p.y + 0.5f) * win_h / fe->scr_height);
+}
+
 void wuss_frontend_set_palette(wuss_frontend_t *fe,
                                const colour_t  *palette,
                                int              npalette)

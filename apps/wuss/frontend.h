@@ -144,6 +144,12 @@ bool wuss_frontend_hide_pointer(wuss_frontend_t *frontend, bool hide);
  * emscripten). Safe to call every frame with the current drag state. */
 void wuss_frontend_capture_mouse(wuss_frontend_t *frontend, bool capture);
 
+/* Move the OS mouse pointer to screen point "p", so the next motion is
+ * measured from there: main.c pulls the hidden pointer back after clamping
+ * its software one to a drag's bounds. No-op on a backend that cannot warp
+ * (RISC OS, emscripten). */
+void wuss_frontend_warp_pointer(wuss_frontend_t *frontend, point_t p);
+
 /* Milliseconds from an arbitrary epoch, wrapping; fed to wuss_set_time for
  * double-click timing. */
 unsigned int wuss_frontend_ms(wuss_frontend_t *frontend);

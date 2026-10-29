@@ -286,19 +286,22 @@ bool app_set_pointer(bool on)
 
 /* Hold "p" inside the box wuss locks the pointer to during a drag, if any.
  * Only the software pointer can be held: the hardware one goes where the
- * mouse does. ponytail: the arrow sticks at the edge while the mouse runs on
- * past it, then jumps to the mouse when the drag ends; warp the hidden
- * hardware pointer back if that dead zone grates. */
+ * mouse does. So the hidden hardware pointer is warped back to the edge with
+ * it, leaving no dead zone to cross before a reversal moves the arrow --
+ * except under a script, whose input is not the mouse's. */
 static point_t pointer_clamp(wuss_t *wuss, point_t p)
 {
-  box_t bounds;
+  box_t   bounds;
+  point_t clamped;
 
   if (!g_tasks.pointer || !wuss_get_pointer_bounds(wuss, &bounds))
     return p;
 
-  p.x = CLAMP(p.x, bounds.x0, bounds.x1 - 1);
-  p.y = CLAMP(p.y, bounds.y0, bounds.y1 - 1);
-  return p;
+  clamped.x = CLAMP(p.x, bounds.x0, bounds.x1 - 1);
+  clamped.y = CLAMP(p.y, bounds.y0, bounds.y1 - 1);
+  if (!g.scripted && (clamped.x != p.x || clamped.y != p.y))
+    wuss_frontend_warp_pointer(g_tasks.frontend, clamped);
+  return clamped;
 }
 
 /* ----------------------------------------------------------------------- */
