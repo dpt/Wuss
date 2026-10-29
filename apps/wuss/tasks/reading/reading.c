@@ -640,8 +640,8 @@ result_t reading_create(wuss_t *wuss, reading_task_t **out)
   wuss_task_desc_t   delegate_desc;
   const wuss_menu_t *menu;
   const char        *sysname;
-  const char        *space;
-  size_t             len;
+  char               family[128];
+  const char        *style;
   int                i;
   size2d_t           sz;
 
@@ -673,13 +673,12 @@ result_t reading_create(wuss_t *wuss, reading_task_t **out)
   /* start in the system font's family ("Family Style"), if the picker lists
    * it; else stay on the system font itself with no row ticked */
   sysname = wuss_get_font_name_n(wuss, 0);
-  space   = sysname != NULL ? strrchr(sysname, ' ') : NULL;
-  if (space != NULL)
+  if (sysname != NULL &&
+      bmfontfamily_split_label(sysname, family, sizeof(family), &style) ==
+      result_OK)
   {
-    len = (size_t) (space - sysname);
     for (i = 0; i < menu->nitems; i++)
-      if (strncmp(menu->items[i].text, sysname, len) == 0 &&
-          menu->items[i].text[len] == '\0')
+      if (strcmp(menu->items[i].text, family) == 0)
         (void) reading_load_family(task, i, menu->items[i].text);
   }
 

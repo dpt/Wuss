@@ -1115,13 +1115,10 @@ static result_t configuring_set_font(configuring_task_t *task,
   bmfont_t           *fonts[2];
   wuss_font_desc_t    desc;
 
-  style = strrchr(name, ' ');
-  if (style == NULL || (size_t) (style - name) >= sizeof(family_name))
-    return result_BAD_ARG;
-
-  memcpy(family_name, name, (size_t) (style - name));
-  family_name[style - name] = '\0';
-  style++;
+  rc = bmfontfamily_split_label(name, family_name, sizeof(family_name),
+                                &style);
+  if (rc != result_OK)
+    return rc;
 
   resources = wuss_get_resources(task->wuss);
   rc = bmfontfamily_scan(pathf("%s/resources/bmfonts/%s", resources,
