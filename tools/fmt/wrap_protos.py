@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """wrap_protos.py -- rewrap C function prototypes/definitions that exceed a
 column limit onto one parameter per line, with the parameter names aligned
-in a column (the style already used across DPTLib, e.g. screen-copy-rect.c):
+in a column (the style already used across DPTLib and Wuss, e.g. DPTLib's
+screen-copy-rect.c):
 
     static int screen_copy_rect_p4(screen_t    *scr,
                                    const box_t *s,
@@ -166,7 +167,7 @@ def reflow_parts(indent, head, args, tail):
     if any(p is None for p in parsed):    # void mixed in, or "..." -- bail
         return None
 
-    # DPTLib style (see screen-copy-rect.c, cache.c): the "*" sits immediately
+    # DPTLib/Wuss style (see DPTLib's screen-copy-rect.c): the "*" sits immediately
     # before the declarator, declarators line up in one column, and a "**"
     # param's extra star hangs one place to the left. So the name column is
     # one past the longest "type + space + stars".

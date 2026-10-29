@@ -25,7 +25,7 @@
 /* braced initialiser for a wuss_proginfo_desc_t, filling in the author and
  * version lines every demo task shares */
 #define TASK_PROGINFO_DESC(name, purpose) \
-  { name, purpose, "© DPTLib contributors", "1.0 (" __DATE__ ")" }
+  { name, purpose, "© Wuss contributors", "1.0 (" __DATE__ ")" }
 
 /* where a demo task's window opens: in the free region of the safe area
  * nearest the pointer, else centred on the pointer */

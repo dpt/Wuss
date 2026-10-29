@@ -130,7 +130,7 @@ static result_t colourlist_test_handle(wuss_window_t      *window,
 
 static int make_scratch_dir(char *path, size_t cap)
 {
-  if (snprintf(path, cap, "%s/dptlib-saveas-XXXXXX", test_tmpdir()) >= (int) cap)
+  if (snprintf(path, cap, "%s/wuss-saveas-XXXXXX", test_tmpdir()) >= (int) cap)
     return 0;
 
   return mkdtemp(path) != NULL;
@@ -1273,7 +1273,7 @@ ColourSetOK: ;
 
       /* a save_fn failure on the DataSaveAck abandons the transfer and
        * keeps the leafname */
-      sarecv_tc.dir              = "/nonexistent-dptlib-saveas";
+      sarecv_tc.dir              = "/nonexistent-wuss-saveas";
       ev.kind                    = wuss_EVENT_DRAG_END;
       ev.data.drag_end.drop      = sarecvwin;
       ev.data.drag_end.point     = POINT(50, 50);

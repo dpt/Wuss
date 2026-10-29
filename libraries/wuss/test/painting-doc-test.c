@@ -139,7 +139,7 @@ result_t paintingdoc_test(const char *resources)
 
   printf("test: a transparent canvas saves and loads back with its alpha\n");
 
-  CHECK(test_tmppath(path, sizeof(path), "dptlib-paintingdoc-alpha.png"));
+  CHECK(test_tmppath(path, sizeof(path), "wuss-paintingdoc-alpha.png"));
   paintingdoc_fill(doc, POINT(0, 0), clear());
   CHECK(bitmap_save_png(paintingdoc_bitmap(doc), path) == result_OK);
   paintingdoc_destroy(doc);
@@ -532,7 +532,7 @@ result_t paintingdoc_test(const char *resources)
 
   printf("test: a saved canvas loads back the same\n");
 
-  CHECK(test_tmppath(path, sizeof(path), "dptlib-paintingdoc-test.png"));
+  CHECK(test_tmppath(path, sizeof(path), "wuss-paintingdoc-test.png"));
   before = px(doc, 6, 5);
   after  = px(doc, 300, 400);
   CHECK(bitmap_save_png(paintingdoc_bitmap(doc), path) == result_OK);

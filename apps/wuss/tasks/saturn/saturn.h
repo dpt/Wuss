@@ -5,7 +5,7 @@
 
 #ifdef WUSS_APP
 
-/* ponytail: no #ifdef WUSS_COMPONENTS guard -- it is PUBLIC on DPTLib and ON
+/* ponytail: no #ifdef WUSS_COMPONENTS guard -- it is PUBLIC on WussLib and ON
  * by default, so the wuss app always has the colourmenu component. */
 #include "framebuf/colour.h"
 #include "utils/rng.h"

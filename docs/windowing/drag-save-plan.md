@@ -207,7 +207,7 @@ Because of the priority rule, the whole handshake completes within the
 - Tests write files only into a dedicated temporary directory, removed
   afterwards.
 - Test tasks build only under `BUILD_APPS`, so the Filer cannot be linked
-  into `DPTLibTest`. Instead the end-to-end headless test in `wuss-test.c`
+  into `WussTest`. Instead the end-to-end headless test in `wuss-test.c`
   uses a minimal fake receiver task defined in the test, covering
   messaging, drag, DRAGGABLE and Save As under `build-asan`. The Filer's own
   glue is checked by hand in `build-sdl`.

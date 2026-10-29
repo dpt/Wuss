@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """wrap_doxygen.py -- rewrap Doxygen /** ... */ block comments to a column
 limit, greedy-fill, continuation lines aligned under the description text
-(matching the \\param/\\return style already used across DPTLib headers).
+(matching the \\param/\\return style already used across DPTLib and Wuss headers).
 
 Scope (ponytail: lazy on purpose):
   - Rewraps multi-line /** ... */ blocks: \\param/\\return/\\brief/\\file/etc

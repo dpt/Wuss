@@ -58,7 +58,7 @@ wuss_window_fn_t compositing_handle;
  * instance, colouring the checkerboard/label from wuss's own palette
  * (wuss_get_palette) and lettering the rule name with wuss's own regular
  * font (wuss_get_font_n(wuss, 0)); the images are loaded from
- * wuss_get_resources(wuss) (the DPTLib repo root); if out is non-NULL, the
+ * wuss_get_resources(wuss) (the Wuss repo root); if out is non-NULL, the
  * task block is also returned through it */
 result_t compositing_create(wuss_t *wuss, compositing_task_t **out);
 

@@ -1,6 +1,6 @@
 # CONTEXT.md
 
-Domain glossary for DPTLib. Use these terms in code, docs and design discussion.
+Domain glossary for Wuss. Use these terms in code, docs and design discussion.
 
 ## wuss
 
