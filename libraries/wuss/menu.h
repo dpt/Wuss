@@ -172,7 +172,7 @@ result_t wuss__menu_deliver_closed(wuss_task_t *task, int picked);
  * borrowed-window level -- lets a component shown as a leaf dismiss the
  * whole chain (wuss__menu_abandon) rather than just hide itself, and
  * wuss_window_close tear the chain down before freeing a window in it.
- * Defined in menu/menu.c. */
+ * Defined in menu/menu-session.c. */
 int wuss__menu_contains(wuss_t *wuss, const wuss_window_t *window);
 
 #else /* !WUSS_MENUS */

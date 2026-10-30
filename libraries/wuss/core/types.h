@@ -412,7 +412,7 @@ struct wuss
   struct wuss_iconpool       icon;
 #endif
 #ifdef WUSS_MENUS
-  /* Opaque; defined in menu/menu.c, reached only via wuss__menu_* (menu.h). */
+  /* Opaque; defined in menu/impl.h, reached only via wuss__menu_* (menu.h). */
   struct wuss__menu_session *menu;
 #endif
 #ifdef WUSS_ICONBAR
