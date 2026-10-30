@@ -492,6 +492,10 @@ if(BUILD_APPS)
         apps/wuss/tasks/fern/fern.h
         apps/wuss/tasks/painting/painting.c
         apps/wuss/tasks/painting/painting.h
+        apps/wuss/tasks/painting/painting-bars.c
+        apps/wuss/tasks/painting/painting-bars.h
+        apps/wuss/tasks/painting/painting-tools.c
+        apps/wuss/tasks/painting/painting-tools.h
         apps/wuss/tasks/palette/palette.c
         apps/wuss/tasks/fireworks/fireworks.c
         apps/wuss/tasks/patterns/patterns.c
