@@ -14,8 +14,8 @@ static void mark_region(box_t       *arr,
                         const box_t *box)
 {
   if (box_list_add(arr, pn, max, box))
-    logf_info("wuss_invalidate: %d %s regions, coalescing "
-              "(%d,%d)-(%d,%d) into the last entry",
+    logf_info("wuss_invalidate: %d %s regions, adding (%d,%d)-(%d,%d) "
+              "merged the pair adding least area",
               max, what, box->x0, box->y0, box->x1, box->y1);
 }
 

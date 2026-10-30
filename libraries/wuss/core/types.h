@@ -49,7 +49,7 @@
 #define WUSS_DRAG_ANTS_ON  4 /* marching-ants dash pattern for a core drag box */
 #define WUSS_DRAG_ANTS_OFF 4
 
-#define WUSS_MAX_DIRTY 16 /* dirty regions tracked before further invalidations get merged into the last entry */
+#define WUSS_MAX_DIRTY 16 /* dirty regions tracked before the pair whose union adds least area is merged */
 
 /* ponytail: fixed cap; if hit, remaining pieces are carried through
  * unclipped against further occluders rather than growing storage -- safe,
