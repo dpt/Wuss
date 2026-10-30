@@ -904,13 +904,9 @@ result_t painting_handle(wuss_window_t      *window,
 
     if (++pt->ants_tick >= PAINTING_ANTS_IDLES)
     {
-      box_t bounds;
-
       pt->ants_tick  = 0;
       pt->ants_phase = (pt->ants_phase + 1) & 7;
-
-      bounds = paintingdoc_selection_bounds(pt->doc);
-      painting_invalidate_box(pt, &bounds);
+      painting_invalidate_ants(pt);
     }
     return result_OK;
 

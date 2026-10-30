@@ -257,8 +257,8 @@ int paintingdoc_has_selection(const paintingdoc_t *doc);
 box_t paintingdoc_selection_bounds(const paintingdoc_t *doc);
 
 /* the selection's boundary pixels as single-row boxes (x1/y1 exclusive), for
- * drawing its outline. *n is their number; a pixel may appear twice. valid
- * until the selection changes */
+ * drawing its outline, in row order. *n is their number; a pixel may appear
+ * twice. valid until the selection changes */
 const box_t *paintingdoc_selection_outline(const paintingdoc_t *doc, int *n);
 
 /* moving the selection: lift its pixels, place them as often as the drag

@@ -53,6 +53,9 @@ void painting_draw_ants(const painting_task_t *pt,
                         int                    ox,
                         int                    oy);
 
+/* redraw where the ants march, for their next step */
+void painting_invalidate_ants(painting_task_t *pt);
+
 /* draw the finished rubber band into the canvas, returning the dirty box */
 box_t painting_band_commit(painting_task_t *pt);
 

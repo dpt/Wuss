@@ -4,6 +4,7 @@
 
 #include <math.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "base/utils.h"
 #include "framebuf/screen.h"
@@ -16,6 +17,11 @@
 
 /* the spray's radius in pixels per unit of the size slider */
 #define PAINTING_SPRAY_SCALE 3
+
+/* the ants' redraw: tiles a side of the finest grid over the selection, and
+ * the most boxes to invalidate per step */
+#define PAINTING_ANTS_GRID  16
+#define PAINTING_ANTS_BOXES 8
 
 /* rects and ellipses, outlined or filled */
 static int painting_is_shape(const painting_task_t *pt)
@@ -282,17 +288,29 @@ void painting_draw_ants(const painting_task_t *pt,
 {
   const box_t *spans;
   colour_t     black, white;
-  int          n, i, x, y;
+  int          n, lo, hi, mid, i, x, y;
 
   spans = paintingdoc_selection_outline(pt->doc, &n);
   black = colour_rgb(0x00, 0x00, 0x00);
   white = colour_rgb(0xFF, 0xFF, 0xFF);
 
-  for (i = 0; i < n; i++)
+  /* the spans run down the rows, so skip straight to the first in the clip */
+  lo = 0;
+  hi = n;
+  while (lo < hi)
+  {
+    mid = (lo + hi) / 2;
+    if (oy + spans[mid].y0 < scr->clip.y0)
+      lo = mid + 1;
+    else
+      hi = mid;
+  }
+
+  for (i = lo; i < n; i++)
   {
     y = oy + spans[i].y0;
-    if (y < scr->clip.y0 || y >= scr->clip.y1)
-      continue;
+    if (y >= scr->clip.y1)
+      break;
 
     for (x = MAX(ox + spans[i].x0, scr->clip.x0);
          x < MIN(ox + spans[i].x1, scr->clip.x1);
@@ -300,6 +318,77 @@ void painting_draw_ants(const painting_task_t *pt,
       screen_set_pixel(scr, x, y,
                        ((x - ox + y - oy - pt->ants_phase) & 7) < 4 ? black : white);
   }
+}
+
+/* redraw where the ants march. the canvas under them needs no repaint, so
+ * rather than the selection's whole bounds this redraws the tiles of a grid
+ * laid over it that the outline crosses: the tiles in each grid row are
+ * joined into runs and a run stretched down over the rows below with the
+ * same run. the grid coarsens until that fits in PAINTING_ANTS_BOXES, as
+ * wuss tracks only a few dirty boxes */
+void painting_invalidate_ants(painting_task_t *pt)
+{
+  box_t         bounds;
+  const box_t  *spans;
+  int           n, nboxes, g, tw, th;
+  unsigned char hit[PAINTING_ANTS_GRID][PAINTING_ANTS_GRID];
+  int           i, c, r, c1, j;
+  box_t         run;
+  box_t         boxes[PAINTING_ANTS_BOXES + 1];
+
+  bounds = paintingdoc_selection_bounds(pt->doc);
+  spans  = paintingdoc_selection_outline(pt->doc, &n);
+  nboxes = 0;
+
+  for (g = PAINTING_ANTS_GRID; g > 1; g /= 2)
+  {
+    tw = DIVIDE_ROUNDING_UP(bounds.x1 - bounds.x0, g);
+    th = DIVIDE_ROUNDING_UP(bounds.y1 - bounds.y0, g);
+
+    memset(hit, 0, sizeof(hit));
+    for (i = 0; i < n; i++)
+      for (c = (spans[i].x0 - bounds.x0) / tw;
+           c <= (spans[i].x1 - 1 - bounds.x0) / tw;
+           c++)
+        hit[(spans[i].y0 - bounds.y0) / th][c] = 1;
+
+    nboxes = 0;
+    for (r = 0; r < g && nboxes <= PAINTING_ANTS_BOXES; r++)
+      for (c = 0; c < g && nboxes <= PAINTING_ANTS_BOXES; c = c1)
+      {
+        for (c1 = c; c1 < g && hit[r][c1] == hit[r][c]; c1++)
+          ;
+        if (!hit[r][c])
+          continue;
+
+        run.x0 = bounds.x0 + c * tw;
+        run.y0 = bounds.y0 + r * th;
+        run.x1 = MIN(bounds.x0 + c1 * tw, bounds.x1);
+        run.y1 = MIN(bounds.y0 + (r + 1) * th, bounds.y1);
+
+        for (j = 0; j < nboxes; j++)
+          if (boxes[j].x0 == run.x0 && boxes[j].x1 == run.x1 &&
+              boxes[j].y1 == run.y0)
+            break;
+
+        if (j < nboxes)
+          boxes[j].y1 = run.y1;
+        else
+          boxes[nboxes++] = run; /* one past the limit means too many */
+      }
+
+    if (nboxes <= PAINTING_ANTS_BOXES)
+      break;
+  }
+
+  if (g == 1)
+  {
+    painting_invalidate_box(pt, &bounds);
+    return;
+  }
+
+  for (j = 0; j < nboxes; j++)
+    painting_invalidate_box(pt, &boxes[j]);
 }
 
 /* draw the finished rubber band into the canvas */
