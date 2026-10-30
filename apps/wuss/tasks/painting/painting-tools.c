@@ -286,13 +286,16 @@ void painting_draw_ants(const painting_task_t *pt,
                         int                    ox,
                         int                    oy)
 {
-  const box_t *spans;
-  colour_t     black, white;
-  int          n, lo, hi, mid, i, x, y;
+  const box_t   *spans;
+  pixelfmt_any_t black, white;
+  int            n, lo, hi, mid, i, y, x1, x;
 
   spans = paintingdoc_selection_outline(pt->doc, &n);
-  black = colour_rgb(0x00, 0x00, 0x00);
-  white = colour_rgb(0xFF, 0xFF, 0xFF);
+
+  /* resolve the colours once: per pixel it is a palette search on a
+   * paletted screen */
+  black = screen_colour_to_pixel(scr, colour_rgb(0x00, 0x00, 0x00));
+  white = screen_colour_to_pixel(scr, colour_rgb(0xFF, 0xFF, 0xFF));
 
   /* the spans run down the rows, so skip straight to the first in the clip */
   lo = 0;
@@ -312,11 +315,11 @@ void painting_draw_ants(const painting_task_t *pt,
     if (y >= scr->clip.y1)
       break;
 
-    for (x = MAX(ox + spans[i].x0, scr->clip.x0);
-         x < MIN(ox + spans[i].x1, scr->clip.x1);
-         x++)
-      screen_set_pixel(scr, x, y,
-                       ((x - ox + y - oy - pt->ants_phase) & 7) < 4 ? black : white);
+    x1 = MIN(ox + spans[i].x1, scr->clip.x1);
+    for (x = MAX(ox + spans[i].x0, scr->clip.x0); x < x1; x++)
+      screen_set_pixel_value(scr, x, y,
+                             ((x - ox + y - oy - pt->ants_phase) & 7) < 4 ?
+                             black : white);
   }
 }
 
