@@ -22,6 +22,7 @@
 #include "wuss/gadget/stringset.h"
 #include "wuss/gadget/gridview.h"
 #include "wuss/gadget/swatches.h"
+#include "wuss/gadget/tagcloud.h"
 
 #include "wuss/test/all-tests.h"
 
@@ -96,6 +97,18 @@ static int gridview_test_accept_drag(wuss_gridview_t *gridview,
   NOT_USED(opaque);
 
   return 1;
+}
+
+/* tagcloud toggle callback: records the toggled index at opaque */
+static void tagcloud_test_toggle(wuss_tagcloud_t *tagcloud,
+                                 int              index,
+                                 int              highlighted,
+                                 void            *opaque)
+{
+  NOT_USED(tagcloud);
+  NOT_USED(highlighted);
+
+  *(int *) opaque = index;
 }
 
 static struct
@@ -803,6 +816,109 @@ GridViewFail:
     printf("wuss_test: gridview check failed\n");
     return result_TEST_FAILED;
 GridViewOK: ;
+  }
+
+  printf("test: wuss_tagcloud sorts, hit-tests and toggles\n");
+  {
+    static const wuss_tagcloud_tag_t tctags[] =
+    {
+      { "cherry", 9, 0 },
+      { "apple",  5, 0 },
+      { "Banana", 3, 0 }
+    };
+
+    const char             *tcfontfile;
+    bmfont_t               *tcfont;
+    screen_t                tcscr;
+    bitmap_t                tcbm;
+    void                   *tcpixels;
+    wuss_t                 *tcwuss;
+    wuss_font_desc_t        tcfdesc;
+    test_task_t             tctc;
+    wuss_task_t            *tcowner;
+    wuss_window_t          *tcwin;
+    wuss_tagcloud_t        *tc;
+    wuss_tagcloud_options_t opts;
+    wuss_event_t            ev;
+    box_t                   tccontent;
+    point_t                 first;
+    int                     toggled;
+
+    tcfontfile = pathf("%s/resources/bmfonts/Tiny/Regular.png", resources);
+    rc = bmfont_create(tcfontfile, &tcfont);
+    if (rc != result_OK) goto TagCloudFail;
+
+    tcpixels = malloc((size_t) rowbytes * 200);
+    if (tcpixels == NULL) { rc = result_OOM; goto TagCloudFail; }
+    rc = bitmap_init(&tcbm, SIZE2D(200, 200), pixelfmt_bgrx8888, rowbytes,
+                     NULL, tcpixels);
+    if (rc != result_OK) goto TagCloudFail;
+    screen_for_bitmap(&tcscr, &tcbm);
+
+    tcfdesc.font       = tcfont;
+    tcfdesc.font_class = wuss_FONT_CLASS_NONE;
+    tcfdesc.name       = NULL;
+    rc = wuss_create(&tcscr, &tcfdesc, 1, NULL, 0, NULL, NULL, resources,
+                     &tcwuss);
+    if (rc != result_OK) goto TagCloudFail;
+
+    memset(&tctc, 0, sizeof(tctc));
+    tcowner = mk_task(tcwuss, test_handle, &tctc);
+    if (tcowner == NULL) { rc = result_OOM; goto TagCloudFail; }
+
+    tccontent = (box_t) BOX_POS_SIZE(10, 10, 150, 100);
+    rc = wuss_window_create(tcowner, &tccontent, "TC", wuss_WINDOW_DEFAULT,
+                            wuss_NO_BACKDROP, SIZE2D(150, 100), SIZE2D(0, 0),
+                            &tcwin);
+    if (rc != result_OK) goto TagCloudFail;
+
+    toggled = -1;
+    rc = wuss_tagcloud_create(&tc, tcwin, tagcloud_test_toggle, &toggled);
+    if (rc != result_OK) goto TagCloudFail;
+    rc = wuss_tagcloud_set_tags(tc, tctags, NELEMS(tctags));
+    if (rc != result_OK) goto TagCloudFail;
+
+    /* in a list the first tag in sort order sits at the top-left inset */
+    first                = POINT(wuss_STD_GAP * 2 + 1, wuss_STD_GAP * 2 + 1);
+    opts.display         = wuss_TAGCLOUD_DISPLAY_LIST;
+    opts.sort            = wuss_TAGCLOUD_SORT_NAME;
+    opts.selected_first  = 0;
+    opts.scaling         = 1;
+    wuss_tagcloud_set_options(tc, &opts);
+    if (wuss_tagcloud_hit_test(tc, first) != 1) goto TagCloudFail;
+    if (wuss_tagcloud_hit_test(tc, POINT(0, 0)) != -1) goto TagCloudFail;
+
+    opts.sort = wuss_TAGCLOUD_SORT_COUNT;
+    wuss_tagcloud_set_options(tc, &opts);
+    if (wuss_tagcloud_hit_test(tc, first) != 0) goto TagCloudFail;
+
+    wuss_tagcloud_set_highlight(tc, 2, 1);
+    opts.selected_first = 1;
+    wuss_tagcloud_set_options(tc, &opts);
+    if (wuss_tagcloud_hit_test(tc, first) != 2) goto TagCloudFail;
+
+    /* a click toggles the highlight off; the tag then sorts back */
+    memset(&ev, 0, sizeof(ev));
+    ev.kind              = wuss_EVENT_MOUSE;
+    ev.data.mouse.action = wuss_MOUSE_DOWN;
+    ev.data.mouse.button = wuss_BUTTON_SELECT;
+    ev.data.mouse.point  = first;
+    if (!wuss_tagcloud_handle_event(tc, &ev) || toggled != 2)
+      goto TagCloudFail;
+    if (wuss_tagcloud_hit_test(tc, first) != 0) goto TagCloudFail;
+
+    wuss_tagcloud_destroy(tc);
+
+    reap_test_tasks();
+    wuss_destroy(tcwuss);
+    free(tcpixels);
+    bmfont_destroy(tcfont);
+    goto TagCloudOK;
+
+TagCloudFail:
+    printf("wuss_test: tagcloud check failed\n");
+    return result_TEST_FAILED;
+TagCloudOK: ;
   }
 
   printf("test: wuss_resize relays out a gridview window\n");

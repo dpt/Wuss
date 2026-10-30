@@ -96,6 +96,7 @@ if(WUSS_GADGETS OR WUSS_COMPONENTS)
     list(APPEND PUBLIC_HEADERS include/wuss/gadget/stringset.h)
     list(APPEND PUBLIC_HEADERS include/wuss/gadget/gridview.h)
     list(APPEND PUBLIC_HEADERS include/wuss/gadget/swatches.h)
+    list(APPEND PUBLIC_HEADERS include/wuss/gadget/tagcloud.h)
 endif()
 if(WUSS_COMPONENTS)
     list(APPEND PUBLIC_HEADERS include/wuss/component/fontmenu.h)
@@ -275,7 +276,8 @@ set(WUSS_GADGET_SOURCES
     libraries/wuss/gadget/stringset.c
     libraries/wuss/gadget/popup.c
     libraries/wuss/gadget/gridview.c
-    libraries/wuss/gadget/swatches.c)
+    libraries/wuss/gadget/swatches.c
+    libraries/wuss/gadget/tagcloud.c)
 
 set(WUSS_COMPONENT_SOURCES
     libraries/wuss/component/fontmenu.c
@@ -495,6 +497,8 @@ if(BUILD_APPS)
         apps/wuss/tasks/reading/reading.c
         apps/wuss/tasks/resizing/resizing.c
         apps/wuss/tasks/resizing/resizing.h
+        apps/wuss/tasks/tagging/tagging.c
+        apps/wuss/tasks/tagging/tagging.h
         apps/wuss/tasks/tiling/tiling.c
         apps/wuss/tasks/common/taskapp.c
         apps/wuss/tasks/common/taskapp.h

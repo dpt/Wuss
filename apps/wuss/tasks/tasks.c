@@ -55,6 +55,7 @@
 #include "tasks/orbing/orbing.h"
 #include "tasks/reading/reading.h"
 #include "tasks/common/taskapp.h"
+#include "tasks/tagging/tagging.h"
 #include "tasks/tiling/tiling.h"
 
 /* ----------------------------------------------------------------------- */
@@ -150,7 +151,8 @@ g_tests_tasks[] =
 },
 g_text_tasks[] =
 {
-  { "Reading", reading_app_create }
+  { "Reading", reading_app_create },
+  { "Tagging", tagging_app_create }
 },
 g_utilities_tasks[] =
 {
