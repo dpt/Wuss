@@ -4,12 +4,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-/* RISC OS's GCCSDK newlib has getopt() but not the GNU getopt_long()
- * extension, so parse_args() keeps a hand-rolled fallback there. */
-#ifndef __riscos
-#include <getopt.h>
-#endif
-
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
 #endif
@@ -35,6 +29,8 @@
 #include "wuss/wuss.h"
 
 #include "frontend.h"
+#include "options.h"
+#include "pointer.h"
 #include "script.h"
 #include "tasks/tasks.h"
 
@@ -74,26 +70,6 @@ static struct
    * them. */
   bitmap_t bm;
   screen_t scr;
-
-  /* The optional software pointer (--pointer, Display > Software pointer):
-   * an arrow drawn into the framebuffer itself, so it scales with the window
-   * zoom and goes through the CRT shader like everything else. wuss never
-   * learns of it: each frame puts back the pixels under it before wuss can
-   * draw (a window drag's screen_copy_rect would otherwise smear it along),
-   * then saves them afresh and redraws it once wuss is done. */
-  struct
-  {
-    const bitmap_t *image;    /* the arrow, from the icon pool; hotspot at
-                               * its top-left; NULL if the pool lacks it */
-    bool           loaded;
-    unsigned char *under;     /* framebuffer bytes beneath the drawn arrow */
-    box_t          drawn;     /* where it was drawn, if is_drawn */
-    bool           is_drawn;
-    point_t        pos;       /* last reported mouse position */
-    bool           in_window; /* false until a mouse event, or after a
-                               * leave */
-  }
-  pointer;
 
   /* file scope so app_set_mode (called from the Display task, long after
    * run_wuss's own locals are gone) can update pixels/rowbytes/scr_width/
@@ -206,106 +182,6 @@ static void pixel_stress(wuss_t *wuss, int scr_width, int scr_height)
 
 /* ----------------------------------------------------------------------- */
 
-/* Copy the framebuffer bytes spanning box to (save) or from g.pointer.under.
- * Whole bytes, so a sub-byte format needs no masking: the stray pixels
- * either side go back exactly as they were saved. */
-static void pointer_copy_under(const box_t *box, bool save)
-{
-  int            log2bpp;
-  int            bx0, nbytes;
-  unsigned char *under;
-  int            y;
-  unsigned char *row;
-
-  log2bpp = pixelfmt_log2bpp(g.bm.format);
-  bx0     = (box->x0 << log2bpp) >> 3;
-  nbytes  = (((box->x1 << log2bpp) + 7) >> 3) - bx0;
-  under   = g.pointer.under;
-  for (y = box->y0; y < box->y1; y++)
-  {
-    row = (unsigned char *) g.bm.base + y * g.bm.rowbytes + bx0;
-    if (save)
-      memcpy(under, row, nbytes);
-    else
-      memcpy(row, under, nbytes);
-    under += nbytes;
-  }
-}
-
-/* Put back the pixels under the pointer, if drawn. Returns whether it was,
- * setting *box to where, for the caller to present. */
-static bool pointer_undraw(box_t *box)
-{
-  if (!g.pointer.is_drawn)
-    return false;
-
-  pointer_copy_under(&g.pointer.drawn, false);
-  g.pointer.is_drawn = false;
-  *box = g.pointer.drawn;
-  return true;
-}
-
-/* Save what's under the pointer's position and draw it there, if it's on
- * and over the window. Returns whether it drew, setting *box to where. */
-static bool pointer_draw(box_t *box)
-{
-  box_t    arrow;
-  box_t    screen;
-  screen_t scr;
-
-  if (!g_tasks.pointer || !g.pointer.in_window)
-    return false;
-
-  arrow.x0  = g.pointer.pos.x;
-  arrow.y0  = g.pointer.pos.y;
-  arrow.x1  = g.pointer.pos.x + g.pointer.image->size.w;
-  arrow.y1  = g.pointer.pos.y + g.pointer.image->size.h;
-  screen.x0 = 0;
-  screen.y0 = 0;
-  screen.x1 = g.bm.size.w;
-  screen.y1 = g.bm.size.h;
-  if (box_intersection(&arrow, &screen, box))
-    return false;
-
-  pointer_copy_under(box, true);
-
-  /* a private screen_t: wuss's own may be left clipped to its last redraw */
-  screen_for_bitmap(&scr, &g.bm);
-  (void) screen_copy_bitmap(&scr, g.pointer.pos.x, g.pointer.pos.y,
-                            g.pointer.image);
-
-  g.pointer.drawn    = *box;
-  g.pointer.is_drawn = true;
-  return true;
-}
-
-bool app_set_pointer(bool on)
-{
-  return wuss_frontend_hide_pointer(g_tasks.frontend, on && g.pointer.loaded);
-}
-
-/* Hold "p" inside the box wuss locks the pointer to during a drag, if any.
- * Only the software pointer can be held: the hardware one goes where the
- * mouse does. So the hidden hardware pointer is warped back to the edge with
- * it, leaving no dead zone to cross before a reversal moves the arrow --
- * except under a script, whose input is not the mouse's. */
-static point_t pointer_clamp(wuss_t *wuss, point_t p)
-{
-  box_t   bounds;
-  point_t clamped;
-
-  if (!g_tasks.pointer || !wuss_get_pointer_bounds(wuss, &bounds))
-    return p;
-
-  clamped.x = CLAMP(p.x, bounds.x0, bounds.x1 - 1);
-  clamped.y = CLAMP(p.y, bounds.y0, bounds.y1 - 1);
-  if (!g.scripted && (clamped.x != p.x || clamped.y != p.y))
-    wuss_frontend_warp_pointer(g_tasks.frontend, clamped);
-  return clamped;
-}
-
-/* ----------------------------------------------------------------------- */
-
 #ifndef __EMSCRIPTEN__
 /* Save the framebuffer as wuss-N.png in the current directory, N being the
  * first number not already taken. */
@@ -359,8 +235,8 @@ static void wuss_frame(void *arg)
   box_t                new_pointer;
   bool                 has_pointer;
 
-  /* before anything below can draw: see g.pointer */
-  had_pointer = pointer_undraw(&old_pointer);
+  /* before anything below can draw: see pointer.h */
+  had_pointer = pointer_undraw(c->bm, &old_pointer);
 
   /* a script runs on a synthetic 50Hz clock so its double-clicks (and their
    * absence across a "wait") don't depend on how fast frames go headless */
@@ -386,15 +262,14 @@ static void wuss_frame(void *arg)
         ev.kind == wuss_INPUT_MOUSE_DOWN ||
         ev.kind == wuss_INPUT_MOUSE_UP ||
         ev.kind == wuss_INPUT_WHEEL)
-      ev.pos = pointer_clamp(c->wuss, ev.pos);
+      ev.pos = pointer_clamp(c->wuss, ev.pos, g.scripted);
 
     if (ev.kind == wuss_INPUT_MOUSE_MOVE)
     {
-      g.pointer.pos       = ev.pos;
-      g.pointer.in_window = true;
-      move_pos            = ev.pos;
-      move_mods           = ev.mods;
-      move_pending        = true;
+      pointer_moved(ev.pos);
+      move_pos     = ev.pos;
+      move_mods    = ev.mods;
+      move_pending = true;
       continue;
     }
 
@@ -410,11 +285,10 @@ static void wuss_frame(void *arg)
     case wuss_INPUT_MOUSE_DOWN:
     case wuss_INPUT_MOUSE_UP:
     case wuss_INPUT_WHEEL:
-      g.pointer.pos       = ev.pos;
-      g.pointer.in_window = true;
+      pointer_moved(ev.pos);
       break;
     case wuss_INPUT_MOUSE_LEAVE:
-      g.pointer.in_window = false;
+      pointer_left();
       break;
     default:
       break;
@@ -519,13 +393,13 @@ static void wuss_frame(void *arg)
     for (i = 0; i < n; i++)
       p[i] = (unsigned char) rand();
 
-    (void) pointer_draw(&new_pointer);
+    (void) pointer_draw(c->bm, &new_pointer);
     wuss_frontend_present(c->frontend, c->bm, NULL);
   }
   else if (stress)
   {
     pixel_stress(c->wuss, c->scr_width, c->scr_height);
-    (void) pointer_draw(&new_pointer);
+    (void) pointer_draw(c->bm, &new_pointer);
     wuss_frontend_present(c->frontend, c->bm, NULL);
   }
   else
@@ -554,7 +428,7 @@ static void wuss_frame(void *arg)
     wuss_clear_touched(c->wuss);
 
     /* where the pointer was and now is need presenting too */
-    has_pointer = pointer_draw(&new_pointer);
+    has_pointer = pointer_draw(c->bm, &new_pointer);
     if (had_pointer)
       box_union(&dirty, &old_pointer, &dirty);
     if (has_pointer)
@@ -766,21 +640,7 @@ static result_t run_wuss(const char *resources,
     else
       (void) wuss_set_backdrop(wuss, &config.backdrop);
 
-    g.pointer.image = wuss_iconpool_bitmap(wuss,
-                        wuss_iconpool_lookup(wuss, "pointer"));
-    if (g.pointer.image == NULL)
-    {
-      logf_error("wuss: icon 'pointer' unavailable -- "
-                 "software pointer unavailable");
-    }
-    else
-    {
-      /* under holds the bytes beneath the arrow at any depth: at most 4 per
-       * pixel, which also covers a sub-byte format's extra partial byte */
-      g.pointer.under = malloc((size_t) g.pointer.image->size.w * 4 *
-                               g.pointer.image->size.h);
-      g.pointer.loaded = (g.pointer.under != NULL);
-    }
+    pointer_load(wuss);
   }
 
   g_tasks.wuss           = wuss;
@@ -879,7 +739,7 @@ Failure:
   wuss_destroy(wuss); /* also sweeps g.menu_task and closes any open chain,
                        * including the shared proginfo singleton's window */
 
-  free(g.pointer.under);
+  pointer_free();
 
   for (i = 0; i < nfonts; i++)
     bmfont_destroy(fonts[i]);
@@ -965,158 +825,6 @@ int app_get_depth(void)
 
 /* ----------------------------------------------------------------------- */
 
-/* Parsed command-line options. Members are use-ordered to match run_wuss's
- * parameter list. */
-typedef struct wuss_options
-{
-  const char *resources;    /* -r/--resources: fixture root */
-  const char *palette_name; /* -p/--palette: startup *.hex leafname */
-  const char *font_family;  /* -f/--font: system font family directory name */
-  int         depth;        /* -d/--depth: framebuffer bpp (1, 2, 4, 8, 15, 16 or 32) */
-  int         scale;        /* -s/--scale: initial window zoom, 0 = default */
-  int         res_width;    /* --res WIDTHxHEIGHT: screen size in pixels */
-  int         res_height;
-  const char *tasks;        /* -t/--tasks: comma-separated launcher task
-                             * names to auto-open at startup, or "all";
-                             * default "Filing,Display"
-                             * ("Filing,Configure,Reading" under
-                             * Emscripten); giving -t replaces it */
-  const char *root;         /* --root: directory Filing's icon bar icon and
-                             * System menu row open; default "." (or "/"
-                             * under Emscripten, see filing_set_root) */
-  const char *script;       /* --script: input script to run; see script.h */
-}
-wuss_options_t;
-
-static const char wuss_usage[] =
-  "usage: wuss [-r|--resources DIR] [-p|--palette NAME] "
-  "[-f|--font FAMILY] "
-  "[-d|--depth 1|2|4|8|15|16|32] [-s|--scale N] [--res WIDTHxHEIGHT] "
-  "[-t|--tasks all|NAME[,NAME...]] [--root DIR] [--crt] [--pointer] "
-  "[--script FILE]\n";
-
-/* Parses "WIDTHxHEIGHT" (e.g. "1024x768") into w and h. Returns false,
- * leaving them untouched, on anything else -- a missing 'x', a non-positive
- * dimension, or trailing junk after the height. */
-static bool parse_res(const char *s, int *w, int *h)
-{
-  char *end;
-  long  width, height;
-
-  width = strtol(s, &end, 10);
-  if (end == s || *end != 'x')
-    return false;
-
-  height = strtol(end + 1, &end, 10);
-  if (*end != '\0' || width <= 0 || height <= 0)
-    return false;
-
-  *w = (int) width;
-  *h = (int) height;
-  return true;
-}
-
-#ifndef __riscos
-
-/* --res, --crt and --pointer have no short form, so they are given
- * longopt-only codes past the ASCII range getopt_long uses for short
- * options. */
-enum { OPT_RES = 256, OPT_CRT, OPT_POINTER, OPT_ROOT, OPT_SCRIPT };
-
-/* Desktop: getopt_long. Accepts the short forms and the "--" long forms; the
- * historical single-dash long spellings (-resources) are no longer accepted.
- * Returns false and prints usage on an unknown option or missing argument. */
-static bool parse_args(int argc, char *argv[], wuss_options_t *opts)
-{
-  static const struct option longopts[] =
-  {
-    { "resources", required_argument, NULL, 'r'         },
-    { "palette",   required_argument, NULL, 'p'         },
-    { "font",      required_argument, NULL, 'f'         },
-    { "depth",     required_argument, NULL, 'd'         },
-    { "scale",     required_argument, NULL, 's'         },
-    { "res",       required_argument, NULL, OPT_RES     },
-    { "tasks",     required_argument, NULL, 't'         },
-    { "root",      required_argument, NULL, OPT_ROOT    },
-    { "crt",       no_argument,       NULL, OPT_CRT     },
-    { "pointer",   no_argument,       NULL, OPT_POINTER },
-    { "script",    required_argument, NULL, OPT_SCRIPT  },
-    { NULL,        0,                 NULL, 0           }
-  };
-
-  int c;
-
-  for (;;)
-  {
-    c = getopt_long(argc, argv, "r:p:f:d:s:t:", longopts, NULL);
-    if (c == -1)
-      break;
-
-    switch (c)
-    {
-    case 'r': opts->resources    = optarg;       break;
-    case 'p': opts->palette_name = optarg;       break;
-    case 'f': opts->font_family  = optarg;       break;
-    case 'd': opts->depth        = atoi(optarg); break;
-    case 's': opts->scale        = atoi(optarg); break;
-    case 't': opts->tasks        = optarg;       break;
-    case OPT_ROOT: opts->root    = optarg;       break;
-    case OPT_SCRIPT: opts->script = optarg;      break;
-    case OPT_CRT:
-      g_tasks.crt = true;
-      break;
-    case OPT_POINTER:
-      g_tasks.pointer = true;
-      break;
-    case OPT_RES:
-      if (!parse_res(optarg, &opts->res_width, &opts->res_height))
-      {
-        fprintf(stderr, "wuss: --res expects WIDTHxHEIGHT, got \"%s\"\n", optarg);
-        return false;
-      }
-      break;
-    default:
-      fputs(wuss_usage, stderr);
-      return false;
-    }
-  }
-
-  return true;
-}
-
-#else /* __riscos */
-
-/* RISC OS: no getopt_long. Hand-rolled scan of the same options, single-dash
- * long spellings only (matches the pre-getopt behaviour). */
-static bool parse_args(int argc, char *argv[], wuss_options_t *opts)
-{
-  int i;
-
-  for (i = 1; i < argc; i++)
-    if (strcmp(argv[i], "-resources") == 0 && i + 1 < argc)
-      opts->resources = argv[++i];
-    else if (strcmp(argv[i], "-palette") == 0 && i + 1 < argc)
-      opts->palette_name = argv[++i];
-    else if (strcmp(argv[i], "-font") == 0 && i + 1 < argc)
-      opts->font_family = argv[++i];
-    else if (strcmp(argv[i], "-depth") == 0 && i + 1 < argc)
-      opts->depth = atoi(argv[++i]);
-    else if (strcmp(argv[i], "-scale") == 0 && i + 1 < argc)
-      opts->scale = atoi(argv[++i]);
-    else if (strcmp(argv[i], "-res") == 0 && i + 1 < argc)
-      parse_res(argv[++i], &opts->res_width, &opts->res_height);
-    else if (strcmp(argv[i], "-tasks") == 0 && i + 1 < argc)
-      opts->tasks = argv[++i];
-    else if (strcmp(argv[i], "-root") == 0 && i + 1 < argc)
-      opts->root = argv[++i];
-    else if (strcmp(argv[i], "-script") == 0 && i + 1 < argc)
-      opts->script = argv[++i];
-
-  return true;
-}
-
-#endif /* __riscos */
-
 int main(int argc, char *argv[])
 {
   /* pathf splices the root and each branch with the platform separator, so
@@ -1145,7 +853,7 @@ int main(int argc, char *argv[])
   opts.root       = NULL; /* NULL: leave filing_set_root's own default */
   opts.script       = NULL;
 
-  if (!parse_args(argc, argv, &opts))
+  if (!options_parse(argc, argv, &opts))
     return EXIT_FAILURE;
 
 #ifdef WUSS_ICONBAR

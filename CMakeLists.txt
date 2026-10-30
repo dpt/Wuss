@@ -453,6 +453,10 @@ if(BUILD_APPS)
         apps/wuss/tasks/appsfiler/appsfiler.c
         apps/wuss/tasks/appsfiler/appsfiler.h
         apps/wuss/main.c
+        apps/wuss/options.c
+        apps/wuss/options.h
+        apps/wuss/pointer.c
+        apps/wuss/pointer.h
         apps/wuss/script.c
         apps/wuss/script.h
         apps/wuss/tasks/taskmanager/taskmanager.c
