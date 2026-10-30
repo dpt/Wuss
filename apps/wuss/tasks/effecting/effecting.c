@@ -41,6 +41,19 @@ static const char *const g_names[EFFECTING__LIMIT] =
   "Equalise"
 };
 
+/* the effects' glyphs, in the task's icon pool under
+ * resources/wuss-tasks/effecting/iconpool */
+static const char *const g_glyph_names[EFFECTING__LIMIT] =
+{
+  "clear",
+  "tone",
+  "grey",
+  "blur",
+  "sharpen",
+  "expand",
+  "equalise"
+};
+
 /* ----------------------------------------------------------------------- */
 
 /* Run one element from src into dst, which may be the same bitmap. */
@@ -204,7 +217,7 @@ static void effecting_item(int                   index,
     break;
   }
 
-  out->glyph = NULL;
+  out->glyph = ec->glyphs[el->type];
   out->label = ec->label;
 }
 
@@ -555,6 +568,7 @@ result_t effecting_create(wuss_t *wuss, effecting_task_t **out)
   effecting_task_t *task;
   wuss_task_t      *delegate;
   wuss_task_desc_t  delegate_desc;
+  int               i;
 
   task = calloc(1, sizeof(*task));
   if (task == NULL)
@@ -577,6 +591,16 @@ result_t effecting_create(wuss_t *wuss, effecting_task_t **out)
   task->delegate = delegate;
   /* No autoclose: QUIT is delivered at wuss_destroy instead. The windows
    * open with the first image */
+
+  rc = wuss_task_iconpool_load_resource(delegate, wuss_get_resources(wuss));
+  if (rc != result_OK)
+  {
+    wuss_task_destroy(delegate);
+    return rc;
+  }
+
+  for (i = 0; i < EFFECTING__LIMIT; i++)
+    task->glyphs[i] = wuss_task_iconpool_find(delegate, g_glyph_names[i]);
 
   rc = snapshot_saveas_create(&task->saveas, wuss, NULL, effecting_saveas_save,
                               task);

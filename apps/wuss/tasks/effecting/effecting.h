@@ -97,6 +97,7 @@ typedef struct effecting_task
   wuss_window_t       *list_window;
   wuss_gridview_t     *list;
   char                 label[EFFECTING_LABEL_LEN]; /* item callback */
+  const bitmap_t      *glyphs[EFFECTING__LIMIT]; /* borrowed from the pool */
   int                  drag_index; /* element being dragged, or -1 */
 
   char                 path[DPTLIB_MAXPATH]; /* file shown; "" until
