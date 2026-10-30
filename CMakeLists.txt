@@ -241,6 +241,8 @@ set(WUSS_ICON_SOURCES
     libraries/wuss/icon/create-array.c
     libraries/wuss/icon/delete.c
     libraries/wuss/icon/draw.c
+    libraries/wuss/icon/draw-menu-entry.c
+    libraries/wuss/icon/impl.h
     libraries/wuss/icon/free.c
     libraries/wuss/icon/from-spec.c
     libraries/wuss/helpers/icon-spec.c
