@@ -518,7 +518,8 @@ result_t painting_create_with(wuss_t                     *wuss,
 
   stageconfig_init(&task->stagecfg);
   task->stagecfg.pasteboard_min = 128;
-  
+  task->stagecfg.margin = 1;
+
   stage = painting_stage_size(task);
 
   /* painting_redraw draws the stage and the canvas on it over the whole
