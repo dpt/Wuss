@@ -2,6 +2,7 @@
 
 #ifdef WUSS_APP
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -129,8 +130,14 @@ static const size2d_t g_display_resolutions[] =
   { 1920, 1080 }
 };
 
-/* borrowed likewise, paired 1:1 with g_display_resolutions */
-static const char *const g_display_resolution_labels[NELEMS(g_display_resolutions)] =
+/* label of the entry past the list, which keeps the size in force: that
+ * size when it is unlisted (full screen follows the display), else
+ * "Current"; rewritten by display_resolution_index */
+static char g_display_current_label[24] = "Current";
+
+/* borrowed likewise, paired 1:1 with g_display_resolutions, plus the
+ * current-size entry */
+static const char *const g_display_resolution_labels[NELEMS(g_display_resolutions) + 1] =
 {
   "480 x 360",
   "640 x 480",
@@ -140,7 +147,8 @@ static const char *const g_display_resolution_labels[NELEMS(g_display_resolution
   "1280 x 720",
   "1280 x 800",
   "1366 x 768",
-  "1920 x 1080"
+  "1920 x 1080",
+  g_display_current_label
 };
 
 /* fixed set of window zooms the Zoom picker offers, 1x..4x: the entry index
@@ -182,7 +190,8 @@ static int display_depth_index(void)
   return 0;
 }
 
-/* the entry matching the current screen size; unlisted likewise */
+/* the entry matching the current screen size, or the current-size entry
+ * (relabelled with it) when unlisted */
 static int display_resolution_index(const wuss_t *wuss)
 {
   size2d_t size;
@@ -192,9 +201,15 @@ static int display_resolution_index(const wuss_t *wuss)
   for (i = 0; i < (int) NELEMS(g_display_resolutions); i++)
     if (g_display_resolutions[i].w == size.w &&
         g_display_resolutions[i].h == size.h)
-      return i;
+      break;
 
-  return 0;
+  if (i < (int) NELEMS(g_display_resolutions))
+    strcpy(g_display_current_label, "Current");
+  else
+    snprintf(g_display_current_label, sizeof(g_display_current_label),
+             "%d x %d", size.w, size.h);
+
+  return i;
 }
 
 /* show the settings actually in force, e.g. after app_set_mode refused a
@@ -214,9 +229,10 @@ static void display_sync(display_task_t *dc)
 static result_t display_change(display_task_t *dc)
 {
   result_t rc;
+  int      zoom;
   int      res;
   int      depth;
-  int      zoom;
+  size2d_t size;
 
   zoom = wuss_stringset_get_index(dc->zoom) + 1;
   wuss_frontend_zoom(g_tasks.frontend,
@@ -234,7 +250,9 @@ static result_t display_change(display_task_t *dc)
 
   res   = wuss_stringset_get_index(dc->resolution);
   depth = wuss_stringset_get_index(dc->colours);
-  rc    = app_set_mode(g_display_resolutions[res], g_display_depths[depth]);
+  size  = (res < (int) NELEMS(g_display_resolutions))
+        ? g_display_resolutions[res] : wuss_get_screen_size(dc->wuss);
+  rc    = app_set_mode(size, g_display_depths[depth]);
   if (rc != result_OK)
     display_sync(dc);
 

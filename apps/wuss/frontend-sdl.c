@@ -58,6 +58,12 @@ struct wuss_frontend
   int                  scr_width;
   int                  scr_height;
   int                  scale; /* device pixels per screen pixel; see WUSS_SDL_*_SCALE */
+  bool                 fullscreen; /* window is full screen: the screen
+                                    * resolution follows the display */
+  bool                 resize_pending; /* hand out a wuss_INPUT_RESIZE on
+                                        * the next poll */
+  size2d_t             windowed; /* screen size to go back to on leaving
+                                  * full screen */
   int                  depth; /* framebuffer bits per pixel: 32 (bgrx8888), 16 (rgb565), 15 (rgbx5551), 8 (p8), 4 (p4), 2 (p2) or 1 (p1) */
   void                *pixels; /* the private framebuffer handed to the caller */
   bitmap_t             conv; /* scratch bgrx8888 buffer for present()'s paletted
@@ -137,27 +143,52 @@ static int sdl_special_key(SDL_Keycode key)
   }
 }
 
-/* SDL delivers mouse coordinates in window space, which F2 can scale away
- * from the fixed-size Wuss screen and WUSS_SDL_BORDER offsets; map back down
- * to screen space. */
-static void sdl_pos_to_scr(SDL_Window *window,
-                           int         scr_width,
-                           int         scr_height,
-                           float       in_x,
-                           float       in_y,
-                           int        *out_x,
-                           int        *out_y)
+/* Where the Wuss screen sits in the window, in window units. Windowed, it
+ * fills the window inside WUSS_SDL_BORDER (stretched if the user resizes
+ * it). Full screen, it is drawn at exactly the zoom and centred, the
+ * leftover (less than a zoom step once the resolution follows the display)
+ * left black. */
+static SDL_FRect sdl_screen_rect(const wuss_frontend_t *fe)
 {
-  int win_w, win_h;
+  int       win_w, win_h;
+  SDL_FRect r;
 
-  SDL_GetWindowSize(window, &win_w, &win_h);
+  SDL_GetWindowSize(fe->window, &win_w, &win_h);
 
-  win_w -= 2 * WUSS_SDL_BORDER;
-  win_h -= 2 * WUSS_SDL_BORDER;
+  if (fe->fullscreen)
+  {
+    r.w = (float) (fe->scr_width  * fe->scale);
+    r.h = (float) (fe->scr_height * fe->scale);
+    r.x = SDL_floorf((win_w - r.w) / 2);
+    r.y = SDL_floorf((win_h - r.h) / 2);
+  }
+  else
+  {
+    r.x = WUSS_SDL_BORDER;
+    r.y = WUSS_SDL_BORDER;
+    r.w = (float) (win_w - 2 * WUSS_SDL_BORDER);
+    r.h = (float) (win_h - 2 * WUSS_SDL_BORDER);
+  }
+
+  return r;
+}
+
+/* SDL delivers mouse coordinates in window space, which F2 can scale away
+ * from the fixed-size Wuss screen and the border offsets; map back down to
+ * screen space. */
+static void sdl_pos_to_scr(const wuss_frontend_t *fe,
+                           float                  in_x,
+                           float                  in_y,
+                           int                   *out_x,
+                           int                   *out_y)
+{
+  SDL_FRect r;
+
+  r = sdl_screen_rect(fe);
 
   /* floor so the border's left/top edge maps to -1, not 0 */
-  *out_x = (int) SDL_floorf((in_x - WUSS_SDL_BORDER) * scr_width  / win_w);
-  *out_y = (int) SDL_floorf((in_y - WUSS_SDL_BORDER) * scr_height / win_h);
+  *out_x = (int) SDL_floorf((in_x - r.x) * fe->scr_width  / r.w);
+  *out_y = (int) SDL_floorf((in_y - r.y) * fe->scr_height / r.h);
 }
 
 /* ----------------------------------------------------------------------- */
@@ -260,6 +291,11 @@ result_t wuss_frontend_open(int               width,
   fe->scale      = scale;
   fe->depth      = depth;
 
+  /* SDL may not send ENTER_FULLSCREEN for a window created full screen */
+  fe->fullscreen     = fullscreen;
+  fe->resize_pending = fullscreen;
+  fe->windowed       = SIZE2D(width, height);
+
   fe->pixels = malloc((size_t) stride * height);
   if (fe->pixels == NULL)
   {
@@ -350,9 +386,13 @@ result_t wuss_frontend_resize(wuss_frontend_t *fe,
   void        *new_pixels;
   void        *new_conv;
   SDL_Texture *new_texture;
+  bool         resized;
+  int          win_w, win_h;
 
   if (!sdl_depth_valid(depth))
     return result_BAD_ARG;
+
+  resized = (width != fe->scr_width || height != fe->scr_height);
 
   stride = (width * sdl_depth_bpp(depth) + 7) >> 3;
 
@@ -402,9 +442,23 @@ result_t wuss_frontend_resize(wuss_frontend_t *fe,
     bitmap_init(&fe->conv, SIZE2D(width, height), pixelfmt_bgrx8888,
                width * sizeof(pixelfmt_bgrx8888_t), NULL, new_conv);
 
-  SDL_SetWindowSize(fe->window,
-                    width  * fe->scale + 2 * WUSS_SDL_BORDER,
-                    height * fe->scale + 2 * WUSS_SDL_BORDER);
+  if (!fe->fullscreen)
+  {
+    SDL_SetWindowSize(fe->window,
+                      width  * fe->scale + 2 * WUSS_SDL_BORDER,
+                      height * fe->scale + 2 * WUSS_SDL_BORDER);
+  }
+  else if (resized)
+  {
+    /* Full screen, the window keeps the display's size (resizing it would
+     * feed back through SDL_EVENT_WINDOW_RESIZED). A size picked here wins
+     * over a resize the zoom queued, and the zoom becomes the largest that
+     * fits it. */
+    fe->resize_pending = false;
+    SDL_GetWindowSize(fe->window, &win_w, &win_h);
+    fe->scale = MIN(win_w / width, win_h / height);
+    fe->scale = CLAMP(fe->scale, WUSS_SDL_MIN_SCALE, WUSS_SDL_MAX_SCALE);
+  }
 
   *pixels   = fe->pixels;
   *rowbytes = stride;
@@ -425,6 +479,27 @@ bool wuss_frontend_poll(wuss_frontend_t *fe, wuss_input_t *event)
       event->key  = (int) SDL_StepUTF8(&fe->text_pos, NULL);
       event->mods = fe->text_mods;
       return true;
+    }
+
+    if (fe->resize_pending)
+    {
+      size2d_t size;
+      int      win_w, win_h;
+
+      fe->resize_pending = false;
+      size = fe->windowed;
+      if (fe->fullscreen)
+      {
+        SDL_GetWindowSize(fe->window, &win_w, &win_h);
+        size = SIZE2D(win_w / fe->scale, win_h / fe->scale);
+      }
+
+      if (size.w != fe->scr_width || size.h != fe->scr_height)
+      {
+        event->kind = wuss_INPUT_RESIZE;
+        event->size = size;
+        return true;
+      }
     }
 
     if (!SDL_PollEvent(&ev))
@@ -517,8 +592,7 @@ bool wuss_frontend_poll(wuss_frontend_t *fe, wuss_input_t *event)
       {
         int x, y;
 
-        sdl_pos_to_scr(fe->window, fe->scr_width, fe->scr_height,
-                       ev.button.x, ev.button.y, &x, &y);
+        sdl_pos_to_scr(fe, ev.button.x, ev.button.y, &x, &y);
         event->kind   = wuss_INPUT_MOUSE_DOWN;
         event->pos    = POINT(x, y);
         event->button = sdl_button_to_wuss(ev.button.button);
@@ -530,8 +604,7 @@ bool wuss_frontend_poll(wuss_frontend_t *fe, wuss_input_t *event)
       {
         int x, y;
 
-        sdl_pos_to_scr(fe->window, fe->scr_width, fe->scr_height,
-                       ev.button.x, ev.button.y, &x, &y);
+        sdl_pos_to_scr(fe, ev.button.x, ev.button.y, &x, &y);
         event->kind   = wuss_INPUT_MOUSE_UP;
         event->pos    = POINT(x, y);
         event->button = sdl_button_to_wuss(ev.button.button);
@@ -543,8 +616,7 @@ bool wuss_frontend_poll(wuss_frontend_t *fe, wuss_input_t *event)
       {
         int x, y;
 
-        sdl_pos_to_scr(fe->window, fe->scr_width, fe->scr_height,
-                       ev.motion.x, ev.motion.y, &x, &y);
+        sdl_pos_to_scr(fe, ev.motion.x, ev.motion.y, &x, &y);
         event->kind = wuss_INPUT_MOUSE_MOVE;
         event->pos  = POINT(x, y);
         event->mods = sdl_mods_to_wuss(SDL_GetModState());
@@ -555,13 +627,31 @@ bool wuss_frontend_poll(wuss_frontend_t *fe, wuss_input_t *event)
       event->kind = wuss_INPUT_MOUSE_LEAVE;
       return true;
 
+    case SDL_EVENT_WINDOW_ENTER_FULLSCREEN:
+      if (!fe->fullscreen)
+        fe->windowed = SIZE2D(fe->scr_width, fe->scr_height);
+      fe->fullscreen     = true;
+      fe->resize_pending = true;
+      continue;
+
+    case SDL_EVENT_WINDOW_LEAVE_FULLSCREEN:
+      fe->fullscreen     = false;
+      fe->resize_pending = true;
+      continue;
+
+    case SDL_EVENT_WINDOW_RESIZED:
+      /* the full-screen size can settle after ENTER_FULLSCREEN (macOS
+       * animates into it), or the display mode can change under it */
+      if (fe->fullscreen)
+        fe->resize_pending = true;
+      continue;
+
     case SDL_EVENT_MOUSE_WHEEL:
       {
         int   x, y;
         float wheel;
 
-        sdl_pos_to_scr(fe->window, fe->scr_width, fe->scr_height,
-                       ev.wheel.mouse_x, ev.wheel.mouse_y, &x, &y);
+        sdl_pos_to_scr(fe, ev.wheel.mouse_x, ev.wheel.mouse_y, &x, &y);
         wheel = ev.wheel.y;
 #ifdef __EMSCRIPTEN__
         wheel *= 4; /* browser wheel steps are small; scale before truncating */
@@ -582,7 +672,6 @@ void wuss_frontend_present(wuss_frontend_t *fe,
                            const bitmap_t  *bm,
                            const box_t     *dirty)
 {
-  int       win_w, win_h;
   SDL_FRect screen;
   Uint64    now;
 
@@ -652,15 +741,12 @@ present:
   {
     wuss_crt_render(fe->crt, fe->window,
                     (fe->depth == 32) ? bm->base : fe->conv.base,
-                    fe->scr_width, fe->scr_height, WUSS_SDL_BORDER);
+                    fe->scr_width, fe->scr_height,
+                    (int) sdl_screen_rect(fe).x);
   }
   else
   {
-    SDL_GetWindowSize(fe->window, &win_w, &win_h);
-    screen.x = WUSS_SDL_BORDER;
-    screen.y = WUSS_SDL_BORDER;
-    screen.w = (float) (win_w - 2 * WUSS_SDL_BORDER);
-    screen.h = (float) (win_h - 2 * WUSS_SDL_BORDER);
+    screen = sdl_screen_rect(fe);
 
     SDL_SetRenderDrawColor(fe->renderer, 0, 0, 0, 255);
     SDL_RenderClear(fe->renderer);
@@ -688,6 +774,12 @@ void wuss_frontend_zoom(wuss_frontend_t *fe, int delta)
     return;
 
   fe->scale = scale;
+  if (fe->fullscreen)
+  {
+    /* the window can't grow: the resolution follows the zoom instead */
+    fe->resize_pending = true;
+    return;
+  }
   SDL_SetWindowSize(fe->window,
                     fe->scr_width  * scale + 2 * WUSS_SDL_BORDER,
                     fe->scr_height * scale + 2 * WUSS_SDL_BORDER);
@@ -751,18 +843,15 @@ void wuss_frontend_capture_mouse(wuss_frontend_t *fe, bool capture)
 
 void wuss_frontend_warp_pointer(wuss_frontend_t *fe, point_t p)
 {
-  int win_w, win_h;
+  SDL_FRect r;
 
-  SDL_GetWindowSize(fe->window, &win_w, &win_h);
-
-  win_w -= 2 * WUSS_SDL_BORDER;
-  win_h -= 2 * WUSS_SDL_BORDER;
+  r = sdl_screen_rect(fe);
 
   /* the inverse of sdl_pos_to_scr, aimed at the middle of the screen pixel
    * so its floor lands back on "p" */
   SDL_WarpMouseInWindow(fe->window,
-                        WUSS_SDL_BORDER + (p.x + 0.5f) * win_w / fe->scr_width,
-                        WUSS_SDL_BORDER + (p.y + 0.5f) * win_h / fe->scr_height);
+                        r.x + (p.x + 0.5f) * r.w / fe->scr_width,
+                        r.y + (p.y + 0.5f) * r.h / fe->scr_height);
 }
 
 void wuss_frontend_set_palette(wuss_frontend_t *fe,

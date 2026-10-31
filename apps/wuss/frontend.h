@@ -13,6 +13,7 @@
 #include "framebuf/pixelfmt.h"
 #include "geom/box.h"
 #include "geom/point.h"
+#include "geom/size.h"
 #include "wuss/wuss.h"
 
 /* One backend drives the demo: SDL on the desktop, native VDU/OS_Mouse calls
@@ -35,7 +36,9 @@ typedef enum wuss_input_kind
   wuss_INPUT_MOUSE_LEAVE,   /* pointer left the window; next move returns */
   wuss_INPUT_WHEEL,         /* .pos, .wheel */
   wuss_INPUT_KEY,           /* .key, .mods: a press or autorepeat */
-  wuss_INPUT_KEY_UP         /* .key, .mods: a release (unshifted) */
+  wuss_INPUT_KEY_UP,        /* .key, .mods: a release (unshifted) */
+  wuss_INPUT_RESIZE         /* .size: the backend wants this screen size,
+                             * e.g. to follow a full-screen display */
 }
 wuss_input_kind_t;
 
@@ -47,6 +50,7 @@ typedef struct wuss_input
   int                  wheel;  /* wheel delta, +ve = up */
   int                  key;    /* Unicode code point or wuss_KEY_* */
   wuss_key_modifiers_t mods;
+  size2d_t             size;   /* screen size in pixels */
 }
 wuss_input_t;
 

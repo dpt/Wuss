@@ -354,6 +354,11 @@ static void wuss_frame(void *arg)
       wuss_key_up(c->wuss, ev.key, ev.mods);
       break;
 
+    case wuss_INPUT_RESIZE:
+      /* app_set_mode leaves the screen alone if it fails */
+      (void) app_set_mode(ev.size, app_get_depth());
+      break;
+
     default:
       break;
     }
