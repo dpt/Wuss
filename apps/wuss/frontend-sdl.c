@@ -226,6 +226,7 @@ result_t wuss_frontend_open(int               width,
                             int               npalette,
                             int               depth,
                             int               scale,
+                            bool              fullscreen,
                             void            **pixels,
                             int              *rowbytes,
                             pixelfmt_t       *fmt,
@@ -297,7 +298,8 @@ result_t wuss_frontend_open(int               width,
 
   fe->window = SDL_CreateWindow(WUSS_WINDOW_TITLE,
                                 width  * fe->scale + 2 * WUSS_SDL_BORDER,
-                                height * fe->scale + 2 * WUSS_SDL_BORDER, 0);
+                                height * fe->scale + 2 * WUSS_SDL_BORDER,
+                                fullscreen ? SDL_WINDOW_FULLSCREEN : 0);
   if (fe->window == NULL)
   {
     fprintf(stderr, "Error: SDL_CreateWindow: %s\n", SDL_GetError());
@@ -438,6 +440,16 @@ bool wuss_frontend_poll(wuss_frontend_t *fe, wuss_input_t *event)
       {
         wuss_key_modifiers_t mods;
         int                  key;
+
+        /* Alt-Return toggles full screen; the frontend keeps it */
+        if ((ev.key.key == SDLK_RETURN || ev.key.key == SDLK_KP_ENTER) &&
+            (ev.key.mod & SDL_KMOD_ALT) && !ev.key.repeat)
+        {
+          SDL_SetWindowFullscreen(fe->window,
+                                  !(SDL_GetWindowFlags(fe->window) &
+                                    SDL_WINDOW_FULLSCREEN));
+          continue;
+        }
 
         mods = sdl_mods_to_wuss(ev.key.mod);
         key  = sdl_special_key(ev.key.key);

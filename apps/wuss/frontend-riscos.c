@@ -300,6 +300,7 @@ result_t wuss_frontend_open(int               width,
                             int               npalette,
                             int               depth,
                             int               scale,
+                            bool              fullscreen,
                             void            **pixels,
                             int              *rowbytes,
                             pixelfmt_t       *fmt,
@@ -314,6 +315,7 @@ result_t wuss_frontend_open(int               width,
 
   /* the screen mode is the whole display: there is no window to zoom */
   NOT_USED(scale);
+  NOT_USED(fullscreen);
 
   msg[0] = '\0';
 

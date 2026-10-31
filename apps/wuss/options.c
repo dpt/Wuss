@@ -20,7 +20,8 @@
 static const char wuss_usage[] =
   "usage: wuss [-r|--resources DIR] [-p|--palette NAME] "
   "[-f|--font FAMILY] "
-  "[-d|--depth 1|2|4|8|15|16|32] [-s|--scale N] [--res WIDTHxHEIGHT] "
+  "[-d|--depth 1|2|4|8|15|16|32] [-s|--scale N] [--fullscreen] "
+  "[--res WIDTHxHEIGHT] "
   "[-t|--tasks all|NAME[,NAME...]] [--root DIR] [--crt] [--pointer] "
   "[--script FILE]\n";
 
@@ -47,10 +48,13 @@ static bool parse_res(const char *s, int *w, int *h)
 
 #ifndef __riscos
 
-/* --res, --crt and --pointer have no short form, so they are given
- * longopt-only codes past the ASCII range getopt_long uses for short
- * options. */
-enum { OPT_RES = 256, OPT_CRT, OPT_POINTER, OPT_ROOT, OPT_SCRIPT };
+/* --res, --crt, --pointer, --fullscreen etc. have no short form, so they
+ * are given longopt-only codes past the ASCII range getopt_long uses for
+ * short options. */
+enum
+{
+  OPT_RES = 256, OPT_CRT, OPT_POINTER, OPT_ROOT, OPT_SCRIPT, OPT_FULLSCREEN
+};
 
 /* Desktop: getopt_long. Accepts the short forms and the "--" long forms; the
  * historical single-dash long spellings (-resources) are no longer accepted.
@@ -59,18 +63,19 @@ bool options_parse(int argc, char *argv[], wuss_options_t *opts)
 {
   static const struct option longopts[] =
   {
-    { "resources", required_argument, NULL, 'r'         },
-    { "palette",   required_argument, NULL, 'p'         },
-    { "font",      required_argument, NULL, 'f'         },
-    { "depth",     required_argument, NULL, 'd'         },
-    { "scale",     required_argument, NULL, 's'         },
-    { "res",       required_argument, NULL, OPT_RES     },
-    { "tasks",     required_argument, NULL, 't'         },
-    { "root",      required_argument, NULL, OPT_ROOT    },
-    { "crt",       no_argument,       NULL, OPT_CRT     },
-    { "pointer",   no_argument,       NULL, OPT_POINTER },
-    { "script",    required_argument, NULL, OPT_SCRIPT  },
-    { NULL,        0,                 NULL, 0           }
+    { "resources",  required_argument, NULL, 'r'            },
+    { "palette",    required_argument, NULL, 'p'            },
+    { "font",       required_argument, NULL, 'f'            },
+    { "depth",      required_argument, NULL, 'd'            },
+    { "scale",      required_argument, NULL, 's'            },
+    { "res",        required_argument, NULL, OPT_RES        },
+    { "tasks",      required_argument, NULL, 't'            },
+    { "root",       required_argument, NULL, OPT_ROOT       },
+    { "crt",        no_argument,       NULL, OPT_CRT        },
+    { "pointer",    no_argument,       NULL, OPT_POINTER    },
+    { "script",     required_argument, NULL, OPT_SCRIPT     },
+    { "fullscreen", no_argument,       NULL, OPT_FULLSCREEN },
+    { NULL,         0,                 NULL, 0              }
   };
 
   int c;
@@ -91,6 +96,7 @@ bool options_parse(int argc, char *argv[], wuss_options_t *opts)
     case 't': opts->tasks        = optarg;       break;
     case OPT_ROOT: opts->root    = optarg;       break;
     case OPT_SCRIPT: opts->script = optarg;      break;
+    case OPT_FULLSCREEN: opts->fullscreen = true; break;
     case OPT_CRT:
       g_tasks.crt = true;
       break;
@@ -140,6 +146,8 @@ bool options_parse(int argc, char *argv[], wuss_options_t *opts)
       opts->root = argv[++i];
     else if (strcmp(argv[i], "-script") == 0 && i + 1 < argc)
       opts->script = argv[++i];
+    else if (strcmp(argv[i], "-fullscreen") == 0)
+      opts->fullscreen = true;
 
   return true;
 }

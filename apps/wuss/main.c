@@ -469,6 +469,7 @@ static result_t run_wuss(const char *resources,
                          const char *font_family,
                          int         depth,
                          int         scale,
+                         bool        fullscreen,
                          int         scr_width,
                          int         scr_height,
                          const char *tasks)
@@ -581,7 +582,8 @@ static result_t run_wuss(const char *resources,
   }
 
   rc = wuss_frontend_open(scr_width, scr_height, palette, NELEMS(palette),
-                          depth, scale, &pixels, &rowbytes, &fmt, &frontend);
+                          depth, scale, fullscreen, &pixels, &rowbytes, &fmt,
+                          &frontend);
   logf_info("wuss: wuss_frontend_open -> rc=0x%X (%s)", rc, wuss_result_string(rc));
   if (rc != result_OK)
     goto Failure;
@@ -843,6 +845,7 @@ int main(int argc, char *argv[])
   opts.font_family  = "DPT-Digits";
   opts.depth        = 4;
   opts.scale        = 0; /* 0 = let the frontend pick its default */
+  opts.fullscreen   = false;
   opts.res_width    = 640;
   opts.res_height   = 480;
 #ifdef __EMSCRIPTEN__
@@ -869,7 +872,8 @@ int main(int argc, char *argv[])
   }
 
   rc = run_wuss(opts.resources, opts.palette_name, opts.font_family,
-               opts.depth, opts.scale, opts.res_width, opts.res_height, opts.tasks);
+               opts.depth, opts.scale, opts.fullscreen, opts.res_width,
+               opts.res_height, opts.tasks);
 
   if (g.scripted && script_close() != result_OK)
     rc = result_TEST_FAILED;

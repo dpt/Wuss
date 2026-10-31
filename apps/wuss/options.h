@@ -16,6 +16,7 @@ typedef struct wuss_options
   const char *font_family;  /* -f/--font: system font family directory name */
   int         depth;        /* -d/--depth: framebuffer bpp (1, 2, 4, 8, 15, 16 or 32) */
   int         scale;        /* -s/--scale: initial window zoom, 0 = default */
+  bool        fullscreen;   /* --fullscreen: start full screen */
   int         res_width;    /* --res WIDTHxHEIGHT: screen size in pixels */
   int         res_height;
   const char *tasks;        /* -t/--tasks: comma-separated launcher task
