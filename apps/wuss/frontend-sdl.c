@@ -35,12 +35,13 @@
  * branch on it. */
 
 /* Integer window zoom: the fixed Wuss screen is drawn at this many device
- * pixels per screen pixel. The initial value comes from -scale (0 => use the
- * default here); F2 steps it up, Shift-F2 down, clamped to
- * [WUSS_SDL_MIN_SCALE, WUSS_SDL_MAX_SCALE]. */
+ * pixels per screen pixel; a Retina display has two device pixels per
+ * window unit. The initial value comes from -scale (0 => the default here,
+ * times the display's content scale); Ctrl-= steps it up, Ctrl-- down,
+ * clamped to [WUSS_SDL_MIN_SCALE, WUSS_SDL_MAX_SCALE]. */
 #define WUSS_SDL_DEFAULT_SCALE 2
 #define WUSS_SDL_MIN_SCALE     1
-#define WUSS_SDL_MAX_SCALE     4
+#define WUSS_SDL_MAX_SCALE     8
 
 /* Black margin around the Wuss screen, in window units, independent of the
  * zoom. */
@@ -143,17 +144,20 @@ static int sdl_special_key(SDL_Keycode key)
   }
 }
 
-/* Where the Wuss screen sits in the window, in window units. Windowed, it
- * fills the window inside WUSS_SDL_BORDER (stretched if the user resizes
- * it). Full screen, it is drawn at exactly the zoom and centred, the
- * leftover (less than a zoom step once the resolution follows the display)
- * left black. */
+/* Where the Wuss screen sits in the window, in device pixels (the window
+ * asks for high pixel density, so on a Retina display these are twice its
+ * window units). Windowed, it fills the window inside WUSS_SDL_BORDER
+ * (stretched if the user resizes it). Full screen, it is drawn at exactly
+ * the zoom and centred, the leftover (less than a zoom step once the
+ * resolution follows the display) left black. */
 static SDL_FRect sdl_screen_rect(const wuss_frontend_t *fe)
 {
   int       win_w, win_h;
+  float     border;
   SDL_FRect r;
 
-  SDL_GetWindowSize(fe->window, &win_w, &win_h);
+  SDL_GetWindowSizeInPixels(fe->window, &win_w, &win_h);
+  border = WUSS_SDL_BORDER * SDL_GetWindowPixelDensity(fe->window);
 
   if (fe->fullscreen)
   {
@@ -164,31 +168,47 @@ static SDL_FRect sdl_screen_rect(const wuss_frontend_t *fe)
   }
   else
   {
-    r.x = WUSS_SDL_BORDER;
-    r.y = WUSS_SDL_BORDER;
-    r.w = (float) (win_w - 2 * WUSS_SDL_BORDER);
-    r.h = (float) (win_h - 2 * WUSS_SDL_BORDER);
+    r.x = border;
+    r.y = border;
+    r.w = win_w - 2 * border;
+    r.h = win_h - 2 * border;
   }
 
   return r;
 }
 
-/* SDL delivers mouse coordinates in window space, which F2 can scale away
- * from the fixed-size Wuss screen and the border offsets; map back down to
- * screen space. */
+/* Size the window to show the screen at the zoom inside the border. The
+ * zoom is in device pixels, the window size in window units. */
+static void sdl_fit_window(const wuss_frontend_t *fe)
+{
+  float density;
+
+  density = SDL_GetWindowPixelDensity(fe->window);
+  SDL_SetWindowSize(fe->window,
+                    (int) SDL_ceilf(fe->scr_width  * fe->scale / density) +
+                    2 * WUSS_SDL_BORDER,
+                    (int) SDL_ceilf(fe->scr_height * fe->scale / density) +
+                    2 * WUSS_SDL_BORDER);
+}
+
+/* SDL delivers mouse coordinates in window units, which the zoom can scale
+ * away from the fixed-size Wuss screen and the border offsets; map back
+ * down to screen space. */
 static void sdl_pos_to_scr(const wuss_frontend_t *fe,
                            float                  in_x,
                            float                  in_y,
                            int                   *out_x,
                            int                   *out_y)
 {
+  float     density;
   SDL_FRect r;
 
-  r = sdl_screen_rect(fe);
+  density = SDL_GetWindowPixelDensity(fe->window);
+  r       = sdl_screen_rect(fe);
 
   /* floor so the border's left/top edge maps to -1, not 0 */
-  *out_x = (int) SDL_floorf((in_x - r.x) * fe->scr_width  / r.w);
-  *out_y = (int) SDL_floorf((in_y - r.y) * fe->scr_height / r.h);
+  *out_x = (int) SDL_floorf((in_x * density - r.x) * fe->scr_width  / r.w);
+  *out_y = (int) SDL_floorf((in_y * density - r.y) * fe->scr_height / r.h);
 }
 
 /* ----------------------------------------------------------------------- */
@@ -276,10 +296,6 @@ result_t wuss_frontend_open(int               width,
     return result_BAD_ARG;
   }
 
-  if (scale <= 0)
-    scale = WUSS_SDL_DEFAULT_SCALE;
-  scale = CLAMP(scale, WUSS_SDL_MIN_SCALE, WUSS_SDL_MAX_SCALE);
-
   stride = (width * sdl_depth_bpp(depth) + 7) >> 3;
 
   fe = calloc(1, sizeof(*fe));
@@ -332,15 +348,26 @@ result_t wuss_frontend_open(int               width,
    * click" bug. */
   SDL_SetHint(SDL_HINT_MOUSE_FOCUS_CLICKTHROUGH, "1");
 
+  /* the default zoom keeps the screen the same size in window units on
+   * any display: a Retina display (content scale 2) doubles it */
+  if (scale <= 0)
+    scale = (int) SDL_lroundf(WUSS_SDL_DEFAULT_SCALE *
+                              SDL_GetDisplayContentScale(SDL_GetPrimaryDisplay()));
+  fe->scale = CLAMP(scale, WUSS_SDL_MIN_SCALE, WUSS_SDL_MAX_SCALE);
+
   fe->window = SDL_CreateWindow(WUSS_WINDOW_TITLE,
                                 width  * fe->scale + 2 * WUSS_SDL_BORDER,
                                 height * fe->scale + 2 * WUSS_SDL_BORDER,
-                                fullscreen ? SDL_WINDOW_FULLSCREEN : 0);
+                                SDL_WINDOW_HIGH_PIXEL_DENSITY |
+                                (fullscreen ? SDL_WINDOW_FULLSCREEN : 0));
   if (fe->window == NULL)
   {
     fprintf(stderr, "Error: SDL_CreateWindow: %s\n", SDL_GetError());
     goto failure;
   }
+  /* the density is only known now the window exists */
+  if (!fullscreen)
+    sdl_fit_window(fe);
 
 #ifndef __EMSCRIPTEN__
   /* Emscripten's keypress-based TEXT_INPUT is unreliable; its KEY_DOWN
@@ -444,9 +471,7 @@ result_t wuss_frontend_resize(wuss_frontend_t *fe,
 
   if (!fe->fullscreen)
   {
-    SDL_SetWindowSize(fe->window,
-                      width  * fe->scale + 2 * WUSS_SDL_BORDER,
-                      height * fe->scale + 2 * WUSS_SDL_BORDER);
+    sdl_fit_window(fe);
   }
   else if (resized)
   {
@@ -455,7 +480,7 @@ result_t wuss_frontend_resize(wuss_frontend_t *fe,
      * over a resize the zoom queued, and the zoom becomes the largest that
      * fits it. */
     fe->resize_pending = false;
-    SDL_GetWindowSize(fe->window, &win_w, &win_h);
+    SDL_GetWindowSizeInPixels(fe->window, &win_w, &win_h);
     fe->scale = MIN(win_w / width, win_h / height);
     fe->scale = CLAMP(fe->scale, WUSS_SDL_MIN_SCALE, WUSS_SDL_MAX_SCALE);
   }
@@ -490,7 +515,7 @@ bool wuss_frontend_poll(wuss_frontend_t *fe, wuss_input_t *event)
       size = fe->windowed;
       if (fe->fullscreen)
       {
-        SDL_GetWindowSize(fe->window, &win_w, &win_h);
+        SDL_GetWindowSizeInPixels(fe->window, &win_w, &win_h);
         size = SIZE2D(win_w / fe->scale, win_h / fe->scale);
       }
 
@@ -742,7 +767,8 @@ present:
     wuss_crt_render(fe->crt, fe->window,
                     (fe->depth == 32) ? bm->base : fe->conv.base,
                     fe->scr_width, fe->scr_height,
-                    (int) sdl_screen_rect(fe).x);
+                    (int) (sdl_screen_rect(fe).x /
+                           SDL_GetWindowPixelDensity(fe->window)));
   }
   else
   {
@@ -780,9 +806,7 @@ void wuss_frontend_zoom(wuss_frontend_t *fe, int delta)
     fe->resize_pending = true;
     return;
   }
-  SDL_SetWindowSize(fe->window,
-                    fe->scr_width  * scale + 2 * WUSS_SDL_BORDER,
-                    fe->scr_height * scale + 2 * WUSS_SDL_BORDER);
+  sdl_fit_window(fe);
 }
 
 int wuss_frontend_get_zoom(const wuss_frontend_t *fe)
@@ -843,15 +867,17 @@ void wuss_frontend_capture_mouse(wuss_frontend_t *fe, bool capture)
 
 void wuss_frontend_warp_pointer(wuss_frontend_t *fe, point_t p)
 {
+  float     density;
   SDL_FRect r;
 
-  r = sdl_screen_rect(fe);
+  density = SDL_GetWindowPixelDensity(fe->window);
+  r       = sdl_screen_rect(fe);
 
   /* the inverse of sdl_pos_to_scr, aimed at the middle of the screen pixel
    * so its floor lands back on "p" */
   SDL_WarpMouseInWindow(fe->window,
-                        r.x + (p.x + 0.5f) * r.w / fe->scr_width,
-                        r.y + (p.y + 0.5f) * r.h / fe->scr_height);
+                        (r.x + (p.x + 0.5f) * r.w / fe->scr_width) / density,
+                        (r.y + (p.y + 0.5f) * r.h / fe->scr_height) / density);
 }
 
 void wuss_frontend_set_palette(wuss_frontend_t *fe,

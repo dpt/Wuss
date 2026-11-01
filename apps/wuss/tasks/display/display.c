@@ -151,14 +151,19 @@ static const char *const g_display_resolution_labels[NELEMS(g_display_resolution
   g_display_current_label
 };
 
-/* fixed set of window zooms the Zoom picker offers, 1x..4x: the entry index
+/* fixed set of window zooms the Zoom picker offers, 1x..8x (device pixels,
+ * so 2x on a Retina display looks like 1x elsewhere): the entry index
  * plus one is the zoom */
 static const char *const g_display_zoom_labels[] =
 {
   "1x",
   "2x",
   "3x",
-  "4x"
+  "4x",
+  "5x",
+  "6x",
+  "7x",
+  "8x"
 };
 
 /* where the window opens: bottom right of the safe area, above the icon
