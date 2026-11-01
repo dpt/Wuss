@@ -1,0 +1,6 @@
+# RISC-OS.theme -- Wuss theme: RISC OS Wimp colours
+
+font     GrongyUI
+palette  RISC-OS
+titlebar 0
+icons    wuss/iconpool

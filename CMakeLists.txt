@@ -461,6 +461,8 @@ if(BUILD_APPS)
         apps/wuss/pointer.h
         apps/wuss/script.c
         apps/wuss/script.h
+        apps/wuss/theme.c
+        apps/wuss/theme.h
         apps/wuss/tasks/taskmanager/taskmanager.c
         apps/wuss/tasks/taskmanager/taskmanager.h
         apps/wuss/tasks/tasks.c

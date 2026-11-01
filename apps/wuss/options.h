@@ -12,8 +12,11 @@
 typedef struct wuss_options
 {
   const char *resources;    /* -r/--resources: fixture root */
-  const char *palette_name; /* -p/--palette: startup *.hex leafname */
-  const char *font_family;  /* -f/--font: system font family directory name */
+  const char *theme;        /* --theme: startup theme name, see theme.h */
+  const char *palette_name; /* -p/--palette: startup *.hex leafname, NULL
+                             * for the theme's */
+  const char *font_family;  /* -f/--font: system font family directory
+                             * name, NULL for the theme's */
   int         depth;        /* -d/--depth: framebuffer bpp (1, 2, 4, 8, 15, 16 or 32) */
   int         scale;        /* -s/--scale: initial window zoom, 0 = default */
   bool        fullscreen;   /* --fullscreen: start full screen */

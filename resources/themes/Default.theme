@@ -1,0 +1,6 @@
+# Default.theme -- Wuss theme: PICO-8 colours, DPT-Digits
+
+font     DPT-Digits
+palette  PICO-8
+titlebar 0
+icons    wuss/iconpool

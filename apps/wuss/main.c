@@ -33,6 +33,7 @@
 #include "pointer.h"
 #include "script.h"
 #include "tasks/tasks.h"
+#include "theme.h"
 
 #include "tasks/appsfiler/appsfiler.h"
 #include "tasks/taskmanager/taskmanager.h"
@@ -83,78 +84,6 @@ static struct
   unsigned int script_ms;
 }
 g;
-
-/* Fill config with the chrome colours for the PICO-8 (default) or RISC OS
- * 16-colour Wimp palette. */
-static void fill_chrome_config(wuss_config_t *config, int use_wimp16)
-{
-  /* fields left at 0 (mouse timings, ...) take wuss's defaults */
-  memset(config, 0, sizeof(*config));
-
-  config->titlebar_height = 0;
-  config->backdrop.fill.pattern = screen_PATTERN_DOTS;
-
-  if (use_wimp16)
-  {
-    config->furniture.title.bg        = palette_WIMP16_GREY_75;
-    config->furniture.title.fg        = palette_WIMP16_BLACK;
-    config->furniture.title.focus_bg  = palette_WIMP16_CREAM;
-    config->furniture.outline         = palette_WIMP16_BLACK;
-    config->furniture.back            = palette_WIMP16_GREEN;
-    config->furniture.close           = palette_WIMP16_RED;
-    config->furniture.toggle          = palette_WIMP16_ORANGE;
-    config->furniture.resize          = palette_WIMP16_LIGHT_BLUE;
-    config->furniture.scroll.arrows   = palette_WIMP16_GREY_50;
-    config->furniture.scroll.wells    = palette_WIMP16_GREY_62;
-    config->furniture.scroll.sausages = palette_WIMP16_GREY_87;
-    config->furniture.scroll.active   = palette_WIMP16_CREAM;
-    config->furniture.pressed         = palette_WIMP16_ORANGE;
-    config->bevel.light               = palette_WIMP16_WHITE;
-    config->bevel.dark                = palette_WIMP16_GREY_50;
-    config->bevel.divider             = palette_WIMP16_GREY_75;
-    config->button.bg                 = palette_WIMP16_GREY_87;
-    config->button.fg                 = palette_WIMP16_BLACK;
-    config->button.pressed            = palette_WIMP16_GREY_62;
-    config->accent.colour             = palette_WIMP16_ORANGE;
-    config->backdrop.fill.colour           = palette_WIMP16_GREY_37;
-    config->backdrop.fill.pattern_bg       = palette_WIMP16_GREY_50;
-    config->body.window               = palette_WIMP16_GREY_87;
-    config->body.menu                 = palette_WIMP16_WHITE;
-    config->slider.track              = palette_WIMP16_WHITE;
-    config->slider.value              = palette_WIMP16_GREY_50;
-    config->slider.surround           = wuss_NO_BACKGROUND;
-  }
-  else
-  {
-    config->furniture.title.bg        = palette_PICO8_DARK_BLUE;
-    config->furniture.title.fg        = palette_PICO8_WHITE;
-    config->furniture.title.focus_bg  = palette_PICO8_BLUE;
-    config->furniture.outline         = palette_PICO8_BLACK;
-    config->furniture.back            = palette_PICO8_GREEN;
-    config->furniture.close           = palette_PICO8_RED;
-    config->furniture.toggle          = palette_PICO8_ORANGE;
-    config->furniture.resize          = palette_PICO8_LAVENDER;
-    config->furniture.scroll.arrows   = palette_PICO8_BLUE;
-    config->furniture.scroll.wells    = palette_PICO8_DARK_BLUE;
-    config->furniture.scroll.sausages = palette_PICO8_LIGHT_GREY;
-    config->furniture.scroll.active   = palette_PICO8_WHITE;
-    config->furniture.pressed         = palette_PICO8_ORANGE;
-    config->bevel.light               = palette_PICO8_WHITE;
-    config->bevel.dark                = palette_PICO8_DARK_GREY;
-    config->bevel.divider             = palette_PICO8_LAVENDER;
-    config->button.bg                 = palette_PICO8_LIGHT_GREY;
-    config->button.fg                 = palette_PICO8_BLACK;
-    config->button.pressed            = palette_PICO8_LAVENDER;
-    config->accent.colour             = palette_PICO8_ORANGE;
-    config->backdrop.fill.colour           = palette_PICO8_LAVENDER;
-    config->backdrop.fill.pattern_bg       = palette_PICO8_LIGHT_GREY;
-    config->body.window               = palette_PICO8_LIGHT_GREY;
-    config->body.menu                 = palette_PICO8_WHITE;
-    config->slider.track              = palette_PICO8_WHITE;
-    config->slider.value              = palette_PICO8_DARK_GREY;
-    config->slider.surround           = wuss_NO_BACKGROUND;
-  }
-}
 
 /* Redraw the whole screen one pixel at a time: each wuss_redraw_dirty call is
  * flushed before the next pixel is invalidated, so no two pixels are ever
@@ -469,19 +398,20 @@ static void wuss_frame(void *arg)
  * picker menu swaps the system palette live (wuss_set_palette, picked up by
  * menu_handle's wuss_EVENT_PALETTE case); the quit input or closing the
  * window exits */
-static result_t run_wuss(const char *resources,
-                         const char *palette_name,
-                         const char *font_family,
-                         int         depth,
-                         int         scale,
-                         bool        fullscreen,
-                         int         scr_width,
-                         int         scr_height,
-                         const char *tasks)
+static result_t run_wuss(const char    *resources,
+                         const theme_t *theme,
+                         int            depth,
+                         int            scale,
+                         bool           fullscreen,
+                         int            scr_width,
+                         int            scr_height,
+                         const char    *tasks)
 {
   static const char symbols_name[] = "Symbols Regular";
 
   result_t            rc;
+  const char         *palette_name;
+  const char         *font_family;
   bmfontfamily_t     *family;
   const bmfontface_t *regular;
   const bmfontface_t *bold;
@@ -501,9 +431,10 @@ static result_t run_wuss(const char *resources,
                                          * needs (p8 reads all 256) */
   wuss_t          *wuss;
   wuss_frontend_t *frontend;
-  bool             use_wimp16;
-  int              palette_index;
   int              scr_nentries;
+
+  palette_name = theme->palette;
+  font_family  = theme->font;
 
   /* everything the Failure path frees, so an early goto frees nothing */
   nfonts    = 0;
@@ -512,14 +443,9 @@ static result_t run_wuss(const char *resources,
   wuss      = NULL;
 
   {
-    /* palette_name (from -palette, default "PICO-8") names a *.hex file under
-     * resources/palettes, extension stripped, e.g. "RISC-OS". Chrome was
-     * never derived from *.hex content (see fill_chrome_config), so it stays
-     * keyed by whether the startup file is "RISC-OS" specifically, not by
-     * whatever the picker menu later loads. */
-    use_wimp16 = (strcmp(palette_name, "RISC-OS") == 0);
-    palette_index = use_wimp16 ? 1 : 0;
-
+    /* palette_name names a *.hex file under resources/wuss-tasks/palettes,
+     * extension stripped, e.g. "RISC-OS"; chrome is keyed by it (see
+     * theme_fill_config) */
     rc = palette_load_hex(resources, palette_name, palette);
     if (rc != result_OK)
     {
@@ -622,7 +548,7 @@ static result_t run_wuss(const char *resources,
                                 * picker menus -- [2] Symbols is chrome-only,
                                 * never a text font choice */
 
-    fill_chrome_config(&config, use_wimp16);
+    theme_fill_config(theme, &config);
 
     for (i = 0; i < nfonts; i++)
     {
@@ -637,6 +563,20 @@ static result_t run_wuss(const char *resources,
     logf_info("wuss: wuss_create -> rc=0x%X (%s)", rc, wuss_result_string(rc));
     if (rc != result_OK)
       goto Failure;
+
+    /* swap in the theme's icon pool before anything borrows from the one
+     * wuss_create loaded; pathf's buffer is copied as the load reuses it */
+    if (strcmp(theme->icons, "wuss/iconpool") != 0)
+    {
+      char icons_dir[256];
+
+      snprintf(icons_dir, sizeof(icons_dir), "%s",
+               pathf("%s/resources/%s", resources, theme->icons));
+      rc = wuss_iconpool_load(wuss, icons_dir);
+      if (rc != result_OK)
+        goto Failure;
+    }
+    theme_set_current(theme->name);
 
     /* the desktop logo and the pointer arrow live in the icon pool, which
      * wuss_create has just loaded */
@@ -842,12 +782,14 @@ int main(int argc, char *argv[])
 #else
   const char *default_resources = ".";
 #endif
-  wuss_options_t opts;
   result_t       rc;
+  wuss_options_t opts;
+  theme_t        theme;
 
   opts.resources    = default_resources;
-  opts.palette_name = "PICO-8";
-  opts.font_family  = "DPT-Digits";
+  opts.theme        = "Default";
+  opts.palette_name = NULL; /* NULL: the theme's */
+  opts.font_family  = NULL;
   opts.depth        = 4;
   opts.scale        = 0; /* 0 = let the frontend pick its default */
   opts.fullscreen   = false;
@@ -876,9 +818,21 @@ int main(int argc, char *argv[])
     g.scripted = true;
   }
 
-  rc = run_wuss(opts.resources, opts.palette_name, opts.font_family,
-               opts.depth, opts.scale, opts.fullscreen, opts.res_width,
-               opts.res_height, opts.tasks);
+  /* -p and -f override the theme's palette and font */
+  rc = theme_load(opts.resources, opts.theme, &theme);
+  if (rc != result_OK)
+  {
+    fprintf(stderr, "wuss: no theme \"%s\" (%s)\n", opts.theme,
+            wuss_result_string(rc));
+    return EXIT_FAILURE;
+  }
+  if (opts.palette_name != NULL)
+    snprintf(theme.palette, sizeof(theme.palette), "%s", opts.palette_name);
+  if (opts.font_family != NULL)
+    snprintf(theme.font, sizeof(theme.font), "%s", opts.font_family);
+
+  rc = run_wuss(opts.resources, &theme, opts.depth, opts.scale,
+                opts.fullscreen, opts.res_width, opts.res_height, opts.tasks);
 
   if (g.scripted && script_close() != result_OK)
     rc = result_TEST_FAILED;

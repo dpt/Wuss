@@ -24,6 +24,7 @@
 #include "wuss/icon-spec.h"
 
 #include "../tasks.h" /* g_tasks.swap_mouse_buttons */
+#include "../palette/palette.h" /* palette_load_hex */
 
 #include "configuring.h"
 #include "../common/taskapp.h"
@@ -122,6 +123,11 @@ enum
   CONFIGURING_ST_BUTTON_HBOX,
   CONFIGURING_ST_BUTTON_SPACER,
   CONFIGURING_ST_BUTTON,
+  CONFIGURING_ST_THEME,
+  CONFIGURING_ST_THEME_HBOX,
+  CONFIGURING_ST_THEME_LABEL,
+  CONFIGURING_ST_THEME_NAME,
+  CONFIGURING_ST_THEME_BUTTON,
   CONFIGURING_ST__LIMIT
 };
 
@@ -424,6 +430,41 @@ static const stack_item_t g_configuring_stack[CONFIGURING_ST__LIMIT] =
                                   CONFIGURING_GRID_COLS * CONFIGURING_CELL,
                                   wuss_STD_SECONDARY_BUTTON_HEIGHT,
                                   stack_ALIGN_FILL),
+
+  [CONFIGURING_ST_THEME] =
+  {
+    .kind      = stack_KIND_VBOX,
+    .parent    = CONFIGURING_ST_ROOT,
+    .axis_size = STACK_HUG,
+    .gap       = 4,
+    .align     = stack_ALIGN_FILL,
+    .pad       = wuss_STD_FRAME_INSETS,
+  },
+
+  [CONFIGURING_ST_THEME_HBOX] =
+  {
+    .kind      = stack_KIND_HBOX,
+    .parent    = CONFIGURING_ST_THEME,
+    .axis_size = CONFIGURING_ROW,
+    .gap       = 4,
+    .align     = stack_ALIGN_FILL,
+  },
+
+  [CONFIGURING_ST_THEME_LABEL] = STACK_LEAF_GROUP(CONFIGURING_ST_THEME_HBOX,
+                                                  0,
+                                                  CONFIGURING_ROW,
+                                                  stack_ALIGN_FILL,
+                                                  CONFIGURING_G_LABEL),
+
+  [CONFIGURING_ST_THEME_NAME] = STACK_LEAF(CONFIGURING_ST_THEME_HBOX,
+                                           CONFIGURING_FONT_NAME_W,
+                                           CONFIGURING_ROW,
+                                           stack_ALIGN_FILL),
+
+  [CONFIGURING_ST_THEME_BUTTON] = STACK_LEAF(CONFIGURING_ST_THEME_HBOX,
+                                             CONFIGURING_FIELD_W,
+                                             CONFIGURING_ROW,
+                                             stack_ALIGN_FILL),
 };
 
 /* ----------------------------------------------------------------------- */
@@ -464,6 +505,11 @@ enum
   CONFIGURING_ICON_BG_LABEL,
   CONFIGURING_ICON_PATTERNS_LABEL,
   CONFIGURING_ICON_SET_BACKDROP,
+  /* Theme */
+  CONFIGURING_ICON_THEME_FRAME,
+  CONFIGURING_ICON_THEME_LABEL,
+  CONFIGURING_ICON_THEME_NAME,
+  CONFIGURING_ICON_THEME_CHOOSE,
   CONFIGURING_NICONS
 };
 
@@ -497,7 +543,13 @@ static const configuring_section_t g_configuring_sections[CONFIGURING_SECTION__L
   {
     "Backdrop", "backdrop",
     { CONFIGURING_ST_BACKDROP, -1 },
-    CONFIGURING_ICON_BACKDROP_FRAME, CONFIGURING_NICONS
+    CONFIGURING_ICON_BACKDROP_FRAME, CONFIGURING_ICON_THEME_FRAME
+  },
+  [CONFIGURING_SECTION_THEME] =
+  {
+    "Theme", "theme",
+    { CONFIGURING_ST_THEME, -1 },
+    CONFIGURING_ICON_THEME_FRAME, CONFIGURING_NICONS
   },
 };
 
@@ -562,6 +614,8 @@ static void configuring_label_widths(const wuss_t *wuss, stack_item_t *items)
     task_text_width(wuss, "Patterns");
   items[CONFIGURING_ST_FONT_LABEL].axis_size =
     task_text_width(wuss, "System font");
+  items[CONFIGURING_ST_THEME_LABEL].axis_size =
+    task_text_width(wuss, "Theme");
   items[CONFIGURING_ST_DBL_MS_LABEL].axis_size =
     task_text_width(wuss, "Double-click");
   items[CONFIGURING_ST_DBL_PX_LABEL].axis_size =
@@ -620,6 +674,25 @@ static void configuring_section_specs(configuring_task_t *task,
                                       wuss_icon_spec_t   *specs)
 {
   const char *font_name;
+
+  if (section == CONFIGURING_SECTION_THEME)
+  {
+    wuss_icon_spec_frame(&specs[CONFIGURING_ICON_THEME_FRAME],
+                         boxes[CONFIGURING_ST_THEME], "Theme");
+
+    wuss_icon_spec_label(&specs[CONFIGURING_ICON_THEME_LABEL],
+                         boxes[CONFIGURING_ST_THEME_LABEL],
+                         "Theme", wuss_ICON_FLAGS_JUSTIFY_RIGHT);
+
+    wuss_icon_spec_display(&specs[CONFIGURING_ICON_THEME_NAME],
+                           boxes[CONFIGURING_ST_THEME_NAME],
+                           theme_current(), 0);
+
+    wuss_icon_spec_action(&specs[CONFIGURING_ICON_THEME_CHOOSE],
+                          boxes[CONFIGURING_ST_THEME_BUTTON],
+                          "Choose", 0);
+    return;
+  }
 
   if (section == CONFIGURING_SECTION_FONTS)
   {
@@ -754,6 +827,11 @@ static void configuring_section_bind(configuring_task_t *task,
 
   case CONFIGURING_SECTION_BACKDROP:
     task->set_backdrop_icon = CONFIGURING_BIND(CONFIGURING_ICON_SET_BACKDROP);
+    break;
+
+  case CONFIGURING_SECTION_THEME:
+    task->theme_name_icon   = CONFIGURING_BIND(CONFIGURING_ICON_THEME_NAME);
+    task->choose_theme_icon = CONFIGURING_BIND(CONFIGURING_ICON_THEME_CHOOSE);
     break;
   }
 
@@ -1211,6 +1289,92 @@ static result_t configuring_set_font(configuring_task_t *task,
   return rc;
 }
 
+/* Open the theme menu at the pointer with the current theme's row ticked. */
+static result_t configuring_open_thememenu(configuring_task_t *task)
+{
+  result_t rc;
+  int      i;
+
+  rc = theme_list(wuss_get_resources(task->wuss), task->theme_names,
+                  &task->ntheme_names);
+  if (rc != result_OK)
+    return rc;
+
+  for (i = 0; i < task->ntheme_names; i++)
+    WUSS_MENU_ITEM(task->theme_items, i, task->theme_names[i],
+                   strcmp(task->theme_names[i], theme_current()) == 0
+                   ? wuss_MENU_ITEM_TICKED : wuss_MENU_ITEM_NONE);
+  WUSS_MENU_TITLE(task->theme_menu, "Theme", task->theme_items,
+                  task->ntheme_names);
+
+  return wuss_menu_open_at_pointer(task->delegate, &task->theme_menu, NULL);
+}
+
+/* Apply theme "name": its palette, chrome colours, titlebar height and
+ * font. The mouse settings and backdrop image are kept.
+ * ponytail: the icon pool is only swapped at start-up (--theme), as icons
+ * borrow its bitmaps; reload it here once they look entries up by name. */
+static result_t configuring_set_theme(configuring_task_t *task,
+                                      const char         *name)
+{
+  result_t            rc;
+  const char         *resources;
+  theme_t             theme;
+  colour_t            palette[wuss_SYSTEM_PALETTE_LENGTH];
+  wuss_config_t       old;
+  wuss_config_t       config;
+  bmfontfamily_t     *family;
+  const bmfontface_t *regular;
+  char                label[128];
+
+  resources = wuss_get_resources(task->wuss);
+
+  rc = theme_load(resources, name, &theme);
+  if (rc != result_OK)
+    return rc;
+
+  rc = palette_load_hex(resources, theme.palette, palette);
+  if (rc != result_OK)
+    return rc;
+
+  rc = wuss_set_palette(task->wuss, palette, wuss_SYSTEM_PALETTE_LENGTH);
+  if (rc != result_OK)
+    return rc;
+
+  wuss_get_config(task->wuss, &old);
+  theme_fill_config(&theme, &config);
+  config.mouse          = old.mouse;
+  config.backdrop.image = old.backdrop.image;
+  rc = wuss_set_config(task->wuss, &config);
+  if (rc != result_OK)
+    return rc;
+
+  rc = bmfontfamily_scan(pathf("%s/resources/bmfonts/%s", resources,
+                               theme.font),
+                         &family);
+  if (rc != result_OK)
+    return rc;
+
+  regular = bmfontfamily_find(family, bmfontfamily_WEIGHT_REGULAR,
+                              bmfontfamily_SLANT_UPRIGHT);
+  if (regular != NULL)
+    snprintf(label, sizeof(label), "%s %s", theme.font, regular->style);
+  bmfontfamily_destroy(family);
+  if (regular == NULL)
+    return result_NOT_FOUND;
+
+  rc = configuring_set_font(task, label);
+  if (rc != result_OK)
+    return rc;
+
+  theme_set_current(theme.name);
+  if (task->theme_name_icon != NULL)
+    rc = wuss_icon_set_text(task->windows[CONFIGURING_SECTION_THEME],
+                            task->theme_name_icon, theme_current());
+
+  return rc;
+}
+
 static result_t configuring_icon(const wuss_event_t *event, void *task_data)
 {
   configuring_task_t *cc;
@@ -1241,6 +1405,10 @@ static result_t configuring_icon(const wuss_event_t *event, void *task_data)
   else if (icon == cc->choose_font_icon)
   {
     return configuring_open_fontmenu(cc);
+  }
+  else if (icon == cc->choose_theme_icon)
+  {
+    return configuring_open_thememenu(cc);
   }
   else if (icon == cc->set_backdrop_icon)
   {
@@ -1379,6 +1547,11 @@ result_t configuring_handle(wuss_window_t      *window,
   case wuss_EVENT_MENU_SELECT:
     {
       const char *name;
+      int         index;
+
+      index = wuss_menu_select_index(event, &cc->theme_menu);
+      if (index >= 0 && index < cc->ntheme_names)
+        return configuring_set_theme(cc, cc->theme_names[index]);
 
       name = wuss_fontmenu_selected(event);
       if (name == NULL)

@@ -1,0 +1,6 @@
+# Chunky.theme -- Wuss theme: PICO-8 colours, tall titlebars
+
+font     DPT-DigitsLg
+palette  PICO-8
+titlebar 24
+icons    wuss/iconpool

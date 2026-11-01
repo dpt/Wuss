@@ -20,12 +20,15 @@
 #include "wuss/window.h"
 #include "wuss/wuss.h"
 
+#include "../../theme.h"
+
 /* The sections, each an icon in the root window and a window of its own. */
 enum
 {
   CONFIGURING_SECTION_MOUSING,
   CONFIGURING_SECTION_FONTS,
   CONFIGURING_SECTION_BACKDROP,
+  CONFIGURING_SECTION_THEME,
   CONFIGURING_SECTION__LIMIT
 };
 
@@ -42,7 +45,9 @@ enum
  * "Choose" action opening the font menu (a pick is applied via
  * wuss_set_font). "Backdrop" has a foreground and a background colour swatch
  * row, a fill-pattern grid, a result swatch mixing the three, and a "Set
- * backdrop" action applying the result via wuss_set_backdrop. Opened once
+ * backdrop" action applying the result via wuss_set_backdrop. "Theme" shows
+ * the current theme with a "Choose" action opening a menu of themes; a pick
+ * applies its palette, chrome, titlebar height and font. Opened once
  * from run_wuss, and from the icon bar. */
 typedef struct configuring_task
 {
@@ -86,6 +91,12 @@ typedef struct configuring_task
   screen_pattern_t     pattern; /* selected pattern swatch; also the
                                  * result's tile */
   wuss_icon_t         *set_backdrop_icon;
+  wuss_icon_t         *theme_name_icon;
+  wuss_icon_t         *choose_theme_icon;
+  char                 theme_names[THEME_MAX][32];
+  int                  ntheme_names;
+  wuss_menu_item_t     theme_items[THEME_MAX];
+  wuss_menu_t          theme_menu;
 }
 configuring_task_t;
 

@@ -18,7 +18,7 @@
 /* ----------------------------------------------------------------------- */
 
 static const char wuss_usage[] =
-  "usage: wuss [-r|--resources DIR] [-p|--palette NAME] "
+  "usage: wuss [-r|--resources DIR] [--theme NAME] [-p|--palette NAME] "
   "[-f|--font FAMILY] "
   "[-d|--depth 1|2|4|8|15|16|32] [-s|--scale N] [--fullscreen] "
   "[--res WIDTHxHEIGHT] "
@@ -53,7 +53,8 @@ static bool parse_res(const char *s, int *w, int *h)
  * short options. */
 enum
 {
-  OPT_RES = 256, OPT_CRT, OPT_POINTER, OPT_ROOT, OPT_SCRIPT, OPT_FULLSCREEN
+  OPT_RES = 256, OPT_CRT, OPT_POINTER, OPT_ROOT, OPT_SCRIPT, OPT_FULLSCREEN,
+  OPT_THEME
 };
 
 /* Desktop: getopt_long. Accepts the short forms and the "--" long forms; the
@@ -75,7 +76,8 @@ bool options_parse(int argc, char *argv[], wuss_options_t *opts)
     { "pointer",    no_argument,       NULL, OPT_POINTER    },
     { "script",     required_argument, NULL, OPT_SCRIPT     },
     { "fullscreen", no_argument,       NULL, OPT_FULLSCREEN },
-    { NULL,         0,                 NULL, 0              }
+    { "theme",      required_argument, NULL, OPT_THEME      },
+    { NULL,        0,                 NULL, 0              }
   };
 
   int c;
@@ -97,6 +99,7 @@ bool options_parse(int argc, char *argv[], wuss_options_t *opts)
     case OPT_ROOT: opts->root    = optarg;       break;
     case OPT_SCRIPT: opts->script = optarg;      break;
     case OPT_FULLSCREEN: opts->fullscreen = true; break;
+    case OPT_THEME: opts->theme  = optarg;       break;
     case OPT_CRT:
       g_tasks.crt = true;
       break;
@@ -130,6 +133,8 @@ bool options_parse(int argc, char *argv[], wuss_options_t *opts)
   for (i = 1; i < argc; i++)
     if (strcmp(argv[i], "-resources") == 0 && i + 1 < argc)
       opts->resources = argv[++i];
+    else if (strcmp(argv[i], "-theme") == 0 && i + 1 < argc)
+      opts->theme = argv[++i];
     else if (strcmp(argv[i], "-palette") == 0 && i + 1 < argc)
       opts->palette_name = argv[++i];
     else if (strcmp(argv[i], "-font") == 0 && i + 1 < argc)
