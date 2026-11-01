@@ -256,6 +256,26 @@ result_t wuss_lifecycle_test(const char *resources)
       goto Failure;
     }
 
+#ifdef WUSS_FURNITURE
+    /* a positive height replaces the titlebar height; 0 keeps it */
+    {
+      wuss_config_t got;
+
+      cfg.titlebar_height = 31;
+      rc = wuss_set_config(cfgw, &cfg);
+      cfg.titlebar_height = 0;
+      if (rc == result_OK)
+        rc = wuss_set_config(cfgw, &cfg);
+      wuss_get_config(cfgw, &got);
+      if (rc != result_OK || got.titlebar_height != 31)
+      {
+        wuss_destroy(cfgw);
+        goto Failure;
+      }
+      tc_cfg.palette_count = 1;
+    }
+#endif
+
     /* index 7 is past the 5-entry palette: refused, nothing changes and
      * nothing is broadcast */
     cfg.furniture.title.bg = wuss_COLOUR_GREEN;

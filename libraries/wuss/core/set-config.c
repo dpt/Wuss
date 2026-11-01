@@ -306,12 +306,32 @@ result_t wuss_set_config(wuss_t *wuss, const wuss_config_t *config)
 
   rc = wuss__apply_config(wuss, config);
 #ifdef WUSS_FURNITURE
-  /* ponytail: titlebar height is creation-only -- changing it would move
-   * every window's visible box; recompute those if it's ever needed */
-  wuss->titlebar_height = saved->titlebar_height;
+  /* 0 keeps the current height rather than re-deriving it */
+  if (config->titlebar_height <= 0)
+    wuss->titlebar_height = saved->titlebar_height;
 #endif
   if (rc != result_OK)
+  {
     *wuss = *saved;
+  }
+  else
+  {
+    wuss_window_t *win;
+
+    /* a window resolved its background at creation: one still on the old
+     * body colours follows them to the new ones */
+    for (win = wuss__z_first(wuss); win != NULL; win = wuss__z_below(win))
+    {
+      if (win->bg.fill.colour == saved->body.window)
+        win->bg.fill.colour = wuss->body.window;
+      else if (win->bg.fill.colour == saved->body.menu)
+        win->bg.fill.colour = wuss->body.menu;
+    }
+
+#ifdef WUSS_FURNITURE
+    wuss__regrow_all(wuss, saved->titlebar_height);
+#endif
+  }
   wuss__free(wuss, saved);
   if (rc != result_OK)
     return rc;

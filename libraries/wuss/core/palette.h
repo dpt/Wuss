@@ -27,6 +27,10 @@ result_t wuss__apply_config(wuss_t *w, const wuss_config_t *config);
  * and bold faces plus a margin, or WUSS_DEFAULT_TITLEBAR_HEIGHT if both
  * slots are empty. Used when the config gives no explicit height. */
 int wuss__titlebar_height_auto(const wuss_t *w);
+
+/* Keep each window's content size across a titlebar height change from
+ * old_height to wuss->titlebar_height. */
+void wuss__regrow_all(wuss_t *wuss, int old_height);
 #endif
 
 /* Concrete 0..npalette-1 palette index for any wuss_colour_t: a symbolic

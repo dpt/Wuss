@@ -807,9 +807,11 @@ result_t wuss_set_colour_fill(wuss_t            *wuss,
  * recache any resolved colours, then invalidates the whole screen. The
  * caller is still responsible for the next wuss_redraw / wuss_redraw_dirty.
  *
- * config->titlebar_height is ignored: the titlebar height is fixed at
- * wuss_create (bar a re-derive by wuss_set_font). Existing windows keep the
- * background they resolved when they were created.
+ * A positive config->titlebar_height replaces the titlebar height, growing
+ * or shrinking each window's visible box so its content size is kept; 0
+ * keeps the current height. An existing window whose background is the old
+ * body.window or body.menu colour moves to the new one; any other background
+ * is kept.
  *
  * \param[in] wuss   Window manager.
  * \param[in] config New config, copied in.

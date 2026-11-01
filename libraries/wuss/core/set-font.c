@@ -40,14 +40,24 @@ static void regrow(wuss_window_t *window, int old_height)
   wuss__nudge_visible_onscreen(window);
   wuss__chrome_invalidate_layout(window);
 }
+
+void wuss__regrow_all(wuss_t *wuss, int old_height)
+{
+  wuss_window_t *win;
+
+  if (wuss->titlebar_height == old_height)
+    return;
+
+  for (win = wuss__z_first(wuss); win != NULL; win = wuss__z_below(win))
+    regrow(win, old_height);
+}
 #endif
 
 result_t wuss_set_font(wuss_t *wuss, int index, const wuss_font_desc_t *desc)
 {
 #ifdef WUSS_FURNITURE
-  int            old_height;
-  int            auto_height;
-  wuss_window_t *win;
+  int old_height;
+  int auto_height;
 #endif
 
   assert(wuss != NULL);
@@ -69,9 +79,7 @@ result_t wuss_set_font(wuss_t *wuss, int index, const wuss_font_desc_t *desc)
   if (old_height == auto_height)
   {
     wuss->titlebar_height = wuss__titlebar_height_auto(wuss);
-    if (wuss->titlebar_height != old_height)
-      for (win = wuss__z_first(wuss); win != NULL; win = wuss__z_below(win))
-        regrow(win, old_height);
+    wuss__regrow_all(wuss, old_height);
   }
 #endif
 
