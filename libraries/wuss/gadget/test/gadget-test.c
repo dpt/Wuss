@@ -837,7 +837,87 @@ StringSetOK: ;
       wuss_window_close(glyph_win);
     }
 
+    /* the gridview's band autoscrolls on IDLE, vertically only: an Adjust
+     * press below the rows, dragged below and right of the content, scrolls
+     * down but never right; once released, IDLE scrolls no more */
+    {
+      point_t scroll;
+
+      wuss_gridview_clear_selection(gv);
+      if (wuss_window_set_doc(gvwin, SIZE2D(100, 300)) != result_OK) goto GridViewFail;
+      wuss_window_set_scroll(gvwin, POINT(0, 0));
+      ev.kind              = wuss_EVENT_MOUSE;
+      ev.data.mouse.action = wuss_MOUSE_DOWN;
+      ev.data.mouse.point  = POINT(2, 50);
+      ev.data.mouse.button = wuss_BUTTON_ADJUST;
+      if (!wuss_gridview_handle_event(gv, &ev)) goto GridViewFail;
+      ev.data.mouse.action = wuss_MOUSE_MOVE;
+      ev.data.mouse.point  = POINT(60, 150);
+      if (!wuss_gridview_handle_event(gv, &ev)) goto GridViewFail;
+      ev.kind = wuss_EVENT_IDLE;
+      if (wuss_gridview_handle_event(gv, &ev)) goto GridViewFail;
+      wuss_window_get_scroll(gvwin, &scroll);
+      if (scroll.x != 0 || scroll.y <= 0) goto GridViewFail;
+      ev.kind              = wuss_EVENT_MOUSE;
+      ev.data.mouse.action = wuss_MOUSE_UP;
+      if (!wuss_gridview_handle_event(gv, &ev)) goto GridViewFail;
+      if (wuss_gridview_selected_count(gv) != 0) goto GridViewFail;
+      wuss_window_set_scroll(gvwin, POINT(0, 0));
+      ev.kind = wuss_EVENT_IDLE;
+      (void) wuss_gridview_handle_event(gv, &ev);
+      wuss_window_get_scroll(gvwin, &scroll);
+      if (scroll.x != 0 || scroll.y != 0) goto GridViewFail;
+    }
+
     wuss_gridview_destroy(gv);
+
+    /* a band starts one pixel square, stretches to either side of its
+     * anchor, ignores moves once ended and keeps its final box; it draws
+     * its outline only while active */
+    {
+      wuss_rubberband_t band;
+      unsigned int     *px;
+      unsigned int      edge, inside;
+      colour_t          green;
+
+      wuss_window_set_scroll(gvwin, POINT(0, 0));
+      band.active = 0;
+      wuss_rubberband_to(&band, gvwin, POINT(1, 1));
+      if (band.active) goto GridViewFail;
+      wuss_rubberband_start(&band, gvwin, POINT(5, 5));
+      if (!band.active || band.box.x0 != 5 || band.box.y0 != 5 ||
+          band.box.x1 != 6 || band.box.y1 != 6) goto GridViewFail;
+      wuss_rubberband_to(&band, gvwin, POINT(2, 3));
+      if (band.box.x0 != 2 || band.box.y0 != 3 ||
+          band.box.x1 != 6 || band.box.y1 != 6) goto GridViewFail;
+      wuss_rubberband_to(&band, gvwin, POINT(14, 24));
+      if (band.box.x0 != 5 || band.box.y0 != 5 ||
+          band.box.x1 != 15 || band.box.y1 != 25) goto GridViewFail;
+
+      /* (5,5)-(15,25) in the work area is (15,15) 10x20 on screen */
+      px                    = (unsigned int *) gvpixels;
+      green                 = colour_rgba(0x00, 0xFF, 0x00, 0xFF);
+      gvscr.clip            = gvcontent;
+      ev.kind               = wuss_EVENT_REDRAW;
+      ev.data.redraw.scr    = &gvscr;
+      ev.data.redraw.bounds = &gvcontent;
+      ev.data.redraw.scroll = POINT(0, 0);
+      memset(gvpixels, 0, (size_t) rowbytes * 200);
+      wuss_rubberband_draw(&band, &ev, green);
+      edge   = px[15 * 200 + 15];
+      inside = px[20 * 200 + 20];
+      if (edge == 0 || px[34 * 200 + 24] != edge || inside != 0)
+        goto GridViewFail;
+
+      wuss_rubberband_end(&band, gvwin);
+      if (band.active || band.box.x1 != 15 || band.box.y1 != 25)
+        goto GridViewFail;
+      wuss_rubberband_to(&band, gvwin, POINT(1, 1));
+      if (band.box.x0 != 5) goto GridViewFail;
+      memset(gvpixels, 0, (size_t) rowbytes * 200);
+      wuss_rubberband_draw(&band, &ev, green);
+      if (px[15 * 200 + 15] != 0) goto GridViewFail;
+    }
 
     /* a band held below and right of the 40x100 content scrolls a larger
      * document down only, capped per frame, stretching with it, and stops
