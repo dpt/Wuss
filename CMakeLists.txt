@@ -503,6 +503,8 @@ if(BUILD_APPS)
         apps/wuss/tasks/palette/palette.c
         apps/wuss/tasks/fireworks/fireworks.c
         apps/wuss/tasks/patterns/patterns.c
+        apps/wuss/tasks/pinboard/pinboard.c
+        apps/wuss/tasks/postits/postits.c
         apps/wuss/tasks/pooling/pooling.c
         apps/wuss/tasks/shortcuts/shortcuts.c
         apps/wuss/tasks/compositing/compositing.c

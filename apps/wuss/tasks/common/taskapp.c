@@ -239,7 +239,8 @@ static result_t app_data_open(app_t *app, const wuss_message_t *msg)
   for (type = app->desc->opens; *type != 0; type++)
     if (*type == open->filetype.riscos)
       break;
-  if (*type == 0)
+  if (*type == 0 ||
+      (app->desc->claims != NULL && !app->desc->claims(open->path)))
     return result_OK;
 
   (void) wuss_acknowledge(app->wuss, app->task, msg);

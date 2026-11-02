@@ -618,6 +618,11 @@ static result_t run_wuss(const char    *resources,
 
   g_tasks.quit = false;
 
+  /* the Pinboard owns the backdrop window, so it starts before anything
+   * else can open; a second spawn from the -tasks list does nothing. Post-Its
+   * follows so it sees a DataOpen for a note before Reading does. */
+  tasks_spawn("Pinboard,Post-Its");
+
 #ifdef WUSS_ICONBAR
   /* Filing's icon goes on the bar ahead of AppsFiler's; installing it is
    * idempotent so the -tasks list below does not add a second */

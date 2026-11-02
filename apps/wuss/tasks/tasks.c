@@ -47,6 +47,8 @@
 #include "tasks/palette/palette.h"
 #include "tasks/fireworks/fireworks.h"
 #include "tasks/patterns/patterns.h"
+#include "tasks/pinboard/pinboard.h"
+#include "tasks/postits/postits.h"
 #include "tasks/compositing/compositing.h"
 #include "tasks/saturn/saturn.h"
 #include "tasks/shortcuts/shortcuts.h"
@@ -182,7 +184,9 @@ g_system_tasks[] =
   { "Configuring", configuring_app_create },
   { "Display", display_app_create },
   { "Palette", palette_app_create },
+  { "Pinboard", pinboard_app_create },
   { "Pooling", pooling_app_create },
+  { "Post-Its", postits_app_create },
 #ifdef WUSS_ICONBAR
   { "Filing", filing_app_create }
 #endif

@@ -60,6 +60,9 @@ typedef struct taskapp_desc
   int                  iconbar_priority; /* icon bar placement on the right;
                                           * higher is further outward, and
                                           * ordinary apps leave it 0 */
+  bool               (*claims)(const char *path); /* optional: with opens,
+                                      * claim only the paths this accepts,
+                                      * leaving the rest to other apps */
 }
 taskapp_desc_t;
 
