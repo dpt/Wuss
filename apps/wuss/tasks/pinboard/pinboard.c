@@ -5,7 +5,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/stat.h>
 
 #ifdef FORTIFY
 #include "fortify/fortify.h"
@@ -287,7 +286,6 @@ static void pinboard_select_all(pinboard_t *pb, int selected)
 static result_t pinboard_pin(pinboard_t *pb, const char *path, int cell)
 {
   int         i;
-  struct stat st;
   const char *dot;
   pin_t      *pin;
 
@@ -306,7 +304,7 @@ static result_t pinboard_pin(pinboard_t *pb, const char *path, int cell)
     snprintf(pin->path, sizeof(pin->path), "%s", path);
 
     /* a file that cannot be read now is pinned as a plain file */
-    pin->is_dir = stat(path, &st) == 0 && S_ISDIR(st.st_mode);
+    pin->is_dir = path_is_dir(path);
     dot         = strrchr(path_leaf(path), '.');
     pin->type   = (dot != NULL && !pin->is_dir) ? filetype_from_ext(dot)
                                                 : filetype_DATA;

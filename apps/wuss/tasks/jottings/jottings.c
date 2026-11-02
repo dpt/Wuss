@@ -7,7 +7,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/stat.h>
 
 #ifdef FORTIFY
 #include "fortify/fortify.h"
@@ -190,7 +189,6 @@ static result_t jotting_choose_path(jotting_t *note)
   char title[JOTTING_TITLE_MAX + 1];
   char name[JOTTING_TITLE_MAX + 1];
   int  i, j;
-  struct stat st;
 
   if (note->path[0] != '\0')
     return result_OK;
@@ -219,7 +217,7 @@ static result_t jotting_choose_path(jotting_t *note)
     else
       snprintf(note->path, sizeof(note->path), "%s" JOTTING_SEP "%s-%d"
                JOTTING_EXT, g_notes, name, i);
-    if (stat(note->path, &st) != 0)
+    if (!path_exists(note->path))
       return result_OK;
   }
 
