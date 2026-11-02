@@ -67,7 +67,8 @@ static result_t load_demo_png(bitmap_t   *bm,
   result_t    rc;
   const char *filename;
 
-  filename = pathf("%s/resources/composite/%s.png", resources, leafname);
+  filename = pathf("%s/resources/wuss-tasks/compositing/%s.png", resources,
+                   leafname);
 
   rc = bitmap_load_png(bm, filename);
   if (rc != result_OK)
@@ -77,6 +78,7 @@ static result_t load_demo_png(bitmap_t   *bm,
   if (rc != result_OK)
   {
     free(bm->base);
+    bm->base = NULL;
     return rc;
   }
 
@@ -124,7 +126,7 @@ result_t compositing_create(wuss_t *wuss, compositing_task_t **out)
 
   rc = load_demo_png(&task->a, resources, "A");
   if (rc != result_OK)
-    return rc;
+    goto free_a;
 
   rc = load_demo_png(&task->b, resources, "B");
   if (rc != result_OK)
