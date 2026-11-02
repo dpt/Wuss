@@ -1130,6 +1130,20 @@ result_t filing_handle(wuss_window_t      *window,
     return result_OK;
   }
 
+  case wuss_EVENT_IDLE:
+  {
+    int i;
+
+    /* a rubber band scrolls its window while held outside it */
+    for (i = 0; i < task->nwindows; i++)
+    {
+      if (task->windows[i].gridview != NULL)
+        (void) wuss_gridview_handle_event(task->windows[i].gridview, event);
+    }
+
+    return result_OK;
+  }
+
   case wuss_EVENT_QUIT:
     filing_destroy(task);
     return result_OK;

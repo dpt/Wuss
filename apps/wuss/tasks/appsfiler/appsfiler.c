@@ -289,6 +289,20 @@ static result_t apps_handle(wuss_window_t      *window,
       (void) wuss_gridview_handle_event(aw->gridview, event);
     return result_OK;
 
+  case wuss_EVENT_IDLE:
+  {
+    int i;
+
+    /* a rubber band scrolls its window while held outside it */
+    for (i = 0; i < (int) NELEMS(task->windows); i++)
+    {
+      if (task->windows[i].window != NULL)
+        (void) wuss_gridview_handle_event(task->windows[i].gridview, event);
+    }
+
+    return result_OK;
+  }
+
   case wuss_EVENT_ICON:
     if (window != NULL || event->data.iconbar_icon.action != wuss_MOUSE_UP)
       return result_OK;

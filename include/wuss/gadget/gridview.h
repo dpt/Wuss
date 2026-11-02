@@ -27,8 +27,10 @@
  * it, and on a selected item changes nothing; Adjust toggles the item.
  * Select on empty space clears the selection and Adjust there keeps it;
  * either then drags out a rubber band (see \ref rubberband.h) that selects
- * every item it touches once released. A double-click (wuss_BUTTON_DOUBLE)
- * on an item deselects it, then calls the activate callback.
+ * every item it touches once released; held outside the visible content, the
+ * band scrolls the window on each wuss_EVENT_IDLE the task forwards. A
+ * double-click (wuss_BUTTON_DOUBLE) on an item deselects it, then calls the
+ * activate callback.
  *
  * Arrow keys (wuss_EVENT_KEY, without Ctrl or Alt) select only the item
  * beside the last one clicked or selected, scrolling it into view; with none

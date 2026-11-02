@@ -21,6 +21,7 @@
 #include "wuss/icon-spec.h"
 #include "wuss/gadget/stringset.h"
 #include "wuss/gadget/gridview.h"
+#include "wuss/gadget/rubberband.h"
 #include "wuss/gadget/swatches.h"
 #include "wuss/gadget/tagcloud.h"
 
@@ -837,6 +838,35 @@ StringSetOK: ;
     }
 
     wuss_gridview_destroy(gv);
+
+    /* a band held below the 40x100 content scrolls a taller document down,
+     * capped per frame, stretching with it, and stops at the document's
+     * end; held inside, it does not scroll */
+    {
+      wuss_rubberband_t band;
+      point_t           scroll;
+
+      if (wuss_window_set_doc(gvwin, SIZE2D(40, 300)) != result_OK) goto GridViewFail;
+      wuss_window_set_scroll(gvwin, POINT(0, 0));
+      band.active = 0;
+      if (wuss_rubberband_autoscroll(&band, gvwin)) goto GridViewFail;
+      wuss_rubberband_start(&band, gvwin, POINT(5, 5));
+      if (wuss_rubberband_autoscroll(&band, gvwin)) goto GridViewFail;
+      wuss_rubberband_to(&band, gvwin, POINT(5, 109));
+      if (!wuss_rubberband_autoscroll(&band, gvwin)) goto GridViewFail;
+      wuss_window_get_scroll(gvwin, &scroll);
+      if (scroll.x != 0 || scroll.y != 10 || band.box.y1 != 120) goto GridViewFail;
+      wuss_rubberband_to(&band, gvwin, POINT(5, 10 + 500));
+      if (!wuss_rubberband_autoscroll(&band, gvwin)) goto GridViewFail;
+      wuss_window_get_scroll(gvwin, &scroll);
+      if (scroll.y != 42) goto GridViewFail;
+      while (wuss_rubberband_autoscroll(&band, gvwin))
+        ;
+      wuss_window_get_scroll(gvwin, &scroll);
+      if (scroll.y != 200) goto GridViewFail;
+      wuss_rubberband_end(&band, gvwin);
+      if (wuss_rubberband_autoscroll(&band, gvwin)) goto GridViewFail;
+    }
 
     reap_test_tasks();
     wuss_destroy(gvwuss);

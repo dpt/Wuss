@@ -678,6 +678,12 @@ int wuss_gridview_handle_event(wuss_gridview_t    *gv,
   if (gv->menu_closed && event->kind != wuss_EVENT_MENU_CLOSED)
     gridview_menu_undo(gv);
 
+  if (event->kind == wuss_EVENT_IDLE)
+  {
+    (void) wuss_rubberband_autoscroll(&gv->band, gv->window);
+    return 0;
+  }
+
   switch (event->kind)
   {
   case wuss_EVENT_OPEN:

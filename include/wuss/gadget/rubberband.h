@@ -6,9 +6,10 @@
  * A wuss gadget: the rectangle a Select or Adjust drag on bare window
  * content stretches out, for selecting every item it touches. The task
  * starts the band on the press, moves it with each captured
- * wuss_EVENT_MOUSE, draws it from its wuss_EVENT_REDRAW handler after its
- * items and ends it on the release, then selects the items that meet
- * wuss_rubberband_t::box.
+ * wuss_EVENT_MOUSE, scrolls with it from wuss_EVENT_IDLE (see \ref
+ * wuss_rubberband_autoscroll), draws it from its wuss_EVENT_REDRAW handler
+ * after its items and ends it on the release, then selects the items that
+ * meet wuss_rubberband_t::box.
  *
  * The gadget is a plain struct the caller keeps. It allocates nothing and
  * needs no destroy. Points and the box are in window work area coordinates,
@@ -42,6 +43,9 @@ typedef struct wuss_rubberband
   box_t   box;    /**< Anchor to pointer, maxima exclusive. Left as it was by
                    *   \ref wuss_rubberband_end, for the caller to select
                    *   with. */
+  point_t pointer; /**< Last pointer position, relative to the visible
+                    *   content's top left, for \ref
+                    *   wuss_rubberband_autoscroll. */
 }
 wuss_rubberband_t;
 
@@ -70,6 +74,21 @@ void wuss_rubberband_start(wuss_rubberband_t *band,
 void wuss_rubberband_to(wuss_rubberband_t *band,
                         wuss_window_t     *window,
                         point_t            point);
+
+/**
+ * Scroll the window towards the pointer while it is held outside the visible
+ * content, then stretch the band to where the pointer now lies. The step
+ * grows with the pointer's distance outside, up to a limit, and stops at the
+ * document's edges. Call once per frame, e.g. on wuss_EVENT_IDLE: the
+ * pointer may be held still outside the window. Does nothing unless the band
+ * is active.
+ *
+ * \param[in] band   The band.
+ * \param[in] window Window the band is drawn on.
+ * \return Non-zero if the window scrolled.
+ */
+int wuss_rubberband_autoscroll(wuss_rubberband_t *band,
+                               wuss_window_t     *window);
 
 /**
  * End the band and invalidate the area it covered. wuss_rubberband_t::box

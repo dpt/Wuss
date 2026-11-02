@@ -829,6 +829,11 @@ result_t effecting_handle(wuss_window_t      *window,
     }
     return effecting_redraw(event, task_data);
 
+  case wuss_EVENT_IDLE: /* window is NULL: forward unconditionally */
+    if (ec->list != NULL)
+      (void) wuss_gridview_handle_event(ec->list, event);
+    return result_OK;
+
   case wuss_EVENT_OPEN:
   case wuss_EVENT_PALETTE:
   case wuss_EVENT_POINTER_EXIT:
