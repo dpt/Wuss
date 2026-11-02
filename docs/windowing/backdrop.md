@@ -3,7 +3,7 @@
 This document specifies how the desktop backdrop behaves: what it paints, what
 it does when clicked, how files are pinned to it, how its look is changed and
 where notes live. It is implemented by the core `wuss_WINDOW_BACKDROP` flag
-and the Pinboard and Post-Its demo tasks. Where the implementation falls
+and the Pinboard and Jottings demo tasks. Where the implementation falls
 short of the original specification, the text says so. See
 [ADR 0002](../adr/0002-backdrop-is-a-window.md) for why the backdrop is a
 window.
@@ -137,10 +137,10 @@ Pinboard
   from the top left. With no Pinboard running, the message bounces to the
   sender.
 
-## Post-it notes
+## Jottings notes
 
-Notes belong to a separate Post-Its task under `apps/wuss/tasks/postits/`.
-The Post-Its task does not depend on the Pinboard. The two tasks meet only
+Notes belong to a separate Jottings task under `apps/wuss/tasks/jottings/`.
+The Jottings task does not depend on the Pinboard. The two tasks meet only
 through messages.
 
 - A note is an ordinary window in the middle stack, with a titlebar, a close
@@ -180,12 +180,12 @@ through messages.
 - If the pin message bounces (no Pinboard), the task reports "No pinboard is
   running" through the error component. The file is kept.
 - **Opening a pinned note.** A double-click on the pinned icon broadcasts
-  `wuss_MESSAGE_DATA_OPEN`. The Post-Its task acknowledges it for any file
+  `wuss_MESSAGE_DATA_OPEN`. The Jottings task acknowledges it for any file
   in the notes directory, including notes from earlier sessions, and opens
   it in a new note window. A note that is already open gets a second
   window. Markdown files elsewhere are left to the Reading task. This works
   through the `claims` hook in `taskapp_desc_t` and the start-up order:
-  Post-Its starts before Reading, so it sees each `wuss_MESSAGE_DATA_OPEN`
+  Jottings starts before Reading, so it sees each `wuss_MESSAGE_DATA_OPEN`
   first.
 - **Delete.** `Delete` closes the note. If the note has a file, the task
   asks first and then deletes the file as well. A pinned icon for a deleted
@@ -216,5 +216,5 @@ can be pinned again from the Filing task.
   Pinboard chose, or should the Pinboard map it again to the nearest colour?
 - Is a drop on the icon bar's area ever routed to the backdrop window? It
   should not be, because the icon bar is hit-tested first.
-- Should the Post-Its task reopen every note in the notes directory when it
+- Should the Jottings task reopen every note in the notes directory when it
   starts, instead of the welcome note?

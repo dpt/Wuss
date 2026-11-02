@@ -16,4 +16,4 @@ Domain glossary for Wuss. Use these terms in code, docs and design discussion.
 
 **Pinboard**: the task that owns the backdrop window. It gives the desktop a menu, changes the backdrop and pins files dropped on it. A pinned file is a reference to a path, never a copy.
 
-**Post-it**: a note window owned by the Post-Its task, showing Markdown text. An ordinary middle-stack window. "Pin to backdrop" saves the note to a file in the permanent per-user notes directory and pins it with `wuss_MESSAGE_PINBOARD_PIN`; otherwise it has no tie to the Pinboard.
+**Jotting**: a note window owned by the Jottings task, showing Markdown text. An ordinary middle-stack window. "Pin to backdrop" saves the note to a file in the permanent per-user notes directory and pins it with `wuss_MESSAGE_PINBOARD_PIN`; otherwise it has no tie to the Pinboard.

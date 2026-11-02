@@ -75,7 +75,7 @@ LAYER 7 - APPS & POLISH (needs most of the above)
 - Configure: CRT shader params, default resolution, system font changing.
   Requires: Choices.
 - New ninepatch test app
-- Post-Its app with explanatory text for newbies
+- Jottings app with explanatory text for newbies
   (Markdown rendering done in the Reading task sample; reuse from there)
   Part of Pinboard?
 - Desktop palette editor

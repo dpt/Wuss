@@ -48,7 +48,7 @@
 #include "tasks/fireworks/fireworks.h"
 #include "tasks/patterns/patterns.h"
 #include "tasks/pinboard/pinboard.h"
-#include "tasks/postits/postits.h"
+#include "tasks/jottings/jottings.h"
 #include "tasks/compositing/compositing.h"
 #include "tasks/saturn/saturn.h"
 #include "tasks/shortcuts/shortcuts.h"
@@ -161,8 +161,8 @@ g_utilities_tasks[] =
   { "Chars", chars_app_create },
   { "Clock", clock_app_create },
   { "Configuring", configuring_app_create },
+  { "Jottings", jottings_app_create },
   { "Pooling", pooling_app_create },
-  { "Post-Its", postits_app_create },
   { "Shortcuts", shortcuts_app_create }
 },
 g_visuals_tasks[] =

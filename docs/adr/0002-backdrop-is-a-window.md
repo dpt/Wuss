@@ -23,7 +23,7 @@ Two models were considered:
 
 The backdrop is a window. Core gains one flag, `wuss_WINDOW_BACKDROP`, which
 pins the window to the screen, puts it at the bottom of `wuss_STACK_BACK`
-and keeps it there. A Pinboard task owns it. Notes are a separate Post-Its
+and keeps it there. A Pinboard task owns it. Notes are a separate Jottings
 task with ordinary windows.
 
 ## Reasons
@@ -45,7 +45,7 @@ task with ordinary windows.
 - Restacking and the window cycling in `core/task/arrange.c` must skip the
   backdrop window.
 - Only one backdrop window may exist. Creating a second one fails.
-- Post-it notes do not depend on the Pinboard and can be built first or
+- Jottings notes do not depend on the Pinboard and can be built first or
   separately. Their "Pin to backdrop" item reaches the Pinboard only through
   the `wuss_MESSAGE_PINBOARD_PIN` broadcast, which bounces when no Pinboard
   is running.
