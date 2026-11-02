@@ -45,7 +45,7 @@ option(BUILD_APPS "Build the Wuss interactive demo" OFF)
 include(FetchContent)
 FetchContent_Declare(dptlib
                      GIT_REPOSITORY https://github.com/dpt/DPTLib.git
-                     GIT_TAG 36e2e96df59475b509c3eae7777172b12895505f)
+                     GIT_TAG f757bf5f504bc6c5d76c17d24a7dd8312540fef8)
 FetchContent_MakeAvailable(dptlib)
 
 # The demo and the tests load bitmap fonts from resources/bmfonts, which are

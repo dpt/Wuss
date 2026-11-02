@@ -97,11 +97,11 @@ static void jotting_report(jotting_t *note, const char *message)
                            wuss_ERROR_BUTTONS_OK, NULL, NULL);
 }
 
-/* room for extra more bytes, plus the caret and the terminator */
+/* room for extra more bytes, plus the terminator */
 static result_t jotting_reserve(jotting_t *note, int extra)
 {
   if (array_grow((void **) &note->src, 1, note->len, &note->allocated,
-                 extra + 2, 64))
+                 extra + 1, 64))
     return result_OOM;
 
   return result_OK;
@@ -141,16 +141,13 @@ static void jotting_title(const jotting_t *note, char *title, size_t cap)
 }
 
 /* re-set the shown text and title after a change: editing shows the raw
- * source with a caret at its end, viewing renders the Markdown */
+ * source (jotting_redraw adds the caret), viewing renders the Markdown */
 static result_t jotting_refresh(jotting_t *note)
 {
   result_t rc;
   char     title[JOTTING_TITLE_MAX + 1];
 
-  note->src[note->len] = '_'; /* jotting_reserve keeps room for it */
-  rc = mdtext_set(&note->md, note->src, note->len + (note->editing ? 1 : 0),
-                  !note->editing);
-  note->src[note->len] = '\0';
+  rc = mdtext_set(&note->md, note->src, note->len, !note->editing);
   if (rc != result_OK)
     return rc;
 
@@ -372,6 +369,7 @@ static void jotting_redraw(jotting_t *note, const wuss_event_t *event)
   const box_t    *bounds;
   const colour_t *palette;
   point_t         origin;
+  point_t         caret;
 
   bounds = event->data.redraw.bounds;
   if (mdtext_layout(&note->md, bounds->x1 - bounds->x0 - 2 * JOTTING_INSET) !=
@@ -383,6 +381,16 @@ static void jotting_redraw(jotting_t *note, const wuss_event_t *event)
   origin.y = bounds->y0 - event->data.redraw.scroll.y + JOTTING_INSET;
   mdtext_draw(&note->md, event->data.redraw.scr, origin, palette[note->fg],
               colour_rgba(0, 0, 0, 0));
+
+  /* typing goes at the end, so that is where the caret sits */
+  if (note->editing && mdtext_caret_pos(&note->md, note->len, &caret))
+  {
+    caret.x += origin.x;
+    caret.y += origin.y;
+    bmfont_draw_caret(note->md.font, event->data.redraw.scr,
+                      palette[wuss_nearest_colour(note->wuss, 0xFF, 0x00,
+                                                  0x00)], &caret);
+  }
 }
 
 /* ----------------------------------------------------------------------- */
