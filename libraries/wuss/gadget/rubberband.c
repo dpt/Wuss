@@ -78,7 +78,8 @@ static int rubberband_scroll_axis(int scroll, int v, int extent, int doc)
 }
 
 int wuss_rubberband_autoscroll(wuss_rubberband_t *band,
-                               wuss_window_t     *window)
+                               wuss_window_t     *window,
+                               int                horizontal)
 {
   box_t   content;
   point_t scroll, to;
@@ -89,8 +90,10 @@ int wuss_rubberband_autoscroll(wuss_rubberband_t *band,
   wuss_window_get_content_bounds(window, &content);
   wuss_window_get_scroll(window, &scroll);
 
-  to.x = rubberband_scroll_axis(scroll.x, band->pointer.x,
-                                content.x1 - content.x0, window->doc.w);
+  to.x = scroll.x;
+  if (horizontal)
+    to.x = rubberband_scroll_axis(scroll.x, band->pointer.x,
+                                  content.x1 - content.x0, window->doc.w);
   to.y = rubberband_scroll_axis(scroll.y, band->pointer.y,
                                 content.y1 - content.y0, window->doc.h);
   if (to.x == scroll.x && to.y == scroll.y)

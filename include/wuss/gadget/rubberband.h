@@ -83,12 +83,16 @@ void wuss_rubberband_to(wuss_rubberband_t *band,
  * pointer may be held still outside the window. Does nothing unless the band
  * is active.
  *
- * \param[in] band   The band.
- * \param[in] window Window the band is drawn on.
+ * \param[in] band       The band.
+ * \param[in] window     Window the band is drawn on.
+ * \param[in] horizontal Non-zero to scroll horizontally as well as
+ *                       vertically; zero for a layout that reflows to the
+ *                       window's width, such as \ref wuss_gridview_t.
  * \return Non-zero if the window scrolled.
  */
 int wuss_rubberband_autoscroll(wuss_rubberband_t *band,
-                               wuss_window_t     *window);
+                               wuss_window_t     *window,
+                               int                horizontal);
 
 /**
  * End the band and invalidate the area it covered. wuss_rubberband_t::box

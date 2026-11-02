@@ -680,7 +680,7 @@ int wuss_gridview_handle_event(wuss_gridview_t    *gv,
 
   if (event->kind == wuss_EVENT_IDLE)
   {
-    (void) wuss_rubberband_autoscroll(&gv->band, gv->window);
+    (void) wuss_rubberband_autoscroll(&gv->band, gv->window, 0);
     return 0;
   }
 
