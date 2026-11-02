@@ -130,7 +130,7 @@ void wuss_dialogue_destroy(wuss_dialogue_t *doomed)
     return;
 
   alloc = doomed->alloc;
-  if (doomed->owns_window && doomed->window != NULL)
+  if (doomed->owns_window)
     wuss_window_close(doomed->window); /* frees the window and its icons */
   alloc.free(doomed);
 }

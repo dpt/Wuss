@@ -235,7 +235,7 @@ static result_t dithering_dither(dithering_task_t *dt, int keep_palette)
   wuss_window_invalidate_visible(dt->window);
   /* a reused palette leaves the swatches as they were, unless the dither
    * failed and they go blank */
-  if (dt->palette_window && (!keep_palette || rc != result_OK))
+  if (!keep_palette || rc != result_OK)
     wuss_window_invalidate_visible(dt->palette_window);
 
   return result_OK;
