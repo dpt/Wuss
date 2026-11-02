@@ -170,11 +170,12 @@ result_t painting_create_with(wuss_t                     *wuss,
   task->tolerance = 16;
   task->dithering = screen_DITHER_NEAREST; /* painted colours stay exact */
 
-  task->swatches.bbox    = (box_t) BOX_POS_SIZE(OB_SWATCH_X, OB_SWATCH_Y,
-                                                OB_SWATCH_ROW, OB_SWATCH);
-  task->swatches.columns = OB_SWATCHES;
-  task->swatches.gap     = OB_SWATCH_GAP;
-  task->swatches.outline = 1;
+  task->swatches.bbox     = (box_t) BOX_POS_SIZE(OB_SWATCH_X, OB_SWATCH_Y,
+                                                 OB_SWATCH_ROW, OB_SWATCH);
+  task->swatches.columns  = OB_SWATCHES;
+  task->swatches.gap      = OB_SWATCH_GAP;
+  task->swatches.outline  = 1;
+  task->swatches.selected = -1;
   painting_swatches_track(task);
 
   rc = paintingdoc_create_filled(params->size, params->bg, &task->doc);

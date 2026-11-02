@@ -12,6 +12,8 @@
  * The gadget is a plain struct the caller fills and keeps. It allocates
  * nothing and needs no destroy. The colours are borrowed, so the caller may
  * repoint them (e.g. after a wuss_EVENT_PALETTE) and invalidate the window.
+ * To edit a colour, select its swatch and hand the colour to a picker such
+ * as wuss_colourpicker, writing the result back to the caller's array.
  *
  * Built only when WUSS_GADGETS is defined.
  */
@@ -48,6 +50,10 @@ typedef struct wuss_swatches
   const colour_t *colours;
   /** Number of colours. */
   int             ncolours;
+  /** Index of the selected swatch, ringed white then black so it shows on
+   *  any colour; -1 for none. The caller sets it, e.g. from
+   *  \ref wuss_swatches_hit_test, and invalidates the window. */
+  int             selected;
 }
 wuss_swatches_t;
 

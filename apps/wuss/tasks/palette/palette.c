@@ -35,6 +35,11 @@
 #define PALETTE_MENU_LOAD_INDEX    0
 #define PALETTE_MENU_INVERT_INDEX  1
 #define PALETTE_MENU_GREY_INDEX    2
+#define PALETTE_MENU_EDIT_INDEX    3
+
+/* indices of the Screen window's top-level menu */
+#define PALETTE_SCREEN_MENU_LOAD_INDEX 0
+#define PALETTE_SCREEN_MENU_EDIT_INDEX 1
 
 /* ----------------------------------------------------------------------- */
 /* Size in bytes of a *.hex file, or -1 if it can't be opened. Each line is
@@ -153,6 +158,7 @@ static result_t palette_open(wuss_t *wuss, bool screen, palette_task_t **out)
   task->invert    = false;
   task->nnames    = 0;
   task->selected  = 0;
+  task->cell      = -1;
 
   resources = wuss_get_resources(wuss);
   dir       = pathf("%s/resources/wuss-tasks/palettes", resources);
@@ -204,6 +210,8 @@ static result_t palette_open(wuss_t *wuss, bool screen, palette_task_t **out)
                 "Invert", wuss_MENU_ITEM_NONE);
   WUSS_MENU_ITEM(task->menu_items, PALETTE_MENU_GREY_INDEX,
                 "Greyscale", wuss_MENU_ITEM_NONE);
+  WUSS_MENU_ITEM(task->menu_items, PALETTE_MENU_EDIT_INDEX,
+                "Edit colour...", wuss_MENU_ITEM_DASHED);
   WUSS_MENU_TITLE(task->menu, "Palette", task->menu_items,
                  NELEMS(task->menu_items));
 
@@ -286,28 +294,37 @@ void palette_destroy(palette_task_t *task)
   if (task == g.screen)
     g.screen = NULL;
 
+  wuss_colourpicker_destroy(task->picker);
   free(task);
 }
 
-/* shared by both windows: paint a roughly-square grid of npalette swatches
- * across the visible content */
+/* shared by both windows: a roughly-square grid of npalette swatches
+ * filling a content area of "bounds" */
+static void palette_grid(wuss_swatches_t *swatches,
+                         const box_t     *bounds,
+                         const colour_t  *palette,
+                         int              npalette,
+                         int              selected)
+{
+  swatches->bbox     = (box_t) BOX_POS_SIZE(0, 0, bounds->x1 - bounds->x0,
+                                            bounds->y1 - bounds->y0);
+  swatches->columns  = 0;
+  swatches->gap      = 0;
+  swatches->outline  = 0;
+  swatches->colours  = palette;
+  swatches->ncolours = npalette;
+  swatches->selected = selected;
+}
+
 static void palette_draw_grid(const wuss_event_t *event,
                               const colour_t     *palette,
-                              int                 npalette)
+                              int                 npalette,
+                              int                 selected)
 {
-  const box_t    *bounds;
   wuss_swatches_t swatches;
 
-  bounds = event->data.redraw.bounds;
-
-  swatches.bbox     = (box_t) BOX_POS_SIZE(0, 0, bounds->x1 - bounds->x0,
-                                           bounds->y1 - bounds->y0);
-  swatches.columns  = 0;
-  swatches.gap      = 0;
-  swatches.outline  = 0;
-  swatches.colours  = palette;
-  swatches.ncolours = npalette;
-
+  palette_grid(&swatches, event->data.redraw.bounds, palette, npalette,
+               selected);
   wuss_swatches_draw(&swatches, event);
 }
 
@@ -320,9 +337,106 @@ static result_t palette_redraw(const wuss_event_t *event, void *task_data)
   pc      = task_data;
   palette = wuss_get_palette(pc->wuss, &npalette);
 
-  palette_draw_grid(event, palette, npalette);
+  palette_draw_grid(event, palette, npalette, pc->cell);
 
   return result_OK;
+}
+
+/* The palette this task's window shows: the desktop palette, or the screen's
+ * own (NULL with *n 0 on an unpaletted screen) */
+static const colour_t *palette_colours(const palette_task_t *pc, int *n)
+{
+  if (pc->window != NULL)
+    return wuss_get_palette(pc->wuss, n);
+
+  *n = (g_tasks.bm->palette != NULL) ?
+       pixelfmt_paletted_nentries(g_tasks.bm->format) : 0;
+  return g_tasks.bm->palette;
+}
+
+/* wuss_colourpicker_changed_fn_t: install this window's palette with the
+ * edited entry swapped in */
+static void palette_picker_changed(colour_t colour, void *opaque)
+{
+  palette_task_t *pc;
+  const colour_t *current;
+  int             ncurrent;
+  colour_t        edited[256];
+
+  pc = opaque;
+
+  if (pc->window == NULL && pc->window2 == NULL)
+    return; /* closing: the QUIT that frees the picker is on its way */
+
+  current = palette_colours(pc, &ncurrent);
+  if (pc->editing >= ncurrent || ncurrent > (int) NELEMS(edited))
+    return; /* the palette shrank under the open picker */
+
+  memcpy(edited, current, ncurrent * sizeof(*edited));
+  edited[pc->editing] = colour;
+  if (pc->window != NULL)
+    wuss_set_palette(pc->wuss, edited, ncurrent);
+  else
+    tasks_set_screen_palette(edited, ncurrent);
+}
+
+/* Open this window's picker on the selected swatch. Nothing happens with
+ * none selected. */
+static result_t palette_edit(palette_task_t *pc)
+{
+  result_t        rc;
+  const colour_t *palette;
+  int             npalette;
+
+  palette = palette_colours(pc, &npalette);
+  if (pc->cell < 0 || pc->cell >= npalette)
+    return result_OK;
+
+  if (pc->picker == NULL)
+  {
+    rc = wuss_colourpicker_create(&pc->picker, pc->wuss,
+                                  pc->window != NULL ? "Desktop colour" :
+                                  "Screen colour",
+                                  palette_picker_changed, pc);
+    if (rc != result_OK)
+      return rc;
+  }
+
+  pc->editing = pc->cell;
+
+  return wuss_colourpicker_open(pc->picker, palette[pc->cell]);
+}
+
+/* Select on a swatch selects it, and a double-click edits it */
+static result_t palette_swatch_click(palette_task_t     *pc,
+                                     const wuss_event_t *event)
+{
+  wuss_window_t  *window;
+  box_t           content;
+  const colour_t *palette;
+  int             npalette;
+  wuss_swatches_t swatches;
+  int             i;
+
+  window = pc->window != NULL ? pc->window : pc->window2;
+  wuss_window_get_content_bounds(window, &content);
+  palette = palette_colours(pc, &npalette);
+  palette_grid(&swatches, &content, palette, npalette, pc->cell);
+
+  i = wuss_swatches_hit_test(&swatches, event->data.mouse.point);
+  if (i < 0)
+    return result_OK;
+
+  if (i != pc->cell)
+  {
+    pc->cell = i;
+    wuss_window_invalidate_visible(window);
+  }
+
+  if (!(event->data.mouse.button & wuss_BUTTON_DOUBLE))
+    return result_OK;
+
+  return palette_edit(pc);
 }
 
 /* "Screen" window: the physical screen bitmap's own palette, whatever size
@@ -373,7 +487,7 @@ static result_t palette_redraw_screen(palette_task_t     *pc,
 
   npalette = 1 << (1 << pixelfmt_log2bpp(scr->format));
 
-  palette_draw_grid(event, scr->palette, npalette);
+  palette_draw_grid(event, scr->palette, npalette, pc->cell);
 
   return result_OK;
 }
@@ -382,12 +496,15 @@ static result_t palette_redraw_screen(palette_task_t     *pc,
  * menu itself is built once by palette_create and lives in *pc, so it
  * outlives the open chain as wuss_menu_open requires. The invert row's
  * permanent DASHED flag is set at create time; wuss_menu_open_ticked only
- * touches the TICKED bit. */
+ * touches the TICKED bit. Edit colour... is greyed with no swatch
+ * selected. */
 static result_t palette_menu_open(palette_task_t *pc)
 {
   unsigned int ticks;
 
   wuss_menu_tick_exclusive(&pc->load_menu, pc->selected);
+  pc->menu_items[PALETTE_MENU_EDIT_INDEX].flags =
+    wuss_MENU_ITEM_DASHED | (pc->cell < 0 ? wuss_MENU_ITEM_DISABLED : 0);
 
   ticks = 0;
   if (pc->invert)
@@ -399,10 +516,11 @@ static result_t palette_menu_open(palette_task_t *pc)
                                wuss_get_pointer(pc->wuss), &pc->menu_handle);
 }
 
-/* Rebuild the Screen window's menu from the *.hex files of exactly the entry
- * count the screen's format needs, ticking whichever matches the screen's
- * current palette, then open it. Nothing opens on an unpaletted screen or
- * when no file fits. */
+/* Rebuild the Screen window's Load submenu from the *.hex files of exactly
+ * the entry count the screen's format needs, ticking whichever matches the
+ * screen's current palette, then open the Screen menu: Load, greyed when no
+ * file fits, and Edit colour..., greyed with no swatch selected. Nothing
+ * opens on an unpaletted screen. */
 static result_t palette_screen_menu_open(palette_task_t *pc)
 {
   const char *resources;
@@ -434,13 +552,19 @@ static result_t palette_screen_menu_open(palette_task_t *pc)
                   wuss_MENU_ITEM_NONE);
     pc->screen_map[pc->nscreen++] = i;
   }
-  if (pc->nscreen == 0)
-    return result_OK;
-
-  WUSS_MENU_TITLE(pc->load_menu, "Screen", pc->load_items, pc->nscreen);
+  WUSS_MENU_TITLE(pc->load_menu, "Load", pc->load_items, pc->nscreen);
   wuss_menu_tick_exclusive(&pc->load_menu, pc->selected);
 
-  return wuss_menu_open_at_pointer(pc->delegate, &pc->load_menu,
+  WUSS_MENU_ITEM_MENU(pc->menu_items, PALETTE_SCREEN_MENU_LOAD_INDEX, "Load",
+                      pc->nscreen == 0 ? wuss_MENU_ITEM_DISABLED :
+                      wuss_MENU_ITEM_NONE, &pc->load_menu);
+  WUSS_MENU_ITEM(pc->menu_items, PALETTE_SCREEN_MENU_EDIT_INDEX,
+                 "Edit colour...",
+                 pc->cell < 0 ? wuss_MENU_ITEM_DISABLED :
+                 wuss_MENU_ITEM_NONE);
+  WUSS_MENU_TITLE(pc->menu, "Screen", pc->menu_items, 2);
+
+  return wuss_menu_open_at_pointer(pc->delegate, &pc->menu,
                                    &pc->menu_handle);
 }
 
@@ -448,6 +572,9 @@ static result_t palette_click(palette_task_t *pc, const wuss_event_t *event)
 {
   if (event->data.mouse.action != wuss_MOUSE_DOWN)
     return result_OK;
+
+  if (event->data.mouse.button & wuss_BUTTON_SELECT)
+    return palette_swatch_click(pc, event);
 
   if (!(event->data.mouse.button & wuss_BUTTON_MENU))
     return result_OK;
@@ -458,7 +585,8 @@ static result_t palette_click(palette_task_t *pc, const wuss_event_t *event)
   return palette_menu_open(pc);
 }
 
-/* A Screen menu pick loads that file and makes it the screen's palette */
+/* A Screen menu Load pick loads that file and makes it the screen's
+ * palette; Edit colour... opens the picker */
 static result_t palette_screen_menu_select(palette_task_t     *pc,
                                            const wuss_event_t *event)
 {
@@ -467,6 +595,9 @@ static result_t palette_screen_menu_select(palette_task_t     *pc,
   int      n;
 
   index = event->data.menu_select.index;
+  if (event->data.menu_select.menu == &pc->menu)
+    return index == PALETTE_SCREEN_MENU_EDIT_INDEX ? palette_edit(pc) :
+           result_OK;
   if (index < 0 || index >= pc->nscreen)
     return result_OK;
 
@@ -504,6 +635,10 @@ static result_t palette_menu_select(palette_task_t     *pc,
   unsigned int r, g, b, y;
 
   index = event->data.menu_select.index;
+
+  if (event->data.menu_select.menu == &pc->menu &&
+      index == PALETTE_MENU_EDIT_INDEX)
+    return palette_edit(pc);
 
   if (event->data.menu_select.menu == &pc->menu &&
       index == PALETTE_MENU_INVERT_INDEX)

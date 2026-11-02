@@ -1023,6 +1023,7 @@ RelayoutOK: ;
     sw.outline  = 0;
     sw.colours  = swcolours;
     sw.ncolours = 5;
+    sw.selected = -1;
 
     if (wuss_swatches_hit_test(&sw, POINT(10, 20)) != 0 ||
         wuss_swatches_hit_test(&sw, POINT(19, 29)) != 0 ||

@@ -49,6 +49,7 @@ void wuss_swatches_draw(const wuss_swatches_t *swatches,
   size2d_t  cell;
   int       ox, oy;
   colour_t  black;
+  colour_t  white;
   int       nphys;
   int       i;
   int       x, y;
@@ -64,6 +65,7 @@ void wuss_swatches_draw(const wuss_swatches_t *swatches,
   oy    = event->data.redraw.bounds->y0 - event->data.redraw.scroll.y +
           swatches->bbox.y0;
   black = colour_rgb(0x00, 0x00, 0x00);
+  white = colour_rgb(0xFF, 0xFF, 0xFF);
   nphys = (scr->palette != NULL) ?
           pixelfmt_paletted_nentries(scr->format) : 0;
 
@@ -88,6 +90,13 @@ void wuss_swatches_draw(const wuss_swatches_t *swatches,
     }
     if (swatches->outline)
       screen_draw_rect(scr, x, y, cell, black);
+    if (i == swatches->selected)
+    {
+      screen_draw_rect(scr, x, y, cell, white);
+      if (cell.w > 2 && cell.h > 2)
+        screen_draw_rect(scr, x + 1, y + 1,
+                         SIZE2D(cell.w - 2, cell.h - 2), black);
+    }
   }
 }
 

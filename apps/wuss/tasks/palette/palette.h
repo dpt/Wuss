@@ -8,6 +8,7 @@
 #include <stdbool.h>
 
 #include "framebuf/colour.h"
+#include "wuss/component/colourpicker.h"
 #include "wuss/menu.h"
 #include "wuss/window.h"
 
@@ -25,15 +26,22 @@
  * party (framebuffer bitmap, physical palette) reacts to the resulting
  * wuss_EVENT_PALETTE and reads the array back with wuss_get_palette.
  *
+ * In either window Select on a swatch selects it; Menu > Edit colour... (or a
+ * double-click) opens that window's own colour picker on it, each change
+ * installing the edited palette live: the desktop palette via
+ * wuss_set_palette, the Screen's via tasks_set_screen_palette. A later Load,
+ * Invert or Greyscale starts again from the file, dropping the edits, and a
+ * desktop palette change rebuilds the Screen's.
+ *
  * A second window ("Screen") draws the same kind of grid but for the
  * physical screen bitmap's own palette (event->data.redraw.scr->palette),
  * which is whatever size the screen's pixel format needs (2/4/16/256
  * entries for 1/2/4/8bpp) rather than the fixed wuss_SYSTEM_PALETTE_LENGTH
  * system palette above; a NULL screen palette (32bpp, no palette) just
  * shows a label. Its MENU click opens a "Screen" menu of the *.hex files
- * whose entry count matches the screen's depth; a pick replaces the screen
- * palette (tasks_set_screen_palette) until the next desktop palette or mode
- * change. */
+ * whose entry count matches the screen's depth, plus Edit colour...; a pick
+ * replaces the screen palette (tasks_set_screen_palette) until the next
+ * desktop palette or mode change. */
 typedef struct palette_task
 {
   wuss_t              *wuss;
@@ -45,6 +53,13 @@ typedef struct palette_task
                                   * has no palette) */
   bool                 invert;
   bool                 grey; /* Menu > Greyscale */
+
+  /* the selected swatch (-1 for none), and the entry the picker edits,
+   * fixed when it opens. Each task has its own picker, made on first use,
+   * so the desktop and Screen palettes are edited separately. */
+  int                  cell;
+  int                  editing;
+  wuss_colourpicker_t *picker;
 
   /* *.hex files found under resources/palettes at create time, leafname
    * with the extension stripped (e.g. "PICO-8"), sorted. selected indexes
@@ -65,7 +80,9 @@ typedef struct palette_task
   wuss_menu_item_t     load_items[PALETTE_MAX_FILES]; /* one row per
                                                         * *.hex file */
   wuss_menu_t          load_menu; /* "Load" submenu, opened off menu_items */
-  wuss_menu_item_t     menu_items[3]; /* Load, Invert, Greyscale */
+  wuss_menu_item_t     menu_items[4]; /* Load, Invert, Greyscale, Edit
+                                       * colour; a Screen task uses only
+                                       * Load and Edit colour */
   wuss_menu_t          menu;
   wuss_menu_handle_t   menu_handle; /* for wuss_menu_tick_item_live on an
                                      * ADJUST pick, which keeps the chain

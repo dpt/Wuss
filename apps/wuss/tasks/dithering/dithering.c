@@ -739,6 +739,7 @@ static void dithering_redraw_palette(dithering_task_t   *dt,
   swatches.outline  = 0;
   swatches.colours  = dt->target;
   swatches.ncolours = dt->ntarget;
+  swatches.selected = -1;
 
   wuss_swatches_draw(&swatches, event);
 }
