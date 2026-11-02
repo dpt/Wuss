@@ -10,8 +10,7 @@
 #include "framebuf/bmfont.h"
 #include "framebuf/colour.h"
 #include "io/path.h"
-#include "text/bmtext.h"
-#include "text/mdspans.h"
+#include "text/mdtext.h"
 #include "wuss/component/colourmenu.h"
 #include "wuss/component/fontmenu.h"
 #include "wuss/menu.h"
@@ -32,26 +31,19 @@
 typedef struct reading_task
 {
   wuss_window_t      *window;
-  int                 doc_wrap;    /* what the document extent was last */
-  bmfont_t           *doc_font;    /* laid out for; reading_idle redoes it */
-  int                 doc_spacing; /* when any of these change */
-  const char         *doc_text;
-  bmtext_line_t      *lines;      /* owned; the cached layout of text for */
-  int                 nlines;     /* the doc_* keys, shared by redraw and */
-  int                *dx;         /* idle; dx[] is each line's indent for */
-  int                 dx_align;   /* alignment dx_align */
+  mdtext_t            md;         /* the shown text, its fonts, spacing,
+                                   * alignment and cached layout; md.font is
+                                   * the current family's Regular face
+                                   * (acquired from the font cache) or the
+                                   * borrowed sysfont, md.bold its Bold face
+                                   * (acquired) or NULL; md.text is NULL until
+                                   * the first DataLoad */
   int                 doc_h;      /* document height last set */
   wuss_task_t        *delegate;   /* the wuss task backing this window */
   wuss_t             *wuss;       /* for wuss_get_pointer when opening the
                                    * menu */
   char                path[DPTLIB_MAXPATH]; /* file shown; "" until one
                                    * is loaded */
-  bmfont_t           *font;       /* currently shown: the current family's
-                                   * Regular face (acquired from the font
-                                   * cache), or the borrowed sysfont */
-  bmfont_t           *bold;       /* the current family's Bold face
-                                   * (acquired), or NULL if it has none or
-                                   * sysfont is shown */
   int                 current;    /* font menu row of the current family, or
                                    * -1 for sysfont */
   wuss_colour_t      *colourmenu_target; /* &task->fg_index or
@@ -65,7 +57,6 @@ typedef struct reading_task
   wuss_menu_item_t    align_items[3]; /* "Alignment" submenu rows: Left,
                                    * Centre, Right */
   wuss_menu_t         align_menu;
-  int                 align;      /* index into align_items[] in effect */
   wuss_menu_item_t    colours_items[2]; /* "Foreground"/"Background" rows;
                                    * both share the colourmenu singleton,
                                    * retargeted per hover in
@@ -80,23 +71,8 @@ typedef struct reading_task
                                    * wuss_menu_open, for the _live tick calls
                                    * when an ADJUST pick keeps the chain
                                    * open; NULL if closed */
-  char               *text;       /* owned; what reading_redraw lays out and
-                                   * draws: the dropped file's contents,
-                                   * stripped of Markdown markers if it is
-                                   * ".md"; NULL until the first DataLoad */
-  mdspan_t           *markdown_spans; /* owned array of styled runs into
-                                   * text, from mdspans_parse; NULL
-                                   * when the current file isn't
-                                   * Markdown */
-  int                 markdown_nspans; /* length of markdown_spans */
-  int                 span_cursor; /* index of the first span ending after
-                                   * the last offset reading__run looked
-                                   * up; runs are asked for mostly in
-                                   * order, so the search starts here */
   int                 spacing_idx; /* index into reading_spacing_presets[]
-                                   * currently applied */
-  bmfont_spacing_t    spacing;    /* reading_spacing_presets[spacing_idx],
-                                   * passed to bmtext_layout/bmtext_draw */
+                                   * currently applied as md.spacing */
   wuss_colour_t       fg_index;   /* system palette index picked from
                                    * "Foreground" */
   wuss_colour_t       bg_index;   /* system palette index picked from

@@ -18,7 +18,6 @@
 #include "geom/box.h"
 #include "geom/point.h"
 #include "io/path.h"
-#include "text/bmtext.h"
 #include "wuss/menu.h"
 #include "wuss/message.h"
 #include "wuss/component/error.h"
@@ -53,27 +52,13 @@ static const reading_spacing_preset_t reading_spacing_presets[] =
 
 #define READING_DEFAULT_SPACING 0 /* "Normal" */
 
-#define READING_MD_MAX_SPANS 128 /* styled runs are few; overflow is
-                               * dropped */
-
-/* fixed tint colour of each mdspans_style_t -- palette-independent. Bold
- * runs are also drawn in the family's Bold face where it has one; other
- * emphasis is shown by colour alone. */
-static colour_t reading__span_colour(mdspans_style_t style)
-{
-  switch (style)
-  {
-  case mdspans_HEADER: return colour_rgb(0x20, 0x60, 0xd0);
-  case mdspans_BOLD:   return colour_rgb(0xd0, 0x20, 0x20);
-  case mdspans_ITALIC: return colour_rgb(0x20, 0x90, 0x40);
-  default:             return colour_rgb(0x90, 0x40, 0xc0);
-  }
-}
+#define READING_INSET 4
+#define LEADING       2
 
 /* index into task->top_items[] of the "Font" leaf */
 #define READING_MENU_FONT 0
 
-/* "Alignment" submenu rows */
+/* "Alignment" submenu rows, in mdtext_align_t order */
 enum { READING_ALIGN_LEFT = 0, READING_ALIGN_CENTRE, READING_ALIGN_RIGHT };
 
 /* ----------------------------------------------------------------------- */
@@ -99,9 +84,9 @@ static void reading_release_fonts(reading_task_t *task)
   if (task->current < 0)
     return;
 
-  bmfontcache_release(wuss_get_font_cache(task->wuss), task->font);
-  if (task->bold != NULL)
-    bmfontcache_release(wuss_get_font_cache(task->wuss), task->bold);
+  bmfontcache_release(wuss_get_font_cache(task->wuss), task->md.font);
+  if (task->md.bold != NULL)
+    bmfontcache_release(wuss_get_font_cache(task->wuss), task->md.bold);
 }
 
 /* make family name (font menu row idx) the paragraph's: its Regular face
@@ -151,8 +136,8 @@ static result_t reading_load_family(reading_task_t *task,
   }
 
   reading_release_fonts(task);
-  task->font    = font;
-  task->bold    = bold;
+  task->md.font = font;
+  task->md.bold = bold;
   task->current = idx;
   return result_OK;
 }
@@ -231,43 +216,23 @@ exit:
   return rc;
 }
 
-/* load the file at path into task->text, parsing it as Markdown into
- * task->text/markdown_spans if markdown is set, and freeing the previous
- * buffers; on failure the previous text stays shown */
+/* load the file at path into task->md, parsed as Markdown if markdown is
+ * set; on failure the previous text stays shown */
 static result_t reading__load_text(reading_task_t *task,
                                    const char     *path,
                                    bool            markdown)
 {
-  result_t  rc;
-  char     *raw;
-  int       rawlen;
-  char     *text;
-  mdspan_t *spans;
-  int       nspans;
+  result_t rc;
+  char    *raw;
+  int      rawlen;
 
   rc = reading__load_file(path, &raw, &rawlen);
   if (rc != result_OK)
     return rc;
 
-  text   = raw;
-  spans  = NULL;
-  nspans = 0;
-  if (markdown)
-  {
-    rc = mdspans_parse(raw, rawlen, READING_MD_MAX_SPANS, &text, &spans,
-                       &nspans);
-    free(raw);
-    if (rc != result_OK)
-      return rc;
-  }
-
-  free(task->text);
-  free(task->markdown_spans);
-  task->doc_text        = NULL; /* a new text may reuse the old address */
-  task->text            = text;
-  task->markdown_spans  = spans;
-  task->markdown_nspans = nspans;
-  return result_OK;
+  rc = mdtext_set(&task->md, raw, rawlen, markdown);
+  free(raw);
+  return rc;
 }
 
 /* show the file at path (e.g. dropped from the Filer): parsed as Markdown if
@@ -347,9 +312,9 @@ static result_t reading_set_spacing(reading_task_t *task, int idx)
   if (idx < 0 || idx >= NELEMS(reading_spacing_presets) || idx == task->spacing_idx)
     return result_OK;
 
-  task->spacing_idx           = idx;
-  task->spacing.letter_spacing = reading_spacing_presets[idx].letter_spacing;
-  task->spacing.word_spacing   = reading_spacing_presets[idx].word_spacing;
+  task->spacing_idx               = idx;
+  task->md.spacing.letter_spacing = reading_spacing_presets[idx].letter_spacing;
+  task->md.spacing.word_spacing   = reading_spacing_presets[idx].word_spacing;
 
   wuss_menu_tick_exclusive(&task->spacing_menu, idx);
   wuss_menu_tick_exclusive_live(task->menu_handle, &task->spacing_menu, idx);
@@ -360,10 +325,11 @@ static result_t reading_set_spacing(reading_task_t *task, int idx)
 /* align each line to the left, centre or right of the wrap width */
 static result_t reading_set_align(reading_task_t *task, int idx)
 {
-  if (idx < 0 || idx >= NELEMS(task->align_items) || idx == task->align)
+  if (idx < 0 || idx >= NELEMS(task->align_items) ||
+      idx == (int) task->md.align)
     return result_OK;
 
-  task->align = idx;
+  task->md.align = (mdtext_align_t) idx;
 
   wuss_menu_tick_exclusive(&task->align_menu, idx);
   wuss_menu_tick_exclusive_live(task->menu_handle, &task->align_menu, idx);
@@ -449,11 +415,12 @@ result_t reading_create(wuss_t *wuss, reading_task_t **out)
     return result_OOM;
 
   task->wuss        = wuss;
-  task->font        = wuss_get_font(wuss);
+  task->md.font     = wuss_get_font(wuss);
+  task->md.leading  = LEADING;
   task->current     = -1; /* until the system font's row is found below */
   task->spacing_idx = READING_DEFAULT_SPACING;
-  task->spacing.letter_spacing = reading_spacing_presets[READING_DEFAULT_SPACING].letter_spacing;
-  task->spacing.word_spacing   = reading_spacing_presets[READING_DEFAULT_SPACING].word_spacing;
+  task->md.spacing.letter_spacing = reading_spacing_presets[READING_DEFAULT_SPACING].letter_spacing;
+  task->md.spacing.word_spacing   = reading_spacing_presets[READING_DEFAULT_SPACING].word_spacing;
   task->fg_index    = wuss_nearest_colour(wuss, 0x00, 0x00, 0x00);
   task->bg_index    = wuss_nearest_colour(wuss, 0xFF, 0xFF, 0xFF);
   task->bg_transparent = true; /* "None": blend onto the window backdrop */
@@ -562,8 +529,7 @@ result_t reading_create(wuss_t *wuss, reading_task_t **out)
   if (rc != result_OK)
   {
     reading_release_fonts(task);
-    free(task->text);
-    free(task->markdown_spans);
+    mdtext_free(&task->md);
     free(task); /* nothing registered yet; the spawner will not free it */
     return rc;
   }
@@ -640,353 +606,36 @@ result_t reading_open_file(wuss_t *wuss, const char *path)
 void reading_destroy(reading_task_t *task)
 {
   reading_release_fonts(task);
-  free(task->text);
-  free(task->markdown_spans);
-  free(task->lines);
-  free(task->dx);
+  mdtext_free(&task->md);
   free(task);
-}
-
-#define READING_INSET 4
-#define LEADING    2
-
-/* the face a run is drawn in: a bold span's in tcx->bold where the family
- * has one, everything else in tcx->font */
-static bmfont_t *reading__run_font(const reading_task_t *tcx,
-                                   const mdspan_t       *span)
-{
-  return span != NULL && span->style == mdspans_BOLD && tcx->bold != NULL
-         ? tcx->bold : tcx->font;
-}
-
-/* split off the next run of up to len bytes at byte offset off of tcx->text:
- * either part of one span, or unstyled text up to the next span. Returns the
- * span, or NULL for unstyled text, and sets *run_len. Spans are sorted and
- * never overlap, so their ends rise too: tcx->span_cursor is stepped back or
- * forward to the first span ending after off. */
-static const mdspan_t *reading__run(reading_task_t *tcx,
-                                    int             off,
-                                    int             len,
-                                    int            *run_len)
-{
-  const mdspan_t *spans;
-  int             n;
-  int             c;
-  const mdspan_t *s;
-
-  spans = tcx->markdown_spans;
-  n     = tcx->markdown_nspans;
-
-  c = MIN(tcx->span_cursor, n); /* the text may have changed */
-  while (c > 0 && spans[c - 1].start + spans[c - 1].len > off)
-    c--;
-  while (c < n && spans[c].start + spans[c].len <= off)
-    c++;
-  tcx->span_cursor = c;
-
-  *run_len = len;
-  if (c == n)
-    return NULL; /* past the last span */
-
-  s = &spans[c];
-  if (off >= s->start)
-  {
-    *run_len = MIN(len, s->start + s->len - off);
-    return s;
-  }
-
-  *run_len = MIN(len, s->start - off);
-  return NULL;
-}
-
-/* bmtext_measure_fn over tcx->text: as bmfont_measure, but measuring each run
- * in the face reading__draw_styled draws it in, so bold text wraps and
- * aligns at its own width */
-static result_t reading__measure(const char     *text,
-                                 int             len,
-                                 bmfont_width_t  target_width,
-                                 int            *split_point,
-                                 bmfont_width_t *actual_width,
-                                 void           *opaque)
-{
-  result_t        rc;
-  reading_task_t *tcx = opaque;
-  int             cursor;
-  bmfont_width_t  width;
-
-  rc     = result_OK;
-  cursor = 0;
-  width  = 0;
-  while (cursor < len)
-  {
-    const mdspan_t *span;
-    int             run_len;
-    int             split;
-    bmfont_width_t  run_width;
-
-    span = reading__run(tcx, (int) (text - tcx->text) + cursor, len - cursor,
-                        &run_len);
-    rc   = bmfont_measure(reading__run_font(tcx, span), text + cursor,
-                          run_len, &tcx->spacing, target_width - width,
-                          &split, &run_width);
-    if (rc != result_OK)
-      break;
-
-    cursor += split;
-    width  += run_width;
-    if (split < run_len)
-      break; /* the rest does not fit */
-  }
-
-  *split_point  = cursor;
-  *actual_width = width;
-  return rc;
-}
-
-/* like bmtext_draw, but each line is split against tcx->markdown_spans (byte
- * offsets into tcx->text) so a span's run is drawn in its own colour
- * instead of fg, and a bold span in tcx->bold if there is one; used only
- * when tcx->markdown_nspans > 0. Line i starts dx[i] pixels right of
- * origin. */
-static void reading__draw_styled(reading_task_t      *tcx,
-                                 screen_t            *scr,
-                                 const bmtext_line_t *lines,
-                                 int                  nlines,
-                                 const int           *dx,
-                                 colour_t             fg,
-                                 colour_t             bg,
-                                 point_t              origin)
-{
-  int     font_height, font_ascent;
-  point_t pos;
-  int     i;
-
-  bmfont_get_info(tcx->font, NULL, &font_height, &font_ascent, NULL);
-
-  pos   = origin;
-  pos.y += font_ascent;
-  for (i = 0; i < nlines; i++)
-  {
-    const char *line_str;
-    int         line_len;
-    int         line_off; /* byte offset of line_str within tcx->text */
-    int         cursor;    /* bytes of the line already drawn */
-
-    line_str = lines[i].str;
-    line_len = lines[i].len;
-    line_off = (int) (line_str - tcx->text);
-    cursor   = 0;
-    pos.x    = origin.x + dx[i];
-
-    while (cursor < line_len)
-    {
-      const mdspan_t *span;
-      int             run_len;
-
-      span = reading__run(tcx, line_off + cursor, line_len - cursor,
-                          &run_len);
-      bmfont_draw(reading__run_font(tcx, span), scr, line_str + cursor,
-                  run_len, span != NULL ? reading__span_colour(span->style)
-                                        : fg, bg,
-                  &tcx->spacing, &pos, &pos);
-      cursor += run_len;
-    }
-
-    pos.y += font_height + LEADING;
-  }
-}
-
-/* bmtext_layout_measured doesn't treat '\n' specially -- it wraps at spaces
- * only, so a raw call over tcx->text would swallow every newline as if it
- * were whitespace and run headers/paragraphs/list items together on one
- * line.
- * Split text into '\n'-separated segments first and lay out each
- * separately, appending into lines[] -- a blank segment still
- * produces one empty bmtext_line_t, so blank-line paragraph gaps survive
- * as a blank output line). Returns the number of lines written, capped at
- * max. */
-static int reading__layout_lines(reading_task_t *tcx,
-                                 const char     *text,
-                                 int             wrap_width,
-                                 bmtext_line_t  *lines,
-                                 int             max)
-{
-  int         nlines;
-  const char *seg;
-
-  nlines = 0;
-  seg    = text;
-
-  while (nlines < max)
-  {
-    const char *nl;
-    int         seglen;
-    int         n;
-
-    nl     = strchr(seg, '\n');
-    seglen = nl != NULL ? (int) (nl - seg) : (int) strlen(seg);
-
-    if (seglen == 0)
-    {
-      lines[nlines].str = seg;
-      lines[nlines].len = 0;
-      nlines++;
-    }
-    else
-    {
-      n = bmtext_layout_measured(reading__measure, tcx, seg, seglen,
-                                 wrap_width, lines + nlines, max - nlines);
-      nlines += n;
-    }
-
-    if (nl == NULL)
-      break;
-    seg = nl + 1;
-  }
-
-  return nlines;
-}
-
-/* Bring the cached layout (tcx->lines, tcx->nlines, tcx->dx) up to date for
- * wrap_width, redoing only what a changed key invalidates. A redraw arrives
- * once per visible piece of the window, so laying out per redraw repeats
- * the whole document many times over when the window is covered. */
-static result_t reading__layout(reading_task_t *tcx, int wrap_width)
-{
-  bool           relaid;
-  size_t         max;
-  bmtext_line_t *lines;
-  int           *dx;
-  int            i;
-
-  relaid = false;
-  if (tcx->lines == NULL || wrap_width != tcx->doc_wrap ||
-      tcx->font != tcx->doc_font || tcx->spacing_idx != tcx->doc_spacing ||
-      tcx->text != tcx->doc_text)
-  {
-    /* every line holds at least one byte, plus one empty line per newline,
-     * so strlen + 1 bounds the count */
-    max   = strlen(tcx->text) + 1;
-    lines = malloc(max * sizeof(*lines));
-    dx    = malloc(max * sizeof(*dx));
-    if (lines == NULL || dx == NULL)
-    {
-      free(lines);
-      free(dx);
-      return result_OOM;
-    }
-
-    free(tcx->lines);
-    free(tcx->dx);
-    tcx->lines  = lines;
-    tcx->dx     = dx;
-    tcx->nlines = reading__layout_lines(tcx, tcx->text, wrap_width, lines,
-                                        (int) max);
-
-    tcx->doc_wrap    = wrap_width;
-    tcx->doc_font    = tcx->font;
-    tcx->doc_spacing = tcx->spacing_idx;
-    tcx->doc_text    = tcx->text;
-    relaid           = true;
-  }
-
-  if (!relaid && tcx->align == tcx->dx_align)
-    return result_OK;
-
-  /* per-line indent for the alignment; a line wider than the wrap width (a
-   * single unbreakable word) measures as the wrap width, so it stays at the
-   * left edge */
-  for (i = 0; i < tcx->nlines; i++)
-  {
-    int            split;
-    bmfont_width_t width;
-
-    tcx->dx[i] = 0;
-    if (tcx->align == READING_ALIGN_LEFT || tcx->lines[i].len == 0)
-      continue; /* bmfont_measure refuses an empty run */
-
-    if (reading__measure(tcx->lines[i].str, tcx->lines[i].len, wrap_width,
-                         &split, &width, tcx) != result_OK)
-      continue;
-
-    tcx->dx[i] = wrap_width - width;
-    if (tcx->align == READING_ALIGN_CENTRE)
-      tcx->dx[i] /= 2;
-  }
-  tcx->dx_align = tcx->align;
-
-  return result_OK;
 }
 
 static result_t reading_redraw(const wuss_event_t *event, void *task_data)
 {
   result_t        rc;
   reading_task_t *tcx;
-  screen_t       *scr;
   const box_t    *bounds;
-  const box_t    *clip;
-  int             sx, sy;
   const colour_t *palette;
   colour_t        fg, bg;
-  int             wrap_width;
   point_t         origin;
-  int             font_height;
-  int             line_height;
-  int             first, last;
-  int             i;
 
   tcx = task_data;
-  if (tcx->text == NULL)
+  if (tcx->md.text == NULL)
     return result_OK; /* nothing dropped yet; the backdrop shows */
 
-  scr    = event->data.redraw.scr;
   bounds = event->data.redraw.bounds;
-  clip   = event->data.redraw.content;
-  sx     = event->data.redraw.scroll.x;
-  sy     = event->data.redraw.scroll.y;
 
   palette = wuss_get_palette(tcx->wuss, NULL);
   fg      = palette[tcx->fg_index];
   bg      = tcx->bg_transparent ? colour_rgba(0, 0, 0, 0) : palette[tcx->bg_index];
 
-  wrap_width = (bounds->x1 - READING_INSET) - (bounds->x0 + READING_INSET);
-
-  rc = reading__layout(tcx, wrap_width);
+  rc = mdtext_layout(&tcx->md, bounds->x1 - bounds->x0 - 2 * READING_INSET);
   if (rc != result_OK)
     return rc;
 
-  origin.x = bounds->x0 - sx + READING_INSET;
-  origin.y = bounds->y0 - sy + READING_INSET;
-
-  bmfont_get_info(tcx->font, NULL, &font_height, NULL, NULL);
-  line_height = font_height + LEADING;
-
-  /* draw only the lines the clip touches */
-  first = (clip->y0 - origin.y) / line_height;
-  last  = DIVIDE_ROUNDING_UP(clip->y1 - origin.y, line_height);
-  first = CLAMP(first, 0, tcx->nlines);
-  last  = CLAMP(last, first, tcx->nlines);
-
-  origin.y += first * line_height;
-
-  if (tcx->markdown_nspans > 0)
-  {
-    reading__draw_styled(tcx, scr, tcx->lines + first, last - first,
-                         tcx->dx + first, fg, bg, origin);
-  }
-  else
-  {
-    /* one bmtext_draw per line so each can take its own indent */
-    for (i = first; i < last; i++)
-    {
-      point_t line_origin;
-
-      line_origin.x = origin.x + tcx->dx[i];
-      line_origin.y = origin.y + (i - first) * line_height;
-      bmtext_draw(tcx->font, scr, &tcx->lines[i], 1, fg, bg, LEADING,
-                  line_origin, &tcx->spacing);
-    }
-  }
+  origin.x = bounds->x0 - event->data.redraw.scroll.x + READING_INSET;
+  origin.y = bounds->y0 - event->data.redraw.scroll.y + READING_INSET;
+  mdtext_draw(&tcx->md, event->data.redraw.scr, origin, fg, bg);
 
   return result_OK;
 }
@@ -1000,30 +649,25 @@ static result_t reading_idle(void *task_data)
   result_t        rc;
   reading_task_t *tcx;
   box_t           bounds;
-  int             wrap_width;
-  int             font_height;
   size2d_t        doc;
 
   tcx = task_data;
 
   /* the proginfo dialogue is a second window on this same (autoclose)
    * delegate, so the main window may already be gone */
-  if (tcx->window == NULL || tcx->text == NULL)
+  if (tcx->window == NULL || tcx->md.text == NULL)
     return result_OK;
 
   wuss_window_get_content_bounds(tcx->window, &bounds);
-  wrap_width = (bounds.x1 - READING_INSET) - (bounds.x0 + READING_INSET);
-
-  rc = reading__layout(tcx, wrap_width);
+  rc = mdtext_layout(&tcx->md, bounds.x1 - bounds.x0 - 2 * READING_INSET);
   if (rc != result_OK)
     return rc;
-
-  bmfont_get_info(tcx->font, NULL, &font_height, NULL, NULL);
 
   /* a window cannot be dragged wider than its document, so make the
    * document as wide as the screen allows; the text reflows to fit */
   wuss_window_get_max_content(tcx->window, &doc);
-  doc.h = tcx->nlines * (font_height + LEADING) + 2 * READING_INSET;
+  doc.h = mdtext_nlines(&tcx->md) * mdtext_line_height(&tcx->md) +
+          2 * READING_INSET;
 
   if (doc.h == tcx->doc_h)
     return result_OK;
