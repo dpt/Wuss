@@ -756,10 +756,7 @@ int wuss_gridview_handle_event(wuss_gridview_t    *gv,
     else if (event->data.mouse.button & wuss_BUTTON_ADJUST)
     {
       gv->cursor = index;
-      if (bitvec_get(gv->selected, (bitvec_index_t) index))
-        bitvec_clear(gv->selected, (bitvec_index_t) index);
-      else
-        (void) bitvec_set(gv->selected, (bitvec_index_t) index);
+      (void) bitvec_toggle(gv->selected, (bitvec_index_t) index);
       gridview_invalidate_cell(gv, index);
     }
     else if ((event->data.mouse.button & wuss_BUTTON_SELECT) &&
