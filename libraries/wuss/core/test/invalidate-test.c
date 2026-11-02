@@ -67,8 +67,7 @@ result_t wuss_invalidate_test(const char *resources)
       goto Failure;
 
     wuss_get_dirty(wuss, 0, &dirty);
-    if (dirty.x0 != outer.x0 || dirty.y0 != outer.y0 ||
-        dirty.x1 != outer.x1 || dirty.y1 != outer.y1)
+    if (!box_equal(&dirty, &outer))
       goto Failure; /* must still cover the whole outer box, not just inner */
 
     rc = wuss_redraw_dirty(wuss);

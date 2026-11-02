@@ -144,10 +144,7 @@ static result_t find_slot(wuss_t              *wuss,
     if (w == self || (w->flags & wuss_WINDOW_HIDDEN))
       continue;
 
-    taken.x0 = w->visible.x0 - WUSS_PLACE_GUTTER;
-    taken.y0 = w->visible.y0 - WUSS_PLACE_GUTTER;
-    taken.x1 = w->visible.x1 + WUSS_PLACE_GUTTER;
-    taken.y1 = w->visible.y1 + WUSS_PLACE_GUTTER;
+    taken = box_grown(&w->visible, WUSS_PLACE_GUTTER);
 
     rc = packer_place_at(layout, &taken);
     if (rc != result_OK && rc != result_PACKER_EMPTY) /* EMPTY: off-screen */

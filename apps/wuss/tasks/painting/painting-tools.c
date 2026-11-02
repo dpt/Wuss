@@ -212,11 +212,8 @@ box_t painting_points_box(const painting_task_t *pt)
 
   for (i = 0; i < pt->nlasso; i++)
   {
-    box     = painting_span_box(pt->lasso[i], pt->lasso[i]);
-    drag.x0 = MIN(drag.x0, box.x0);
-    drag.y0 = MIN(drag.y0, box.y0);
-    drag.x1 = MAX(drag.x1, box.x1);
-    drag.y1 = MAX(drag.y1, box.y1);
+    box = painting_span_box(pt->lasso[i], pt->lasso[i]);
+    box_union(&drag, &box, &drag);
   }
 
   return drag;

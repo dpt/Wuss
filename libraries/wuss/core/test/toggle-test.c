@@ -784,7 +784,7 @@ result_t wuss_toggle_test(const char *resources)
       goto Failure;
 
     wuss_window_get_visible_bounds(win_v, &vb);
-    if (vb.x1 <= vb.x0 || vb.y1 <= vb.y0)
+    if (box_is_empty(&vb))
       goto Failure; /* a naive "space from x0 to the screen edge" sum goes
                       * negative from off-screen, producing an inverted box --
                       * un-hit-testable forever after, since box_contains_point
@@ -827,7 +827,7 @@ result_t wuss_toggle_test(const char *resources)
       goto Failure;
 
     wuss_window_get_visible_bounds(win_v, &vb);
-    if (vb.x1 <= vb.x0 || vb.y1 <= vb.y0)
+    if (box_is_empty(&vb))
       goto Failure;
 
     rc = wuss_redraw_dirty(wuss);
@@ -960,8 +960,7 @@ result_t wuss_toggle_test(const char *resources)
       goto Failure;
 
     wuss_window_get_visible_bounds(win_p, &after);
-    if (after.x0 != before.x0 || after.y0 != before.y0 ||
-        after.x1 != before.x1 || after.y1 != before.y1)
+    if (!box_equal(&after, &before))
       goto Failure; /* restore returns the exact pre-toggle box, position too */
 
     rc = wuss_redraw_dirty(wuss);
@@ -1056,8 +1055,7 @@ result_t wuss_toggle_test(const char *resources)
         goto Failure;
 
       wuss_window_get_visible_bounds(win_z, &after);
-      if (after.x0 != before.x0 || after.y0 != before.y0 ||
-          after.x1 != before.x1 || after.y1 != before.y1)
+      if (!box_equal(&after, &before))
         goto Failure;
 
       rc = wuss_redraw_dirty(wuss);

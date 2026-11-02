@@ -17,8 +17,7 @@ static point_t snap_to_screen(const wuss_window_t *win, point_t p)
   wuss__content_box(win, &content);
   off.x  = content.x0 - win->visible.x0;
   off.y  = content.y0 - win->visible.y0;
-  size.w = win->visible.x1 - win->visible.x0;
-  size.h = win->visible.y1 - win->visible.y0;
+  size   = box_size(&win->visible);
   scr    = win->wuss->scr->size;
 
   v.x = p.x - off.x;
@@ -180,8 +179,7 @@ static result_t mouse_move(wuss_t *wuss, point_t p, wuss_window_t **hit)
         point_t  hotspot;
 
         box     = icon->spec.bbox;
-        size.w  = box.x1 - box.x0;
-        size.h  = box.y1 - box.y0;
+        size    = box_size(&box);
         hotspot = POINT(wuss->pressed.point.x - (content.x0 - win->scroll.x + box.x0),
                         wuss->pressed.point.y - (content.y0 - win->scroll.y + box.y0));
 

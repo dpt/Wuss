@@ -167,15 +167,17 @@ static void place_pane(wuss_window_t *parent,
                        wuss_window_t *pane,
                        const box_t   *box)
 {
-  int   hidden;
-  box_t before;
-  box_t divider;
+  size2d_t want, have;
+  int      hidden;
+  box_t    before;
+  box_t    divider;
 
   if (box_equal(&pane->visible, box))
     return;
 
-  if (box->x1 - box->x0 == pane->visible.x1 - pane->visible.x0 &&
-      box->y1 - box->y0 == pane->visible.y1 - pane->visible.y0)
+  want = box_size(box);
+  have = box_size(&pane->visible);
+  if (want.w == have.w && want.h == have.h)
   {
     wuss__window_move(pane, POINT(box->x0, box->y0));
     return;

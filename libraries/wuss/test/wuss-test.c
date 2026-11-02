@@ -618,8 +618,7 @@ result_t wuss_test(const char *resources)
     goto Failure;
 
   wuss_window_get_visible_bounds(win_d, &visible);
-  if (visible.x0 != box_d.x0 || visible.y0 != box_d.y0 ||
-      visible.x1 != box_d.x1 || visible.y1 != box_d.y1)
+  if (!box_equal(&visible, &box_d))
     goto Failure;
 
   printf("test: click within a title-less window's top edge is delivered as content, not a drag\n");

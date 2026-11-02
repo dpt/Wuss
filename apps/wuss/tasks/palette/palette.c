@@ -356,7 +356,7 @@ static result_t palette_redraw_screen(palette_task_t     *pc,
       label = "32bpp (none)";
 
     screen_fill_rect(scr, bounds->x0 - sx, bounds->y0 - sy,
-                     SIZE2D(bounds->x1 - bounds->x0, bounds->y1 - bounds->y0),
+                     box_size(bounds),
                      colour_rgb(0x00, 0x00, 0x00));
     if (font != NULL)
     {

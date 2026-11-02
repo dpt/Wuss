@@ -76,11 +76,7 @@ static result_t iconbar_window_ensure(wuss_t *wuss)
                           wuss_WINDOW_NO_REDRAW   | wuss_WINDOW_PINNED |
                           wuss_WINDOW_STACK_BACK,
                           wuss_BACKDROP_COLOUR(wuss_COLOUR_WINDOW),
-                          SIZE2D(content.x1 - content.x0,
-                                 content.y1 - content.y0),
-                          SIZE2D(content.x1 - content.x0,
-                                 content.y1 - content.y0),
-                          &win);
+                          box_size(&content), box_size(&content), &win);
   if (rc != result_OK)
     return rc;
 

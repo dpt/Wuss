@@ -97,8 +97,7 @@ result_t wuss_placement_test(const char *resources)
     if (rc != result_OK)
       goto Failure;
     wuss_window_get_visible_bounds(win_p[1], &vis[1]);
-    if (vis[1].x0 != probe.x0 || vis[1].y0 != probe.y0 ||
-        vis[1].x1 != probe.x1 || vis[1].y1 != probe.y1)
+    if (!box_equal(&vis[1], &probe))
       goto Failure; /* freed slot not reused */
 
     /* placement honours where windows actually are: free the second slot

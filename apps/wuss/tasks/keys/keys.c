@@ -146,9 +146,7 @@ static result_t keys_redraw(wuss_window_t      *window,
   bounds  = event->data.redraw.bounds;
 
   screen_fill_rect(scr, content->x0, content->y0,
-                   SIZE2D(content->x1 - content->x0,
-                          content->y1 - content->y0),
-                   kt->bg);
+                   box_size(content), kt->bg);
 
   snprintf(lines[0], sizeof(lines[0]), "Focus: %s",
            (wuss_get_focus(kt->wuss) == window)

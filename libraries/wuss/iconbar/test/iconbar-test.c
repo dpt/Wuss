@@ -318,10 +318,7 @@ result_t wuss_iconbar_test(const char *resources)
     rc = wuss_resize(wuss, &fixture.scr);
     if (rc != result_OK)
       goto Failure;
-    if (wuss->iconbar.window->visible.x0 != bar_before.x0 ||
-        wuss->iconbar.window->visible.y0 != bar_before.y0 ||
-        wuss->iconbar.window->visible.x1 != bar_before.x1 ||
-        wuss->iconbar.window->visible.y1 != bar_before.y1)
+    if (!box_equal(&wuss->iconbar.window->visible, &bar_before))
       goto Failure; /* same screen size in -> same pinned box out */
 
     wuss_iconbar_icon_destroy(wuss, icon);

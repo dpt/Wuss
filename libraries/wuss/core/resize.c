@@ -35,8 +35,7 @@ static void resize_one_window(wuss_window_t *window)
   wuss_window_get_content_bounds(window, &content);
   origin.x = content.x0;
   origin.y = content.y0;
-  size.w   = content.x1 - content.x0;
-  size.h   = content.y1 - content.y0;
+  size     = box_size(&content);
 
   scr_width  = window->wuss->scr->size.w;
   scr_height = window->wuss->scr->size.h;
@@ -81,8 +80,7 @@ static void resize_pinned_window(wuss_window_t *window)
   window->visible.x1 = window->wuss->scr->size.w;
   window->visible.y1 = window->wuss->scr->size.h;
 
-  if (before.x0 != window->visible.x0 || before.y0 != window->visible.y0 ||
-      before.x1 != window->visible.x1 || before.y1 != window->visible.y1)
+  if (!box_equal(&before, &window->visible))
   {
     box_t dirty;
 

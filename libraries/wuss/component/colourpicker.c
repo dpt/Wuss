@@ -746,7 +746,7 @@ result_t wuss_colourpicker_open(wuss_colourpicker_t *picker, colour_t colour)
      * kept on screen, title bar and all */
     wuss_window_get_visible_bounds(win, &outer);
     wuss_window_get_content_bounds(win, &content);
-    size = SIZE2D(outer.x1 - outer.x0, outer.y1 - outer.y0);
+    size = box_size(&outer);
     scr  = wuss_get_screen_size(picker->wuss);
     at   = wuss_get_pointer(picker->wuss);
     at.x = CLAMP(at.x - size.w / 2, 0, MAX(scr.w - size.w, 0));

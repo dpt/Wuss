@@ -679,8 +679,7 @@ result_t wuss_resize_test(const char *resources)
           /* skip ground legitimately covered by the occluder's real,
            * furniture-adjusted footprint -- it shows win_occ's own colour
            * there, not win_f's doc-row pattern */
-          if (sx >= win_occ->visible.x0 && sx < win_occ->visible.x1 &&
-              sy >= win_occ->visible.y0 && sy < win_occ->visible.y1)
+          if (box_contains_point(&win_occ->visible, sx, sy))
             continue;
 
           px   = ((const uint32_t *) fixture.pixels)[sy * 200 + sx];
