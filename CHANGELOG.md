@@ -15,6 +15,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Viewing: arrow keys, Page Up/Down and Home/End scroll the image. Space
   shows the next PNG in the directory and Shift-Space the previous one.
 
+### Changed
+
+- Gridview: a selected label is drawn in a capsule instead of a box made
+  by padding the text with a space either side.
+
 ## [0.23.0] - 2026-10-29
 
 ### Added
