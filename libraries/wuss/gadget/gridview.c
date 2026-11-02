@@ -287,7 +287,7 @@ static void gridview_reflow(wuss_gridview_t *gv)
 
   cols     = gridview_columns_for_width(gv, content.x1 - content.x0);
   max_cols = MAX(gridview_columns_for_width(gv, max.w), cols);
-  rows     = (gv->count + cols - 1) / cols;
+  rows     = DIVIDE_ROUNDING_UP(gv->count, cols);
   min      = gridview_min_size(gv);
 
   /* always positive: cell size and at least one column and row; at least
@@ -996,7 +996,7 @@ size2d_t wuss_gridview_natural_size(const wuss_gridview_t *gv,
   int rows;
 
   columns = MIN(MAX(columns, 1), MAX(gv->count, 1));
-  rows    = (gv->count + columns - 1) / columns;
+  rows    = DIVIDE_ROUNDING_UP(gv->count, columns);
   rows    = MIN(MAX(rows, 1), MAX(max_rows, 1));
   return SIZE2D(MAX(gridview_width_for_columns(gv, columns),
                     gridview_min_size(gv).w),

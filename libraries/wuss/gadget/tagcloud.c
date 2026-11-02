@@ -216,7 +216,7 @@ static int tagcloud_layout_list(wuss_tagcloud_t *tc,
     e->separator = 0;
   }
 
-  return (tc->ntags + cols - 1) / cols;
+  return DIVIDE_ROUNDING_UP(tc->ntags, cols);
 }
 
 /* Sort and lay out the tags to the window's visible width, set the document

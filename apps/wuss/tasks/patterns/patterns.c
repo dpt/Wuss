@@ -222,7 +222,7 @@ static result_t patterns_redraw(const wuss_event_t *event, void *task_data)
    * so it scrolls with the content and every dirty rectangle shares one
    * dither phase */
   ox     = bounds->x0 - event->data.redraw.scroll.x;
-  nsteps = (bounds->x1 - bounds->x0 + PATTERNS_STEP - 1) / PATTERNS_STEP;
+  nsteps = DIVIDE_ROUNDING_UP(bounds->x1 - bounds->x0, PATTERNS_STEP);
 
   s0 = MAX(0, (content->x0 - ox) / PATTERNS_STEP);
   s1 = MIN(nsteps - 1, (content->x1 - 1 - ox) / PATTERNS_STEP);
