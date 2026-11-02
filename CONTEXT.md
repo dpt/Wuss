@@ -9,3 +9,11 @@ Domain glossary for Wuss. Use these terms in code, docs and design discussion.
 **Menu session**: the state and behaviour of one open menu interaction in wuss: the chain of open menus and submenus, the owning task, the bottom gap, the `eat_up` flag that swallows the tail of the press that opened the menu, outside-click dismissal, key handling while open, and abandonment when a window closes or the owning task is destroyed. Owned by the menu layer (`libraries/wuss/menu/`). Core reaches it only through a few entry points: press, key, window-closed, task-destroyed. State is opaque to core.
 
 **Pane**: a toolbar attached inside its parent window, along one edge of the parent's content area, with `wuss_window_attach_pane`. The parent's footprint stays the same; its content area shrinks by the pane's thickness plus a divider. Wuss sets the pane's length to match the content along that edge; the pane keeps its own thickness. Otherwise it follows its parent as a toolbar does. Used for internal toolbars. Distinct from a **toolbar**, which sits outside the parent's edge.
+
+**Backdrop**: the paint wuss draws wherever no window covers the screen: a `wuss_backdrop_t` fill and optional centred image, set with `wuss_config_t::backdrop` or `wuss_set_backdrop`. Paint only; it receives no input. Distinct from the **backdrop window**. See `docs/windowing/backdrop.md`.
+
+**Backdrop window**: the one full-screen window, created with `wuss_WINDOW_BACKDROP`, at the bottom of the back stack. It is never raised, moved or closed by the user, and receives clicks, menus and drops for the desktop. Owned by the **Pinboard**.
+
+**Pinboard**: the task that owns the backdrop window. It gives the desktop a menu, changes the backdrop and pins files dropped on it. A pinned file is a reference to a path, never a copy.
+
+**Post-it**: a note window owned by the Post-Its task, showing Markdown text. An ordinary middle-stack window. "Pin to backdrop" saves the note to a file in the permanent per-user notes directory and pins it with `wuss_MESSAGE_PINBOARD_PIN`; otherwise it has no tie to the Pinboard.

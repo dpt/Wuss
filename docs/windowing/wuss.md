@@ -25,6 +25,8 @@ result_t wuss_create(screen_t               *scr,
 
 `fonts` (or `nfonts` 0) may be NULL, for unlabelled titlebars; `palette` may be NULL for a built-in default palette; `alloc` (DPTLib's `utils/alloc.h`) may be NULL for plain stdlib `malloc`/`realloc`/`free`. `config` may be NULL for default titlebar height/colours. `config->backdrop` is a `wuss_backdrop_t` — a flat colour, or an 8x8 fill pattern — painted behind windows on every redraw; set its `colour` to `wuss_NO_BACKGROUND` (the default when `config` is NULL) to leave the background untouched and require the caller to repaint it itself. A non-`screen_PATTERN_SOLID` `pattern` tiles that pattern in `colour` over `pattern_bg`, phased to a fixed screen origin so it does not crawl between full and dirty-region redraws.
 
+Desktop behaviour beyond this paint (a backdrop window, the Pinboard, pinned files and notes) is described in [backdrop.md](backdrop.md).
+
 ### Fonts
 
 Text drawing lives in its own module, `libraries/wuss/font/`: the region core delegates it the same way it delegates furniture, icons and menus. It owns the font slots a `wuss_t` was created with and the one text-rendering primitive furniture, menus and icons all call, so region handling can be used without pulling any font code in beyond the slot storage.
