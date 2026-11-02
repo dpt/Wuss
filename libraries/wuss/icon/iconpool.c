@@ -186,11 +186,8 @@ void wuss__iconpool_clear(wuss_t *wuss, struct wuss_iconpool *pool)
   pool->atoms    = NULL;
   pool->nbitmaps = 0;
 
-  if (pool->names != NULL)
-  {
-    atom_destroy(pool->names);
-    pool->names = NULL;
-  }
+  atom_destroy(pool->names);
+  pool->names = NULL;
 }
 
 static result_t icons_match_pool(pixelfmt_t            order,

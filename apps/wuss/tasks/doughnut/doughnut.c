@@ -606,15 +606,12 @@ static result_t doughnut_menu_select(doughnut_task_t    *task,
     else
       doughnut_defaults(task);
 
-    if (task->menu_handle != NULL)
-    {
-      wuss_menu_tick_exclusive_live(task->menu_handle, &task->tube_menu,
-                                    task->tube);
-      wuss_menu_tick_exclusive_live(task->menu_handle, &task->major_menu,
-                                    task->major);
-      wuss_menu_tick_exclusive_live(task->menu_handle, &task->minor_menu,
-                                    task->minor);
-    }
+    wuss_menu_tick_exclusive_live(task->menu_handle, &task->tube_menu,
+                                  task->tube);
+    wuss_menu_tick_exclusive_live(task->menu_handle, &task->major_menu,
+                                  task->major);
+    wuss_menu_tick_exclusive_live(task->menu_handle, &task->minor_menu,
+                                  task->minor);
     wuss_window_invalidate_visible(task->window);
     return result_OK;
   }
