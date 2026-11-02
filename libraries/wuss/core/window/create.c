@@ -122,7 +122,7 @@ result_t wuss_window_create(wuss_task_t        *task,
   else
     win->title[0] = '\0';
 #else
-  (void) title;
+  NOT_USED(title);
 #endif
 
   list_add_to_head(&wuss->z_order[win->stack], &win->link);

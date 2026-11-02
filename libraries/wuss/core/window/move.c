@@ -159,7 +159,7 @@ void wuss__window_move(wuss_window_t *window, point_t p)
     wuss__invalidate_clipped(window, &dirty);
   }
 
-  (void) ncopied; /* move.c repairs via the sliver logic above, not "copied" */
+  NOT_USED(ncopied); /* move.c repairs via the sliver logic above, not "copied" */
 }
 
 /* ----------------------------------------------------------------------- */

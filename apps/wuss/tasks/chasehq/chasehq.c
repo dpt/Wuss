@@ -52,7 +52,7 @@ static void chasehq_draw(const zxbox_t *dirty, void *opaque)
 
 static void chasehq_stamp(void *opaque)
 {
-  (void) opaque;
+  NOT_USED(opaque);
 }
 
 static void chasehq_border(int colour, void *opaque)

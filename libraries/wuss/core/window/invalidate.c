@@ -115,7 +115,7 @@ static int zorder_get_cut(void *vctx, int i, box_t *cut)
   zorder_ctx_t  *ctx;
   wuss_window_t *occluder;
 
-  (void) i;
+  NOT_USED(i);
 
   ctx      = vctx;
   occluder = ctx->win;

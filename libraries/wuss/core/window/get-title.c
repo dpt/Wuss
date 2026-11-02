@@ -7,7 +7,7 @@ const char *wuss_window_get_title(const wuss_window_t *window)
 #ifdef WUSS_FURNITURE
   return window->title;
 #else
-  (void) window;
+  NOT_USED(window);
   return "";
 #endif
 }

@@ -208,38 +208,40 @@ static inline void wuss__furniture_carve_for(wuss_window_flags_t flags,
 static inline int wuss__titlebar_height_for(const wuss_t       *wuss,
                                             wuss_window_flags_t flags)
 {
-  (void) wuss; (void) flags;
+  NOT_USED(wuss);
+  NOT_USED(flags);
   return 0;
 }
 
 static inline int wuss__titlebar_height(const wuss_window_t *window)
 {
-  (void) window;
+  NOT_USED(window);
   return 0;
 }
 
 static inline int wuss__outline_px_for(wuss_window_flags_t flags)
 {
-  (void) flags;
+  NOT_USED(flags);
   return 0;
 }
 
 static inline int wuss__outline_px(const wuss_window_t *window)
 {
-  (void) window;
+  NOT_USED(window);
   return 0;
 }
 
 static inline int wuss__button_size_for(const wuss_t       *wuss,
                                         wuss_window_flags_t flags)
 {
-  (void) wuss; (void) flags;
+  NOT_USED(wuss);
+  NOT_USED(flags);
   return 0;
 }
 
 static inline int wuss__button_size(const wuss_window_t *window)
 {
-  (void) window;
+  NOT_USED(window);
   return 0;
 }
 
@@ -247,7 +249,8 @@ static inline void wuss__furniture_carve_for(wuss_window_flags_t flags,
                                              int                 button_size,
                                              point_t            *carve)
 {
-  (void) flags; (void) button_size;
+  NOT_USED(flags);
+  NOT_USED(button_size);
   carve->x = 0;
   carve->y = 0;
 }

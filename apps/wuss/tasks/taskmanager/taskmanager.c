@@ -17,7 +17,7 @@ static result_t taskmanager_handle(wuss_window_t      *window,
                                    const wuss_event_t *event,
                                    void               *task_data)
 {
-  (void) task_data;
+  NOT_USED(task_data);
 
   if (event->kind != wuss_EVENT_ICON)
     return result_OK;

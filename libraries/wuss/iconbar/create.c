@@ -20,9 +20,9 @@ static result_t iconbar_window_handle(wuss_window_t      *window,
                                       const wuss_event_t *event,
                                       void               *task_data)
 {
-  (void) window;
-  (void) event;
-  (void) task_data;
+  NOT_USED(window);
+  NOT_USED(event);
+  NOT_USED(task_data);
 
   return result_OK;
 }

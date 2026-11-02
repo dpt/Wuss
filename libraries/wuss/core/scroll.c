@@ -18,9 +18,9 @@ static void wuss__scroll_rehover(wuss_t        *wuss,
                                            wuss__screen_to_doc(win,
                                                                screen_point)));
 #else
-  (void) wuss;
-  (void) win;
-  (void) screen_point;
+  NOT_USED(wuss);
+  NOT_USED(win);
+  NOT_USED(screen_point);
 #endif
 }
 

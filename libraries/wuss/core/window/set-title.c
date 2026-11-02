@@ -17,7 +17,7 @@ void wuss_window_set_title(wuss_window_t *window, const char *title)
 
   wuss__chrome_repaint(window);
 #else
-  (void) window;
-  (void) title;
+  NOT_USED(window);
+  NOT_USED(title);
 #endif
 }

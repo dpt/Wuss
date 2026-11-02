@@ -117,7 +117,7 @@ static result_t collect_name(const char *name,
   char             *copy;
   char             *space;
 
-  (void) path;
+  NOT_USED(path);
 
   if (is_system_font_name(nl->wuss, name))
     return result_OK;

@@ -191,7 +191,7 @@ result_t taskapp_spawn(wuss_t               *wuss,
     if (app->desc == desc)
       return app_spawn(app, fn, param, out);
 
-  (void) wuss;
+  NOT_USED(wuss);
 
   return result_NOT_FOUND;
 }
@@ -502,7 +502,7 @@ result_t taskapp_spawn(wuss_t               *wuss,
                        void                 *param,
                        void                **out)
 {
-  (void) desc;
+  NOT_USED(desc);
 
   return fn(wuss, param, out);
 }

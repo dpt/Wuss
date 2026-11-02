@@ -191,16 +191,16 @@ static result_t error_answer(wuss_error_choice_t choice)
 
 static result_t error_action_ok(void *opaque, wuss_button_t button)
 {
-  (void) opaque;
-  (void) button;
+  NOT_USED(opaque);
+  NOT_USED(button);
 
   return error_answer(wuss_ERROR_OK);
 }
 
 static result_t error_action_cancel(void *opaque, wuss_button_t button)
 {
-  (void) opaque;
-  (void) button;
+  NOT_USED(opaque);
+  NOT_USED(button);
 
   return error_answer(wuss_ERROR_CANCEL);
 }
@@ -404,8 +404,8 @@ static result_t error_task_handle(wuss_window_t      *window,
   result_t rc;
   int      i;
 
-  (void) window;
-  (void) task_data;
+  NOT_USED(window);
+  NOT_USED(task_data);
 
   switch (event->kind)
   {

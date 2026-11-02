@@ -129,21 +129,21 @@ static result_t dcs_choose(wuss_dcs_t *dcs, wuss_dcs_choice_t choice)
 
 static result_t dcs_action_discard(void *opaque, wuss_button_t button)
 {
-  (void) button;
+  NOT_USED(button);
 
   return dcs_choose(opaque, wuss_DCS_DISCARD);
 }
 
 static result_t dcs_action_cancel(void *opaque, wuss_button_t button)
 {
-  (void) button;
+  NOT_USED(button);
 
   return dcs_choose(opaque, wuss_DCS_CANCEL);
 }
 
 static result_t dcs_action_save(void *opaque, wuss_button_t button)
 {
-  (void) button;
+  NOT_USED(button);
 
   return dcs_choose(opaque, wuss_DCS_SAVE);
 }
@@ -248,7 +248,7 @@ static result_t dcs_task_handle(wuss_window_t      *window,
   wuss_dcs_t *dcs;
   result_t    rc;
 
-  (void) window;
+  NOT_USED(window);
 
   dcs = task_data;
 

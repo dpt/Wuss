@@ -55,7 +55,7 @@ static void greatescape_draw(const zxbox_t *dirty, void *opaque)
 
 static void greatescape_stamp(void *opaque)
 {
-  (void) opaque;
+  NOT_USED(opaque);
 }
 
 static void greatescape_border(int colour, void *opaque)

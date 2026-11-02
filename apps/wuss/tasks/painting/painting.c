@@ -367,7 +367,7 @@ static const taskapp_desc_t painting_desc =
 /* taskapp_spawn_fn_t: param is the dialogue's paintingnew_params_t */
 static result_t painting_spawn_new(wuss_t *wuss, void *param, void **out)
 {
-  (void) out;
+  NOT_USED(out);
 
   return painting_create_with(wuss, param, NULL);
 }

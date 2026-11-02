@@ -77,7 +77,7 @@ static result_t proginfo_fillout(void *opaque)
   wuss_info_row_t rows[4];
   int             nrows;
 
-  (void) opaque;
+  NOT_USED(opaque);
 
   nrows = proginfo_rows(&g.pending, rows);
 

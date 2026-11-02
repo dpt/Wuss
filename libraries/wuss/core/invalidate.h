@@ -70,35 +70,35 @@ static inline void wuss__chrome_draw(wuss_t        *wuss,
                                      wuss_window_t *window,
                                      const box_t   *full)
 {
-  (void) wuss;
-  (void) window;
-  (void) full;
+  NOT_USED(wuss);
+  NOT_USED(window);
+  NOT_USED(full);
 }
 
 static inline void wuss__chrome_repaint(wuss_window_t *window)
 {
-  (void) window;
+  NOT_USED(window);
 }
 
 static inline void wuss__chrome_repaint_for(wuss_window_t *window,
                                             const box_t   *visible)
 {
-  (void) window;
-  (void) visible;
+  NOT_USED(window);
+  NOT_USED(visible);
 }
 
 static inline void wuss__chrome_repaint_scroll(wuss_window_t *window,
                                                int            dx,
                                                int            dy)
 {
-  (void) window;
-  (void) dx;
-  (void) dy;
+  NOT_USED(window);
+  NOT_USED(dx);
+  NOT_USED(dy);
 }
 
 static inline void wuss__chrome_invalidate_layout(wuss_window_t *window)
 {
-  (void) window;
+  NOT_USED(window);
 }
 #endif
 
