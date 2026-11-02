@@ -63,12 +63,15 @@ typedef struct taskapp_desc
   bool               (*claims)(const char *path); /* optional: with opens,
                                       * claim only the paths this accepts,
                                       * leaving the rest to other apps */
+  bool                 no_quit;      /* the menu has no "Quit" row: a system
+                                      * app that stays on the icon bar */
 }
 taskapp_desc_t;
 
 /* Install the app for desc: a task with an icon bar icon (labelled name,
  * drawn with the application glyph) and a menu of Info, New (unless
- * desc->singleton or desc->drop_only), Hide and Quit. SELECT or ADJUST on
+ * desc->singleton or desc->drop_only), Hide and Quit (unless desc->no_quit).
+ * SELECT or ADJUST on
  * the icon of a hidden app shows it again. Otherwise SELECT brings every
  * window of the app to the front or, when it has none, calls desc->create
  * for an instance of the main window and focuses it, each instance a child

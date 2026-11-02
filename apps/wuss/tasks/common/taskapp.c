@@ -66,7 +66,7 @@ struct app
   int                   create_row; /* menu rows of the create and adjust */
   int                   adjust_row; /* entries, or -1 when no adjust */
   int                   hide_row; /* menu row of "Hide" / "Show" */
-  int                   quit_row; /* menu row of "Quit" */
+  int                   quit_row; /* menu row of "Quit", or -1 */
   bool                  hidden; /* every window hidden by wuss_task_set_hidden */
   bool                  quit; /* Quit picked; taskapp_reap destroys the task */
 };
@@ -441,9 +441,13 @@ result_t taskapp_install(wuss_t *wuss, const taskapp_desc_t *desc)
   WUSS_MENU_ITEM_SHORTCUT(app->menu_items, n, "Hide", wuss_MENU_ITEM_NONE,
                           "^H");
   n++;
-  app->quit_row = n;
-  WUSS_MENU_ITEM_SHORTCUT(app->menu_items, n, "Quit", 0, NULL);
-  n++;
+  app->quit_row = -1;
+  if (!desc->no_quit)
+  {
+    app->quit_row = n;
+    WUSS_MENU_ITEM_SHORTCUT(app->menu_items, n, "Quit", 0, NULL);
+    n++;
+  }
   WUSS_MENU_TITLE(app->menu, desc->name, app->menu_items, n);
 
   task_desc.handle    = app_handle;

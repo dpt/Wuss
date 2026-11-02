@@ -281,7 +281,9 @@ result_t palette_app_create(wuss_t *wuss)
     "Desktop palette",
     "System palette",
     NULL,
-    0x40000000 /* inside Display */
+    0x40000000, /* inside Display */
+    NULL,
+    true
   };
 
   return taskapp_install(wuss, &desc);
