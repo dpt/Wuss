@@ -2,6 +2,7 @@
 
 #ifdef WUSS_APP
 
+#include <limits.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -13,6 +14,7 @@
 #include "base/utils.h"
 #include "framebuf/palettes.h"
 #include "geom/box.h"
+#include "io/dirlist.h"
 #include "io/path.h"
 #include "wuss/menu.h"
 #include "wuss/menu-desc.h"
@@ -25,6 +27,7 @@
 #define VIEWING_BORDERSZ 8 /* solid band drawn around the image */
 #define VIEWING_MARGINSZ VIEWING_BORDERSZ
 #define VIEWING_EMPTYSZ  64 /* image area before the first DataLoad */
+#define VIEWING_SCROLL_STEP 20 /* pixels per arrow key, as a scroll arrow */
 
 /* rows of the main menu (its caption is not a row) */
 enum { VIEWING_MENU_DISPLAY, VIEWING_MENU_COLOURS, VIEWING_MENU_STAGE };
@@ -56,7 +59,8 @@ static size2d_t viewing_size(const viewing_task_t *ic)
 static result_t viewing_fit(viewing_task_t *ic)
 {
   return task_window_fit(ic->delegate, &ic->window, "Viewing",
-                         wuss_WINDOW_DEFAULT, wuss_NO_BACKDROP,
+                         wuss_WINDOW_DEFAULT | wuss_WINDOW_FOCUSABLE,
+                         wuss_NO_BACKDROP,
                          viewing_size(ic), SIZE2D(32, 32));
 }
 
@@ -286,6 +290,115 @@ static result_t viewing_show(viewing_task_t *ic, const char *path)
   return result_OK;
 }
 
+/* Show the PNG 'step' places (+1 or -1) from the current one in its
+ * directory, in leafname order and wrapping at either end. Files that fail
+ * to load are skipped. */
+static result_t viewing_page(viewing_task_t *ic, int step)
+{
+  char                   dir[DPTLIB_MAXPATH];
+  char                   next[DPTLIB_MAXPATH];
+  dirlist_t             *list;
+  const char            *leaf;
+  size_t                 dirlen;
+  int                    n;
+  int                    cur;
+  int                    i;
+  int                    idx;
+  const dirlist_entry_t *entry;
+
+  if (ic->path[0] == '\0' || !path_parent(ic->path, dir, sizeof(dir)))
+    return result_OK;
+  if (dirlist_scan(dir, &list) != result_OK)
+    return result_OK;
+
+  leaf   = path_leaf(ic->path);
+  dirlen = (size_t) (leaf - ic->path); /* keeps the separator */
+  n      = dirlist_count(list);
+
+  for (cur = 0; cur < n; cur++)
+    if (strcmp(dirlist_get(list, cur)->leaf, leaf) == 0)
+      break;
+  if (cur == n)
+    cur = step > 0 ? -1 : n; /* current file gone: start from an end */
+
+  for (i = 1; i <= n; i++)
+  {
+    idx = ((cur + step * i) % n + n) % n;
+    if (idx == cur)
+      break; /* back round to the current file */
+    entry = dirlist_get(list, idx);
+    if (entry->is_dir || entry->type.riscos != filetype_RISCOS_PNG)
+      continue;
+    if (dirlen + strlen(entry->leaf) >= sizeof(next))
+      continue;
+    memcpy(next, ic->path, dirlen);
+    strcpy(next + dirlen, entry->leaf);
+    if (viewing_show(ic, next) == result_OK)
+      break;
+  }
+
+  dirlist_destroy(list);
+  return result_OK;
+}
+
+/* Arrows, Page Up/Down and Home/End scroll the image; Space shows the next
+ * image in the directory and Shift-Space the previous one */
+static result_t viewing_key(viewing_task_t *ic, const wuss_event_t *event)
+{
+  box_t content;
+  int   page;
+
+  if (event->data.key.modifiers & (wuss_KEY_MOD_CTRL | wuss_KEY_MOD_ALT))
+    return result_WUSS_KEY_UNCLAIMED;
+
+  wuss_window_get_content_bounds(ic->window, &content);
+  page = MAX(content.y1 - content.y0 - VIEWING_SCROLL_STEP, 1);
+
+  switch (event->data.key.code)
+  {
+  case ' ':
+    return viewing_page(ic,
+             (event->data.key.modifiers & wuss_KEY_MOD_SHIFT) ? -1 : 1);
+
+  case wuss_KEY_UP:
+    wuss_window_scroll_by(ic->window, POINT(0, -VIEWING_SCROLL_STEP));
+    break;
+
+  case wuss_KEY_DOWN:
+    wuss_window_scroll_by(ic->window, POINT(0, VIEWING_SCROLL_STEP));
+    break;
+
+  case wuss_KEY_LEFT:
+    wuss_window_scroll_by(ic->window, POINT(-VIEWING_SCROLL_STEP, 0));
+    break;
+
+  case wuss_KEY_RIGHT:
+    wuss_window_scroll_by(ic->window, POINT(VIEWING_SCROLL_STEP, 0));
+    break;
+
+  case wuss_KEY_PAGE_UP:
+    wuss_window_scroll_by(ic->window, POINT(0, -page));
+    break;
+
+  case wuss_KEY_PAGE_DOWN:
+    wuss_window_scroll_by(ic->window, POINT(0, page));
+    break;
+
+  case wuss_KEY_HOME:
+    wuss_window_scroll_by(ic->window, POINT(-INT_MAX / 2, -INT_MAX / 2));
+    break;
+
+  case wuss_KEY_END:
+    wuss_window_scroll_by(ic->window, POINT(0, INT_MAX / 2));
+    break;
+
+  default:
+    return result_WUSS_KEY_UNCLAIMED;
+  }
+
+  return result_OK;
+}
+
 /* A DataLoad on the viewing window: show the file it names. */
 static result_t viewing_message(viewing_task_t     *ic,
                                 wuss_window_t      *window,
@@ -421,7 +534,9 @@ result_t viewing_handle(wuss_window_t      *window,
     return result_OK;
 
   case wuss_EVENT_KEY:
-    return result_WUSS_KEY_UNCLAIMED;
+    if (window != ic->window)
+      return result_WUSS_KEY_UNCLAIMED;
+    return viewing_key(ic, event);
 
   default:
     return result_OK;

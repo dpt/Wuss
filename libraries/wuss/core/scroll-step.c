@@ -41,3 +41,8 @@ void wuss__scroll_step(wuss_window_t *window, point_t delta)
 
   wuss_window_set_scroll(window, scroll);
 }
+
+void wuss_window_scroll_by(wuss_window_t *window, point_t delta)
+{
+  wuss__scroll_step(window, delta);
+}

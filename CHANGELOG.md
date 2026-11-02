@@ -8,6 +8,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- `wuss_window_scroll_by()` scrolls a window by an offset, clamped to its
+  document, as a scrollbar arrow click does.
+- Viewing: arrow keys, Page Up/Down and Home/End scroll the image. Space
+  shows the next PNG in the directory and Shift-Space the previous one.
+
 ## [0.23.0] - 2026-10-29
 
 ### Added

@@ -492,6 +492,17 @@ void wuss_window_set_scroll(wuss_window_t *window, point_t p);
 void wuss_window_get_scroll(const wuss_window_t *window, point_t *p);
 
 /**
+ * Scroll a window by an offset, clamped to its document extent, as a
+ * scrollbar arrow click does. An axis the window has no scrollbar for stays
+ * put.
+ *
+ * \param[in] window Window to scroll.
+ * \param[in] delta  Change in scroll offset; positive brings later content
+ *                   into view.
+ */
+void wuss_window_scroll_by(wuss_window_t *window, point_t delta);
+
+/**
  * Change a window's background, invalidating its content area so the next
  * redraw picks up the new fill.
  *
