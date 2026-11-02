@@ -1185,8 +1185,7 @@ QuitCheckFail:
 
 QuitDestroy:
     reap_test_tasks();
-    if (qwuss != NULL)
-      wuss_destroy(qwuss);
+    wuss_destroy(qwuss);
 QuitFreeOnly:
     free(qpixels);
 QuitFail:
@@ -1342,8 +1341,7 @@ QuitFail:
 
 TickCheckFail:
     printf("wuss_test: menu tick check failed\n");
-    if (wuss__menu_chain(twuss) != NULL)
-      wuss_menu_close(wuss__menu_chain(twuss));
+    wuss_menu_close(wuss__menu_chain(twuss));
 
 TickDestroy:
     reap_test_tasks();

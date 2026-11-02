@@ -128,8 +128,7 @@ void effecting_update(effecting_task_t *ec, int rechain)
     logf_warning("effecting: cannot apply effects (rc=0x%X)", rc);
 
   ec->show_original = 0;
-  if (ec->window != NULL)
-    wuss_window_invalidate_visible(ec->window);
+  wuss_window_invalidate_visible(ec->window);
 }
 
 /* Allocate chain and result to match source, then run. */
@@ -916,8 +915,7 @@ result_t effecting_handle(wuss_window_t      *window,
 
       /* the stack is meaningless without its image; its own CLOSE
        * tears down the gridview */
-      if (ec->list_window != NULL)
-        wuss_window_close(ec->list_window);
+      wuss_window_close(ec->list_window);
     }
     else if (window == ec->list_window)
     {

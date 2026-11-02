@@ -533,8 +533,7 @@ static result_t doughnut_density_set(doughnut_task_t *task,
 {
   *field = CLAMP(index, 0, count - 1);
 
-  if (task->menu_handle != NULL)
-    wuss_menu_tick_exclusive_live(task->menu_handle, menu, *field);
+  wuss_menu_tick_exclusive_live(task->menu_handle, menu, *field);
   wuss_window_invalidate_visible(task->window);
 
   return result_OK;

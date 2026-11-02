@@ -104,8 +104,7 @@ static void chasehq_free(zxtask_t *task)
 
   if (ct->game)
     chq_destroy(ct->game);
-  if (ct->zx)
-    zxspectrum_destroy(ct->zx);
+  zxspectrum_destroy(ct->zx);
 }
 
 static result_t chasehq_claim_screen(zxtask_t *task, bitmap_t *bm)

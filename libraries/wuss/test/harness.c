@@ -240,8 +240,7 @@ result_t wuss_fixture_open(wuss_fixture_t *fixture,
 
 void wuss_fixture_close(wuss_fixture_t *fixture)
 {
-  if (fixture->wuss != NULL)
-    wuss_destroy(fixture->wuss);
+  wuss_destroy(fixture->wuss);
   fixture->wuss = NULL;
 
   forget_test_tasks();

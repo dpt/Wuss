@@ -392,11 +392,9 @@ Failure:
 
 Cleanup:
   wuss_dcs_destroy(dcs);
-  if (wuss != NULL)
-    wuss_destroy(wuss);
+  wuss_destroy(wuss);
   free(pixels);
-  if (font != NULL)
-    bmfont_destroy(font);
+  bmfont_destroy(font);
 
   return rc == result_TEST_FAILED ? result_TEST_FAILED : result_TEST_PASSED;
 }

@@ -547,8 +547,7 @@ static result_t painting_mouse(painting_task_t    *pt,
         pt->fg = colour;
       else
         pt->bg = colour;
-      if (pt->optionbar != NULL)
-        wuss_window_invalidate_visible(pt->optionbar);
+      wuss_window_invalidate_visible(pt->optionbar);
       return result_OK;
 
     case painting_TOOL_WAND:

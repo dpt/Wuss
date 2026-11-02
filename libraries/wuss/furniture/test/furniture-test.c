@@ -655,11 +655,9 @@ result_t wuss_furniture_test(const char *resources)
 
 TitleFail:
     printf("wuss_furniture_test: title check failed\n");
-    if (fw != NULL)
-      wuss_destroy(fw);
+    wuss_destroy(fw);
     free(pixels);
-    if (font != NULL)
-      bmfont_destroy(font);
+    bmfont_destroy(font);
     goto Failure;
 TitleOK: ;
   }

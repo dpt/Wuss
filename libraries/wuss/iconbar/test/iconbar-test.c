@@ -480,11 +480,9 @@ result_t wuss_iconbar_test(const char *resources)
 
 DrawFail:
     printf("wuss_iconbar_test: draw check failed\n");
-    if (fw != NULL)
-      wuss_destroy(fw);
+    wuss_destroy(fw);
     free(pixels);
-    if (font != NULL)
-      bmfont_destroy(font);
+    bmfont_destroy(font);
     goto Failure;
 DrawOK: ;
   }

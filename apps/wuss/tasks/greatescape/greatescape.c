@@ -118,8 +118,7 @@ static void greatescape_free(zxtask_t *task)
 
   if (gt->game)
     tge_destroy(gt->game);
-  if (gt->zx)
-    zxspectrum_destroy(gt->zx);
+  zxspectrum_destroy(gt->zx);
 }
 
 static result_t greatescape_claim_screen(zxtask_t *task, bitmap_t *bm)

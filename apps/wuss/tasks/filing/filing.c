@@ -687,8 +687,7 @@ static void filing_menu_enable(filing_task_t *task, int row, int enabled)
   else
     task->menu_items[row].flags |= wuss_MENU_ITEM_DISABLED;
 
-  if (task->menu_handle != NULL)
-    wuss_menu_disable_item_live(task->menu_handle, &task->menu, row, !enabled);
+  wuss_menu_disable_item_live(task->menu_handle, &task->menu, row, !enabled);
 }
 
 /* set which rows apply to the window the menu was opened over, from its

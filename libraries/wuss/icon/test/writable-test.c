@@ -401,8 +401,7 @@ result_t wuss_writable_test(const char *resources)
 Failure:
   printf("wuss_writable_test: failed (rc=0x%X)\n", rc);
   wuss_fixture_close(&fixture);
-  if (font != NULL)
-    bmfont_destroy(font);
+  bmfont_destroy(font);
 
   return result_TEST_FAILED;
 }

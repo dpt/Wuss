@@ -184,8 +184,7 @@ Check:
          scroll.y);
 Fail:
   reap_test_tasks();
-  if (wuss != NULL)
-    wuss_destroy(wuss);
+  wuss_destroy(wuss);
   free(pixels);
   return result_TEST_FAILED;
 }

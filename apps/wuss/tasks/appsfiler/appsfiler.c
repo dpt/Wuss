@@ -236,8 +236,7 @@ static void apps_destroy(apps_task_t *task)
   int i;
 
   for (i = 0; i < (int) NELEMS(task->windows); i++)
-    if (task->windows[i].gridview != NULL)
-      wuss_gridview_destroy(task->windows[i].gridview);
+    wuss_gridview_destroy(task->windows[i].gridview);
 
   free(task);
 }

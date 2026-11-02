@@ -415,8 +415,7 @@ result_t sudoku_handle(wuss_window_t      *window,
 
   case wuss_EVENT_GAIN_FOCUS:
   case wuss_EVENT_LOSE_FOCUS:
-    if (sd->window != NULL)
-      wuss_window_invalidate_visible(sd->window); /* show or hide the cursor */
+    wuss_window_invalidate_visible(sd->window); /* show or hide the cursor */
     return result_OK;
 
   case wuss_EVENT_MENU_SELECT:
