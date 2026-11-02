@@ -66,7 +66,7 @@ typedef struct orbing_task
   /* "Light" submenu: one row per light */
   wuss_menu_item_t   light_items[ORBING_NLIGHTS];
   wuss_menu_t        light_menu;
-  dithermenu_t       dither;     /* "Dithering" submenu */
+  dithermenu_t       dither;     /* "Display" submenu */
   screen_dither_t    dithering;  /* how the preview is blitted */
   int                current;    /* index of the light a drag moves */
   int                dragging;   /* non-zero while a Select drag is live */

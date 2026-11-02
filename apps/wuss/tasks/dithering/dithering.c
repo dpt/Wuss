@@ -533,6 +533,9 @@ result_t dithering_create(wuss_t *wuss, dithering_task_t **out)
   task->strength   = 100;
   task->strength_step = DITHERING_STRENGTH_STEP;
   task->serpentine = 1;
+  /* the dither already targets a palette: a second, ordered one on the way
+   * to the screen would only muddy it */
+  task->dithering  = screen_DITHER_NEAREST;
 
   namelist_scan(pathf("%s/resources/wuss-tasks/palettes",
                       wuss_get_resources(wuss)),
@@ -592,8 +595,11 @@ result_t dithering_create(wuss_t *wuss, dithering_task_t **out)
   WUSS_MENU_TITLE(task->palette_menu, "Palette", task->palette_items,
                   DITHERING_PALETTE_ROW__LIMIT);
 
+  dithermenu_init(&task->dither, task->dithering);
+  WUSS_MENU_ITEM_MENU(task->menu_items, DITHERING_MENU_DISPLAY, "Display",
+                      wuss_MENU_ITEM_NONE, &task->dither.display);
   WUSS_MENU_ITEM_SHORTCUT(task->menu_items, DITHERING_MENU_SAVE, "Save",
-                          wuss_MENU_ITEM_NONE, "F3");
+                          wuss_MENU_ITEM_DASHED, "F3");
   /* window set once saveas exists */
   WUSS_MENU_ITEM_MENU(task->menu_items, DITHERING_MENU_METHOD, "Method",
                       wuss_MENU_ITEM_DASHED, &task->method_menu);
@@ -795,7 +801,8 @@ static result_t dithering_redraw(dithering_task_t   *dt,
 
   x  = bounds->x0 - event->data.redraw.scroll.x;
   y  = bounds->y0 - event->data.redraw.scroll.y;
-  rc = screen_copy_bitmap(event->data.redraw.scr, x, y, bm);
+  rc = screen_copy_bitmap_dithered(event->data.redraw.scr, x, y, bm,
+                                   dt->dithering);
   if (rc != result_OK)
     return rc;
 
@@ -931,6 +938,14 @@ static result_t dithering_menu_select(dithering_task_t   *dt,
   {
     dt->animate = !dt->animate;
     wuss_menu_tick_item_live(dt->menu_handle, menu, index, dt->animate);
+    return result_OK;
+  }
+
+  /* display only: the dither itself is unchanged */
+  if (menu == &dt->dither.menu)
+  {
+    dt->dithering = dithermenu_select(&dt->dither, dt->menu_handle, index);
+    wuss_window_invalidate_visible(dt->window);
     return result_OK;
   }
 

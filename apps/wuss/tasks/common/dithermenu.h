@@ -1,4 +1,4 @@
-/* wuss/tasks/common/dithermenu.h -- "Dithering" submenu of screen_dither_t */
+/* wuss/tasks/common/dithermenu.h -- "Display" submenu holding "Dithering" */
 
 #ifndef TASKS_DITHERMENU_H
 #define TASKS_DITHERMENU_H
@@ -7,12 +7,15 @@
 #include "framebuf/screen.h"
 #include "wuss/menu.h"
 
-/* a "Dithering" submenu with one row per screen_dither_t, for a task to
- * embed and borrow from its main menu */
+/* a "Display" submenu whose one row opens a "Dithering" submenu with one row
+ * per screen_dither_t, for a task to embed and hang off the top row of its
+ * main menu */
 typedef struct dithermenu
 {
   wuss_menu_item_t items[3]; /* indexed by screen_dither_t */
-  wuss_menu_t      menu;
+  wuss_menu_t      menu;     /* "Dithering" */
+  wuss_menu_item_t display_items[1];
+  wuss_menu_t      display;  /* "Display": the main menu's submenu */
 }
 dithermenu_t;
 
@@ -28,6 +31,11 @@ static inline void dithermenu_init(dithermenu_t   *dm,
                  wuss_MENU_ITEM_NONE);
   WUSS_MENU_TITLE(dm->menu, "Dithering", dm->items, NELEMS(dm->items));
   wuss_menu_tick_exclusive(&dm->menu, (int) dithering);
+
+  WUSS_MENU_ITEM_MENU(dm->display_items, 0, "Dithering", wuss_MENU_ITEM_NONE,
+                      &dm->menu);
+  WUSS_MENU_TITLE(dm->display, "Display", dm->display_items,
+                  NELEMS(dm->display_items));
 }
 
 /* tick row index, both in dm and in the open chain handle, and return the

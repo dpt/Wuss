@@ -14,6 +14,7 @@
 #include "wuss/menu.h"
 #include "wuss/window.h"
 
+#include "../common/dithermenu.h"
 #include "../palette/palette.h"
 
 #define DITHERING_MAX_NAME_LEN 64
@@ -89,6 +90,7 @@ dithering_group_t;
 /* Main menu rows */
 enum
 {
+  DITHERING_MENU_DISPLAY,
   DITHERING_MENU_SAVE,
   DITHERING_MENU_METHOD,
   DITHERING_MENU_PALETTE,
@@ -127,6 +129,7 @@ typedef struct dithering_task
   int                strength_step; /* animated change per idle tick */
   int                serpentine;
   int                linear;   /* dither in linear light */
+  screen_dither_t    dithering; /* how the image is blitted to the screen */
 
   char               path[DPTLIB_MAXPATH]; /* file shown; "" until the
                                 * first DataLoad */
@@ -156,6 +159,7 @@ typedef struct dithering_task
   wuss_menu_t        fixed_menu;
   wuss_menu_item_t   palette_items[DITHERING_PALETTE_ROW__LIMIT];
   wuss_menu_t        palette_menu;
+  dithermenu_t       dither;   /* Display submenu: screen dithering */
   wuss_menu_item_t   menu_items[DITHERING_MENU__LIMIT];
   wuss_menu_t        menu;
   wuss_menu_handle_t menu_handle; /* the open chain, if any */

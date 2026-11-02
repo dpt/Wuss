@@ -11,12 +11,15 @@
 #include "wuss/menu.h"
 #include "wuss/window.h"
 
+#include "../common/dithermenu.h"
+
 #define RESIZING_MAX_NAME_LEN 64
 #define RESIZING_NSCALES      8  /* rows in the Scale submenu */
 
 /* Main menu rows */
 enum
 {
+  RESIZING_MENU_DISPLAY,
   RESIZING_MENU_SAVE,
   RESIZING_MENU_METHOD,
   RESIZING_MENU_SCALE,
@@ -40,6 +43,7 @@ typedef struct resizing_task
   bitmap_resample_t  method;
   int                scale;   /* index into the Scale rows */
   int                linear;  /* blend in linear light */
+  screen_dither_t    dithering; /* how the image is blitted to the screen */
 
   char               path[DPTLIB_MAXPATH]; /* file shown; "" until the first
                                * DataLoad */
@@ -50,6 +54,7 @@ typedef struct resizing_task
   wuss_menu_t        method_menu;
   wuss_menu_item_t   scale_items[RESIZING_NSCALES];
   wuss_menu_t        scale_menu;
+  dithermenu_t       dither;  /* "Display" submenu: screen dithering */
   wuss_menu_item_t   menu_items[RESIZING_MENU__LIMIT];
   wuss_menu_t        menu;
   wuss_menu_handle_t menu_handle; /* the open chain, if any */

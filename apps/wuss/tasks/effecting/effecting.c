@@ -531,8 +531,10 @@ static void effecting_build_menus(effecting_task_t *task)
 
   dithermenu_init(&task->dither, task->dithering);
 
+  WUSS_MENU_ITEM_MENU(task->menu_items, EFFECTING_MENU_DISPLAY, "Display",
+                      wuss_MENU_ITEM_BORROWED_SUBMENU, &task->dither.display);
   WUSS_MENU_ITEM_SHORTCUT(task->menu_items, EFFECTING_MENU_SAVE, "Save",
-                          wuss_MENU_ITEM_NONE, "F3");
+                          wuss_MENU_ITEM_DASHED, "F3");
   /* hover opens the Save As dialogue as a submenu; F3 shows it standalone */
   task->menu_items[EFFECTING_MENU_SAVE].window =
     wuss_saveas_window(task->saveas);
@@ -551,9 +553,6 @@ static void effecting_build_menus(effecting_task_t *task)
                         wuss_MENU_ITEM_PRE_OPEN,
                         effecting_edit_window(task->edit,
                                               EFFECTING_EDIT_LEVEL));
-  WUSS_MENU_ITEM_MENU(task->menu_items, EFFECTING_MENU_DITHERING, "Dithering",
-                      wuss_MENU_ITEM_BORROWED_SUBMENU,
-                      &task->dither.menu);
   WUSS_MENU_ITEM(task->menu_items, EFFECTING_MENU_APPLY, "Apply",
                  wuss_MENU_ITEM_DASHED);
   WUSS_MENU_ITEM(task->menu_items, EFFECTING_MENU_CANCEL, "Cancel",

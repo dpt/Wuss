@@ -289,8 +289,12 @@ result_t painting_create_with(wuss_t                     *wuss,
     return rc;
   }
 
+  dithermenu_init(&task->dither, task->dithering);
+  WUSS_MENU_ITEM_MENU(task->menu_items, PAINTING_MENU_DISPLAY, "Display",
+                      wuss_MENU_ITEM_NONE, &task->dither.display);
+
   WUSS_MENU_ITEM_SHORTCUT(task->menu_items, PAINTING_MENU_UNDO, "Undo",
-                          wuss_MENU_ITEM_NONE, "F8");
+                          wuss_MENU_ITEM_DASHED, "F8");
 
   WUSS_MENU_ITEM_SHORTCUT(task->menu_items, PAINTING_MENU_SAVE, "Save",
                           wuss_MENU_ITEM_NONE, "F3"); /* window set below */
@@ -315,10 +319,6 @@ result_t painting_create_with(wuss_t                     *wuss,
                       wuss_MENU_ITEM_DASHED, &task->nozzle_menu);
   /* the shortcut, or a click on the row, steps to the next nozzle */
   task->menu_items[PAINTING_MENU_NOZZLE].shortcut = "N";
-
-  dithermenu_init(&task->dither, task->dithering);
-  WUSS_MENU_ITEM_MENU(task->menu_items, PAINTING_MENU_DITHERING, "Dithering",
-                      wuss_MENU_ITEM_NONE, &task->dither.menu);
 
   WUSS_MENU_TITLE(task->menu, "Painting", task->menu_items,
                   NELEMS(task->menu_items));
@@ -705,9 +705,9 @@ static void painting_menu_shade(painting_task_t *pt)
   no_undo = !paintingdoc_can_undo(pt->doc);
   no_sel  = !paintingdoc_has_selection(pt->doc);
 
-  pt->menu_items[PAINTING_MENU_UNDO].flags = no_undo ?
-                                          wuss_MENU_ITEM_DISABLED :
-                                          wuss_MENU_ITEM_NONE;
+  pt->menu_items[PAINTING_MENU_UNDO].flags = wuss_MENU_ITEM_DASHED |
+                                          (no_undo ? wuss_MENU_ITEM_DISABLED :
+                                                     wuss_MENU_ITEM_NONE);
   pt->sel_items[PAINTING_SEL_NONE].flags   = no_sel ?
                                           wuss_MENU_ITEM_DISABLED :
                                           wuss_MENU_ITEM_NONE;

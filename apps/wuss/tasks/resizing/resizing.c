@@ -162,6 +162,7 @@ result_t resizing_create(wuss_t *wuss, resizing_task_t **out)
   task->method       = bitmap_resample_BILINEAR;
   task->scale        = 3; /* 100% */
   task->linear       = 1;
+  task->dithering    = screen_DITHER_BLUE_NOISE;
 
   for (i = 0; i < bitmap_resample__LIMIT; i++)
     WUSS_MENU_ITEM(task->method_items, i, resizing_method_names[i],
@@ -175,8 +176,11 @@ result_t resizing_create(wuss_t *wuss, resizing_task_t **out)
   WUSS_MENU_TITLE(task->scale_menu, "Scale", task->scale_items,
                   RESIZING_NSCALES);
 
+  dithermenu_init(&task->dither, task->dithering);
+  WUSS_MENU_ITEM_MENU(task->menu_items, RESIZING_MENU_DISPLAY, "Display",
+                      wuss_MENU_ITEM_NONE, &task->dither.display);
   WUSS_MENU_ITEM_SHORTCUT(task->menu_items, RESIZING_MENU_SAVE, "Save",
-                          wuss_MENU_ITEM_NONE, "F3");
+                          wuss_MENU_ITEM_DASHED, "F3");
   /* window set once saveas exists */
   WUSS_MENU_ITEM_MENU(task->menu_items, RESIZING_MENU_METHOD, "Method",
                       wuss_MENU_ITEM_DASHED, &task->method_menu);
@@ -254,10 +258,10 @@ static result_t resizing_redraw(resizing_task_t    *rt,
 
   bm = rt->resized != NULL ? rt->resized : &rt->source;
 
-  return screen_copy_bitmap(event->data.redraw.scr,
-                            bounds->x0 - event->data.redraw.scroll.x,
-                            bounds->y0 - event->data.redraw.scroll.y,
-                            bm);
+  return screen_copy_bitmap_dithered(event->data.redraw.scr,
+                                     bounds->x0 - event->data.redraw.scroll.x,
+                                     bounds->y0 - event->data.redraw.scroll.y,
+                                     bm, rt->dithering);
 }
 
 /* Set the submenus' ticks from the task. Run on open and after every pick: a
@@ -290,6 +294,14 @@ static result_t resizing_menu_select(resizing_task_t    *rt,
   /* clicking the row, rather than hovering, shows Save As standalone */
   if (menu == &rt->menu && index == RESIZING_MENU_SAVE)
     return wuss_saveas_open(rt->saveas);
+
+  /* display only: the resize itself is unchanged */
+  if (menu == &rt->dither.menu)
+  {
+    rt->dithering = dithermenu_select(&rt->dither, rt->menu_handle, index);
+    wuss_window_invalidate_visible(rt->window);
+    return result_OK;
+  }
 
   if (menu == &rt->method_menu)
     rt->method = (bitmap_resample_t) index;

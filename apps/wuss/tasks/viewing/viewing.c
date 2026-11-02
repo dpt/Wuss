@@ -27,7 +27,7 @@
 #define VIEWING_EMPTYSZ  64 /* image area before the first DataLoad */
 
 /* rows of the main menu (its caption is not a row) */
-enum { VIEWING_MENU_COLOURS, VIEWING_MENU_DITHERING, VIEWING_MENU_STAGE };
+enum { VIEWING_MENU_DISPLAY, VIEWING_MENU_COLOURS, VIEWING_MENU_STAGE };
 
 /* The window size that shows the image: with the stage, the smallest one
  * that fits it; without, the image in its band. */
@@ -310,12 +310,13 @@ static result_t viewing_open_menu(viewing_task_t *ic)
   int          i;
 
   rc = wuss_menu_create_from_desc(&m,
-         "Viewing, Colours, Dithering, !Stage", ic->stage);
+         "Viewing, Display, Colours, !Stage", ic->stage);
   if (rc != result_OK)
     return rc;
 
-  /* The descriptor syntax cannot name a submenu, so point "Colours" and
-   * "Dithering" at per-instance submenus built at create time, by hand.
+  /* '>' would deep-copy a submenu, so its picks would not match ours: point
+   * "Display" and "Colours" at per-instance submenus built at create time,
+   * by hand.
    * Marked BORROWED_SUBMENU so wuss_menu_destroy leaves them alone -- they
    * belong to the task, not to this per-open tree. */
   wuss_menu_tick_exclusive(&ic->dither.menu, (int) ic->dithering);
@@ -325,8 +326,8 @@ static result_t viewing_open_menu(viewing_task_t *ic)
 
     if (it->text == NULL)
       continue;
-    if (strcmp(it->text, "Dithering") == 0)
-      it->submenu = &ic->dither.menu;
+    if (strcmp(it->text, "Display") == 0)
+      it->submenu = &ic->dither.display;
     else if (strcmp(it->text, "Colours") == 0)
       it->submenu = &ic->colours.menu;
     else

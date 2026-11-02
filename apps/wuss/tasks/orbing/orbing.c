@@ -69,10 +69,10 @@
 
 enum
 {
-  ORBING_MENU_SAVE = 0,
+  ORBING_MENU_DISPLAY = 0,
+  ORBING_MENU_SAVE,
   ORBING_MENU_LIGHT,
   ORBING_MENU_LIGHT_COLOUR,
-  ORBING_MENU_DITHERING,
   ORBING_MENU_MUTATE,
   ORBING_MENU_RANDOMISE,
   ORBING_MENU_RESET
@@ -761,8 +761,13 @@ result_t orbing_create(wuss_t *wuss, orbing_task_t **out)
     return rc;
   }
 
+  dithermenu_init(&task->dither, task->dithering);
+
+  WUSS_MENU_ITEM_MENU(task->menu_items, ORBING_MENU_DISPLAY, "Display",
+                      wuss_MENU_ITEM_NONE, &task->dither.display);
+
   WUSS_MENU_ITEM_SHORTCUT(task->menu_items, ORBING_MENU_SAVE, "Save",
-                          wuss_MENU_ITEM_NONE, "F3");
+                          wuss_MENU_ITEM_DASHED, "F3");
   /* hover opens the Save As dialogue as a submenu; F3 shows it standalone */
   task->menu_items[ORBING_MENU_SAVE].window =
     wuss_saveas_window(task->saveas);
@@ -786,11 +791,6 @@ result_t orbing_create(wuss_t *wuss, orbing_task_t **out)
 
   WUSS_MENU_ITEM_SHORTCUT(task->menu_items, ORBING_MENU_LIGHT_COLOUR,
                           "Light colour...", wuss_MENU_ITEM_NONE, "C");
-
-  dithermenu_init(&task->dither, task->dithering);
-
-  WUSS_MENU_ITEM_MENU(task->menu_items, ORBING_MENU_DITHERING, "Dithering",
-                      wuss_MENU_ITEM_NONE, &task->dither.menu);
 
   WUSS_MENU_ITEM_SHORTCUT(task->menu_items, ORBING_MENU_MUTATE, "Mutate",
                           wuss_MENU_ITEM_DASHED, "M");

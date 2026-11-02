@@ -13,6 +13,8 @@ choices system.
 A window menu is titled with the app's name. Its rows come in these groups,
 top to bottom. Leave out any group the app has nothing for.
 
+0. **Display ⇒** — if the app has a screen dithering choice, the top row is
+   `Display ⇒` (`dithermenu_t`'s `display`), whose `Dithering ⇒` picks it.
 1. **First item** — one row:
    - `File ⇒` if the app has a document (Info on it, and other
      document-wide items), as in PrivateEye;
@@ -24,8 +26,8 @@ top to bottom. Leave out any group the app has nothing for.
    Fold them into an `Edit ⇒` submenu once there are more than about four.
 4. **Settings** — the app's own options: `Model ⇒`, `Shape ⇒`, `Gravity` and
    the like.
-5. **Display** — how the content is shown: `Colours ⇒`, `Dithering ⇒`,
-   scale, zoom, `Double size`.
+5. **Display** — how the content is shown: `Colours ⇒`, scale, zoom,
+   `Double size`.
 6. **Generate** — `Mutate`, `Randomise`, `Reset`.
 
 ## Dividers
@@ -33,7 +35,8 @@ top to bottom. Leave out any group the app has nothing for.
 A divider marks a change in the kind of row, as in Ovation Pro. It is not
 there to break up length.
 
-- For dividing, the six groups merge into four blocks:
+- For dividing, the groups merge into five blocks:
+  - **Display ⇒**, a one-row block at the top;
   - **actions** — first item and Save;
   - **Edit**;
   - **options** — Settings and Display;

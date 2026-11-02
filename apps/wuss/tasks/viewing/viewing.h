@@ -32,7 +32,7 @@ typedef struct viewing_task
                               * descriptor string; rebuilt on each open,
                               * freed at QUIT */
   wuss_menu_handle_t menu_handle; /* the open chain, if any */
-  dithermenu_t   dither;      /* "Dithering" submenu, borrowed by menu */
+  dithermenu_t   dither;      /* "Display" submenu, borrowed by menu */
   screen_dither_t dithering; /* method for paletted screens */
   colour_t       colour_pasteboard; /* stage: outside the page */
   colour_t       colour_paper;      /* page; the band behind the image when
