@@ -11,13 +11,12 @@
 
 #include "base/result.h"
 #include "base/utils.h"
-#include "framebuf/bitmap.h"
 #include "framebuf/bmfont.h"
 #include "framebuf/colour.h"
 #include "framebuf/colourspace.h"
-#include "framebuf/pixelfmt.h"
 #include "geom/box.h"
 
+#include "wuss/gadget/swatches.h"
 #include "wuss/icon.h"
 #include "wuss/icon-spec.h"
 #include "wuss/task.h"
@@ -90,6 +89,7 @@ struct wuss_colourpicker
   alloc_t                         alloc;  /* copied hooks */
   wuss_t                         *wuss;
   wuss_task_t                    *task;
+  wuss_window_t                  *window; /* ours, not the dialogue's */
   wuss_dialogue_t                *dialogue;
   wuss_colourpicker_changed_fn_t *fn;
   void                           *opaque;
@@ -100,14 +100,12 @@ struct wuss_colourpicker
   wuss_icon_t                    *radios[CP_NMODELS];
   wuss_icon_t                    *labels[CP_NMODELS][CP_NCHANNELS];
   wuss_slider_row_t               rows[CP_NMODELS][CP_NCHANNELS];
-  wuss_icon_t                    *swatch_old;
-  wuss_icon_t                    *swatch_new;
   wuss_icon_t                    *hex;
-  bitmap_t                        bm_old;
-  bitmap_t                        bm_new;
-  unsigned int                    px_old[CP_SWATCH_W * CP_SWATCH_H];
-  unsigned int                    px_new[CP_SWATCH_W * CP_SWATCH_H];
+  colour_t                        shown[2]; /* the swatches: old, new */
+  wuss_swatches_t                 swatches;
 };
+
+enum { CP_SWATCH_OLD, CP_SWATCH_NEW };
 
 /* ----------------------------------------------------------------------- */
 
@@ -229,7 +227,7 @@ static void cp_from_rgb(int model, const colourspace_rgb_t *rgb, double v[])
 
 static wuss_window_t *cp_window(const wuss_colourpicker_t *picker)
 {
-  return wuss_dialogue_window(picker->dialogue);
+  return picker->window;
 }
 
 /* set the current model's sliders to v */
@@ -267,13 +265,19 @@ static void cp_sync_model(wuss_colourpicker_t *picker)
   }
 }
 
+/* swatches are painted by the swatches gadget, so on a paletted screen a
+ * colour the palette lacks shows as an ordered mix of two entries */
 static void cp_sync_swatch(wuss_colourpicker_t *picker,
-                           bitmap_t            *bm,
-                           wuss_icon_t         *icon,
+                           int                  which,
                            colour_t             colour)
 {
-  bitmap_clear(bm, colour);
-  wuss__icon_invalidate(cp_window(picker), icon);
+  box_t box;
+
+  picker->shown[which] = colour;
+  box = (box_t) BOX_POS_SIZE(picker->swatches.bbox.x0 + which * CP_SWATCH_W,
+                             picker->swatches.bbox.y0, CP_SWATCH_W,
+                             CP_SWATCH_H);
+  wuss_window_invalidate(cp_window(picker), &box);
 }
 
 static void cp_sync_hex(wuss_colourpicker_t *picker)
@@ -291,8 +295,8 @@ static void cp_sync_all(wuss_colourpicker_t *picker)
 {
   cp_sync_model(picker);
   cp_sync_sliders(picker);
-  cp_sync_swatch(picker, &picker->bm_old, picker->swatch_old, picker->old);
-  cp_sync_swatch(picker, &picker->bm_new, picker->swatch_new, picker->colour);
+  cp_sync_swatch(picker, CP_SWATCH_OLD, picker->old);
+  cp_sync_swatch(picker, CP_SWATCH_NEW, picker->colour);
   cp_sync_hex(picker);
 }
 
@@ -319,7 +323,7 @@ static void cp_changed(wuss_colourpicker_t *picker, int from_hex)
     return;
 
   picker->colour = colour;
-  cp_sync_swatch(picker, &picker->bm_new, picker->swatch_new, colour);
+  cp_sync_swatch(picker, CP_SWATCH_NEW, colour);
   if (!from_hex)
     cp_sync_hex(picker); /* leave the user's typing alone */
 
@@ -337,7 +341,7 @@ static result_t cp_action_ok(void *opaque, wuss_button_t button)
   if (button & wuss_BUTTON_ADJUST)
   {
     picker->old = picker->colour;
-    cp_sync_swatch(picker, &picker->bm_old, picker->swatch_old, picker->old);
+    cp_sync_swatch(picker, CP_SWATCH_OLD, picker->old);
     return result_OK;
   }
 
@@ -449,6 +453,10 @@ static result_t cp_task_handle(wuss_window_t      *window,
 
   switch (event->kind)
   {
+  case wuss_EVENT_REDRAW:
+    wuss_swatches_draw(&picker->swatches, event);
+    return result_OK;
+
   case wuss_EVENT_ICON:
     return cp_icon(picker, event);
 
@@ -477,11 +485,12 @@ static result_t cp_build(wuss_colourpicker_t *picker, const char *title)
   {
     NRADIOS = CP_NMODELS,
     NROWS   = CP_NMODELS * CP_NCHANNELS,
-    NICONS  = NRADIOS + 3 * NROWS + 5 /* swatches, hex, Cancel, OK */
+    NICONS  = NRADIOS + 3 * NROWS + 3 /* hex, Cancel, OK */
   };
 
   result_t               rc;
   wuss_t                *wuss;
+  box_t                  content;
   int                    label_w, value_w, radio_w[CP_NMODELS], radios_w;
   int                    cancel_w, ok_w, width, height;
   int                    m, i, n, x, y;
@@ -532,9 +541,22 @@ static result_t cp_build(wuss_colourpicker_t *picker, const char *title)
            CP_SWATCH_H + wuss_STD_GAP +
            wuss_STD_PRIMARY_BUTTON_HEIGHT;
 
-  rc = wuss_dialogue_create(&picker->dialogue, picker->task,
-                            SIZE2D(width, height),
-                            title != NULL ? title : "Colour", NULL, picker);
+  /* the window is made here, not by wuss_dialogue_create, since that one
+   * skips the task's redraw and the swatches are painted from it */
+  content = (box_t) BOX_POS_SIZE(0, 0, width, height);
+  rc = wuss_window_create(picker->task,
+                          &content,
+                          title != NULL ? title : "Colour",
+                          wuss_WINDOW_HIDDEN | wuss_WINDOW_FOCUSABLE,
+                          wuss_BACKDROP_COLOUR(wuss_COLOUR_WINDOW),
+                          SIZE2D(width, height),
+                          SIZE2D(width, height),
+                          &picker->window);
+  if (rc != result_OK)
+    return rc;
+
+  rc = wuss_dialogue_create_on_window(&picker->dialogue, wuss, picker->window,
+                                      NULL, picker);
   if (rc != result_OK)
     return rc;
 
@@ -587,27 +609,15 @@ static result_t cp_build(wuss_colourpicker_t *picker, const char *title)
   y += CP_NCHANNELS * (wuss_STD_SLIDER_HEIGHT + wuss_STD_GAP);
   x  = wuss_STD_INSET;
 
-  rc = bitmap_init(&picker->bm_old, SIZE2D(CP_SWATCH_W, CP_SWATCH_H),
-                   pixelfmt_bgrx8888, CP_SWATCH_W * 4, NULL, picker->px_old);
-  if (rc != result_OK)
-    return rc;
-  rc = bitmap_init(&picker->bm_new, SIZE2D(CP_SWATCH_W, CP_SWATCH_H),
-                   pixelfmt_bgrx8888, CP_SWATCH_W * 4, NULL, picker->px_new);
-  if (rc != result_OK)
-    return rc;
-
-  for (i = 0; i < 2; i++)
-  {
-    memset(&specs[n], 0, sizeof(specs[n]));
-    specs[n].bbox           = (box_t) BOX_POS_SIZE(x, y, CP_SWATCH_W,
+  picker->swatches.bbox     = (box_t) BOX_POS_SIZE(x, y, 2 * CP_SWATCH_W,
                                                    CP_SWATCH_H);
-    specs[n].type           = wuss_ICON_TYPE_BITMAP;
-    specs[n].bg             = wuss_NO_BACKGROUND;
-    specs[n].u.bitmap.image = i == 0 ? &picker->bm_old : &picker->bm_new;
-    n++;
-    x += CP_SWATCH_W;
-  }
-  x += wuss_STD_GAP;
+  picker->swatches.columns  = 2;
+  picker->swatches.gap      = 0;
+  picker->swatches.outline  = 0;
+  picker->swatches.colours  = picker->shown;
+  picker->swatches.ncolours = 2;
+  picker->swatches.selected = -1;
+  x += 2 * CP_SWATCH_W + wuss_STD_GAP;
 
   box = (box_t) BOX_POS_SIZE(x, y + (CP_SWATCH_H - wuss_STD_GLYPH_SIZE) / 2,
                              width - wuss_STD_INSET - x, wuss_STD_GLYPH_SIZE);
@@ -643,9 +653,7 @@ static result_t cp_build(wuss_colourpicker_t *picker, const char *title)
       n += 3;
     }
   }
-  picker->swatch_old = made[n++];
-  picker->swatch_new = made[n++];
-  picker->hex        = made[n++];
+  picker->hex = made[n++];
 
   actions[0].icon = made[n++];
   actions[0].fn   = cp_action_cancel;
@@ -716,7 +724,8 @@ void wuss_colourpicker_destroy(wuss_colourpicker_t *doomed)
 
   alloc = doomed->alloc;
 
-  wuss_dialogue_destroy(doomed->dialogue); /* frees the window and icons */
+  wuss_dialogue_destroy(doomed->dialogue);
+  wuss_window_close(doomed->window); /* and its icons */
   if (doomed->task != NULL)
     wuss_task_destroy(doomed->task);
   alloc.free(doomed);
