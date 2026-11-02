@@ -12,7 +12,7 @@ void wuss_window_toggle_size(wuss_window_t *window)
   if (window == NULL || !(window->flags & wuss_WINDOW_TOGGLE_SIZE))
     return;
 
-  window->wuss->furniture_ops->toggle_size(window);
+  window->wuss->furniture_ops->toggle_size(window, 0);
 #else
   /* no furniture, so no toggle-size icon to mimic */
   (void) window;

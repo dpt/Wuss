@@ -73,7 +73,10 @@ result_t wuss__furniture_press_toggle(wuss_window_t                   *win,
 
   if (action == wuss_MOUSE_DOWN && (button & WUSS_BUTTON_CLICK))
   {
-    win->wuss->furniture_ops->toggle_size(win);
+    /* Shift fills only the safe area, clear of the icon bar */
+    win->wuss->furniture_ops->toggle_size(win,
+                                          (win->wuss->modifiers &
+                                           wuss_KEY_MOD_SHIFT) != 0);
 
     wuss__furniture_hold(win, element->region);
   }

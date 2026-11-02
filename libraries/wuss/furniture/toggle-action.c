@@ -8,7 +8,7 @@
 #include "../core/invalidate.h"
 #include "../core/windows.h"
 
-void wuss__furniture_toggle_size(wuss_window_t *window)
+void wuss__furniture_toggle_size(wuss_window_t *window, int safe)
 {
   box_t before, before_content, new_visible, dirty, blit_src;
   box_t src[WUSS_MAX_INVALIDATE_PIECES];
@@ -25,20 +25,39 @@ void wuss__furniture_toggle_size(wuss_window_t *window)
   }
   else
   {
+    box_t    area;
     int      outline_px, titlebar_height, target_w, target_h, vis_w, vis_h, x0, y0;
     point_t  carve;
-    size2d_t min, screen_max;
+    size2d_t screen_max, min;
+
+    /* the area to fill: the whole screen, or with "safe" the safe area that
+     * wuss_window_create_at places windows in, clear of the icon bar */
+    area.x0 = 0;
+    area.y0 = 0;
+    area.x1 = window->wuss->scr->size.w;
+    area.y1 = window->wuss->scr->size.h;
+    if (safe)
+    {
+      area.x0 += WUSS_SAFE_INSET;
+      area.y0 += WUSS_SAFE_INSET;
+      area.x1 -= WUSS_SAFE_INSET;
+      area.y1 -= WUSS_SAFE_INSET_BOTTOM;
+    }
 
     outline_px      = wuss__outline_px(window);
     titlebar_height = wuss__titlebar_height(window);
     wuss__chrome_carve(window, &carve);
 
-    /* Toggle grows the window to the whole screen (not just the space left
+    /* Toggle grows the window to the whole area (not just the space left
      * from its current top-left), capped per axis at the window's own doc
-     * extent -- a doc of 0 on an axis means "no cap", fill the screen.
-     * screen_max already accounts for outline/titlebar/scrollbar furniture
-     * sitting outside the content area. */
-    wuss__max_content_anywhere_on_screen(window, &screen_max);
+     * extent -- a doc of 0 on an axis means "no cap", fill the area.
+     * screen_max is the area less the outline/titlebar/scrollbar furniture
+     * sitting outside the content area, floored at WUSS_MIN_CONTENT as
+     * wuss__max_content_anywhere_on_screen does. */
+    screen_max.w = MAX(area.x1 - area.x0 - 2 * outline_px - carve.x,
+                       WUSS_MIN_CONTENT);
+    screen_max.h = MAX(area.y1 - area.y0 - 2 * outline_px - titlebar_height -
+                       carve.y, WUSS_MIN_CONTENT);
 
     target_w = window->doc.w ? MIN(window->doc.w, screen_max.w) : screen_max.w;
     target_h = window->doc.h ? MIN(window->doc.h, screen_max.h) : screen_max.h;
@@ -53,16 +72,16 @@ void wuss__furniture_toggle_size(wuss_window_t *window)
     vis_w = target_w + 2 * outline_px + carve.x;
     vis_h = target_h + titlebar_height + 2 * outline_px + carve.y;
 
-    /* nudge the top-left toward the origin by the minimum needed to fit the
-     * grown box on screen; a window that already fits stays put. */
+    /* nudge the top-left by the minimum needed to fit the grown box in the
+     * area; a window that already fits stays put. */
     x0 = window->visible.x0;
     y0 = window->visible.y0;
-    if (x0 + vis_w > window->wuss->scr->size.w)
-      x0 = window->wuss->scr->size.w - vis_w;
-    if (y0 + vis_h > window->wuss->scr->size.h)
-      y0 = window->wuss->scr->size.h - vis_h;
-    x0 = MAX(x0, 0);
-    y0 = MAX(y0, 0);
+    if (x0 + vis_w > area.x1)
+      x0 = area.x1 - vis_w;
+    if (y0 + vis_h > area.y1)
+      y0 = area.y1 - vis_h;
+    x0 = MAX(x0, area.x0);
+    y0 = MAX(y0, area.y0);
 
     window->pre_toggle = window->visible;
 

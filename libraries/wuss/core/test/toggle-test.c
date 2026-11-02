@@ -1068,6 +1068,56 @@ result_t wuss_toggle_test(const char *resources)
     }
   }
 
+  printf("test: Shift-click on toggle-size fills only the safe area\n");
+
+  {
+    wuss_task_t   *delegate_s;
+    box_t          box_s, before, after;
+    wuss_window_t *win_s;
+    int            cx, cy;
+
+    delegate_s = mk_task(wuss, NULL, NULL);
+    if (delegate_s == NULL) goto Failure;
+
+    box_s.x0 = 2;  box_s.y0 = 2;   /* starts outside the safe area */
+    box_s.x1 = 42; box_s.y1 = 42;
+    rc = wuss_window_create(delegate_s, &box_s, "S", wuss_WINDOW_DEFAULT,
+                            wuss_NO_BACKDROP, SIZE2D(0, 0), SIZE2D(0, 0),
+                            &win_s);
+    if (rc != result_OK)
+      goto Failure;
+
+    rc = wuss_redraw_dirty(wuss);
+    if (rc != result_OK)
+      goto Failure;
+
+    /* the toggle icon sits at the titlebar's right end */
+    wuss_window_get_visible_bounds(win_s, &before);
+    cx = before.x1 - 1 - 3 - 7;
+    cy = before.y0 + 1 + 3 + 7;
+
+    wuss_set_modifiers(wuss, wuss_KEY_MOD_SHIFT);
+    rc = wuss_mouse_click(wuss, POINT(cx, cy), wuss_BUTTON_SELECT, wuss_MOUSE_DOWN, &hit);
+    if (rc != result_OK || hit != win_s)
+      goto Failure;
+    rc = wuss_mouse_click(wuss, POINT(cx, cy), wuss_BUTTON_SELECT, wuss_MOUSE_UP, &hit);
+    wuss_set_modifiers(wuss, wuss_KEY_MOD_NONE);
+    if (rc != result_OK)
+      goto Failure;
+
+    wuss_window_get_visible_bounds(win_s, &after);
+    if (after.x0 != WUSS_SAFE_INSET || after.y0 != WUSS_SAFE_INSET ||
+        after.x1 != 200 - WUSS_SAFE_INSET ||
+        after.y1 != 200 - WUSS_SAFE_INSET_BOTTOM)
+      goto Failure; /* doc == 0: fills the safe area exactly */
+
+    rc = wuss_redraw_dirty(wuss);
+    if (rc != result_OK)
+      goto Failure;
+
+    wuss_window_close(win_s);
+  }
+
   wuss_fixture_close(&fixture);
 
   return result_TEST_PASSED;

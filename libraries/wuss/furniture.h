@@ -221,7 +221,7 @@ typedef struct wuss__furniture_ops
   void (*draw)(wuss_t *wuss, wuss_window_t *window, const box_t *full);
   void (*invalidate)(wuss_window_t *window);
   void (*invalidate_for)(wuss_window_t *window, const box_t *visible);
-  void (*toggle_size)(wuss_window_t *window);
+  void (*toggle_size)(wuss_window_t *window, int safe);
   void (*drag_resize)(wuss_window_t *window, point_t p);
   void (*drag_sausage)(wuss_window_t *window,
                        int            delta_px,
@@ -263,7 +263,7 @@ void wuss__hscroll_sausage_box(const wuss_window_t *window, box_t *out);
 int  wuss__hscroll_well_px(const wuss_window_t *window);
 
 /* actions */
-void wuss__furniture_toggle_size(wuss_window_t *window);
+void wuss__furniture_toggle_size(wuss_window_t *window, int safe);
 void wuss__furniture_drag_resize(wuss_window_t *window, point_t p);
 void wuss__furniture_drag_sausage(wuss_window_t *window,
                                   int            delta_px,
