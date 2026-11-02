@@ -6,6 +6,9 @@ static void restack_one(wuss_window_t *window, wuss_zorder_t reason)
 {
   list_t *stack;
 
+  if (window->flags & wuss_WINDOW_BACKDROP)
+    return; /* stays at the back of the back stack */
+
   stack = &window->wuss->z_order[window->stack];
 
   if (reason == wuss_ZORDER_FRONT)

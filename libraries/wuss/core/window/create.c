@@ -9,6 +9,23 @@
 
 #include "../impl.h"
 
+/* The backdrop window, if one exists. It always sits at the back of the back
+ * stack, but scanning the (short) stack does not depend on that. */
+static int backdrop_exists(wuss_t *wuss)
+{
+  list_t        *l;
+  wuss_window_t *window;
+
+  for (l = wuss->z_order[wuss_STACK_BACK].next; l != NULL; l = l->next)
+  {
+    window = wuss__window_from_link(l);
+    if (window->flags & wuss_WINDOW_BACKDROP)
+      return 1;
+  }
+
+  return 0;
+}
+
 result_t wuss_window_create(wuss_task_t        *task,
                             const box_t        *content,
                             const char         *title,
@@ -19,6 +36,7 @@ result_t wuss_window_create(wuss_task_t        *task,
                             wuss_window_t     **window)
 {
   wuss_t        *wuss;
+  box_t          screen;
   wuss_window_t *win;
   int            width, height, outline_px, titlebar_height;
   point_t        carve;
@@ -31,6 +49,26 @@ result_t wuss_window_create(wuss_task_t        *task,
 
   if ((flags & wuss_WINDOW_STACK_TOP) && (flags & wuss_WINDOW_STACK_BACK))
     return result_BAD_ARG;
+
+  /* the backdrop window is the whole screen, behind everything */
+  if (flags & wuss_WINDOW_BACKDROP)
+  {
+    if (backdrop_exists(wuss))
+      return result_WUSS_BACKDROP_EXISTS;
+
+    flags &= (wuss_window_flags_t) ~wuss_WINDOW_STACK_TOP;
+    flags |= wuss_WINDOW_STACK_BACK | wuss_WINDOW_PINNED |
+             wuss_WINDOW_NO_TITLEBAR | wuss_WINDOW_NO_OUTLINE;
+
+    screen.x0 = 0;
+    screen.y0 = 0;
+    screen.x1 = wuss->scr->size.w;
+    screen.y1 = wuss->scr->size.h;
+    content   = &screen;
+    doc.w     = screen.x1;
+    doc.h     = screen.y1;
+    min_doc   = doc;
+  }
 
   width  = content->x1 - content->x0;
   height = content->y1 - content->y0;
@@ -125,7 +163,15 @@ result_t wuss_window_create(wuss_task_t        *task,
   NOT_USED(title);
 #endif
 
-  list_add_to_head(&wuss->z_order[win->stack], &win->link);
+  if (flags & wuss_WINDOW_BACKDROP)
+  {
+    win->visible = screen; /* not nudged clear of the icon bar */
+    list_add_to_tail(&wuss->z_order[win->stack], &win->link);
+  }
+  else
+  {
+    list_add_to_head(&wuss->z_order[win->stack], &win->link);
+  }
   list_add_to_tail(&task->windows, &win->task_link);
 
   if (!(flags & wuss_WINDOW_HIDDEN))

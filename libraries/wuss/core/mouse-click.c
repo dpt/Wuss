@@ -142,3 +142,8 @@ void wuss_set_modifiers(wuss_t *wuss, wuss_key_modifiers_t modifiers)
 {
   wuss->modifiers = modifiers;
 }
+
+wuss_key_modifiers_t wuss_get_modifiers(const wuss_t *wuss)
+{
+  return wuss->modifiers;
+}

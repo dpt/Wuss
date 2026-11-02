@@ -15,7 +15,10 @@ result_t wuss__relayout_all(wuss_t *wuss)
     result_t     crc;
 
     next = wuss__z_below(win); /* the handler may close this window */
-    if (win->flags & wuss_WINDOW_PINNED)
+    /* the icon bar lays itself out; the backdrop's owner rearranges for the
+     * new screen */
+    if ((win->flags & wuss_WINDOW_PINNED) &&
+        !(win->flags & wuss_WINDOW_BACKDROP))
       continue;
 
     crc = wuss__deliver_kind(win->task, win, wuss_EVENT_RELAYOUT);

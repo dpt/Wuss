@@ -79,6 +79,8 @@ static void resize_pinned_window(wuss_window_t *window)
   window->visible.y0 = window->wuss->scr->size.h - WUSS_ICONBAR_HEIGHT;
   window->visible.x1 = window->wuss->scr->size.w;
   window->visible.y1 = window->wuss->scr->size.h;
+  if (window->flags & wuss_WINDOW_BACKDROP)
+    window->visible.y0 = 0; /* the whole screen */
 
   if (!box_equal(&before, &window->visible))
   {
@@ -89,6 +91,11 @@ static void resize_pinned_window(wuss_window_t *window)
     window->doc.w = window->visible.x1 - window->visible.x0 -
                     2 * wuss__outline_px(window);
     window->min_doc.w = window->doc.w;
+    if (window->flags & wuss_WINDOW_BACKDROP)
+    {
+      window->doc.h     = window->visible.y1 - window->visible.y0;
+      window->min_doc.h = window->doc.h;
+    }
 
     box_union(&before, &window->visible, &dirty);
     wuss__invalidate_clipped(window, &dirty);

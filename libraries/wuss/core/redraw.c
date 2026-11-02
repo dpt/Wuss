@@ -88,10 +88,14 @@ static void redraw_window(wuss_t        *wuss,
     wuss->scr->clip = pieces[i];
 
     /* phase any pattern against the scroll origin so it locks to the
-     * content rather than crawling as the window scrolls */
-    wuss__fill_backdrop(wuss, &win->bg, &content,
-                        content.x0 - win->scroll.x,
-                        content.y0 - win->scroll.y);
+     * content rather than crawling as the window scrolls; the backdrop
+     * window shows the desktop backdrop, phased to the screen */
+    if (win->flags & wuss_WINDOW_BACKDROP)
+      wuss__fill_backdrop(wuss, &wuss->backdrop, &content, 0, 0);
+    else
+      wuss__fill_backdrop(wuss, &win->bg, &content,
+                          content.x0 - win->scroll.x,
+                          content.y0 - win->scroll.y);
 
     /* NO_REDRAW: the backdrop fill above plus the icons below are the
      * window's whole appearance, so skip the client redraw entirely */

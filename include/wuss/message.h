@@ -60,9 +60,14 @@ enum
   wuss_MESSAGE_DATA_LOAD_ACK, /**< Target -> saver: transfer complete. */
   wuss_MESSAGE_DATA_OPEN,     /**< Filer -> broadcast: a file was
                                *   double-clicked; see wuss_data_open_t. */
-  wuss_MESSAGE_FILER_OPEN_DIR /**< Any -> broadcast: Filer, open a window on
-                               *   the directory whose path is the payload, a
-                               *   NUL-terminated string. */
+  wuss_MESSAGE_FILER_OPEN_DIR, /**< Any -> broadcast: Filer, open a window on
+                                *   the directory whose path is the payload,
+                                *   a NUL-terminated string. */
+  wuss_MESSAGE_PINBOARD_PIN    /**< Any -> broadcast: Pinboard, pin the file
+                                *   whose path is the payload, a
+                                *   NUL-terminated string, in the first free
+                                *   cell. Bounces if no Pinboard runs. See
+                                *   docs/windowing/backdrop.md. */
 };
 
 /**

@@ -10,6 +10,8 @@ const char *wuss_result_string(result_t err)
   case result_WUSS_BAD_COLOUR:  return "Wuss: palette index out of range";
   case result_WUSS_BAD_ICON:    return "Wuss: malformed icon spec";
   case result_WUSS_BAD_PALETTE: return "Wuss: malformed palette file";
+  case result_WUSS_BACKDROP_EXISTS:
+    return "Wuss: a backdrop window already exists";
 
   default:                      return result_string(err);
   }

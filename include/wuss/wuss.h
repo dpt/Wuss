@@ -53,6 +53,8 @@ extern "C"
 #define result_WUSS_PINNED       (result_BASE_WUSS + 5)
 /** A palette file was malformed or the wrong length. */
 #define result_WUSS_BAD_PALETTE  (result_BASE_WUSS + 7)
+/** A wuss_WINDOW_BACKDROP window was asked for while one already exists. */
+#define result_WUSS_BACKDROP_EXISTS (result_BASE_WUSS + 8)
 
 /**
  * Describes a result code, covering the wuss codes as well as DPTLib's.
@@ -381,7 +383,19 @@ typedef enum wuss_window_flags
    * middle one, e.g. for the icon bar. Creation only. Mutually exclusive
    * with wuss_WINDOW_STACK_TOP.
    */
-  wuss_WINDOW_STACK_BACK     = 1 << 14
+  wuss_WINDOW_STACK_BACK     = 1 << 14,
+
+  /**
+   * The backdrop window: full screen, at the bottom of the back stack and
+   * kept there. Implies wuss_WINDOW_STACK_BACK, wuss_WINDOW_PINNED,
+   * wuss_WINDOW_NO_TITLEBAR and wuss_WINDOW_NO_OUTLINE, and ignores the
+   * content box passed at creation. Restacking and wuss_window_set_stack
+   * leave it where it is. Its content is filled with the desktop backdrop
+   * (wuss_set_backdrop), not its own background, before its redraw. At most
+   * one exists; a second fails with \ref result_WUSS_BACKDROP_EXISTS. See
+   * docs/windowing/backdrop.md.
+   */
+  wuss_WINDOW_BACKDROP       = 1 << 15
 }
 wuss_window_flags_t;
 
@@ -1170,6 +1184,15 @@ result_t wuss_mouse_click(wuss_t             *wuss,
  * \param[in] modifiers Modifier keys held.
  */
 void wuss_set_modifiers(wuss_t *wuss, wuss_key_modifiers_t modifiers);
+
+/**
+ * The modifier keys last recorded by wuss_set_modifiers. Lets a drop target
+ * tell, say, a SHIFT drop from a plain one.
+ *
+ * \param[in] wuss Window manager.
+ * \return Modifier keys held.
+ */
+wuss_key_modifiers_t wuss_get_modifiers(const wuss_t *wuss);
 
 /**
  * Deliver a mouse-move event. Updates the dragged window's position if a

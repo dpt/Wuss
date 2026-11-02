@@ -9,7 +9,7 @@ static void set_stack_one(wuss_window_t *window, wuss_stack_t stack)
   wuss_t *wuss;
   int     hidden, forward;
 
-  if (window->stack == stack)
+  if (window->stack == stack || (window->flags & wuss_WINDOW_BACKDROP))
     return;
 
   wuss    = window->wuss;

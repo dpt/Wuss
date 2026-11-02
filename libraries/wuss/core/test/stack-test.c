@@ -138,6 +138,80 @@ result_t wuss_stack_test(const char *resources)
     if (rc != result_OK) goto Failure;
   }
 
+  printf("test: window stacks: the backdrop window is full screen, behind everything and stays there\n");
+
+  {
+    wuss_task_t   *owner;
+    wuss_window_t *bd, *back, *mid, *bad;
+    wuss_window_t *order[3];
+    box_t          box;
+
+    owner = mk_task(wuss, paint_handle, NULL);
+    if (owner == NULL) goto Failure;
+
+    /* the content box passed is ignored */
+    box = (box_t) BOX_POS_SIZE(20, 40, 60, 60);
+    rc  = wuss_window_create(owner, &box, NULL, wuss_WINDOW_BACKDROP |
+                             wuss_WINDOW_STACK_TOP, wuss_NO_BACKDROP,
+                             SIZE2D(60, 60), SIZE2D(20, 20), &bd);
+    if (rc != result_OK) goto Failure;
+    if (bd->stack != wuss_STACK_BACK) goto Failure;
+    if (bd->visible.x0 != 0 || bd->visible.y0 != 0 ||
+        bd->visible.x1 != 200 || bd->visible.y1 != 200)
+      goto Failure;
+    if (bd->doc.w != 200 || bd->doc.h != 200) goto Failure;
+
+    /* a back-stack window created later still sits in front of it */
+    rc = wuss_window_create(owner, &box, "B", wuss_WINDOW_DEFAULT |
+                            wuss_WINDOW_STACK_BACK, wuss_NO_BACKDROP,
+                            SIZE2D(60, 60), SIZE2D(20, 20), &back);
+    if (rc != result_OK) goto Failure;
+    rc = wuss_window_create(owner, &box, "M", wuss_WINDOW_DEFAULT,
+                            wuss_NO_BACKDROP, SIZE2D(60, 60), SIZE2D(20, 20),
+                            &mid);
+    if (rc != result_OK) goto Failure;
+
+    order[0] = mid; order[1] = back; order[2] = bd;
+    if (!z_order_is(wuss, order, 3)) goto Failure;
+    if (wuss__window_at(wuss, POINT(150, 20)) != bd) goto Failure;
+    if (wuss__window_at(wuss, POINT(50, 80)) != mid) goto Failure;
+
+    /* restacking and changing stack leave it at the very back */
+    wuss_window_restack(bd, wuss_ZORDER_FRONT);
+    wuss_window_set_stack(bd, wuss_STACK_TOP);
+    if (!z_order_is(wuss, order, 3) || bd->stack != wuss_STACK_BACK)
+      goto Failure;
+
+    /* pinned: its box is wuss's alone */
+    if (wuss_window_resize(bd, SIZE2D(50, 50)) != result_WUSS_PINNED)
+      goto Failure;
+    wuss_window_move(bd, POINT(10, 10));
+    if (bd->visible.x0 != 0 || bd->visible.y0 != 0) goto Failure;
+
+    /* only one */
+    rc = wuss_window_create(owner, &box, NULL, wuss_WINDOW_BACKDROP,
+                            wuss_NO_BACKDROP, SIZE2D(60, 60), SIZE2D(20, 20),
+                            &bad);
+    if (rc != result_WUSS_BACKDROP_EXISTS) goto Failure;
+
+    rc = wuss_redraw_dirty(wuss);
+    if (rc != result_OK) goto Failure;
+
+    /* once closed, another may be made */
+    wuss_window_close(bd);
+    rc = wuss_window_create(owner, &box, NULL, wuss_WINDOW_BACKDROP,
+                            wuss_NO_BACKDROP, SIZE2D(60, 60), SIZE2D(20, 20),
+                            &bd);
+    if (rc != result_OK) goto Failure;
+
+    wuss_window_close(bd);
+    wuss_window_close(mid);
+    wuss_window_close(back);
+
+    rc = wuss_redraw_dirty(wuss);
+    if (rc != result_OK) goto Failure;
+  }
+
   wuss_fixture_close(&fixture);
 
   return result_TEST_PASSED;
