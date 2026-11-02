@@ -348,8 +348,7 @@ void wuss_dcs_destroy(wuss_dcs_t *doomed)
   doomed->pending = 0; /* no choice is reported for a dialogue torn down */
   wuss_menu_close(doomed->menu_handle);
   wuss_dialogue_destroy(doomed->dialogue); /* frees the window and its icons */
-  if (doomed->task != NULL)
-    wuss_task_destroy(doomed->task);
+  wuss_task_destroy(doomed->task);
   alloc.free(doomed);
 }
 

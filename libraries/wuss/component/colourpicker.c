@@ -726,8 +726,7 @@ void wuss_colourpicker_destroy(wuss_colourpicker_t *doomed)
 
   wuss_dialogue_destroy(doomed->dialogue);
   wuss_window_close(doomed->window); /* and its icons */
-  if (doomed->task != NULL)
-    wuss_task_destroy(doomed->task);
+  wuss_task_destroy(doomed->task);
   alloc.free(doomed);
 }
 
