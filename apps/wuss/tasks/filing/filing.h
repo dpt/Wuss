@@ -25,6 +25,7 @@
  * otherwise stay trapped in Emscripten's in-memory filesystem. */
 enum
 {
+  FILING_MENU_SELECTION, /* "File 'x'", "Dir. 'x'" or "Selection" */
   FILING_MENU_SELECT_ALL,
   FILING_MENU_CLEAR_SELECTION,
   FILING_MENU_OPEN_PARENT,
@@ -32,6 +33,13 @@ enum
   FILING_MENU_DOWNLOAD,
 #endif
   FILING_MENU__LIMIT
+};
+
+/* rows of the submenu on FILING_MENU_SELECTION, which act on the selection */
+enum
+{
+  FILING_SEL_MENU_DELETE,
+  FILING_SEL_MENU__LIMIT
 };
 
 /* icon bar menu rows */
@@ -135,6 +143,9 @@ struct filing_task
                                        * over, or NULL */
   wuss_menu_item_t       menu_items[FILING_MENU__LIMIT];
   wuss_menu_t            menu;
+  char                   sel_text[64]; /* FILING_MENU_SELECTION's label */
+  wuss_menu_item_t       sel_menu_items[FILING_SEL_MENU__LIMIT];
+  wuss_menu_t            sel_menu;
   wuss_menu_item_t       ib_menu_items[FILING_IB_MENU__LIMIT];
   wuss_menu_t            ib_menu;
   int                    hidden; /* windows hidden by Hide */

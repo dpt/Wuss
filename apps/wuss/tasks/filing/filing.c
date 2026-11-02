@@ -2,6 +2,7 @@
 
 #if defined(WUSS_APP) && defined(WUSS_ICONBAR)
 
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -527,6 +528,13 @@ result_t filing_create(wuss_t *wuss, filing_task_t **out)
   task->wuss     = wuss;
   task->nwindows = 0;
 
+  WUSS_MENU_ITEM(task->sel_menu_items, FILING_SEL_MENU_DELETE, "Delete",
+                 wuss_MENU_ITEM_NONE);
+  WUSS_MENU_TITLE(task->sel_menu, "Selection", task->sel_menu_items,
+                  NELEMS(task->sel_menu_items));
+
+  WUSS_MENU_ITEM_MENU(task->menu_items, FILING_MENU_SELECTION, task->sel_text,
+                      wuss_MENU_ITEM_NONE, &task->sel_menu);
   WUSS_MENU_ITEM(task->menu_items, FILING_MENU_SELECT_ALL, "Select all",
                  wuss_MENU_ITEM_NONE);
   WUSS_MENU_ITEM(task->menu_items, FILING_MENU_CLEAR_SELECTION,
@@ -690,6 +698,77 @@ static void filing_menu_enable(filing_task_t *task, int row, int enabled)
   wuss_menu_disable_item_live(task->menu_handle, &task->menu, row, !enabled);
 }
 
+/* label the selection row for what is selected in fw: "File 'leaf'" or
+ * "Dir. 'leaf'" for a single item, else "Selection" */
+static void filing_label_selection(filing_task_t         *task,
+                                   const filing_window_t *fw,
+                                   int                    selected)
+{
+  const dirlist_entry_t *entry;
+  int                    i;
+
+  entry = NULL;
+  if (selected == 1)
+    for (i = 0; entry == NULL && i < dirlist_count(fw->listing); i++)
+      if (wuss_gridview_is_selected(fw->gridview, i))
+        entry = dirlist_get(fw->listing, i);
+
+  if (entry != NULL)
+    snprintf(task->sel_text, sizeof(task->sel_text), "%s '%s'",
+             entry->is_dir ? "Dir." : "File", entry->leaf);
+  else
+    snprintf(task->sel_text, sizeof(task->sel_text), "Selection");
+
+  wuss_menu_set_item_text_live(task->menu_handle, &task->menu,
+                               FILING_MENU_SELECTION, task->sel_text);
+}
+
+/* Delete every selected item in fw, closing any window open on a deleted
+ * directory, then rescan. The first failure is reported.
+ * ponytail: remove() takes only files and empty directories; add a recursive
+ * delete (in DPTLib's io) if full directories should go too. */
+static void filing_delete_selection(filing_task_t *task, filing_window_t *fw)
+{
+  int                    failed;
+  int                    i;
+  const dirlist_entry_t *entry;
+  char                   path[DPTLIB_MAXPATH];
+  char                   message[256];
+  filing_window_t       *open;
+
+  failed = 0;
+  for (i = 0; i < dirlist_count(fw->listing); i++)
+  {
+    if (!wuss_gridview_is_selected(fw->gridview, i))
+      continue;
+
+    entry = dirlist_get(fw->listing, i);
+    if (entry == NULL ||
+        filing_join(path, sizeof(path), fw->path, entry->leaf) >=
+        (int) sizeof(path))
+      continue;
+
+    if (remove(path) != 0)
+    {
+      if (failed++ == 0)
+        snprintf(message, sizeof(message), "Cannot delete '%s': %s",
+                 entry->leaf, strerror(errno));
+      continue;
+    }
+
+    open = filing_find_window(task, path);
+    if (open != NULL)
+      (void) wuss_window_try_close(open->window);
+  }
+
+  wuss_gridview_clear_selection(fw->gridview);
+  filing_rescan(fw);
+
+  if (failed)
+    (void) wuss_error_report(task->wuss, "file_dir", "Filing", message,
+                             wuss_ERROR_BUTTONS_OK, NULL, NULL);
+}
+
 /* set which rows apply to the window the menu was opened over, from its
  * listing and selection. Called as the menu opens and again after a pick that
  * leaves it open (ADJUST) and changes the selection. */
@@ -704,6 +783,8 @@ static void filing_menu_update(filing_task_t *task)
   count    = fw != NULL ? dirlist_count(fw->listing) : 0;
   selected = fw != NULL ? wuss_gridview_selected_count(fw->gridview) : 0;
 
+  filing_label_selection(task, fw, selected);
+  filing_menu_enable(task, FILING_MENU_SELECTION, selected > 0);
   filing_menu_enable(task, FILING_MENU_SELECT_ALL, selected < count);
   filing_menu_enable(task, FILING_MENU_CLEAR_SELECTION, selected > 0);
   filing_menu_enable(task, FILING_MENU_OPEN_PARENT,
@@ -915,6 +996,16 @@ result_t filing_handle(wuss_window_t      *window,
       if (event->data.menu_select.index == FILING_IB_MENU_HIDE)
       {
         return filing_set_hidden(task, !filing_hidden(task));
+      }
+      return result_OK;
+    }
+    if (wuss_menu_select_is(event, &task->sel_menu, FILING_SEL_MENU_DELETE))
+    {
+      fw = filing_find_by_window(task, task->menu_window);
+      if (fw != NULL)
+      {
+        filing_delete_selection(task, fw);
+        filing_menu_update(task);
       }
       return result_OK;
     }
