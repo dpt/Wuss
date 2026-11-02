@@ -530,18 +530,50 @@ StringSetOK: ;
     if (!wuss_gridview_is_selected(gv, 0) ||
         !wuss_gridview_is_selected(gv, 1)) goto GridViewFail;
 
-    /* Adjust on empty space leaves the selection alone */
+    /* Adjust on empty space starts a band and leaves the selection alone;
+     * released there, it touches no item */
     ev.data.mouse.point  = POINT(2, 2 + cell_h * (int) NELEMS(gridview_test_labels));
     ev.data.mouse.button = wuss_BUTTON_ADJUST;
-    if (wuss_gridview_handle_event(gv, &ev)) goto GridViewFail;
-    if (!wuss_gridview_is_selected(gv, 0) ||
+    if (!wuss_gridview_handle_event(gv, &ev)) goto GridViewFail;
+    ev.data.mouse.action = wuss_MOUSE_UP;
+    if (!wuss_gridview_handle_event(gv, &ev)) goto GridViewFail;
+    if (wuss_gridview_selected_count(gv) != 2 ||
+        !wuss_gridview_is_selected(gv, 0) ||
         !wuss_gridview_is_selected(gv, 1)) goto GridViewFail;
 
     /* Select on empty space clears the selection */
+    ev.data.mouse.action = wuss_MOUSE_DOWN;
     ev.data.mouse.button = wuss_BUTTON_SELECT;
     if (!wuss_gridview_handle_event(gv, &ev)) goto GridViewFail;
     if (wuss_gridview_is_selected(gv, 0) ||
         wuss_gridview_is_selected(gv, 1)) goto GridViewFail;
+
+    /* dragged up to item 1 and released, the band selects every item it
+     * touches: 1 to the last, not 0; a redraw draws it meanwhile */
+    ev.data.mouse.action = wuss_MOUSE_MOVE;
+    ev.data.mouse.point  = POINT(3, 2 + cell_h);
+    if (!wuss_gridview_handle_event(gv, &ev)) goto GridViewFail;
+    {
+      wuss_event_t redraw;
+
+      redraw.kind                = wuss_EVENT_REDRAW;
+      redraw.data.redraw.scr     = &gvscr;
+      redraw.data.redraw.content = &gvcontent;
+      redraw.data.redraw.bounds  = &gvcontent;
+      redraw.data.redraw.scroll  = POINT(0, 0);
+      if (!wuss_gridview_handle_event(gv, &redraw)) goto GridViewFail;
+    }
+    ev.data.mouse.action = wuss_MOUSE_UP;
+    if (!wuss_gridview_handle_event(gv, &ev)) goto GridViewFail;
+    if (wuss_gridview_is_selected(gv, 0) ||
+        !wuss_gridview_is_selected(gv, 1) ||
+        wuss_gridview_selected_count(gv) != (int) NELEMS(gridview_test_labels) - 1)
+      goto GridViewFail;
+
+    /* a move after the release no longer stretches a band */
+    ev.data.mouse.action = wuss_MOUSE_MOVE;
+    if (wuss_gridview_handle_event(gv, &ev)) goto GridViewFail;
+    wuss_gridview_clear_selection(gv);
 
     /* a press and a move past the drag threshold offers the item to the drag
      * callback, once */

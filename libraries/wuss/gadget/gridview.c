@@ -22,6 +22,7 @@
 #include "wuss/window.h"
 
 #include "wuss/gadget/gridview.h"
+#include "wuss/gadget/rubberband.h"
 
 #include "../core/types.h"
 #include "../core/palette.h"
@@ -59,7 +60,8 @@ struct wuss_gridview
                                               * event */
   point_t                        press_point; /* its document point */
   wuss_button_t                  press_button; /* button that pressed it */
-  void                          *opaque;
+  wuss_rubberband_t              band;    /* a press on empty space */
+  void                         *opaque;
   bitvec_t                      *selected;
   int                            label_chars;
   size2d_t                       cell;    /* glyph+label cell size, with padding */
@@ -198,6 +200,7 @@ result_t wuss_gridview_create(wuss_gridview_t            **out,
   gv->activate    = activate;
   gv->drag        = NULL;
   gv->press_index = -1;
+  gv->band.active = 0;
   gv->cursor      = -1;
   gv->menu_index  = -1;
   gv->menu_closed = 0;
@@ -422,6 +425,27 @@ static void gridview_clear_selected(wuss_gridview_t *gv)
 
   bitvec_clear_all(gv->selected);
   gv->menu_index = -1;
+}
+
+/* The band is released: select every cell it touches. */
+static void gridview_band_end(wuss_gridview_t *gv)
+{
+  int   i;
+  box_t cell, clipped;
+
+  wuss_rubberband_end(&gv->band, gv->window);
+
+  for (i = 0; i < gv->count; i++)
+  {
+    cell = gridview_cell_box(gv, i);
+    if (!box_intersection(&gv->band.box, &cell, &clipped) &&
+        !bitvec_get(gv->selected, (bitvec_index_t) i))
+    {
+      (void) bitvec_set(gv->selected, (bitvec_index_t) i);
+      gridview_invalidate_cell(gv, i);
+      gv->cursor = i;
+    }
+  }
 }
 
 /* Scroll the window the least that brings cell "index" fully into view. */
@@ -692,12 +716,18 @@ int wuss_gridview_handle_event(wuss_gridview_t    *gv,
     last  = MIN((last + 1) * gv->columns, gv->count);
     for (i = first; i < last; i++)
       gridview_draw_cell(gv, event, i);
+    wuss_rubberband_draw(&gv->band, event, wuss->palette[wuss->button.fg]);
     return 1;
   }
 
   case wuss_EVENT_MOUSE:
     if (event->data.mouse.action == wuss_MOUSE_MOVE)
     {
+      if (gv->band.active)
+      {
+        wuss_rubberband_to(&gv->band, gv->window, event->data.mouse.point);
+        return 1;
+      }
       gridview_drag_maybe(gv, event->data.mouse.point);
       return 0;
     }
@@ -705,13 +735,17 @@ int wuss_gridview_handle_event(wuss_gridview_t    *gv,
     if (event->data.mouse.action == wuss_MOUSE_UP)
     {
       gv->press_index = -1;
-      return 0;
+      if (!gv->band.active)
+        return 0;
+      gridview_band_end(gv);
+      return 1;
     }
 
     if (event->data.mouse.action != wuss_MOUSE_DOWN)
       return 0;
 
     gv->press_index = -1;
+    wuss_rubberband_end(&gv->band, gv->window);
 
     if (event->data.mouse.button & wuss_BUTTON_MENU)
     {
@@ -734,11 +768,13 @@ int wuss_gridview_handle_event(wuss_gridview_t    *gv,
 
     if (index < 0)
     {
-      /* Adjust on the background leaves the selection alone */
-      if (!gv->selectable || !(event->data.mouse.button & wuss_BUTTON_SELECT) ||
-          bitvec_count(gv->selected) == 0)
+      /* a press on the background starts a rubber band; Select clears the
+       * selection first, Adjust adds to it */
+      if (!gv->selectable)
         return 0;
-      gridview_clear_selected(gv);
+      if (event->data.mouse.button & wuss_BUTTON_SELECT)
+        gridview_clear_selected(gv);
+      wuss_rubberband_start(&gv->band, gv->window, event->data.mouse.point);
       return 1;
     }
 

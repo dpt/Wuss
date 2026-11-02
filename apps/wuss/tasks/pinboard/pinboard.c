@@ -21,6 +21,7 @@
 #include "utils/array.h"
 #include "wuss/component/colourmenu.h"
 #include "wuss/component/error.h"
+#include "wuss/gadget/rubberband.h"
 #include "wuss/menu.h"
 #include "wuss/message.h"
 
@@ -109,11 +110,10 @@ typedef struct pinboard
   int                allocated;
 
   /* a SELECT or ADJUST press: on a pin (press >= 0) it may become a drag;
-   * on bare backdrop (banding) it draws a rubber band */
+   * on bare backdrop it draws a rubber band */
   int                press;
   point_t            press_point;
-  int                banding;
-  box_t              band;
+  wuss_rubberband_t  band;
   int                drag;    /* pin being dragged, or -1 */
   point_t            hotspot; /* the press point, relative to its cell */
   unsigned int       open_retry; /* my_ref of a DataOpen re-sent after
@@ -563,29 +563,11 @@ static void pinboard_redraw(pinboard_t *pb, const wuss_event_t *event)
   for (i = 0; i < pb->npins; i++)
     pinboard_draw_pin(pb, scr, &pb->pins[i]);
 
-  if (pb->banding)
-  {
-    palette = wuss_get_palette(pb->wuss, NULL);
-    screen_draw_rect(scr, pb->band.x0, pb->band.y0, box_size(&pb->band),
-                     palette[pb->label_fg]);
-  }
+  palette = wuss_get_palette(pb->wuss, NULL);
+  wuss_rubberband_draw(&pb->band, event, palette[pb->label_fg]);
 }
 
 /* ----------------------------------------------------------------------- */
-
-static void pinboard_band_to(pinboard_t *pb, point_t p)
-{
-  box_t before, dirty;
-
-  before      = pb->band;
-  pb->band.x0 = MIN(pb->press_point.x, p.x);
-  pb->band.y0 = MIN(pb->press_point.y, p.y);
-  pb->band.x1 = MAX(pb->press_point.x, p.x) + 1;
-  pb->band.y1 = MAX(pb->press_point.y, p.y) + 1;
-
-  box_union(&before, &pb->band, &dirty);
-  wuss_window_invalidate(pb->window, &dirty);
-}
 
 /* the band is released: select every pin it touches */
 static void pinboard_band_end(pinboard_t *pb)
@@ -593,15 +575,14 @@ static void pinboard_band_end(pinboard_t *pb)
   int   i;
   box_t box, clipped;
 
+  wuss_rubberband_end(&pb->band, pb->window);
+
   for (i = 0; i < pb->npins; i++)
   {
     box = pinboard_pin_box(&pb->pins[i]);
-    if (!box_intersection(&pb->band, &box, &clipped))
+    if (!box_intersection(&pb->band.box, &box, &clipped))
       pinboard_select(pb, i, 1);
   }
-
-  pb->banding = 0;
-  wuss_window_invalidate(pb->window, &pb->band);
 }
 
 static void pinboard_drag_maybe(pinboard_t *pb, point_t p)
@@ -854,14 +835,14 @@ static result_t pinboard_mouse(pinboard_t *pb, const wuss_event_t *event)
     /* hover moves carry no button state: only a captured move is a drag */
     if (!wuss_is_capturing(pb->wuss))
       pb->press = -1;
-    else if (pb->banding)
-      pinboard_band_to(pb, p);
+    else if (pb->band.active)
+      wuss_rubberband_to(&pb->band, pb->window, p);
     else if (pb->press >= 0)
       pinboard_drag_maybe(pb, p);
     return result_OK;
 
   case wuss_MOUSE_UP:
-    if (pb->banding)
+    if (pb->band.active)
       pinboard_band_end(pb);
     pb->press = -1;
     return result_OK;
@@ -889,8 +870,7 @@ static result_t pinboard_mouse(pinboard_t *pb, const wuss_event_t *event)
   {
     if (button & wuss_BUTTON_SELECT)
       pinboard_select_all(pb, 0);
-    pb->banding = 1;
-    pinboard_band_to(pb, p);
+    wuss_rubberband_start(&pb->band, pb->window, p);
     return result_OK;
   }
 

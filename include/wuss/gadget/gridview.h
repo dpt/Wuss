@@ -24,10 +24,11 @@
  * icon exists to click.
  *
  * Selection follows RISC OS rules: Select on an unselected item selects only
- * it, and on a selected item changes nothing; Adjust toggles the item;
- * Select on empty space clears the selection and Adjust there changes
- * nothing. A double-click (wuss_BUTTON_DOUBLE) on an item deselects it, then
- * calls the activate callback.
+ * it, and on a selected item changes nothing; Adjust toggles the item.
+ * Select on empty space clears the selection and Adjust there keeps it;
+ * either then drags out a rubber band (see \ref rubberband.h) that selects
+ * every item it touches once released. A double-click (wuss_BUTTON_DOUBLE)
+ * on an item deselects it, then calls the activate callback.
  *
  * Arrow keys (wuss_EVENT_KEY, without Ctrl or Alt) select only the item
  * beside the last one clicked or selected, scrolling it into view; with none
@@ -260,10 +261,10 @@ void wuss_gridview_destroy(wuss_gridview_t *doomed);
  * \param[in] event    The event, of any kind.
  * \return 1 if the event was the gadget's and was consumed, else 0. A REDRAW
  *         is consumed only when it targets this gadget's window; a MOUSE
- *         DOWN outside every cell is consumed too, since it clears the
- *         selection. A KEY is consumed only if it is an arrow, even one that
- *         cannot move past the grid's edge, or a Return that activated an
- *         item.
+ *         DOWN outside every cell is consumed too, since it starts a rubber
+ *         band, as are the MOVEs and the UP that follow it. A KEY is
+ *         consumed only if it is an arrow, even one that cannot move past
+ *         the grid's edge, or a Return that activated an item.
  */
 int wuss_gridview_handle_event(wuss_gridview_t    *gridview,
                                const wuss_event_t *event);
