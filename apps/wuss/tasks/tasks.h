@@ -130,7 +130,8 @@ void tasks_spawn(const char *names);
 result_t tasks_run_type(filetype_t type);
 
 /* The launchable tasks, grouped into categories (the folders AppsFiler
- * shows). Indices are valid below the matching count; names are static. */
+ * shows). Indices are valid below the matching count; names are static. The
+ * System category is not counted, so it has no folder. */
 int tasks_category_count(void);
 const char *tasks_category_name(int category);
 int tasks_entry_count(int category);

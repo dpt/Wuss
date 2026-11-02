@@ -160,6 +160,9 @@ g_utilities_tasks[] =
 {
   { "Chars", chars_app_create },
   { "Clock", clock_app_create },
+  { "Configuring", configuring_app_create },
+  { "Pooling", pooling_app_create },
+  { "Post-Its", postits_app_create },
   { "Shortcuts", shortcuts_app_create }
 },
 g_visuals_tasks[] =
@@ -181,12 +184,9 @@ g_toys_tasks[] =
 },
 g_system_tasks[] =
 {
-  { "Configuring", configuring_app_create },
   { "Display", display_app_create },
   { "Palette", palette_app_create },
   { "Pinboard", pinboard_app_create },
-  { "Pooling", pooling_app_create },
-  { "Post-Its", postits_app_create },
 #ifdef WUSS_ICONBAR
   { "Filing", filing_app_create }
 #endif
@@ -522,7 +522,8 @@ result_t tasks_launcher_key(int code, wuss_key_modifiers_t modifiers)
 }
 
 /* tasks_spawn walks every category's table by name, regardless of which
- * category a task lives in. */
+ * category a task lives in. System is last and hidden: tasks_category_count
+ * leaves it out, so AppsFiler shows no folder for it. */
 static struct
 {
   const char   *name;
@@ -535,15 +536,15 @@ g_task_categories[] =
   { "Image",     g_image_tasks,     NELEMS(g_image_tasks)     },
   { "Tests",     g_tests_tasks,     NELEMS(g_tests_tasks)     },
   { "Toys",      g_toys_tasks,      NELEMS(g_toys_tasks)      },
-  { "System",    g_system_tasks,    NELEMS(g_system_tasks)    },
   { "Text",      g_text_tasks,      NELEMS(g_text_tasks)      },
   { "Utilities", g_utilities_tasks, NELEMS(g_utilities_tasks) },
-  { "Visuals",   g_visuals_tasks,   NELEMS(g_visuals_tasks)   }
+  { "Visuals",   g_visuals_tasks,   NELEMS(g_visuals_tasks)   },
+  { "System",    g_system_tasks,    NELEMS(g_system_tasks)    }
 };
 
 int tasks_category_count(void)
 {
-  return (int) NELEMS(g_task_categories);
+  return (int) NELEMS(g_task_categories) - 1; /* all but System */
 }
 
 const char *tasks_category_name(int category)
