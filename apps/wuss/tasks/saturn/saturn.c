@@ -17,6 +17,7 @@
 #include "geom/box.h"
 #include "geom/size.h"
 #include "geom/stack.h"
+#include "utils/maths.h"
 #include "utils/rng.h"
 #include "wuss/component/dialogue.h"
 #include "wuss/menu.h"
@@ -61,25 +62,34 @@
 
 /* BBC BASIC RND(n>0) returns an integer 1..n. utils/rng's LCG stands in for
  * it (its high bits, which is where an LCG's usable randomness sits) so a
- * Select click can re-seed for a fresh sketch. */
+ * Select click can re-seed for a fresh sketch. Every draw in a redraw shares
+ * n, so the seed fixes n too and keeps its reciprocal, letting div_recip take
+ * the remainder without a division per sample. */
 static struct
 {
-  rng_t rnd_state;
+  rng_t        rnd_state;
+  unsigned int n;
+  unsigned int recip;
 }
 g;
 
-static void saturn_rnd_seed(unsigned long seed)
+static void saturn_rnd_seed(unsigned long seed, int n)
 {
   rng_seed(&g.rnd_state, (uint32_t) seed);
+  g.n     = (unsigned int) n;
+  g.recip = DIV_RECIP(g.n);
 }
 
-static int saturn_rnd(int n)
+static int saturn_rnd(void)
 {
-  return (int) ((rng_lcg32(&g.rnd_state) >> 16) % (uint32_t) n) + 1;
+  unsigned int v;
+
+  v = rng_lcg32(&g.rnd_state) >> 16;
+  return (int) (v - div_recip(v, g.n, g.recip) * g.n) + 1;
 }
 
-/* one signed sample in the original -128..127 space, scaled to half/range */
-#define SATURN_SAMPLE(half, range) (saturn_rnd(range) - (half))
+/* one signed sample in the original -128..127 space, scaled to half */
+#define SATURN_SAMPLE(half) (saturn_rnd() - (half))
 
 /* MENU click over the content pops this. "Colours" leads to a submenu with
  * one row per task->fg/task->bg (see task->colours). "Configuration" hover-opens
@@ -359,15 +369,24 @@ static result_t saturn_redraw(const wuss_event_t *event, saturn_task_t *task)
   /* resolve the colour once, not once per plotted point */
   fgpix = screen_colour_to_pixel(scr, task->fg);
 
-  saturn_rnd_seed(task->seed);
+  saturn_rnd_seed(task->seed, range);
+
+  /* The gates compare energies divided by energy_shift, rounded down. The
+   * energies are sums of squares, so never negative, and
+   * floor(s / k) > p exactly when s >= (p + 1) * k: scale the thresholds
+   * once and compare the sums undivided. */
+  stars_p = (stars_p + 1) * energy_shift;
+  ring_p  = (ring_p + 1) * energy_shift;
+  e_lo    = e_lo * energy_shift;
+  e_hi    = e_hi * energy_shift;
 
   /* loop 1 - the stars: keep points outside the inner disc */
   for (i = 0; i <= task->config.stars_iters; i++)
   {
-    x = SATURN_SAMPLE(half, range);
-    y = SATURN_SAMPLE(half, range);
-    p = (x * x + y * y) / energy_shift;
-    if (p > stars_p)
+    x = SATURN_SAMPLE(half);
+    y = SATURN_SAMPLE(half);
+    p = x * x + y * y;
+    if (p >= stars_p)
       saturn_plot(scr, ox, oy, size, x + half, flip - (y + half), task->zoom,
                   fgpix);
   }
@@ -377,14 +396,14 @@ static result_t saturn_redraw(const wuss_event_t *event, saturn_task_t *task)
   {
     int r5, r6, r7, e;
 
-    r5 = SATURN_SAMPLE(half, range);
-    r6 = SATURN_SAMPLE(half, range);
+    r5 = SATURN_SAMPLE(half);
+    r6 = SATURN_SAMPLE(half);
     r7 = r5 / 4;
     x  = r6 + r7;
     y  = r6;
-    p  = (x * x + y * y) / energy_shift;
-    e  = ((r6 + r7) * (r6 + r7) + r5 * r5 + r6 * r6) / energy_shift;
-    if (e >= e_lo && e < e_hi && (r5 < 0 || p > ring_p))
+    p  = x * x + y * y;
+    e  = (r6 + r7) * (r6 + r7) + r5 * r5 + r6 * r6;
+    if (e >= e_lo && e < e_hi && (r5 < 0 || p >= ring_p))
       saturn_plot(scr, ox, oy, size, x + half, y + half, task->zoom, fgpix);
   }
 
@@ -393,8 +412,8 @@ static result_t saturn_redraw(const wuss_event_t *event, saturn_task_t *task)
   {
     int r1, r2, body_r2;
 
-    r1      = SATURN_SAMPLE(half, range);
-    r2      = SATURN_SAMPLE(half, range);
+    r1      = SATURN_SAMPLE(half);
+    r2      = SATURN_SAMPLE(half);
     p       = r1 * r1 + r2 * r2;
     body_r2 = SATURN_BODY_R2(half);
     if (p < body_r2)
