@@ -160,7 +160,7 @@ result_t painting_create_with(wuss_t                     *wuss,
   task->wuss = wuss;
   task->fg   = params->fg;
   task->bg   = params->bg;
-  task->tool = painting_TOOL_BRUSH;
+  task->tool = painting_TOOL_PENCIL;
   rng_seed(&task->rng, 1);
   task->size      = 3;
   task->density   = 20; /* about the old fixed dusting */
@@ -590,7 +590,7 @@ static result_t painting_mouse(painting_task_t    *pt,
       dirty          = painting_spray(pt, p);
       break;
 
-    case painting_TOOL_BRUSH:
+    case painting_TOOL_PENCIL:
     case painting_TOOL_PAINTBRUSH:
     case painting_TOOL_WOBBLE:
     case painting_TOOL_ERASER:
@@ -743,7 +743,7 @@ static result_t painting_key(painting_task_t *pt, int code)
 
   switch (code)
   {
-  case 'b': case 'B': tool = painting_TOOL_BRUSH;        break;
+  case 'b': case 'B': tool = painting_TOOL_PENCIL;       break;
   case 'h': case 'H': tool = painting_TOOL_PAINTBRUSH;   break;
   case 'k': case 'K': tool = painting_TOOL_WOBBLE;       break;
   case 'e': case 'E': tool = painting_TOOL_ERASER;       break;

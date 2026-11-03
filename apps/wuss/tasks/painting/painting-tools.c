@@ -166,6 +166,8 @@ box_t painting_stroke_segment(painting_task_t *pt,
   if (pt->tool == painting_TOOL_WOBBLE)
     return paintingdoc_wobble(pt->doc, a, b, pt->size, pt->edge, pt->wander,
                               painting_stroke_colour(pt), &pt->wobble);
+  if (pt->tool == painting_TOOL_PENCIL)
+    return paintingdoc_stroke(pt->doc, a, b, 1, painting_stroke_colour(pt));
 
   return paintingdoc_stroke(pt->doc, a, b, pt->size,
                             painting_stroke_colour(pt));

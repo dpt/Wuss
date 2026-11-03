@@ -48,7 +48,7 @@ painting_setting_t;
 /* the toolbox's radio buttons, in this order */
 typedef enum painting_tool
 {
-  painting_TOOL_BRUSH,
+  painting_TOOL_PENCIL,     /* a freehand line one pixel wide */
   painting_TOOL_PAINTBRUSH, /* stamp the chosen nozzle along the stroke */
   painting_TOOL_WOBBLE,     /* a freehand stroke with wobbly edges */
   painting_TOOL_ERASER,
