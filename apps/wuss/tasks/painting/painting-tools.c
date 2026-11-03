@@ -100,6 +100,47 @@ void painting_band_ends(const painting_task_t *pt,
   *b = POINT(pt->anchor.x + dx, pt->anchor.y + dy);
 }
 
+/* the freehand tools, whose strokes the stabiliser smooths */
+int painting_is_stabilised(const painting_task_t *pt)
+{
+  return painting_collects_points(pt) ||
+         pt->tool == painting_TOOL_PENCIL ||
+         pt->tool == painting_TOOL_PAINTBRUSH ||
+         pt->tool == painting_TOOL_WOBBLE ||
+         pt->tool == painting_TOOL_ERASER ||
+         pt->tool == painting_TOOL_SPRAY;
+}
+
+/* start the stabiliser at p */
+void painting_steady_reset(painting_task_t *pt, point_t p)
+{
+  pt->steady_x = p.x;
+  pt->steady_y = p.y;
+}
+
+/* the stabilised point for the pointer at p: the stroke trails the pointer
+ * as if pulled along on a string pt->stabilise pixels long, so it moves only
+ * once the pointer is further away than that and wobbles shorter than the
+ * string are dropped */
+point_t painting_steady(painting_task_t *pt, point_t p)
+{
+  double dx, dy, d, pull;
+
+  dx = p.x - pt->steady_x;
+  dy = p.y - pt->steady_y;
+  d  = sqrt(dx * dx + dy * dy);
+
+  if (d > pt->stabilise)
+  {
+    pull          = (d - pt->stabilise) / d;
+    pt->steady_x += dx * pull;
+    pt->steady_y += dy * pull;
+  }
+
+  return POINT((int) floor(pt->steady_x + 0.5),
+               (int) floor(pt->steady_y + 0.5));
+}
+
 /* the lasso's path grows by one point; false if out of memory, when the
  * point is dropped */
 int painting_lasso_add(painting_task_t *pt, point_t p)

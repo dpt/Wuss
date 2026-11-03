@@ -63,7 +63,9 @@ painting_settings[painting_SETTING__COUNT] =
   [painting_SETTING_RATE]      = { "Rate", 20, 100, "%d%%" },
   [painting_SETTING_EDGE]      = { "Wobble", 0, 200, "%d%%" },
   [painting_SETTING_WANDER]    = { "Wander", 0, 200, "%d%%" },
-  [painting_SETTING_TOLERANCE] = { "Tolerance", 0, 255, NULL }
+  [painting_SETTING_TOLERANCE] = { "Tolerance", 0, 255, NULL },
+  [painting_SETTING_STABILISE] = { "Stabilise", 0, PAINTING_STABILISE_MAX,
+                                   NULL }
 };
 
 #define SETTING(s) (1u << painting_SETTING_##s)
@@ -72,16 +74,20 @@ painting_settings[painting_SETTING__COUNT] =
  * pixel and a filled shape has no outline, so neither has a size */
 static const unsigned int painting_tool_settings[painting_TOOL__COUNT] =
 {
-  [painting_TOOL_PAINTBRUSH] = SETTING(SIZE) | SETTING(NOZZLE),
+  [painting_TOOL_PENCIL]     = SETTING(STABILISE),
+  [painting_TOOL_PAINTBRUSH] = SETTING(SIZE) | SETTING(NOZZLE) |
+                               SETTING(STABILISE),
   [painting_TOOL_WOBBLE]     = SETTING(SIZE) | SETTING(EDGE) |
-                               SETTING(WANDER),
-  [painting_TOOL_ERASER]     = SETTING(SIZE),
+                               SETTING(WANDER) | SETTING(STABILISE),
+  [painting_TOOL_ERASER]     = SETTING(SIZE) | SETTING(STABILISE),
   [painting_TOOL_LINE]       = SETTING(SIZE),
   [painting_TOOL_RECT]       = SETTING(SIZE),
   [painting_TOOL_ELLIPSE]    = SETTING(SIZE),
-  [painting_TOOL_PATH]       = SETTING(SIZE),
+  [painting_TOOL_PATH]       = SETTING(SIZE) | SETTING(STABILISE),
+  [painting_TOOL_PATH_FILL]  = SETTING(STABILISE),
   [painting_TOOL_SPRAY]      = SETTING(SIZE) | SETTING(DENSITY) |
-                               SETTING(RATE),
+                               SETTING(RATE) | SETTING(STABILISE),
+  [painting_TOOL_LASSO]      = SETTING(STABILISE),
   [painting_TOOL_WAND]       = SETTING(TOLERANCE)
 };
 
@@ -141,6 +147,7 @@ static int *painting_setting_value(painting_task_t *pt, painting_setting_t s)
   case painting_SETTING_EDGE:      return &pt->edge;
   case painting_SETTING_WANDER:    return &pt->wander;
   case painting_SETTING_TOLERANCE: return &pt->tolerance;
+  case painting_SETTING_STABILISE: return &pt->stabilise;
   default:                         return &pt->size;
   }
 }

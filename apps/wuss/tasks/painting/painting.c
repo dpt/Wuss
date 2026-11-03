@@ -535,6 +535,7 @@ static result_t painting_mouse(painting_task_t    *pt,
     pt->anchor = p;
     pt->last   = p;
     pt->mods   = event->data.mouse.modifiers;
+    painting_steady_reset(pt, p);
 
     switch (pt->tool)
     {
@@ -614,6 +615,16 @@ static result_t painting_mouse(painting_task_t    *pt,
     if (!pt->held)
       return result_OK;
 
+    /* a freehand stroke follows the stabilised pointer, and has nothing new
+     * to draw until that moves. the spray still counts the move */
+    if (painting_is_stabilised(pt))
+    {
+      p = painting_steady(pt, p);
+      if (p.x == pt->last.x && p.y == pt->last.y &&
+          pt->tool != painting_TOOL_SPRAY)
+        return result_OK;
+    }
+
     if (painting_collects_points(pt))
     {
       painting_lasso_add(pt, p);
@@ -648,6 +659,10 @@ static result_t painting_mouse(painting_task_t    *pt,
     /* only releasing the button that began the stroke ends it */
     if (!(event->data.mouse.button & pt->held))
       return result_OK;
+
+    /* a freehand stroke ends where the stabilised pointer had got to */
+    if (painting_is_stabilised(pt))
+      p = pt->last;
 
     if (painting_is_selector(pt))
     {

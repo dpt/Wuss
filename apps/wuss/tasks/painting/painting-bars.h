@@ -49,7 +49,7 @@
 #define SB_SETTING_GAP 10  /* between settings */
 #define SB_SLIDER_W    58
 #define SB_NOZZLE_W    76  /* the nozzle button, wide enough for "Backslash" */
-#define SB_W           420 /* wide enough for the widest tool's settings */
+#define SB_W           580 /* wide enough for the widest tool's settings */
 #define SB_H           (SB_MARGIN + SB_ROW_H + SB_MARGIN)
 
 /* the paintbrush's nozzle rows, indexed by paintingdoc_nozzle_t */

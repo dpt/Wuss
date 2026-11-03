@@ -25,6 +25,8 @@
 #define PAINTING_SIZE_MIN 1
 #define PAINTING_SIZE_MAX 32
 
+#define PAINTING_STABILISE_MAX 50
+
 /* the settings a tool may show on the size bar, left to right in this order */
 typedef enum painting_setting
 {
@@ -38,6 +40,8 @@ typedef enum painting_setting
   painting_SETTING_WANDER,    /* how far the wobbly brush drifts across its
                                * path, percent of the usual */
   painting_SETTING_TOLERANCE, /* the wand's colour tolerance, 0..255 */
+  painting_SETTING_STABILISE, /* how far a freehand stroke trails the
+                               * pointer, in pixels */
   painting_SETTING__COUNT
 }
 painting_setting_t;
@@ -126,6 +130,8 @@ typedef struct painting_task
   int                spray_tick; /* rate summed over moves and idles; sprays
                                   * at 100 */
   int                tolerance; /* the wand's colour tolerance, 0..255 */
+  int                stabilise; /* the stabiliser's string length, pixels */
+  double             steady_x, steady_y; /* the stabilised pointer */
   int                held;      /* button of the stroke in progress, or 0 */
   point_t            anchor;    /* where the stroke began */
   point_t            last;      /* where the stroke last reached */

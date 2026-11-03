@@ -17,6 +17,11 @@ int painting_is_rubber_band(const painting_task_t *pt);
 int painting_is_selector(const painting_task_t *pt);
 int painting_is_path(const painting_task_t *pt);
 int painting_collects_points(const painting_task_t *pt);
+int painting_is_stabilised(const painting_task_t *pt);
+
+/* start the stabiliser at p, then the stabilised point for the pointer at p */
+void painting_steady_reset(painting_task_t *pt, point_t p);
+point_t painting_steady(painting_task_t *pt, point_t p);
 
 /* the rubber band's ends, given the keys held */
 void painting_band_ends(const painting_task_t *pt, point_t *a, point_t *b);
