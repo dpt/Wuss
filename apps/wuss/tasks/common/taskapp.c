@@ -196,6 +196,21 @@ result_t taskapp_spawn(wuss_t               *wuss,
   return result_NOT_FOUND;
 }
 
+/* Loading a file can take a while: show the hourglass meanwhile. */
+static result_t app_load(wuss_t                *wuss,
+                         taskapp_data_load_fn_t load,
+                         void                  *instance,
+                         const char            *path)
+{
+  result_t rc;
+
+  wuss_hourglass_on(wuss);
+  rc = load(instance, path);
+  wuss_hourglass_off(wuss);
+
+  return rc;
+}
+
 /* A file dropped on the icon: open an instance and load it. An instance that
  * will not load the file stays open, empty, and the message bounces. */
 static result_t app_data_load(app_t *app, const wuss_message_t *msg)
@@ -216,7 +231,7 @@ static result_t app_data_load(app_t *app, const wuss_message_t *msg)
   if (rc != result_OK)
     return result_OK;
 
-  if (app->desc->data_load(instance, path) == result_OK)
+  if (app_load(app->wuss, app->desc->data_load, instance, path) == result_OK)
     (void) wuss_acknowledge(app->wuss, app->task, msg);
 
   return result_OK;
@@ -246,7 +261,7 @@ static result_t app_data_open(app_t *app, const wuss_message_t *msg)
   (void) wuss_acknowledge(app->wuss, app->task, msg);
 
   if (app_spawn_instance(app, &instance) == result_OK)
-    (void) app->desc->data_load(instance, open->path);
+    (void) app_load(app->wuss, app->desc->data_load, instance, open->path);
 
   return result_OK;
 }
@@ -267,7 +282,7 @@ result_t taskapp_window_data_load(wuss_t                *wuss,
   memcpy(path, msg->data, len);
   path[len] = '\0';
 
-  if (load(instance, path) == result_OK)
+  if (app_load(wuss, load, instance, path) == result_OK)
     (void) wuss_acknowledge(wuss, delegate, msg);
 
   return result_OK;

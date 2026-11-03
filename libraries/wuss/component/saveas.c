@@ -110,6 +110,18 @@ static void saveas_dismiss(wuss_saveas_t *sa)
     (void) wuss_dialogue_hide(sa->dialogue);
 }
 
+/* Writing a file can take a while: show the hourglass meanwhile. */
+static result_t saveas_call_save(wuss_saveas_t *sa, const char *path)
+{
+  result_t rc;
+
+  wuss_hourglass_on(sa->wuss);
+  rc = sa->save_fn(path, sa->opaque);
+  wuss_hourglass_off(sa->wuss);
+
+  return rc;
+}
+
 static result_t saveas_do_save(wuss_saveas_t *sa)
 {
   const char *path;
@@ -120,7 +132,7 @@ static result_t saveas_do_save(wuss_saveas_t *sa)
   if (!path_is_full(path))
     return result_BAD_ARG;
 
-  return sa->save_fn(path, sa->opaque);
+  return saveas_call_save(sa, path);
 }
 
 static result_t saveas_action_cancel(void *opaque, wuss_button_t button)
@@ -427,7 +439,7 @@ static int saveas_handle_message(wuss_saveas_t      *sa,
     strncpy(path, (const char *) msg->data, len);
     path[len] = '\0';
 
-    if (sa->save_fn(path, sa->opaque) != result_OK)
+    if (saveas_call_save(sa, path) != result_OK)
     {
       sa->transfer_active = 0;
       return 1;

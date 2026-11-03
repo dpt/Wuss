@@ -241,9 +241,17 @@ static result_t dithering_dither(dithering_task_t *dt, int keep_palette)
   return result_OK;
 }
 
+/* A fresh palette and dither: slow on a big image, so show the hourglass.
+ * The strength animation's per-tick dithers go without, lest it flicker. */
 static result_t dithering_apply(dithering_task_t *dt)
 {
-  return dithering_dither(dt, 0);
+  result_t rc;
+
+  wuss_hourglass_on(dt->wuss);
+  rc = dithering_dither(dt, 0);
+  wuss_hourglass_off(dt->wuss);
+
+  return rc;
 }
 
 /* wuss_saveas_save_fn_t: opaque is the dithering_task_t */

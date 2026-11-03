@@ -70,7 +70,9 @@ static result_t resizing_apply(resizing_task_t *rt)
   size.w  = MAX(1, rt->source.size.w * percent / 100);
   size.h  = MAX(1, rt->source.size.h * percent / 100);
 
+  wuss_hourglass_on(rt->wuss);
   rc = bitmap_resize(&rt->source, size, rt->method, rt->linear, &out);
+  wuss_hourglass_off(rt->wuss);
 
   resizing_free_resized(rt);
   if (rc == result_OK)
