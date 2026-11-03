@@ -370,6 +370,7 @@ static void jotting_redraw(jotting_t *note, const wuss_event_t *event)
   const colour_t *palette;
   point_t         origin;
   point_t         caret;
+  wuss_colour_t   ink;
 
   bounds = event->data.redraw.bounds;
   if (mdtext_layout(&note->md, bounds->x1 - bounds->x0 - 2 * JOTTING_INSET) !=
@@ -382,14 +383,18 @@ static void jotting_redraw(jotting_t *note, const wuss_event_t *event)
   mdtext_draw(&note->md, event->data.redraw.scr, origin, palette[note->fg],
               colour_rgba(0, 0, 0, 0));
 
-  /* typing goes at the end, so that is where the caret sits */
+  /* typing goes at the end, so that is where the caret sits: red with the
+   * focus, grey without */
   if (note->editing && mdtext_caret_pos(&note->md, note->len, &caret))
   {
     caret.x += origin.x;
     caret.y += origin.y;
-    bmfont_draw_caret(note->md.font, event->data.redraw.scr,
-                      palette[wuss_nearest_colour(note->wuss, 0xFF, 0x00,
-                                                  0x00)], &caret);
+    if (wuss_get_focus(note->wuss) == note->window)
+      ink = wuss_nearest_colour(note->wuss, 0xFF, 0x00, 0x00);
+    else
+      ink = wuss_nearest_colour(note->wuss, 0x88, 0x88, 0x88);
+    bmfont_draw_caret(note->md.font, event->data.redraw.scr, palette[ink],
+                      &caret);
   }
 }
 
@@ -643,6 +648,12 @@ static result_t jotting_handle(wuss_window_t      *window,
 
   case wuss_EVENT_KEY:
     return jotting_key(note, event);
+
+  case wuss_EVENT_GAIN_FOCUS:
+  case wuss_EVENT_LOSE_FOCUS:
+    if (note->editing)
+      wuss_window_invalidate_visible(note->window); /* recolour the caret */
+    return result_OK;
 
   case wuss_EVENT_PRE_SUBMENU_OPEN:
     return wuss_colourmenu_open_rgb(note->wuss, event, "Note colour",
