@@ -201,7 +201,7 @@ static result_t checker_redraw(const wuss_event_t *event, void *task_data)
   screen_t         *scr;
   const box_t      *content, *bounds;
   checker_pattern_t pattern;
-  int               x, y, lx, ly, sx, sy, band_px, band;
+  int               x, y, lx, ly, sx, sy, band_px, v, dv, band, r;
 
   cc = task_data;
 
@@ -221,21 +221,33 @@ static result_t checker_redraw(const wuss_event_t *event, void *task_data)
     return result_OK;
   }
 
+  /* divide once per row to find the band at the row's first pixel, then
+   * count along the row: v rises by dv per pixel */
   for (y = content->y0; y < content->y1; y++)
   {
+    lx = content->x0 - bounds->x0 + sx;
+    ly = y - bounds->y0 + sy;
+
+    switch (pattern)
+    {
+    case checker_PATTERN_HORIZONTAL: v = ly;      dv = 0; break;
+    case checker_PATTERN_VERTICAL:   v = lx;      dv = 1; break;
+    default:                         v = lx + ly; dv = 1; break; /* DIAGONAL */
+    }
+
+    band = v / band_px;
+    r    = v % band_px;
+
     for (x = content->x0; x < content->x1; x++)
     {
-      lx = x - bounds->x0 + sx;
-      ly = y - bounds->y0 + sy;
-
-      switch (pattern)
-      {
-      case checker_PATTERN_HORIZONTAL: band = ly / band_px;        break;
-      case checker_PATTERN_VERTICAL:   band = lx / band_px;        break;
-      default:                         band = (lx + ly) / band_px; break; /* DIAGONAL */
-      }
-
       screen_set_pixel(scr, x, y, (band & 1) ? cc->black : cc->white);
+
+      r += dv;
+      if (r == band_px)
+      {
+        r = 0;
+        band++;
+      }
     }
   }
 
