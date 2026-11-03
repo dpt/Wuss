@@ -132,6 +132,7 @@ set(WUSS_CORE_SOURCES
     libraries/wuss/core/get-pointer.c
     libraries/wuss/core/get-resources.c
     libraries/wuss/core/get-screen-size.c
+    libraries/wuss/core/hourglass.c
     libraries/wuss/core/idle.c
     libraries/wuss/core/impl.h
     libraries/wuss/core/pointer-bounds.c
@@ -399,6 +400,7 @@ if(BUILD_TESTS)
         libraries/wuss/component/test/colourpicker-test.c
         libraries/wuss/core/test/pointer-test.c
         libraries/wuss/core/test/pointer-bounds-test.c
+        libraries/wuss/core/test/hourglass-test.c
         libraries/wuss/core/test/message-test.c
         libraries/wuss/core/test/drag-test.c
         libraries/wuss/core/test/task-test.c

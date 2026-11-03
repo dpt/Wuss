@@ -667,6 +667,13 @@ bool wuss_frontend_hide_pointer(wuss_frontend_t *fe, bool hide)
   return false;
 }
 
+void wuss_frontend_set_busy(wuss_frontend_t *fe, bool busy)
+{
+  NOT_USED(fe);
+
+  (void) _swix(busy ? Hourglass_On : Hourglass_Off, 0);
+}
+
 void wuss_frontend_capture_mouse(wuss_frontend_t *fe, bool capture)
 {
   NOT_USED(fe);

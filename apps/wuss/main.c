@@ -384,6 +384,12 @@ static void wuss_frame(void *arg)
 #endif
 }
 
+/* wuss_hourglass_fn_t: opaque is the frontend */
+static void hourglass(int busy, void *opaque)
+{
+  wuss_frontend_set_busy(opaque, busy != 0);
+}
+
 /* fonts[]/descs[] below hold [0] regular (system font), [1] bold, [2] symbol
  * (menu tick / submenu arrow); kept <= wuss_MAX_FONTS so wuss_create's own
  * nfonts check is never reached with arrays it can no longer fit in */
@@ -593,6 +599,8 @@ static result_t run_wuss(const char    *resources,
   g_tasks.wuss           = wuss;
   g_tasks.frontend       = frontend;
   g_tasks.bm             = &g.bm;
+
+  wuss_set_hourglass_handler(wuss, hourglass, frontend);
 
   /* --crt: the frontend opens plain; switch over now so the Display
    * window's option agrees */

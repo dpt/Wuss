@@ -74,6 +74,8 @@ struct wuss_frontend
   const char          *text_pos; /* next code point in text to hand out */
   wuss_key_modifiers_t text_mods;
   Uint64               next_frame; /* SDL_GetTicksNS() deadline for the next present */
+  SDL_Cursor          *wait_cursor; /* made on first use; see
+                                     * wuss_frontend_set_busy */
 };
 
 /* ----------------------------------------------------------------------- */
@@ -851,6 +853,15 @@ bool wuss_frontend_hide_pointer(wuss_frontend_t *fe, bool hide)
   return hide;
 }
 
+void wuss_frontend_set_busy(wuss_frontend_t *fe, bool busy)
+{
+  if (busy && fe->wait_cursor == NULL)
+    fe->wait_cursor = SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_WAIT);
+
+  (void) SDL_SetCursor(busy && fe->wait_cursor != NULL ? fe->wait_cursor
+                                                       : SDL_GetDefaultCursor());
+}
+
 unsigned int wuss_frontend_ms(wuss_frontend_t *fe)
 {
   NOT_USED(fe);
@@ -899,6 +910,7 @@ void wuss_frontend_close(wuss_frontend_t *fe)
 
   wuss_crt_destroy(fe->crt, fe->window);
   sdl_renderer_close(fe);
+  SDL_DestroyCursor(fe->wait_cursor);
   SDL_DestroyWindow(fe->window);
   SDL_Quit();
 

@@ -146,6 +146,12 @@ bool wuss_frontend_set_crt(wuss_frontend_t *frontend, bool on);
  * false on a backend that keeps its hardware pointer (RISC OS). */
 bool wuss_frontend_hide_pointer(wuss_frontend_t *frontend, bool hide);
 
+/* Show the busy pointer (SDL's wait cursor; the RISC OS hourglass) while
+ * "busy", the normal one otherwise. Takes effect at once, since the caller is
+ * about to block the main loop: main.c registers it as wuss's hourglass
+ * handler. */
+void wuss_frontend_set_busy(wuss_frontend_t *frontend, bool busy);
+
 /* Capture (or release) the mouse for the duration of a core wuss drag, so
  * the pointer keeps delivering moves/the terminating up even if it leaves
  * the window. No-op on a backend with nothing to capture (RISC OS,

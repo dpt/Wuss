@@ -105,14 +105,16 @@ static result_t effecting_run(effecting_task_t *ec, int rechain)
       memcpy(ec->chain.base, ec->source.base,
              (size_t) ec->source.rowbytes * ec->source.size.h);
 
-    for (i = 0; i < ec->nelements; i++)
-    {
+    /* rerunning the stack is the slow part: a level drag only blends */
+    wuss_hourglass_on(ec->wuss);
+    rc = result_OK;
+    for (i = 0; i < ec->nelements && rc == result_OK; i++)
       rc = effecting_apply_element(&ec->elements[i],
                                    i == 0 ? &ec->source : &ec->chain,
                                    &ec->chain);
-      if (rc != result_OK)
-        return rc;
-    }
+    wuss_hourglass_off(ec->wuss);
+    if (rc != result_OK)
+      return rc;
   }
 
   return effects_blend_extrapolate(&ec->source, &ec->chain, &ec->result,

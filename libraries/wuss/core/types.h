@@ -366,6 +366,14 @@ struct wuss
    * sausage or resize press, or by wuss_set_pointer_bounds; reset by the
    * next press made with nothing held and by wuss_drag_start. */
   box_t                       pointer_bounds;
+  /* Hourglass nesting depth and the host's handler; see hourglass.c. */
+  struct
+  {
+    int                  depth;
+    wuss_hourglass_fn_t *fn;
+    void                *opaque;
+  }
+  hourglass;
 #ifdef WUSS_ICONS
   /* Button icon held down; released on any MOUSE_UP even if a new window now
    * covers its owner. */

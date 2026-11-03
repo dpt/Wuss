@@ -1469,6 +1469,46 @@ result_t wuss_set_pointer_bounds(wuss_t *wuss, const box_t *bounds);
  */
 int wuss_get_pointer_bounds(const wuss_t *wuss, box_t *bounds);
 
+/* ----------------------------------------------------------------------- */
+
+/**
+ * Called when the hourglass turns on or off (see wuss_hourglass_on). A long
+ * operation blocks the host's main loop, so the host must change its pointer
+ * here, at once, rather than on its next frame.
+ *
+ * \param[in] busy   Non-zero when the hourglass turns on, zero when off.
+ * \param[in] opaque Value passed to wuss_set_hourglass_handler.
+ */
+typedef void (wuss_hourglass_fn_t)(int busy, void *opaque);
+
+/**
+ * Register the host's hourglass handler, replacing any earlier one.
+ *
+ * \param[in] wuss   Window manager.
+ * \param[in] fn     Handler, or NULL for none.
+ * \param[in] opaque Passed to \p fn.
+ */
+void wuss_set_hourglass_handler(wuss_t              *wuss,
+                                wuss_hourglass_fn_t *fn,
+                                void                *opaque);
+
+/**
+ * Signal that a long operation is starting, so the host shows a busy pointer
+ * (the equivalent of RISC OS's Hourglass_On). Calls nest: the handler hears
+ * of the first on and the matching last off only.
+ *
+ * \param[in] wuss Window manager.
+ */
+void wuss_hourglass_on(wuss_t *wuss);
+
+/**
+ * End a long operation started with wuss_hourglass_on. An unmatched off is
+ * ignored.
+ *
+ * \param[in] wuss Window manager.
+ */
+void wuss_hourglass_off(wuss_t *wuss);
+
 #ifdef __cplusplus
 }
 #endif

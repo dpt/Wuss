@@ -102,6 +102,9 @@ result_t wuss_create(screen_t               *scr,
 #endif
   w->clipboard          = NULL;
   w->clipboard_gen      = 0;
+  w->hourglass.depth    = 0;
+  w->hourglass.fn       = NULL;
+  w->hourglass.opaque   = NULL;
 #ifdef WUSS_ICONS
   w->pressed.icon       = NULL;
   w->pressed.window     = NULL;
