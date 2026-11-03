@@ -7,7 +7,6 @@
 #include "base/utils.h"
 #include "framebuf/screen.h"
 #include "geom/box.h"
-#include "geom/size.h"
 
 #include "wuss/gadget/rubberband.h"
 
@@ -17,6 +16,9 @@
 
 /* the most an autoscroll moves per frame, on each axis */
 #define RUBBERBAND_AUTOSCROLL_MAX 32
+
+/* the outline's dash and gap, in pixels */
+#define RUBBERBAND_DASH 2
 
 /* ----------------------------------------------------------------------- */
 
@@ -29,6 +31,27 @@ static void rubberband_track(wuss_rubberband_t   *band,
 
   wuss_window_get_scroll(window, &scroll);
   band->pointer = POINT(point.x - scroll.x, point.y - scroll.y);
+}
+
+/* invalidate the one-pixel outline of box, not its inside: only the outline
+ * is drawn, so only it changes */
+static void rubberband_invalidate_outline(wuss_window_t *window,
+                                          const box_t   *box)
+{
+  box_t edge;
+
+  edge    = *box;
+  edge.y1 = box->y0 + 1;
+  wuss_window_invalidate(window, &edge); /* top */
+  edge.y0 = box->y1 - 1;
+  edge.y1 = box->y1;
+  wuss_window_invalidate(window, &edge); /* bottom */
+  edge    = *box;
+  edge.x1 = box->x0 + 1;
+  wuss_window_invalidate(window, &edge); /* left */
+  edge.x0 = box->x1 - 1;
+  edge.x1 = box->x1;
+  wuss_window_invalidate(window, &edge); /* right */
 }
 
 void wuss_rubberband_start(wuss_rubberband_t *band,
@@ -46,7 +69,7 @@ void wuss_rubberband_to(wuss_rubberband_t *band,
                         wuss_window_t     *window,
                         point_t            point)
 {
-  box_t before, dirty;
+  box_t before;
 
   if (!band->active)
     return;
@@ -58,9 +81,13 @@ void wuss_rubberband_to(wuss_rubberband_t *band,
   band->box.y0 = MIN(band->anchor.y, point.y);
   band->box.x1 = MAX(band->anchor.x, point.x) + 1;
   band->box.y1 = MAX(band->anchor.y, point.y) + 1;
+  if (box_equal(&before, &band->box))
+    return;
 
-  box_union(&before, &band->box, &dirty);
-  wuss_window_invalidate(window, &dirty);
+  /* erase the old outline, draw the new; a moved corner shifts the dashes'
+   * phase, so the whole new outline is redrawn */
+  rubberband_invalidate_outline(window, &before);
+  rubberband_invalidate_outline(window, &band->box);
 }
 
 /* One axis: the scroll offset that moves towards pointer position v when it
@@ -111,21 +138,37 @@ void wuss_rubberband_end(wuss_rubberband_t *band, wuss_window_t *window)
     return;
 
   band->active = 0;
-  wuss_window_invalidate(window, &band->box);
+  rubberband_invalidate_outline(window, &band->box);
 }
 
 void wuss_rubberband_draw(const wuss_rubberband_t *band,
                           const wuss_event_t      *event,
                           colour_t                 colour)
 {
-  int x, y;
+  screen_t *scr;
+  int       x0, y0;
+  int       x1, y1;
 
   if (!band->active)
     return;
 
-  /* work area to screen */
-  x = event->data.redraw.bounds->x0 - event->data.redraw.scroll.x;
-  y = event->data.redraw.bounds->y0 - event->data.redraw.scroll.y;
-  screen_draw_rect(event->data.redraw.scr, band->box.x0 + x,
-                   band->box.y0 + y, box_size(&band->box), colour);
+  /* work area to screen; the band's far edges are exclusive */
+  scr = event->data.redraw.scr;
+  x0  = band->box.x0 + event->data.redraw.bounds->x0 -
+        event->data.redraw.scroll.x;
+  y0  = band->box.y0 + event->data.redraw.bounds->y0 -
+        event->data.redraw.scroll.y;
+  x1  = x0 + band->box.x1 - band->box.x0 - 1;
+  y1  = y0 + band->box.y1 - band->box.y0 - 1;
+  if (x1 < x0 || y1 < y0)
+    return;
+
+  screen_draw_dashed_line(scr, x0, y0, x1, y0, RUBBERBAND_DASH,
+                          RUBBERBAND_DASH, colour);
+  screen_draw_dashed_line(scr, x0, y1, x1, y1, RUBBERBAND_DASH,
+                          RUBBERBAND_DASH, colour);
+  screen_draw_dashed_line(scr, x0, y0, x0, y1, RUBBERBAND_DASH,
+                          RUBBERBAND_DASH, colour);
+  screen_draw_dashed_line(scr, x1, y0, x1, y1, RUBBERBAND_DASH,
+                          RUBBERBAND_DASH, colour);
 }

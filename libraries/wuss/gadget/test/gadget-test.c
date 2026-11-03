@@ -879,6 +879,8 @@ StringSetOK: ;
       unsigned int     *px;
       unsigned int      edge, inside;
       colour_t          green;
+      int               i;
+      box_t             dirty;
 
       wuss_window_set_scroll(gvwin, POINT(0, 0));
       band.active = 0;
@@ -890,9 +892,18 @@ StringSetOK: ;
       wuss_rubberband_to(&band, gvwin, POINT(2, 3));
       if (band.box.x0 != 2 || band.box.y0 != 3 ||
           band.box.x1 != 6 || band.box.y1 != 6) goto GridViewFail;
+      /* a stretch dirties only the old and new outlines, never the inside */
+      if (wuss_redraw_dirty(gvwuss) != result_OK) goto GridViewFail;
       wuss_rubberband_to(&band, gvwin, POINT(14, 24));
       if (band.box.x0 != 5 || band.box.y0 != 5 ||
           band.box.x1 != 15 || band.box.y1 != 25) goto GridViewFail;
+      if (wuss_get_dirty_count(gvwuss) == 0) goto GridViewFail;
+      for (i = 0; i < wuss_get_dirty_count(gvwuss); i++)
+      {
+        wuss_get_dirty(gvwuss, i, &dirty);
+        if (dirty.x1 - dirty.x0 > 1 && dirty.y1 - dirty.y0 > 1)
+          goto GridViewFail;
+      }
 
       /* (5,5)-(15,25) in the work area is (15,15) 10x20 on screen */
       px                    = (unsigned int *) gvpixels;
@@ -907,6 +918,10 @@ StringSetOK: ;
       edge   = px[15 * 200 + 15];
       inside = px[20 * 200 + 20];
       if (edge == 0 || px[34 * 200 + 24] != edge || inside != 0)
+        goto GridViewFail;
+      /* the outline is dashed: two on, two off along the top edge */
+      if (px[15 * 200 + 16] != edge || px[15 * 200 + 17] != 0 ||
+          px[15 * 200 + 18] != 0 || px[15 * 200 + 19] != edge)
         goto GridViewFail;
 
       wuss_rubberband_end(&band, gvwin);
