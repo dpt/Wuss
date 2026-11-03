@@ -388,6 +388,7 @@ static void wuss_frame(void *arg)
 static void hourglass(int busy, void *opaque)
 {
   wuss_frontend_set_busy(opaque, busy != 0);
+  pointer_set_busy(busy != 0);
 }
 
 /* fonts[]/descs[] below hold [0] regular (system font), [1] bold, [2] symbol

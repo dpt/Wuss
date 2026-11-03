@@ -39,6 +39,11 @@ bool pointer_undraw(bitmap_t *bm, box_t *box);
  * on and over the window. Returns whether it drew, setting *box to where. */
 bool pointer_draw(bitmap_t *bm, box_t *box);
 
+/* Show the hourglass icon, centred on the pointer, in place of the arrow
+ * while "busy", presenting the change at once: the caller is wuss's
+ * hourglass handler, about to block the main loop. */
+void pointer_set_busy(bool busy);
+
 /* Hold "p" inside the box wuss locks the pointer to during a drag, if any,
  * warping the hidden hardware pointer to match unless "scripted". */
 point_t pointer_clamp(wuss_t *wuss, point_t p, bool scripted);
