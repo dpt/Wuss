@@ -67,10 +67,10 @@ result_t wuss_iconpool_test(const char *resources)
       goto Failure;
 
     /* only 32bpp icons get RLE-compressed: opton is paletted (stays as
-     * loaded), file_dir is RGBA */
+     * loaded), optoff is RGB */
     if (wuss_iconpool_bitmap(wuss, opton) == NULL)
       goto Failure;
-    deep    = wuss_iconpool_lookup(wuss, "file_dir");
+    deep    = wuss_iconpool_lookup(wuss, "optoff");
     icon_bm = wuss_iconpool_bitmap(wuss, deep);
     if (icon_bm == NULL || !bitmap_is_compressed(icon_bm))
       goto Failure;
