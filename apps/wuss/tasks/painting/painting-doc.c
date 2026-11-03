@@ -640,10 +640,14 @@ box_t paintingdoc_spray(paintingdoc_t *doc,
    * the disc's own pixels are hit */
   n = MAX(w * w * density / 100, 3);
 
+  /* scale each random word into [0, w) by the top of a multiply rather than
+   * by a remainder, which would divide twice per dot */
   while (n-- > 0)
   {
-    x = (int) (rng_xorshift32(rng) % (uint32_t) w) - radius;
-    y = (int) (rng_xorshift32(rng) % (uint32_t) w) - radius;
+    x = (int) (((uint64_t) rng_xorshift32(rng) * (uint32_t) w) >> 32) -
+        radius;
+    y = (int) (((uint64_t) rng_xorshift32(rng) * (uint32_t) w) >> 32) -
+        radius;
     if (x * x + y * y > radius * radius)
       continue;
 
