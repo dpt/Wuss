@@ -15,17 +15,18 @@
   150:
   160REM ----- extension -> filetype table -----
   170DEF PROCinit_types
-  180DIM ext$(2), type%(2)
+  180DIM ext$(3), type%(3)
   190ext$(0)="png"  : type%(0)=&B60
   200ext$(1)="hex"  : type%(1)=&FFF
   210ext$(2)="txt"  : type%(2)=&FFF
+  215ext$(3)="theme": type%(3)=&FFF
   220ENDPROC
   230:
   240REM ----- look up "e$" (no slash, lower case) in the table -----
   250REM returns filetype, or -1 if not recognised
   260DEF FNtype_for(e$)
   270LOCAL i%
-  280FOR i%=0 TO 2
+  280FOR i%=0 TO 3
   290  IF e$=ext$(i%) THEN =type%(i%)
   300NEXT i%
   310=-1
