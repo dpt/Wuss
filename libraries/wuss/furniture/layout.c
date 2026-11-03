@@ -74,34 +74,23 @@ void wuss__furniture_layout_build(wuss_window_t *window)
     }
   }
 
-  /* resize-only carve bands ------------------------------------------------
+  /* resize-only carve band -------------------------------------------------
    * Both scrollbars off but a resize icon on: the content box is still
-   * carved back on its right and bottom and no scroll strip paints that
-   * margin, so furniture fills it (see the note in the old draw.c). */
+   * carved back on its right and no scroll strip paints that margin, so
+   * furniture fills it. There is no bottom band: the content runs down to
+   * the outline and the icon sits at the foot of this column. */
   if (!(window->flags & wuss_WINDOW_VSCROLL) &&
       !(window->flags & wuss_WINDOW_HSCROLL) &&
       (window->flags & wuss_WINDOW_RESIZE))
   {
     box_t band;
 
-    if (carve.x > 0)
-    {
-      band.x0 = content.x1;
-      band.x1 = window->visible.x1 - outline_px;
-      band.y0 = window->visible.y0 + outline_px
-              + wuss__titlebar_height(window);
-      band.y1 = window->visible.y1 - outline_px;
-      push_piece(layout, &band, wuss__FURNITURE_PAINT_TITLE_BG);
-    }
-
-    if (carve.y > 0)
-    {
-      band.x0 = window->visible.x0 + outline_px;
-      band.x1 = content.x1;
-      band.y0 = content.y1;
-      band.y1 = window->visible.y1 - outline_px;
-      push_piece(layout, &band, wuss__FURNITURE_PAINT_TITLE_BG);
-    }
+    band.x0 = content.x1;
+    band.x1 = window->visible.x1 - outline_px;
+    band.y0 = window->visible.y0 + outline_px
+            + wuss__titlebar_height(window);
+    band.y1 = window->visible.y1 - outline_px;
+    push_piece(layout, &band, wuss__FURNITURE_PAINT_TITLE_BG);
   }
 
   /* every present element with a drawn box: the titlebar icons, the resize

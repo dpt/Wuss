@@ -187,13 +187,12 @@ static inline void wuss__furniture_carve_for(wuss_window_flags_t flags,
   carve->x = (flags & wuss_WINDOW_VSCROLL) ? button_size : 0;
   carve->y = (flags & wuss_WINDOW_HSCROLL) ? button_size : 0;
 
+  /* resize icon with no scrollbars: it sits at the foot of a right-hand
+   * column alone, with no strip along the bottom */
   if ((flags & wuss_WINDOW_RESIZE) &&
       !(flags & wuss_WINDOW_VSCROLL) &&
       !(flags & wuss_WINDOW_HSCROLL))
-  {
     carve->x = button_size;
-    carve->y = button_size;
-  }
 
   /* where furniture abuts the content area, a rule divides the two */
   if (carve->x > 0)
