@@ -19,7 +19,7 @@
 
 #define SHORTCUTS_LABEL_CHARS 20 /* label column width */
 #define SHORTCUTS_COLUMNS      2 /* keys, then action */
-#define SHORTCUTS_ROWS        16 /* window opens at most this many tall */
+#define SHORTCUTS_ROWS        24 /* window opens at most this many tall */
 
 /* First the chords handled ahead of any window's task: tasks_system_key, the
  * main loop's key case and tasks_launcher_key in apps/wuss, the core's drag and
@@ -412,6 +412,8 @@ result_t shortcuts_create(wuss_t *wuss, shortcuts_task_t **out)
 
   /* one or two columns, so each pair keeps to a row when there is room */
   wuss_gridview_set_layout(task->gv, SHORTCUTS_COLUMNS, 1, 0);
+  /* text only, so no glyph spacing and little between the lines */
+  wuss_gridview_set_padding(task->gv, wuss_STD_GAP * 2, 1, wuss_STD_GAP);
   wuss_gridview_set_draw(task->gv, shortcuts_draw_cell, 0);
   wuss_gridview_set_background(task->gv,
                                shortcuts_colour(task, 0xFF, 0xFF, 0xFF));
