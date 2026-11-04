@@ -76,11 +76,13 @@ static void resize_pinned_window(wuss_window_t *window)
   before = window->visible;
 
   window->visible.x0 = 0;
-  window->visible.y0 = window->wuss->scr->size.h - WUSS_ICONBAR_HEIGHT;
+  window->visible.y0 = 0; /* the whole screen */
   window->visible.x1 = window->wuss->scr->size.w;
   window->visible.y1 = window->wuss->scr->size.h;
-  if (window->flags & wuss_WINDOW_BACKDROP)
-    window->visible.y0 = 0; /* the whole screen */
+#ifdef WUSS_ICONBAR
+  if (!(window->flags & wuss_WINDOW_BACKDROP))
+    window->visible.y0 = window->wuss->scr->size.h - WUSS_ICONBAR_HEIGHT;
+#endif
 
   if (!box_equal(&before, &window->visible))
   {
