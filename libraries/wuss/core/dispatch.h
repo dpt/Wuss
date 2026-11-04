@@ -27,6 +27,39 @@ static inline result_t wuss__deliver_kind(wuss_task_t      *task,
   return wuss__deliver(task, win_or_null, &event);
 }
 
+/* Walk the tasks, safe against a handler freeing any of them. Call end once
+ * the walk stops, however it stops. */
+static inline void wuss__task_walk_begin(wuss_t            *wuss,
+                                         wuss__task_walk_t *walk)
+{
+  walk->next       = wuss->tasks.next;
+  walk->outer      = wuss->task_walks;
+  wuss->task_walks = walk;
+}
+
+/* The next task, or NULL at the end of the list. */
+static inline wuss_task_t *wuss__task_walk_next(wuss__task_walk_t *walk)
+{
+  list_t *e;
+
+  e = walk->next;
+  if (e == NULL)
+    return NULL;
+
+  walk->next = e->next;
+
+  return (wuss_task_t *) e;
+}
+
+static inline void wuss__task_walk_end(wuss_t *wuss, wuss__task_walk_t *walk)
+{
+  wuss->task_walks = walk->outer;
+}
+
+/* Unlink a task from wuss::tasks and free it, stepping any walk in progress
+ * past it. */
+void wuss__task_free(wuss_t *wuss, wuss_task_t *task);
+
 /* Bump dispatch_depth on entry to a public entry point (wuss_mouse_click,
  * wuss_mouse_move, wuss_key, wuss_idle); wuss__message_leave drops it back
  * and, at depth 0, drains the queue (see wuss__message_drain). Call these

@@ -256,16 +256,14 @@ static void deliver(wuss_t *wuss, const wuss_message_t *msg)
   }
   else
   {
-    list_t *e;
-    int     acked;
+    wuss__task_walk_t walk;
+    wuss_task_t      *task;
+    int               acked;
 
     acked = 0;
-    for (e = wuss->tasks.next; e != NULL; )
+    wuss__task_walk_begin(wuss, &walk);
+    while ((task = wuss__task_walk_next(&walk)) != NULL)
     {
-      wuss_task_t *task;
-
-      task = wuss__task_from_link(e);
-      e    = e->next; /* as wuss_idle: the handler may free its own node */
       if (task == msg->sender)
         continue;
 
@@ -276,6 +274,7 @@ static void deliver(wuss_t *wuss, const wuss_message_t *msg)
           break; /* first ack stops further delivery of a recorded broadcast */
       }
     }
+    wuss__task_walk_end(wuss, &walk);
 
     if (msg->recorded && !acked)
       bounce(wuss, msg);

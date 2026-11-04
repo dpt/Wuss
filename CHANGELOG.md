@@ -25,6 +25,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Gridview: a selected label is drawn in a capsule instead of a box made
   by padding the text with a space either side.
 
+### Fixed
+
+- A handler that destroys another task during an idle, palette or message
+  broadcast no longer leaves the broadcast using the freed task.
+
 ## [0.23.0] - 2026-10-29
 
 ### Added

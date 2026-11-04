@@ -161,6 +161,7 @@ result_t wuss_create(screen_t               *scr,
   for (s = 0; s < WUSS_STACK_COUNT; s++)
     list_init(&w->z_order[s]);
   list_init(&w->tasks);
+  w->task_walks  = NULL;
   w->task_parent = NULL;
 
 #ifdef WUSS_ICONS

@@ -10,6 +10,18 @@
 
 #include "../impl.h"
 
+void wuss__task_free(wuss_t *wuss, wuss_task_t *task)
+{
+  wuss__task_walk_t *walk;
+
+  for (walk = wuss->task_walks; walk != NULL; walk = walk->outer)
+    if (walk->next == &task->link)
+      walk->next = task->link.next;
+
+  list_remove(&wuss->tasks, &task->link);
+  wuss__free(wuss, task);
+}
+
 void wuss_task_destroy(wuss_task_t *doomed)
 {
   wuss_t      *wuss;
@@ -78,6 +90,5 @@ void wuss_task_destroy(wuss_task_t *doomed)
   wuss__iconpool_clear(wuss, &doomed->iconpool);
 #endif
 
-  list_remove(&wuss->tasks, &doomed->link);
-  wuss__free(wuss, doomed);
+  wuss__task_free(wuss, doomed);
 }

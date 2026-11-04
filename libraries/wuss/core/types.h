@@ -160,6 +160,16 @@ struct wuss_task
 #endif
 };
 
+/* A walk over wuss::tasks that delivers events. A handler can free any task,
+ * not only its own, so wuss__task_free moves each walk's next off the node it
+ * frees. Lives on the walker's stack; a handler's own broadcast nests. */
+typedef struct wuss__task_walk
+{
+  list_t                 *next;
+  struct wuss__task_walk *outer;
+}
+wuss__task_walk_t;
+
 struct wuss
 {
   screen_t                   *scr;
@@ -280,6 +290,8 @@ struct wuss
   list_t                      z_order[WUSS_STACK_COUNT];
   /* Anchor; registered tasks, in wuss_task_create order. */
   list_t                      tasks;
+  /* Innermost walk of tasks in progress, or NULL. */
+  wuss__task_walk_t          *task_walks;
   /* Parent given to each task at wuss_task_create; see wuss_set_task_parent. */
   wuss_task_t                *task_parent;
 

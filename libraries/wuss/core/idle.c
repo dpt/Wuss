@@ -4,9 +4,10 @@
 
 result_t wuss_idle(wuss_t *wuss)
 {
-  result_t     rc;
-  wuss_event_t event;
-  list_t      *e;
+  result_t          rc;
+  wuss_event_t      event;
+  wuss__task_walk_t walk;
+  wuss_task_t      *task;
 
   event.kind = wuss_EVENT_IDLE;
 
@@ -26,21 +27,16 @@ result_t wuss_idle(wuss_t *wuss)
     wuss__drag_tick(wuss);
 
   rc = result_OK;
-  for (e = wuss->tasks.next; e != NULL; )
+  wuss__task_walk_begin(wuss, &walk);
+  while ((task = wuss__task_walk_next(&walk)) != NULL)
   {
-    result_t     crc;
-    wuss_task_t *task;
-    list_t      *next;
-
-    task = (wuss_task_t *) e;
-    next = e->next; /* an autoclose task may free its own node in the handler */
+    result_t crc;
 
     crc = wuss__deliver(task, NULL, &event);
     if (crc != result_OK && rc == result_OK)
       rc = crc;
-
-    e = next;
   }
+  wuss__task_walk_end(wuss, &walk);
 
   wuss__message_leave(wuss); /* drain after IDLE too */
 

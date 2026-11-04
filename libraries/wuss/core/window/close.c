@@ -107,7 +107,6 @@ void wuss_window_close(wuss_window_t *doomed)
 
     (void) wuss__deliver_kind(task, NULL, wuss_EVENT_QUIT);
 
-    list_remove(&wuss->tasks, &task->link);
-    wuss__free(wuss, task);
+    wuss__task_free(wuss, task);
   }
 }

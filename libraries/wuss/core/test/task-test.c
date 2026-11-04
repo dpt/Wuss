@@ -32,8 +32,31 @@ static struct
 {
   /* the window close_on_idle_handle closes */
   wuss_window_t *close_on_idle_win;
+  /* the task destroy_on_idle_handle destroys */
+  wuss_task_t   *destroy_on_idle_task;
 }
 g;
+
+/* An IDLE handler that destroys another task, which frees the node a walk of
+ * the tasks would otherwise visit next. */
+static result_t destroy_on_idle_handle(wuss_window_t      *window,
+                                       const wuss_event_t *event,
+                                       void               *task_data)
+{
+  wuss_task_t *doomed;
+
+  NOT_USED(window);
+  NOT_USED(task_data);
+
+  if (event->kind == wuss_EVENT_IDLE)
+  {
+    doomed                 = g.destroy_on_idle_task;
+    g.destroy_on_idle_task = NULL;
+    wuss_task_destroy(doomed);
+  }
+
+  return result_OK;
+}
 
 /* An IDLE handler that closes a window the first time it is broadcast to. On
  * an autoclose task with that as its only window, the close reaps the task
@@ -310,6 +333,34 @@ result_t wuss_task_test(const char *resources)
     wuss_window_close(win_w1); /* autoclose: reaps w1 */
     wuss_window_close(win_w3); /* autoclose: reaps w3 */
     mk_task_count = 0; /* all three tasks reaped themselves; drop stale entries */
+  }
+
+  printf("test: wuss_idle survives a handler destroying the next task in the walk\n");
+  {
+    static test_task_t tc_d1, tc_d2, tc_d3;
+    wuss_task_t       *delegate_d1, *delegate_d3;
+
+    memset(&tc_d1, 0, sizeof(tc_d1));
+    memset(&tc_d2, 0, sizeof(tc_d2));
+    memset(&tc_d3, 0, sizeof(tc_d3));
+    delegate_d1            = mk_task(wuss, destroy_on_idle_handle, &tc_d1);
+    g.destroy_on_idle_task = mk_task(wuss, test_handle, &tc_d2);
+    delegate_d3            = mk_task(wuss, test_handle, &tc_d3);
+    if (delegate_d1 == NULL || g.destroy_on_idle_task == NULL ||
+        delegate_d3 == NULL)
+      goto Failure;
+
+    rc = wuss_idle(wuss);
+    if (rc != result_OK)
+      goto Failure;
+    if (tc_d2.idle_count != 0 || tc_d2.stop_count != 1)
+      goto Failure; /* destroyed before the walk reached it */
+    if (tc_d3.idle_count != 1)
+      goto Failure; /* walk still reached the task behind it */
+
+    wuss_task_destroy(delegate_d1);
+    wuss_task_destroy(delegate_d3);
+    mk_task_count = 0;
   }
 
   printf("test: wuss_task_set_hidden hides a task and its children and reveals only what it hid\n");
