@@ -52,22 +52,68 @@ Active whenever a writable icon holds the caret. Alt-anything is ignored.
 | Ctrl-U                   | Clear the field                        |
 | Any printable            | Insert at caret                        |
 
+### Text editing (Jottings)
+
+Active while a note is being edited. A note is not a writable icon: `jotting_key` handles these itself. On macOS, Cmd acts as Ctrl. Lines to move by are wrapped lines, and lines to clear are the source's.
+
+| Key                                  | Action                     |
+| ------------------------------------ | -------------------------- |
+| Left / Right                         | Move one character         |
+| Up / Down                            | Move one line              |
+| Page Up / Page Down                  | Move one window of lines   |
+| Shift or Alt with Left / Right       | Move one word              |
+| Home / End                           | Start / end of line        |
+| Ctrl-Left / Ctrl-Right               | Start / end of line        |
+| Ctrl-Home / Ctrl-End                 | Start / end of note        |
+| Ctrl-Up / Ctrl-Down                  | Start / end of note        |
+| Backspace / Delete                   | Delete one character       |
+| Shift or Alt with Backspace / Delete | Delete one word            |
+| Ctrl-Backspace                       | Clear to start of line     |
+| Ctrl-Delete / Ctrl-K                 | Clear to end of line       |
+| Ctrl-U                               | Delete the line            |
+| Escape                               | Stop editing               |
+| Any printable                        | Insert at caret            |
+
 ## Application keys
 
 Menu shortcuts (fire when the task has the focus):
 
-| Key    | Action         | Tasks                                                                                                                                    |
-| ------ | -------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| F3     | Save / Save as | ball chars checker clock compositing curving doughnut fern fireworks gradient greebling oscillating orbing painting patterns saturn sofa |
-| Ctrl-R | Randomise      | checker doughnut fern orbing oscillating patterns saturn sofa                                                                            |
-| Ctrl-Z | Undo           | painting                                                                                                                                 |
-| Ctrl-P | Pause          | zxtask                                                                                                                                   |
-| Ctrl-M | Mono           | zxtask                                                                                                                                   |
+| Key           | Action          | Tasks                                                                                                                                                                 |
+| ------------- | --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| F3            | Save / Save as  | ball chars checker clock compositing curving dithering doughnut effecting fern fireworks gradient greebling oscillating orbing painting patterns resizing saturn sofa |
+| Ctrl-R        | Randomise       | checker doughnut fern greebling orbing oscillating patterns saturn sofa                                                                                               |
+| R             | Reset           | checker curving doughnut fern gradient orbing oscillating patterns saturn sofa                                                                                        |
+| Space         | Pause           | ball compositing doughnut fern fireworks oscillating saturn sofa                                                                                                      |
+| A C G D       | Add ball, Clear, Gravity, Damping | ball                                                                                                                                                |
+| D S H         | Digital, Seconds, 12-hour | clock                                                                                                                                                       |
+| H             | Hull            | curving                                                                                                                                                               |
+| C W M         | Clear, Walls, Markers | fireworks                                                                                                                                                       |
+| R             | Random palettes | greebling                                                                                                                                                             |
+| N             | New game        | minesweeping sudoku                                                                                                                                                   |
+| 1-4           | Choose light    | orbing                                                                                                                                                                |
+| C M           | Light colour, Mutate | orbing                                                                                                                                                           |
+| F8            | Undo            | painting                                                                                                                                                              |
+| Ctrl-A Z I    | Select all, Clear selection, Invert | painting                                                                                                                                          |
+| N             | Next nozzle     | painting                                                                                                                                                              |
+| R             | Restart         | sudoku                                                                                                                                                                |
+| F2 F3         | List, Cloud     | tagging                                                                                                                                                               |
+| F4 F5         | Scaling off, on | tagging                                                                                                                                                               |
+| F6            | Sort by name    | tagging                                                                                                                                                               |
+| Ctrl-F3       | Selected first  | tagging                                                                                                                                                               |
+| Ctrl-R K N    | Rename, Delete, New tag | tagging                                                                                                                                                       |
+| Ctrl-Shift-Up | Open parent     | filing                                                                                                                                                                |
+| Ctrl-P        | Pause           | zxtask                                                                                                                                                                |
+| Ctrl-] Ctrl-[ | Faster, Slower  | zxtask                                                                                                                                                                |
+| Ctrl-M        | Monochromatic   | zxtask                                                                                                                                                                |
+
+Two labels never fire. System F7 (next window) runs ahead of Tagging's F7 (Sort by count). Painting's N (next nozzle) runs ahead of its direct N (Path tool).
 
 Direct keys:
 
 | Task                                | Key                 | Action                                                  |
 | ----------------------------------- | ------------------- | ------------------------------------------------------- |
+| appsfiler filing                    | Arrows              | Move cursor                                             |
+| appsfiler filing                    | Return              | Open item                                               |
 | ball chars clock fireworks patterns | menu shortcuts only | as above                                                |
 | checker                             | Left / Right        | Previous / next pattern                                 |
 | checker                             | Up / Down           | Wider / narrower bands                                  |
@@ -78,19 +124,24 @@ Direct keys:
 | doughnut                            | `[` `]`             | Major density down / up                                 |
 | doughnut                            | `,` `.`             | Minor density down / up                                 |
 | doughnut                            | `-` `=` `+`         | Tube density down / up                                  |
+| effecting                           | Delete              | Delete effect (list window)                             |
 | fern                                | Left / Right        | Previous / next seed                                    |
 | greebling                           | Left / Right        | Previous / next palette (Right = Adjust)                |
-| greebling                           | Space               | Select                                                  |
+| greebling                           | Space               | Reseed (Select)                                         |
 | gradient                            | S                   | Next shape                                              |
 | gradient                            | D                   | Next dither matrix                                      |
 | minesweeping                        | Arrows              | Move cursor                                             |
+| minesweeping                        | Return              | Uncover (Select)                                        |
 | minesweeping                        | Space               | Flag (Adjust)                                           |
 | oscillating                         | Left / Right        | Previous / next frequency pair                          |
 | orbing                              | Arrows              | Nudge light (Shift = bigger step)                       |
 | orbing                              | O                   | Toggle the current light                                |
-| painting                            | B E L R X F P S O   | Brush Eraser Line Rect RectFill Fill Spray Select Lasso |
-| painting                            | W                   | Magic wand                                              |
-| painting                            | K                   | Wobbly brush                                            |
+| painting                            | B H K E             | Pencil, Paintbrush, Wobbly brush, Eraser                |
+| painting                            | L R X               | Line, Rectangle, Filled rectangle                       |
+| painting                            | C D M               | Ellipse, Filled ellipse, Filled path                    |
+| painting                            | F G P               | Fill, Gradient, Spray                                   |
+| painting                            | S O W               | Select, Lasso, Magic wand                               |
+| painting                            | I V                 | Pick colour, Move                                       |
 | painting                            | `[` `]`             | Size down / up                                          |
 | painting                            | Escape              | Drop selection                                          |
 | saturn                              | Left / Right        | Previous / next seed                                    |
@@ -98,13 +149,19 @@ Direct keys:
 | sofa                                | Up / Down           | Step rotation (paused only)                             |
 | sudoku                              | Arrows              | Move cursor                                             |
 | sudoku                              | 1-9                 | Enter digit                                             |
-| sudoku                              | 0 Space Backspace   | Clear cell                                              |
+| sudoku                              | 0 Space Backspace Delete | Clear cell                                         |
+| viewing                             | Space / Shift-Space | Next / previous image                                   |
+| viewing                             | Arrows              | Scroll                                                  |
+| viewing                             | Page Up / Page Down | Scroll by page                                          |
+| viewing                             | Home / End          | Top left / bottom                                       |
 | zxtask                              | Arrows              | Kempston joystick                                       |
 | zxtask                              | `.`                 | Kempston fire                                           |
 | zxtask                              | Other ASCII         | Spectrum keyboard (Shift = Caps Shift)                  |
-| painting-new                        | Return / Escape     | Dialogue OK / Cancel                                    |
+| dialogues                           | Return / Escape     | OK / Cancel                                             |
 
-Tasks with no key handling (all keys unclaimed): resizing viewing palette effecting configuring icons display reading dithering filing tiling. `keys` is the key-test task and echoes everything.
+`zxtask` is the Spectrum games, Chase H.Q. and The Great Escape.
+
+Tasks with no key handling (all keys unclaimed): palette configuring icons display reading tiling pinboard pooling taskmanager. `keys` is the key-test task and records everything but the function keys.
 
 ## Collisions to avoid
 
@@ -116,7 +173,7 @@ Rules for the proposals below:
 4. Never use F12, Shift-F12, Ctrl-F12 or Ctrl-Shift-F12. RISC OS owns them.
 5. Shift modifies a function key into a related action. Ctrl gives an unrelated one.
 
-Taken today by existing tasks: F3 (Save) F8 (painting Undo) Ctrl-R P M U; Escape; Return. Ctrl-Z (painting Undo) clashes with the guide and moves to F8 (see below). Ctrl-P and Ctrl-M (zxtask) are safe: the guide uses the Print key and does not define Ctrl-P or Ctrl-M.
+Taken today by existing tasks: F3 (Save) F8 (painting Undo) Ctrl-R P M U; Escape; Return. Ctrl-P and Ctrl-M (zxtask) are safe: the guide uses the Print key and does not define Ctrl-P or Ctrl-M.
 
 ## Standard keys: RISC OS style
 

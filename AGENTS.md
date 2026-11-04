@@ -106,6 +106,10 @@ Before hand-rolling, grep DPTLib's `include/` (the fetched copy, or `../DPTLib/i
 
 A new helper with no dependence on wuss belongs in DPTLib, in the matching library area with a test, not in Wuss, a demo or a task.
 
+## Keyboard shortcuts
+
+When a change adds, removes, rebinds or renames any key (a system chord, a writable field key, a task's menu shortcut or direct key), update the `shortcuts[]` table in `apps/wuss/tasks/shortcuts/shortcuts.c` and `docs/windowing/wuss-keys.md` in the same change, so the Shortcuts app stays accurate. A new task with keys gets its own group in the table. Leave out a task's key that a system chord shadows, as it never reaches the task.
+
 ## Commit messages
 
 Use [Conventional Commits](https://www.conventionalcommits.org/): `<type>[optional scope]: <description>`, e.g. `fix(menu): keep ticks live`. Common types: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`, `ci`, `build`. Add a `!` before the colon (or a `BREAKING CHANGE:` footer) for breaking changes.
