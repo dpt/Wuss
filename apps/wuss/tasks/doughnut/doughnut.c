@@ -423,10 +423,13 @@ static result_t doughnut_redraw(const wuss_event_t *event,
 
   /* one clipped blit of the whole shade buffer, rather than a clip test per
    * pixel */
-  rc = bitmap_init(&bm, SIZE2D(width, height), pixelfmt_p8, width,
-                   task->palette, shade);
+  rc = bitmap_init(&bm, SIZE2D(width, height), pixelfmt_p8, width, NULL, shade);
   if (rc != result_OK)
     return rc;
+
+  /* borrow the palette: passing it to bitmap_init would allocate a copy for
+   * this stack wrapper on every redraw */
+  bm.palette = task->palette;
 
   return screen_copy_bitmap(scr, drawn.x0, drawn.y0, &bm);
 }

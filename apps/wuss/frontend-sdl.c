@@ -736,11 +736,15 @@ void wuss_frontend_present(wuss_frontend_t *fe,
                      SIZE2D(x1 - x0, y1 - y0),
                      bm->format,
                      bm->rowbytes,
-                     bm->palette,
+                     NULL,
                      (unsigned char *) bm->base + y0 * bm->rowbytes +
                        (x0 * sdl_depth_bpp(fe->depth) >> 3));
     if (rc != result_OK)
       goto present;
+
+    /* borrow the palette: passing it to bitmap_init would allocate a copy
+     * for this stack wrapper on every frame */
+    rows.palette = bm->palette;
 
     /* wuss draws into a paletted bitmap; SDL wants bgrx. bitmap_convert_into
      * reads the palette straight off `bm`, which the caller updates when the
