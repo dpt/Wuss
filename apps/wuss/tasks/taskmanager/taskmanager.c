@@ -3,13 +3,13 @@
 #ifdef WUSS_ICONBAR
 
 #include <limits.h>
-#include <stdio.h>
 #include <string.h>
 
 #include "base/debug.h"
 #include "base/utils.h"
 #include "framebuf/bitmap.h"
 #include "framebuf/bmfont.h"
+#include "text/numfmt.h"
 #include "utils/alloc.h"
 #include "wuss/iconbar.h"
 #include "wuss/task.h"
@@ -67,7 +67,7 @@ static result_t taskmanager_open(void)
   bmfont_get_info(font, NULL, &height, NULL, NULL);
 
   tm.label_width = taskmanager_text_width("Allocations");
-  tm.value_width = MAX(taskmanager_text_width("9999999999"),
+  tm.value_width = MAX(taskmanager_text_width("9,999,999,999"),
                        taskmanager_text_width("Highest"));
 
   size = SIZE2D(2 * TASKMANAGER_MARGIN + tm.label_width +
@@ -132,7 +132,7 @@ static result_t taskmanager_redraw(const wuss_event_t *event)
   size_t   values[TASKMANAGER_ROWS - 1][TASKMANAGER_COLUMNS];
   int      row;
   int      column;
-  char     text[24];
+  char     text[numfmt_GROUPED_MAX];
 
   if (wuss_get_font(tm.wuss) == NULL)
     return result_OK;
@@ -163,7 +163,7 @@ static result_t taskmanager_redraw(const wuss_event_t *event)
 
     for (column = 0; column < ncolumns[row]; column++)
     {
-      snprintf(text, sizeof(text), "%zu", values[row][column]);
+      numfmt_grouped(values[row][column], text);
       rc = taskmanager_cell(event, row + 1, column + 1, text);
       if (rc != result_OK)
         return rc;
