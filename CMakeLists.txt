@@ -45,7 +45,7 @@ option(BUILD_APPS "Build the Wuss interactive demo" OFF)
 include(FetchContent)
 FetchContent_Declare(dptlib
                      GIT_REPOSITORY https://github.com/dpt/DPTLib.git
-                     GIT_TAG ab742c7d95e17dc886f33d5afef06d4d2777c0d2)
+                     GIT_TAG d0ef46146d0af1f05d7fc9114c13885b81b6294c)
 FetchContent_MakeAvailable(dptlib)
 
 # The demo and the tests load bitmap fonts from resources/bmfonts, which are
@@ -450,9 +450,6 @@ if(BUILD_TESTS)
         OUTPUT_NAME_MINSIZEREL WussTest-minsizerel)
 
     target_link_libraries(WussTest WussLib)
-    if(NOT MSVC)
-        target_link_libraries(WussTest m)
-    endif()
 endif()
 
 
@@ -678,10 +675,6 @@ if(BUILD_APPS)
         target_link_libraries(TheGreatEscape PUBLIC Threads::Threads)
         target_link_libraries(wuss TheGreatEscape)
         target_compile_definitions(wuss PRIVATE WUSS_GREATESCAPE)
-    endif()
-
-    if(NOT MSVC)
-        target_link_libraries(wuss m)
     endif()
 
     install(TARGETS wuss RUNTIME
