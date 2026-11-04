@@ -381,6 +381,15 @@ typedef union wuss_icon_spec_data
      *  for a positive wuss_scroll delta. 0 (the zero-initialised default)
      *  means 1. */
     int                       step;
+    /** Values a pointer press or drag snaps to when within 1px of their
+     *  position on the groove, in any order. The nearest wins, and values
+     *  outside the slider's range are ignored. The wheel and
+     *  wuss_icon_set_value do not snap. Borrowed; must outlive the icon (a
+     *  static array in practice). May be NULL when ndetents is 0. */
+    const int                *detents;
+    /** Number of entries in detents. 0 (the zero-initialised default) means
+     *  none. */
+    int                       ndetents;
   }
   slider;
 

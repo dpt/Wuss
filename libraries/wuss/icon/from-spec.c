@@ -44,6 +44,11 @@ result_t wuss__icon_from_spec(const wuss_t           *w,
       spec->u.slider.orientation != wuss_SLIDER_VERTICAL)
     return result_WUSS_BAD_ICON;
 
+  if (spec->type == wuss_ICON_TYPE_SLIDER &&
+      (spec->u.slider.ndetents < 0 ||
+       (spec->u.slider.ndetents > 0 && spec->u.slider.detents == NULL)))
+    return result_WUSS_BAD_ICON;
+
   if ((spec->flags & wuss_ICON_FLAGS_DEFAULT) &&
       spec->type != wuss_ICON_TYPE_ACTION)
     return result_BAD_ARG;

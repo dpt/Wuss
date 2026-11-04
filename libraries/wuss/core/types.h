@@ -94,6 +94,7 @@
 
 #define WUSS_SLIDER_BEVEL 2 /* width of a wuss_ICON_TYPE_SLIDER's bevel edge, around its surround */
 #define WUSS_SLIDER_GAP   4 /* fixed inset on all four sides of a wuss_ICON_TYPE_SLIDER's surround, between it and the inner (clickable) rect */
+#define WUSS_SLIDER_DETENT_PX 1 /* how close to a detent's groove position, either side, the pointer must be to snap to it */
 
 #endif
 #define WUSS_MIN_CONTENT  20 /* resize-drag floor: content can never be squeezed smaller than this */

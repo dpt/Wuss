@@ -198,8 +198,9 @@ int wuss__slider_px_to_value(const box_t              *groove,
 
 /* "icon" (a slider icon of "window") maps a raw screen-space point (as passed
  * to wuss_mouse_click/wuss_mouse_move) to the value its groove would read at
- * that point, honouring a min > max reversed fill. Shared by the click-jump
- * and drag-continuation paths (core/mouse-click.c, core/mouse-move.c). */
+ * that point, honouring a min > max reversed fill and snapping to any detent
+ * within WUSS_SLIDER_DETENT_PX. Shared by the click-jump and
+ * drag-continuation paths (core/mouse-click.c, core/mouse-move.c). */
 int wuss__slider_value_for_point(wuss_window_t     *window,
                                  const wuss_icon_t *icon,
                                  point_t            screen_point);

@@ -1,10 +1,33 @@
 /* wuss/icon/slider-box.c -- slider groove geometry and value/pixel mapping */
 
+#include <stdlib.h>
+
 #include "geom/box.h"
 #include "geom/point.h"
 
 #include "../core/types.h"
 #include "../core/geometry.h"
+
+/* The groove's last pixel along its long axis, counting from 0. */
+static int slider_last_px(const box_t              *groove,
+                          wuss_slider_orientation_t orientation)
+{
+  return ((orientation == wuss_SLIDER_HORIZONTAL)
+         ? groove->x1 - groove->x0
+         : groove->y1 - groove->y0) - 1;
+}
+
+/* screen y grows downward but value grows upward for a vertical slider, so
+ * pixel 0 is the groove's bottom row (y1 - 1), mirroring HORIZONTAL's pixel 0
+ * at its left (x0). Not clamped to the groove. */
+static int slider_point_px(const box_t              *groove,
+                           wuss_slider_orientation_t orientation,
+                           point_t                   screen_point)
+{
+  return (orientation == wuss_SLIDER_HORIZONTAL)
+       ? screen_point.x - groove->x0
+       : groove->y1 - 1 - screen_point.y;
+}
 
 void wuss__slider_groove_box(const box_t *screen_box, box_t *out)
 {
@@ -39,20 +62,12 @@ int wuss__slider_px_to_value(const box_t              *groove,
 {
   int px, extent, span, value;
 
-  extent = (orientation == wuss_SLIDER_HORIZONTAL)
-         ? groove->x1 - groove->x0
-         : groove->y1 - groove->y0;
-  /* screen y grows downward but value grows upward for a vertical slider, so
-   * pixel 0 is the groove's bottom row (y1 - 1), mirroring HORIZONTAL's pixel
-   * 0 at its left (x0) */
-  px     = (orientation == wuss_SLIDER_HORIZONTAL)
-         ? screen_point.x - groove->x0
-         : groove->y1 - 1 - screen_point.y;
-  span   = hi - lo;
-
   /* the groove's first pixel reads lo and its last hi, so both ends are
    * reachable without leaving it */
-  extent--;
+  extent = slider_last_px(groove, orientation);
+  px     = slider_point_px(groove, orientation, screen_point);
+  span   = hi - lo;
+
   if (extent <= 0)
     return lo;
 
@@ -60,6 +75,56 @@ int wuss__slider_px_to_value(const box_t              *groove,
   value = lo + (int) (((long) px * span + extent / 2) / extent);
 
   return CLAMP(value, lo, hi);
+}
+
+/* Find the detent of slider "icon" nearest to "screen_point", within
+ * WUSS_SLIDER_DETENT_PX of it. Returns non-zero and sets "value" if there is
+ * one. */
+static int slider_detent_for_point(const wuss_icon_t *icon,
+                                   const box_t       *groove,
+                                   point_t            screen_point,
+                                   int                lo,
+                                   int                hi,
+                                   int               *value)
+{
+  wuss_slider_orientation_t orientation;
+  int                       extent, span, px;
+  int                       best;
+  int                       found;
+  int                       i;
+  int                       detent, position, distance;
+
+  orientation = icon->spec.u.slider.orientation;
+  extent      = slider_last_px(groove, orientation);
+  span        = hi - lo;
+  if (extent <= 0 || span == 0)
+    return 0;
+
+  px    = slider_point_px(groove, orientation, screen_point);
+  px    = CLAMP(px, 0, extent);
+  best  = WUSS_SLIDER_DETENT_PX + 1;
+  found = 0;
+  for (i = 0; i < icon->spec.u.slider.ndetents; i++)
+  {
+    detent = icon->spec.u.slider.detents[i];
+    if (detent < lo || detent > hi)
+      continue;
+
+    /* a reversed slider has hi at pixel 0 */
+    position = (icon->spec.u.slider.min > icon->spec.u.slider.max)
+             ? hi - detent
+             : detent - lo;
+    position = (int) (((long) position * extent + span / 2) / span);
+    distance = abs(px - position);
+    if (distance < best)
+    {
+      best   = distance;
+      *value = detent;
+      found  = 1;
+    }
+  }
+
+  return found;
 }
 
 int wuss__slider_value_for_point(wuss_window_t     *window,
@@ -76,6 +141,10 @@ int wuss__slider_value_for_point(wuss_window_t     *window,
 
   lo    = MIN(icon->spec.u.slider.min, icon->spec.u.slider.max);
   hi    = MAX(icon->spec.u.slider.min, icon->spec.u.slider.max);
+
+  if (slider_detent_for_point(icon, &groove, screen_point, lo, hi, &value))
+    return value;
+
   value = wuss__slider_px_to_value(&groove, icon->spec.u.slider.orientation,
                                    screen_point, lo, hi);
 

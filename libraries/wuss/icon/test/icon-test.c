@@ -461,6 +461,63 @@ result_t wuss_icon_test(const char *resources)
     if (wuss__slider_value_for_point(win_sl, icon_sl, pt_sl) != 100)
       goto Failure;
 
+    /* a detent catches its groove position and 1px either side, and no
+     * further: value 50 sits at pixel 48 of this 96px groove */
+    {
+      static const int detent_mid[]     = { 50 };
+      static const int detent_nearest[] = { 52, 50 };
+      static const int detent_outside[] = { 500 };
+
+      pt_sl.y = (groove_sl.y0 + groove_sl.y1) / 2;
+
+      icon_sl->spec.u.slider.detents  = detent_mid;
+      icon_sl->spec.u.slider.ndetents = 1;
+      pt_sl.x = groove_sl.x0 + 47;
+      if (wuss__slider_value_for_point(win_sl, icon_sl, pt_sl) != 50)
+        goto Failure;
+      pt_sl.x = groove_sl.x0 + 48;
+      if (wuss__slider_value_for_point(win_sl, icon_sl, pt_sl) != 50)
+        goto Failure;
+      pt_sl.x = groove_sl.x0 + 49;
+      if (wuss__slider_value_for_point(win_sl, icon_sl, pt_sl) != 50)
+        goto Failure;
+      pt_sl.x = groove_sl.x0 + 46;
+      if (wuss__slider_value_for_point(win_sl, icon_sl, pt_sl) != 48)
+        goto Failure;
+      pt_sl.x = groove_sl.x0 + 50;
+      if (wuss__slider_value_for_point(win_sl, icon_sl, pt_sl) != 53)
+        goto Failure;
+
+      /* the nearest of two overlapping detents wins, whatever their order */
+      icon_sl->spec.u.slider.detents  = detent_nearest;
+      icon_sl->spec.u.slider.ndetents = 2;
+      pt_sl.x = groove_sl.x0 + 48;
+      if (wuss__slider_value_for_point(win_sl, icon_sl, pt_sl) != 50)
+        goto Failure;
+
+      /* a detent outside the slider's range is ignored */
+      icon_sl->spec.u.slider.detents  = detent_outside;
+      icon_sl->spec.u.slider.ndetents = 1;
+      pt_sl.x = groove_sl.x1;
+      if (wuss__slider_value_for_point(win_sl, icon_sl, pt_sl) != 100)
+        goto Failure;
+
+      icon_sl->spec.u.slider.detents  = NULL;
+      icon_sl->spec.u.slider.ndetents = 0;
+    }
+
+    /* detents without an array are refused at creation */
+    {
+      wuss_icon_spec_t spec_bad;
+      wuss_icon_t     *icon_bad;
+
+      spec_bad = spec_sl;
+      spec_bad.u.slider.ndetents = 1;
+      if (wuss_icon_create(win_sl, &spec_bad, &icon_bad) !=
+          result_WUSS_BAD_ICON)
+        goto Failure;
+    }
+
     /* a reversed min > max mirrors the reading: the groove's left pixel
      * (nominally "pixel 0") now yields the high end of [lo,hi] */
     wuss_icon_set_value(win_sl, icon_sl, 100);
@@ -474,6 +531,27 @@ result_t wuss_icon_test(const char *resources)
     pt_sl.x = groove_sl.x1; pt_sl.y = (groove_sl.y0 + groove_sl.y1) / 2;
     if (wuss__slider_value_for_point(win_sl, icon_sl, pt_sl) != 0)
       goto Failure;
+
+    /* a detent keeps its value when reversed, at the mirrored position: value
+     * 25 sits at pixel 71 of this 96px groove */
+    {
+      static const int detent_reversed[] = { 25 };
+
+      icon_sl->spec.u.slider.detents  = detent_reversed;
+      icon_sl->spec.u.slider.ndetents = 1;
+      pt_sl.x = groove_sl.x0 + 70;
+      if (wuss__slider_value_for_point(win_sl, icon_sl, pt_sl) != 25)
+        goto Failure;
+      pt_sl.x = groove_sl.x0 + 72;
+      if (wuss__slider_value_for_point(win_sl, icon_sl, pt_sl) != 25)
+        goto Failure;
+      pt_sl.x = groove_sl.x0 + 73;
+      if (wuss__slider_value_for_point(win_sl, icon_sl, pt_sl) == 25)
+        goto Failure;
+
+      icon_sl->spec.u.slider.detents  = NULL;
+      icon_sl->spec.u.slider.ndetents = 0;
+    }
 
     /* a wheel notch over the groove bumps the value by step towards max
      * (here downwards, as min > max) and leaves the window unscrolled */
