@@ -116,7 +116,6 @@ void wuss__menu_close_from(struct wuss__menu *node)
       node->window = NULL;
       wuss_window_close(win);
     }
-    wuss__free(w, node->icons); /* NULL for a borrowed level */
     wuss__free(w, node);
   }
 }

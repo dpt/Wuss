@@ -31,11 +31,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Dithering: Palette > Computed's Optimal row is now called Octree.
 - Gridview: a selected label is drawn in a capsule instead of a box made
   by padding the text with a space either side.
+- Menus and the colour menu allocate fewer blocks: a menu level keeps its
+  icon handles and scratch arrays in single blocks, and the colour menu keeps
+  its items and labels with the menu.
 
 ### Fixed
 
 - Dithering: changing the method or its options keeps the palette, rather
   than rebuilding it and discarding any edits.
+- The icon pool frees the palettes of its bitmaps.
 - A handler that destroys another task during an idle, palette or message
   broadcast no longer leaves the broadcast using the freed task.
 

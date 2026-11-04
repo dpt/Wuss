@@ -88,6 +88,13 @@ static pixelfmt_t icons_order_for(pixelfmt_t scr)
   return (pixelfmt_log2bpp(scr) == 5) ? scr : pixelfmt_rgba8888;
 }
 
+/* Free what bitmap_load_png gave a pool bitmap. */
+static void icons_free_bitmap(bitmap_t *bm)
+{
+  free(bm->base);
+  free(bm->palette);
+}
+
 static result_t icons_load_entry(const char *leaf, void *opaque)
 {
   result_t      rc;
@@ -125,7 +132,7 @@ static result_t icons_load_entry(const char *leaf, void *opaque)
   rc = bitmap_compress(&bm);
   if (rc != result_OK && rc != result_NOT_SUPPORTED)
   {
-    free(bm.base);
+    icons_free_bitmap(&bm);
     st->rc = rc;
     return result_STOP_WALK;
   }
@@ -137,7 +144,7 @@ static result_t icons_load_entry(const char *leaf, void *opaque)
                 (const unsigned char *) name, strlen(name) + 1, &atom);
   if (rc != result_OK && rc != result_ATOM_NAME_EXISTS)
   {
-    free(bm.base);
+    icons_free_bitmap(&bm);
     st->rc = rc;
     return result_STOP_WALK;
   }
@@ -146,7 +153,7 @@ static result_t icons_load_entry(const char *leaf, void *opaque)
   if (array_grow_alloc(&st->wuss->alloc, (void **) &st->bitmaps,
                        sizeof(*st->bitmaps), st->n, &st->cap, 1, 8) != 0)
   {
-    free(bm.base);
+    icons_free_bitmap(&bm);
     st->rc = result_OOM;
     return result_STOP_WALK;
   }
@@ -158,7 +165,7 @@ static result_t icons_load_entry(const char *leaf, void *opaque)
                           (size_t) st->cap * sizeof(*st->atoms));
     if (grown == NULL)
     {
-      free(bm.base);
+      icons_free_bitmap(&bm);
       st->rc = result_OOM;
       return result_STOP_WALK;
     }
@@ -178,7 +185,7 @@ void wuss__iconpool_clear(wuss_t *wuss, struct wuss_iconpool *pool)
   assert(pool != NULL);
 
   for (i = 0; i < pool->nbitmaps; i++)
-    free(pool->bitmaps[i].base);
+    icons_free_bitmap(&pool->bitmaps[i]);
 
   wuss__free(wuss, pool->bitmaps);
   wuss__free(wuss, pool->atoms);
@@ -321,7 +328,7 @@ static result_t icons_load(wuss_t               *wuss,
   if (rc != result_OK)
   {
     for (i = 0; i < st.n; i++)
-      free(st.bitmaps[i].base);
+      icons_free_bitmap(&st.bitmaps[i]);
     wuss__free(wuss, st.bitmaps);
     wuss__free(wuss, st.atoms);
     atom_destroy(st.names);

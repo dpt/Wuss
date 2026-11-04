@@ -190,21 +190,21 @@ result_t wuss__menu_spawn(wuss_t             *wuss,
   if (at.y - outline_px - titlebar_height < 0)
     at.y = outline_px + titlebar_height;
 
-  node = wuss__malloc(wuss, sizeof(*node));
+  /* a level's icon handles live and die with it; specs and made are scratch */
+  node = wuss__malloc(wuss, sizeof(*node) +
+                      (size_t) menu->nitems * sizeof(*node->icons));
   if (node == NULL)
     return result_OOM;
 
-  node->icons = wuss__malloc(wuss, (size_t) menu->nitems * sizeof(*node->icons));
-  specs       = wuss__malloc(wuss, (size_t) nspecs * sizeof(*specs));
-  made        = wuss__malloc(wuss, (size_t) nspecs * sizeof(*made));
-  if (node->icons == NULL || specs == NULL || made == NULL)
+  specs = wuss__malloc(wuss, (size_t) nspecs * (sizeof(*specs) + sizeof(*made)));
+  if (specs == NULL)
   {
-    wuss__free(wuss, made);
-    wuss__free(wuss, specs);
-    wuss__free(wuss, node->icons);
     wuss__free(wuss, node);
     return result_OOM;
   }
+  made = (wuss_icon_t **) (specs + nspecs);
+
+  node->icons = (wuss_icon_t **) (node + 1);
   memset(node->icons, 0, (size_t) menu->nitems * sizeof(*node->icons));
 
   node->flags      = 0;
@@ -294,20 +294,16 @@ result_t wuss__menu_spawn(wuss_t             *wuss,
                           doc, min_doc, &node->window);
   if (rc != result_OK)
   {
-    wuss__free(wuss, made);
     wuss__free(wuss, specs);
-    wuss__free(wuss, node->icons);
     wuss__free(wuss, node);
     return rc;
   }
 
   rc = wuss_icon_create_array(node->window, specs, nspecs, made);
-  wuss__free(wuss, specs);
   if (rc != result_OK)
   {
-    wuss__free(wuss, made);
+    wuss__free(wuss, specs);
     wuss_window_close(node->window);
-    wuss__free(wuss, node->icons);
     wuss__free(wuss, node);
     return rc;
   }
@@ -326,7 +322,7 @@ result_t wuss__menu_spawn(wuss_t             *wuss,
     if (menu->items[i].flags & wuss_MENU_ITEM_TICKED)
       wuss_icon_set_selected(node->window, node->icons[i], 1);
   }
-  wuss__free(wuss, made);
+  wuss__free(wuss, specs);
 
   *out = node;
   return result_OK;
