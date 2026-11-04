@@ -24,7 +24,6 @@
 #include "framebuf/screen.h"
 #include "geom/box.h"
 #include "io/path.h"
-#include "utils/alloc.h"
 #include "wuss/icon.h"
 #include "wuss/task.h"
 #include "wuss/wuss.h"
@@ -571,9 +570,8 @@ static result_t run_wuss(const char    *resources,
       descs[i].name       = names[i];
     }
 
-    /* counted for the Task Manager's window */
     rc = wuss_create(&g.scr, descs, nfonts, palette, NELEMS(palette), &config,
-                     &alloc_counting, resources, &wuss);
+                     NULL, resources, &wuss);
     logf_info("wuss: wuss_create -> rc=0x%X (%s)", rc, wuss_result_string(rc));
     if (rc != result_OK)
       goto Failure;

@@ -42,6 +42,11 @@ option(BUILD_APPS "Build the Wuss interactive demo" OFF)
 # For local work on both repos, configure with
 # -DFETCHCONTENT_SOURCE_DIR_DPTLIB=../DPTLib
 
+# The demo's Task Manager reports allocation statistics
+if(BUILD_APPS AND NOT USE_FORTIFY)
+    set(DPTLIB_ALLOC_COUNT ON)
+endif()
+
 include(FetchContent)
 FetchContent_Declare(dptlib
                      GIT_REPOSITORY https://github.com/dpt/DPTLib.git
@@ -615,7 +620,9 @@ if(BUILD_APPS)
             LINK_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/apps/wuss/shell.html")
     else()
         find_package(SDL3 REQUIRED)
-        target_compile_definitions(wuss PRIVATE USE_SDL)
+        # SDL_MALLOC would expand to __attribute__((malloc)), which
+        # DPTLIB_ALLOC_COUNT's malloc macro turns into an unknown attribute
+        target_compile_definitions(wuss PRIVATE USE_SDL SDL_MALLOC=)
         target_link_libraries(wuss SDL3::SDL3)
     endif()
 

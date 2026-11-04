@@ -21,8 +21,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Dithering: double-click a swatch in the Target palette window to edit that
   colour. The image re-dithers live, and the edit lasts until a fresh palette
   is built.
-- Task Manager: Select on its icon bar icon opens a window showing the memory
-  Wuss has allocated, using DPTLib's `alloc_counting`.
+- Task Manager: Select on its icon bar icon opens a window of allocation
+  statistics: current, lowest and highest bytes and blocks, plus allocations
+  and frees. `BUILD_APPS` turns on DPTLib's `DPTLIB_ALLOC_COUNT`, sending all
+  allocation by Wuss, DPTLib and the demo through it.
 
 ### Changed
 
