@@ -52,13 +52,20 @@ FetchContent_MakeAvailable(dptlib)
 # DPTLib's: link them into this tree so -resources . and the emscripten
 # preload both find them. ponytail: a symlink in the source tree; give wuss a
 # second resource root if this ever bites (e.g. RISC OS packaging)
-if(POLICY CMP0205)
-    cmake_policy(SET CMP0205 NEW) # COPY_ON_ERROR copies the whole directory
-endif()
+#
+# The link is relative so it survives the tree being mounted at another path.
+# COPY_ON_ERROR can't be used here: it would resolve the relative target
+# against the working directory, so copy from the absolute path instead.
 if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/resources/bmfonts")
-    file(CREATE_LINK "${dptlib_SOURCE_DIR}/resources/bmfonts"
+    file(RELATIVE_PATH bmfonts_target "${CMAKE_CURRENT_SOURCE_DIR}/resources"
+         "${dptlib_SOURCE_DIR}/resources/bmfonts")
+    file(CREATE_LINK "${bmfonts_target}"
          "${CMAKE_CURRENT_SOURCE_DIR}/resources/bmfonts"
-         SYMBOLIC COPY_ON_ERROR)
+         RESULT bmfonts_link_result SYMBOLIC)
+    if(NOT bmfonts_link_result STREQUAL "0")
+        file(COPY "${dptlib_SOURCE_DIR}/resources/bmfonts/"
+             DESTINATION "${CMAKE_CURRENT_SOURCE_DIR}/resources/bmfonts")
+    endif()
 endif()
 
 add_library(WussLib)

@@ -472,7 +472,12 @@ static result_t run_wuss(const char    *resources,
                                  font_family),
                            &family);
     if (rc != result_OK)
+    {
+      logf_error("wuss: bmfontfamily_scan(\"%s/resources/bmfonts/%s\") failed, "
+                 "rc=0x%X (%s)",
+                 resources, font_family, rc, wuss_result_string(rc));
       goto Failure;
+    }
     regular = bmfontfamily_find(family, bmfontfamily_WEIGHT_REGULAR,
                                 bmfontfamily_SLANT_UPRIGHT);
     if (regular == NULL)
