@@ -56,12 +56,18 @@ FetchContent_MakeAvailable(dptlib)
 # The link is relative so it survives the tree being mounted at another path.
 # COPY_ON_ERROR can't be used here: it would resolve the relative target
 # against the working directory, so copy from the absolute path instead.
+#
+# Windows always copies: a relative link is created without error there but
+# does not resolve, so the failed result never triggers the copy.
 if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/resources/bmfonts")
-    file(RELATIVE_PATH bmfonts_target "${CMAKE_CURRENT_SOURCE_DIR}/resources"
-         "${dptlib_SOURCE_DIR}/resources/bmfonts")
-    file(CREATE_LINK "${bmfonts_target}"
-         "${CMAKE_CURRENT_SOURCE_DIR}/resources/bmfonts"
-         RESULT bmfonts_link_result SYMBOLIC)
+    set(bmfonts_link_result 1)
+    if(NOT CMAKE_HOST_WIN32)
+        file(RELATIVE_PATH bmfonts_target "${CMAKE_CURRENT_SOURCE_DIR}/resources"
+             "${dptlib_SOURCE_DIR}/resources/bmfonts")
+        file(CREATE_LINK "${bmfonts_target}"
+             "${CMAKE_CURRENT_SOURCE_DIR}/resources/bmfonts"
+             RESULT bmfonts_link_result SYMBOLIC)
+    endif()
     if(NOT bmfonts_link_result STREQUAL "0")
         file(COPY "${dptlib_SOURCE_DIR}/resources/bmfonts/"
              DESTINATION "${CMAKE_CURRENT_SOURCE_DIR}/resources/bmfonts")
