@@ -305,6 +305,8 @@ static result_t edit_level_fillout(void *opaque)
 
 static result_t edit_level_create(effecting_edit_t *edit)
 {
+  static const int detents[] = { 0, 100 }; /* no effect, full effect */
+
   result_t         rc;
   effecting_dlg_t *dlg;
   wuss_t          *wuss;
@@ -335,6 +337,8 @@ static result_t edit_level_create(effecting_edit_t *edit)
                  wuss_STD_INSET, label_w, value_w, "Level",
                  EFFECTING_LEVEL_MIN, EFFECTING_LEVEL_MAX, edit->ec->level,
                  "%d%%", buf);
+  specs[1].u.slider.detents  = detents;
+  specs[1].u.slider.ndetents = NELEMS(detents);
 
   rc = wuss_icon_create_array(wuss_dialogue_window(dlg->dialogue), specs,
                               NELEMS(specs), made);
