@@ -398,7 +398,12 @@ result_t paintingnew_open(paintingnew_t *pn)
   win = wuss_dialogue_window(pn->dialogue);
 
   /* where an icon bar menu would open, as it is opened from the icon bar */
+#ifdef WUSS_ICONBAR
   rc = wuss_iconbar_window_open(pn->task, win, &pn->menu_handle);
+#else
+  /* unreachable: taskapp only offers this dialogue from an icon bar menu */
+  rc = wuss_menu_open_window(pn->task, win, POINT(0, 0), &pn->menu_handle);
+#endif
   if (rc != result_OK)
     return rc;
 

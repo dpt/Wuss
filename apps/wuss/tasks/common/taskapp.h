@@ -115,7 +115,7 @@ result_t taskapp_window_data_load(wuss_t                *wuss,
 
 /* The icon pool entry name for the app called name: "app_" plus name
  * lowercased, keeping only its letters and digits ("Chase H.Q." gives
- * "app_chasehq"). Icon bar builds only. */
+ * "app_chasehq"). */
 void taskapp_glyph_name(const char *name, char leaf[TASKAPP_GLYPH_NAME_MAX]);
 
 /* The glyph for the app called name: "app_" plus name lowercased, keeping

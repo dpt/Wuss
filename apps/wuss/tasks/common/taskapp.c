@@ -25,6 +25,55 @@
 #include "common.h"
 #include "taskapp.h"
 
+/* Loading a file can take a while: show the hourglass meanwhile. */
+static result_t app_load(wuss_t                *wuss,
+                         taskapp_data_load_fn_t load,
+                         void                  *instance,
+                         const char            *path)
+{
+  result_t rc;
+
+  wuss_hourglass_on(wuss);
+  rc = load(instance, path);
+  wuss_hourglass_off(wuss);
+
+  return rc;
+}
+
+result_t taskapp_window_data_load(wuss_t                *wuss,
+                                  wuss_task_t           *delegate,
+                                  void                  *instance,
+                                  taskapp_data_load_fn_t load,
+                                  const wuss_message_t  *msg)
+{
+  char   path[DPTLIB_MAXPATH];
+  size_t len;
+
+  if (msg->action != wuss_MESSAGE_DATA_LOAD)
+    return result_OK;
+
+  len = MIN(msg->size, sizeof(path) - 1);
+  memcpy(path, msg->data, len);
+  path[len] = '\0';
+
+  if (app_load(wuss, load, instance, path) == result_OK)
+    (void) wuss_acknowledge(wuss, delegate, msg);
+
+  return result_OK;
+}
+
+void taskapp_glyph_name(const char *name, char leaf[TASKAPP_GLYPH_NAME_MAX])
+{
+  size_t n;
+
+  memcpy(leaf, "app_", 4);
+  n = 4;
+  for (; *name != '\0' && n < TASKAPP_GLYPH_NAME_MAX - 1; name++)
+    if (isalnum((unsigned char) *name))
+      leaf[n++] = (char) tolower((unsigned char) *name);
+  leaf[n] = '\0';
+}
+
 #ifdef WUSS_ICONBAR
 
 /* ----- icon bar apps ----------------------------------------------------
@@ -196,21 +245,6 @@ result_t taskapp_spawn(wuss_t               *wuss,
   return result_NOT_FOUND;
 }
 
-/* Loading a file can take a while: show the hourglass meanwhile. */
-static result_t app_load(wuss_t                *wuss,
-                         taskapp_data_load_fn_t load,
-                         void                  *instance,
-                         const char            *path)
-{
-  result_t rc;
-
-  wuss_hourglass_on(wuss);
-  rc = load(instance, path);
-  wuss_hourglass_off(wuss);
-
-  return rc;
-}
-
 /* A file dropped on the icon: open an instance and load it. An instance that
  * will not load the file stays open, empty, and the message bounces. */
 static result_t app_data_load(app_t *app, const wuss_message_t *msg)
@@ -262,28 +296,6 @@ static result_t app_data_open(app_t *app, const wuss_message_t *msg)
 
   if (app_spawn_instance(app, &instance) == result_OK)
     (void) app_load(app->wuss, app->desc->data_load, instance, open->path);
-
-  return result_OK;
-}
-
-result_t taskapp_window_data_load(wuss_t                *wuss,
-                                  wuss_task_t           *delegate,
-                                  void                  *instance,
-                                  taskapp_data_load_fn_t load,
-                                  const wuss_message_t  *msg)
-{
-  char   path[DPTLIB_MAXPATH];
-  size_t len;
-
-  if (msg->action != wuss_MESSAGE_DATA_LOAD)
-    return result_OK;
-
-  len = MIN(msg->size, sizeof(path) - 1);
-  memcpy(path, msg->data, len);
-  path[len] = '\0';
-
-  if (app_load(wuss, load, instance, path) == result_OK)
-    (void) wuss_acknowledge(wuss, delegate, msg);
 
   return result_OK;
 }
@@ -380,18 +392,6 @@ static result_t app_handle(wuss_window_t      *window,
   default:
     return result_OK;
   }
-}
-
-void taskapp_glyph_name(const char *name, char leaf[TASKAPP_GLYPH_NAME_MAX])
-{
-  size_t n;
-
-  memcpy(leaf, "app_", 4);
-  n = 4;
-  for (; *name != '\0' && n < TASKAPP_GLYPH_NAME_MAX - 1; name++)
-    if (isalnum((unsigned char) *name))
-      leaf[n++] = (char) tolower((unsigned char) *name);
-  leaf[n] = '\0';
 }
 
 const bitmap_t *taskapp_glyph(const wuss_task_t *task, const char *name)
