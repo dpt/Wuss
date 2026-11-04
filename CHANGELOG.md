@@ -17,9 +17,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   document, as a scrollbar arrow click does.
 - Viewing: arrow keys, Page Up/Down and Home/End scroll the image. Space
   shows the next PNG in the directory and Shift-Space the previous one.
+- Dithering: Palette > Computed gains Wu, using DPTLib's `wu_make_palette`.
 
 ### Changed
 
+- Dithering: Palette > Computed's Optimal row is now called Octree.
 - Gridview: a selected label is drawn in a capsule instead of a box made
   by padding the text with a space either side.
 

@@ -17,6 +17,7 @@
 #include "framebuf/dither.h"
 #include "framebuf/octree.h"
 #include "framebuf/pixelfmt.h"
+#include "framebuf/wu.h"
 #include "io/namelist.h"
 #include "io/path.h"
 #include "wuss/gadget/swatches.h"
@@ -153,8 +154,8 @@ static void dithering_free_dithered(dithering_task_t *dt)
 }
 
 /* Build the chosen palette and dither the source with it. If keep_palette is
- * set and the last dither succeeded, reuse its palette instead, sparing an
- * octree build when only the strength changed. On failure the window shows
+ * set and the last dither succeeded, reuse its palette instead, sparing a
+ * palette build when only the strength changed. On failure the window shows
  * the original instead. */
 static result_t dithering_dither(dithering_task_t *dt, int keep_palette)
 {
@@ -176,10 +177,15 @@ static result_t dithering_dither(dithering_task_t *dt, int keep_palette)
     memcpy(palette, dt->target, ncolours * sizeof(*palette));
     rc = result_OK;
   }
-  else if (dt->palette == DITHERING_PALETTE_OPTIMAL)
+  else if (dt->palette == DITHERING_PALETTE_OCTREE)
   {
     rc = octree_make_palette(&dt->source, dithering_colours(dt->colours_pos),
                              palette, &ncolours);
+  }
+  else if (dt->palette == DITHERING_PALETTE_WU)
+  {
+    rc = wu_make_palette(&dt->source, dithering_colours(dt->colours_pos),
+                         palette, &ncolours);
   }
   else if (dt->palette == DITHERING_PALETTE_DESKTOP)
   {
@@ -485,7 +491,7 @@ static void dithering_group_palettes(dithering_task_t *dt)
   }
 }
 
-/* the group holding the current palette, or -1 for Optimal, Desktop or
+/* the group holding the current palette, or -1 for Octree, Wu, Desktop or
  * Current */
 static int dithering_current_group(const dithering_task_t *dt)
 {
@@ -501,11 +507,22 @@ static int dithering_current_group(const dithering_task_t *dt)
   return -1;
 }
 
+/* the Computed submenu row of the current palette, or -1 */
+static int dithering_computed_row(const dithering_task_t *dt)
+{
+  if (dt->palette == DITHERING_PALETTE_OCTREE)
+    return DITHERING_COMPUTED_OCTREE;
+  if (dt->palette == DITHERING_PALETTE_WU)
+    return DITHERING_COMPUTED_WU;
+
+  return -1;
+}
+
 /* the Palette submenu row the current palette sits under */
 static int dithering_palette_row(const dithering_task_t *dt)
 {
-  return dt->palette == DITHERING_PALETTE_OPTIMAL
-         ? DITHERING_PALETTE_ROW_COMPUTED : DITHERING_PALETTE_ROW_FIXED;
+  return dithering_computed_row(dt) >= 0 ? DITHERING_PALETTE_ROW_COMPUTED
+                                         : DITHERING_PALETTE_ROW_FIXED;
 }
 
 /* the Fixed submenu row the current palette sits on or under, or -1 */
@@ -535,7 +552,7 @@ result_t dithering_create(wuss_t *wuss, dithering_task_t **out)
 
   task->wuss       = wuss;
   task->method     = dither_FLOYD_STEINBERG;
-  task->palette    = DITHERING_PALETTE_OPTIMAL;
+  task->palette    = DITHERING_PALETTE_OCTREE;
   task->colours_pos = 4 * DITHERING_COLOURS_STEPS; /* 16 */
   task->strength   = 100;
   task->strength_step = DITHERING_STRENGTH_STEP;
@@ -579,11 +596,14 @@ result_t dithering_create(wuss_t *wuss, dithering_task_t **out)
   WUSS_MENU_TITLE(task->method_menu, "Method", task->method_items,
                   DITHERING_METHOD__LIMIT);
 
-  WUSS_MENU_ITEM(task->computed_items, DITHERING_COMPUTED_OPTIMAL, "Optimal",
+  WUSS_MENU_ITEM(task->computed_items, DITHERING_COMPUTED_OCTREE, "Octree",
+                 wuss_MENU_ITEM_NONE);
+  WUSS_MENU_ITEM(task->computed_items, DITHERING_COMPUTED_WU, "Wu",
                  wuss_MENU_ITEM_NONE);
   /* window set once the dialogue exists */
   WUSS_MENU_ITEM(task->computed_items, DITHERING_COMPUTED_COLOURS, "Colours",
-                 wuss_MENU_ITEM_BORROWED_SUBMENU | wuss_MENU_ITEM_PRE_OPEN);
+                 wuss_MENU_ITEM_DASHED | wuss_MENU_ITEM_BORROWED_SUBMENU |
+                 wuss_MENU_ITEM_PRE_OPEN);
   WUSS_MENU_TITLE(task->computed_menu, "Computed", task->computed_items,
                   DITHERING_COMPUTED__LIMIT);
 
@@ -859,7 +879,7 @@ static int dithering_diffusion_row(dither_method_t method)
 /* Set the submenus' ticks and the rows' disabled states from the task. Run
  * on open and after every pick: a submenu reopened within the same chain
  * (hover away and back) is built afresh from these items, so the live ticks
- * alone would go stale. Colours only applies to the optimal palette,
+ * alone would go stale. Colours only applies to the computed palettes,
  * Serpentine only to methods which scan rows and Current only to a paletted
  * screen mode, so each is disabled otherwise. */
 static void dithering_menu_refresh(dithering_task_t *dt)
@@ -869,7 +889,7 @@ static void dithering_menu_refresh(dithering_task_t *dt)
   int i;
 
   dithering_menu_disable(&dt->computed_items[DITHERING_COMPUTED_COLOURS],
-                         dt->palette != DITHERING_PALETTE_OPTIMAL);
+                         dithering_computed_row(dt) < 0);
   dithering_menu_disable(&dt->fixed_items[DITHERING_FIXED_CURRENT],
                          g_tasks.bm->palette == NULL);
   dithering_menu_disable(&dt->family_items[DITHERING_NORDERED +
@@ -891,9 +911,7 @@ static void dithering_menu_refresh(dithering_task_t *dt)
   /* a palette's tick shows on its own row and on every row leading to it */
   group = dithering_current_group(dt);
   wuss_menu_tick_exclusive(&dt->palette_menu, dithering_palette_row(dt));
-  wuss_menu_tick_exclusive(&dt->computed_menu,
-                           dt->palette == DITHERING_PALETTE_OPTIMAL
-                           ? DITHERING_COMPUTED_OPTIMAL : -1);
+  wuss_menu_tick_exclusive(&dt->computed_menu, dithering_computed_row(dt));
   wuss_menu_tick_exclusive(&dt->fixed_menu, dithering_fixed_row(dt));
   for (i = 0; i < dt->ngroups; i++)
     wuss_menu_tick_exclusive(&dt->groups[i].menu,
@@ -973,8 +991,10 @@ static result_t dithering_menu_select(dithering_task_t   *dt,
   else if (menu == &dt->diffusion_menu)
     dt->method = dithering_family_methods[DITHERING_NORDERED + index -
                                           DITHERING_DIFFUSION_FIRST];
-  else if (menu == &dt->computed_menu && index == DITHERING_COMPUTED_OPTIMAL)
-    dt->palette = DITHERING_PALETTE_OPTIMAL;
+  else if (menu == &dt->computed_menu && index == DITHERING_COMPUTED_OCTREE)
+    dt->palette = DITHERING_PALETTE_OCTREE;
+  else if (menu == &dt->computed_menu && index == DITHERING_COMPUTED_WU)
+    dt->palette = DITHERING_PALETTE_WU;
   else if (menu == &dt->fixed_menu && index == DITHERING_FIXED_DESKTOP)
     dt->palette = DITHERING_PALETTE_DESKTOP;
   else if (menu == &dt->fixed_menu && index == DITHERING_FIXED_CURRENT)
@@ -988,7 +1008,7 @@ static result_t dithering_menu_select(dithering_task_t   *dt,
   dithering_menu_refresh(dt);
   wuss_menu_disable_item_live(dt->menu_handle, &dt->computed_menu,
                               DITHERING_COMPUTED_COLOURS,
-                              dt->palette != DITHERING_PALETTE_OPTIMAL);
+                              dithering_computed_row(dt) < 0);
   wuss_menu_disable_item_live(dt->menu_handle, &dt->diffusion_menu,
                               DITHERING_DIFFUSION_SERPENTINE,
                               !dithering_rows(dt->method));

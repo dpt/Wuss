@@ -27,13 +27,15 @@
  * distance; a perceptual one if the warning proves too eager or lax. */
 #define DITHERING_SCREEN_TOLERANCE 32
 
-/* dithering_task_t.palette: one of these three, or
- * DITHERING_PALETTE_FIRST_HEX plus an index into palettes[]. Current is the
- * screen mode's own palette, so it needs a paletted mode. */
-#define DITHERING_PALETTE_OPTIMAL 0
-#define DITHERING_PALETTE_DESKTOP 1
-#define DITHERING_PALETTE_CURRENT 2
-#define DITHERING_PALETTE_FIRST_HEX 3
+/* dithering_task_t.palette: one of these four, or
+ * DITHERING_PALETTE_FIRST_HEX plus an index into palettes[]. Octree and Wu
+ * are computed from the image. Current is the screen mode's own palette, so it
+ * needs a paletted mode. */
+#define DITHERING_PALETTE_OCTREE 0
+#define DITHERING_PALETTE_WU 1
+#define DITHERING_PALETTE_DESKTOP 2
+#define DITHERING_PALETTE_CURRENT 3
+#define DITHERING_PALETTE_FIRST_HEX 4
 
 /* Palette submenu rows: a submenu per kind of palette */
 enum
@@ -46,7 +48,8 @@ enum
 /* Computed submenu rows */
 enum
 {
-  DITHERING_COMPUTED_OPTIMAL,
+  DITHERING_COMPUTED_OCTREE,
+  DITHERING_COMPUTED_WU,
   DITHERING_COMPUTED_COLOURS,
   DITHERING_COMPUTED__LIMIT
 };
@@ -101,7 +104,7 @@ enum
 };
 
 /* window's task: a PNG dropped on its icon or window (DataLoad) reduced by
- * dither_bitmap, optionally to an octree palette. A Select click toggles
+ * dither_bitmap, optionally to a computed palette. A Select click toggles
  * between the dithered result and the original; Menu picks the options, and
  * every change re-dithers at once; Colours and Strength are slider
  * dialogues. Show palette opens a second window of swatches for the palette
@@ -122,7 +125,7 @@ typedef struct dithering_task
 
   dither_method_t    method;
   int                palette;  /* a DITHERING_PALETTE_* row */
-  int                colours_pos; /* Colours slider position: optimal
+  int                colours_pos; /* Colours slider position: computed
                                    * palette size is 2^(pos / STEPS) */
   int                strength; /* percent */
   int                animate;  /* cycle strength up and down while idle */
