@@ -451,8 +451,8 @@ if(BUILD_APPS)
     # launcher and its menus; a per-platform backend (frontend-*.c) opens the
     # surface and reports input.
     # RISC OS uses native VDU/OS_Mouse calls; everything else uses SDL.
-    if(NOT (WUSS_FURNITURE AND WUSS_ICONS))
-        message(FATAL_ERROR "BUILD_APPS requires WUSS_FURNITURE and WUSS_ICONS")
+    if(NOT (WUSS_FURNITURE AND WUSS_COMPONENTS))
+        message(FATAL_ERROR "BUILD_APPS requires WUSS_FURNITURE and WUSS_COMPONENTS")
     endif()
 
     set(WUSS_APP_SOURCES
