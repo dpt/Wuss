@@ -36,6 +36,23 @@ int wuss_window_is_front(wuss_window_t *window)
   return 0;
 }
 
+void wuss_window_count(const wuss_t *wuss, int *total, int *visible)
+{
+  int           s;
+  const list_t *l;
+
+  *total   = 0;
+  *visible = 0;
+
+  for (s = 0; s < WUSS_STACK_COUNT; s++)
+    for (l = wuss->z_order[s].next; l != NULL; l = l->next)
+    {
+      (*total)++;
+      if (!(wuss__window_from_link(l)->flags & wuss_WINDOW_HIDDEN))
+        (*visible)++;
+    }
+}
+
 wuss_window_t *wuss__z_below(const wuss_window_t *window)
 {
   if (window->link.next != NULL)

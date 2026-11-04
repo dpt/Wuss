@@ -45,3 +45,15 @@ result_t wuss_task_create(wuss_t                 *wuss,
 
   return result_OK;
 }
+
+int wuss_task_count(const wuss_t *wuss)
+{
+  int           count;
+  const list_t *t;
+
+  count = 0;
+  for (t = wuss->tasks.next; t != NULL; t = t->next)
+    count++;
+
+  return count;
+}

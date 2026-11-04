@@ -406,6 +406,15 @@ void wuss_window_restack(wuss_window_t *window, wuss_zorder_t reason);
 int wuss_window_is_front(wuss_window_t *window);
 
 /**
+ * Count every window in all stacks, toolbars, panes and menus included.
+ *
+ * \param[in]  wuss    Window manager.
+ * \param[out] total   All windows.
+ * \param[out] visible Those not hidden. They may be off-screen or covered.
+ */
+void wuss_window_count(const wuss_t *wuss, int *total, int *visible);
+
+/**
  * Move a window to the front of another stack (see wuss_stack_t). A no-op if
  * it is already in \p stack. A visible window repaints whatever its new
  * position uncovers or covers; a hidden one is only relinked.

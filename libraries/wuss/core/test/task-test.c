@@ -422,6 +422,49 @@ result_t wuss_task_test(const char *resources)
     rc = result_OK;
   }
 
+  printf("test: task and window counts\n");
+  {
+    static test_task_t tc_n;
+    int                tasks_before;
+    int                total_before, visible_before;
+    wuss_task_t       *task_n;
+    box_t              box_n;
+    wuss_window_t     *win_n;
+    int                total, visible;
+
+    reap_test_tasks();
+    memset(&tc_n, 0, sizeof(tc_n));
+    tasks_before = wuss_task_count(wuss);
+    wuss_window_count(wuss, &total_before, &visible_before);
+
+    task_n = mk_task(wuss, test_handle, &tc_n);
+    if (task_n == NULL) goto Failure;
+    if (wuss_task_count(wuss) != tasks_before + 1) goto Failure;
+
+    box_n.x0 = 0;  box_n.y0 = 0;
+    box_n.x1 = 40; box_n.y1 = 40;
+    rc = wuss_window_create(task_n, &box_n, "N", wuss_WINDOW_DEFAULT,
+                            wuss_NO_BACKDROP,
+                            box_size(&box_n), SIZE2D(0, 0), &win_n);
+    if (rc != result_OK) goto Failure;
+    wuss_window_count(wuss, &total, &visible);
+    if (total != total_before + 1 || visible != visible_before + 1)
+      goto Failure;
+
+    rc = wuss_window_set_hidden(win_n, 1);
+    if (rc != result_OK) goto Failure;
+    wuss_window_count(wuss, &total, &visible);
+    if (total != total_before + 1 || visible != visible_before)
+      goto Failure; /* hidden, but still counted */
+
+    wuss_task_destroy(task_n);
+    mk_task_count = 0;
+    if (wuss_task_count(wuss) != tasks_before) goto Failure;
+    wuss_window_count(wuss, &total, &visible);
+    if (total != total_before || visible != visible_before)
+      goto Failure;
+  }
+
   printf("test: app cycling, hide others and show all\n");
   {
     static test_task_t tc_a, tc_b;

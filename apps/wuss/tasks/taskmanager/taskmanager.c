@@ -13,6 +13,7 @@
 #include "utils/alloc.h"
 #include "wuss/iconbar.h"
 #include "wuss/task.h"
+#include "wuss/window.h"
 
 #include "../common/common.h"
 
@@ -22,19 +23,39 @@
 #define TASKMANAGER_MARGIN  4
 #define TASKMANAGER_GAP     8
 #define TASKMANAGER_COLUMNS 3 /* of figures, after the labels */
-#define TASKMANAGER_ROWS    6 /* the headings, then the statistics */
+#define TASKMANAGER_ROWS    10 /* the headings, then the statistics */
+
+typedef struct taskmanager_stats
+{
+  int           apps;
+  int           tasks;
+  int           windows;
+  int           visible;
+  alloc_stats_t alloc;
+}
+taskmanager_stats_t;
 
 /* only one instance: the icon lasts as long as wuss does */
 static struct
 {
-  wuss_t        *wuss;
-  wuss_task_t   *task;
-  wuss_window_t *window;      /* the statistics window, or NULL when closed */
-  int            label_width;
-  int            value_width;
-  alloc_stats_t  shown;       /* the statistics last drawn */
+  wuss_t             *wuss;
+  wuss_task_t        *task;
+  wuss_window_t      *window; /* the statistics window, or NULL when closed */
+  int                 label_width;
+  int                 value_width;
+  taskmanager_stats_t shown;  /* the statistics last drawn */
 }
 tm;
+
+static void taskmanager_get_stats(taskmanager_stats_t *stats)
+{
+  memset(stats, 0, sizeof(*stats)); /* it gets memcmp'd, padding included */
+
+  stats->apps  = wuss_iconbar_icon_count(tm.wuss); /* each app has one icon */
+  stats->tasks = wuss_task_count(tm.wuss);
+  wuss_window_count(tm.wuss, &stats->windows, &stats->visible);
+  alloc_counting_get_stats(&stats->alloc);
+}
 
 static int taskmanager_text_width(const char *text)
 {
@@ -81,7 +102,7 @@ static result_t taskmanager_open(void)
   if (rc != result_OK)
     return rc;
 
-  alloc_counting_get_stats(&tm.shown);
+  taskmanager_get_stats(&tm.shown);
 
   return result_OK;
 }
@@ -124,9 +145,13 @@ static result_t taskmanager_redraw(const wuss_event_t *event)
   };
   static const char *const labels[TASKMANAGER_ROWS - 1] =
   {
+    "Running apps", "Tasks", "Windows", "Visible windows",
     "Bytes", "Blocks", "Current allocations", "Total allocations", "Total frees"
   };
-  static const int ncolumns[TASKMANAGER_ROWS - 1] = { 3, 3, 1, 1, 1 };
+  static const int ncolumns[TASKMANAGER_ROWS - 1] =
+  {
+    1, 1, 1, 1, 3, 3, 1, 1, 1
+  };
 
   result_t rc;
   size_t   values[TASKMANAGER_ROWS - 1][TASKMANAGER_COLUMNS];
@@ -137,17 +162,21 @@ static result_t taskmanager_redraw(const wuss_event_t *event)
   if (wuss_get_font(tm.wuss) == NULL)
     return result_OK;
 
-  alloc_counting_get_stats(&tm.shown);
+  taskmanager_get_stats(&tm.shown);
 
-  values[0][0] = tm.shown.bytes;
-  values[0][1] = tm.shown.bytes_low;
-  values[0][2] = tm.shown.bytes_high;
-  values[1][0] = tm.shown.blocks;
-  values[1][1] = tm.shown.blocks_low;
-  values[1][2] = tm.shown.blocks_high;
-  values[2][0] = tm.shown.allocs - tm.shown.frees;
-  values[3][0] = tm.shown.allocs;
-  values[4][0] = tm.shown.frees;
+  values[0][0] = (size_t) tm.shown.apps;
+  values[1][0] = (size_t) tm.shown.tasks;
+  values[2][0] = (size_t) tm.shown.windows;
+  values[3][0] = (size_t) tm.shown.visible;
+  values[4][0] = tm.shown.alloc.bytes;
+  values[4][1] = tm.shown.alloc.bytes_low;
+  values[4][2] = tm.shown.alloc.bytes_high;
+  values[5][0] = tm.shown.alloc.blocks;
+  values[5][1] = tm.shown.alloc.blocks_low;
+  values[5][2] = tm.shown.alloc.blocks_high;
+  values[6][0] = tm.shown.alloc.allocs - tm.shown.alloc.frees;
+  values[7][0] = tm.shown.alloc.allocs;
+  values[8][0] = tm.shown.alloc.frees;
 
   for (column = 0; column < TASKMANAGER_COLUMNS; column++)
   {
@@ -178,7 +207,7 @@ static result_t taskmanager_handle(wuss_window_t      *window,
                                    const wuss_event_t *event,
                                    void               *task_data)
 {
-  alloc_stats_t stats;
+  taskmanager_stats_t stats;
 
   NOT_USED(task_data);
 
@@ -199,7 +228,7 @@ static result_t taskmanager_handle(wuss_window_t      *window,
   case wuss_EVENT_IDLE:
     if (tm.window != NULL)
     {
-      alloc_counting_get_stats(&stats);
+      taskmanager_get_stats(&stats);
       if (memcmp(&stats, &tm.shown, sizeof(stats)) != 0)
         wuss_window_invalidate_visible(tm.window);
     }

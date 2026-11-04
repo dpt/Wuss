@@ -532,6 +532,14 @@ result_t wuss_task_set_hidden(wuss_t *wuss, wuss_task_t *task, int hidden);
 int wuss_task_has_windows(wuss_t *wuss, wuss_task_t *task);
 
 /**
+ * Count the tasks, child tasks included.
+ *
+ * \param[in] wuss Window manager.
+ * \return The number of tasks.
+ */
+int wuss_task_count(const wuss_t *wuss);
+
+/**
  * Test whether \p task, with its children, is hidden: it has windows hidden
  * by wuss_task_set_hidden (or the hide keys) and none visible.
  *

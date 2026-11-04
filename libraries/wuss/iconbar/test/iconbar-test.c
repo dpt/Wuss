@@ -110,6 +110,9 @@ result_t wuss_iconbar_test(const char *resources)
         goto Failure;
       spec.side = wuss_ICONBAR_LEFT;
 
+      if (wuss_iconbar_icon_count(wuss) != 3)
+        goto Failure;
+
       wuss__iconbar_slot_box(wuss, 0, &b0);
       wuss__iconbar_slot_box(wuss, 1, &b1);
       wuss__iconbar_slot_box(wuss, 2, &b2);
@@ -120,6 +123,9 @@ result_t wuss_iconbar_test(const char *resources)
 
       wuss_iconbar_icon_destroy(wuss, wuss->iconbar.icons[2]);
       wuss_iconbar_icon_destroy(wuss, wuss->iconbar.icons[1]);
+
+      if (wuss_iconbar_icon_count(wuss) != 1)
+        goto Failure;
     }
 
     /* priorities sit further outward; ties go inside from the edge and

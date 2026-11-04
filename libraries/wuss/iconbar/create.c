@@ -221,4 +221,9 @@ result_t wuss_iconbar_icon_create(wuss_t                         *wuss,
   return result_OK;
 }
 
+int wuss_iconbar_icon_count(const wuss_t *wuss)
+{
+  return wuss->iconbar.n;
+}
+
 #endif /* WUSS_ICONBAR */

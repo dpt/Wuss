@@ -143,6 +143,14 @@ result_t wuss_iconbar_icon_create(wuss_t                         *wuss,
  */
 void wuss_iconbar_icon_destroy(wuss_t *wuss, wuss_iconbar_icon_t *icon);
 
+/**
+ * Count the icons on the icon bar.
+ *
+ * \param[in] wuss Window manager.
+ * \return The number of icons.
+ */
+int wuss_iconbar_icon_count(const wuss_t *wuss);
+
 #ifdef WUSS_MENUS
 /**
  * Open \p menu for an icon bar icon, as wuss_menu_open_above placed at the
