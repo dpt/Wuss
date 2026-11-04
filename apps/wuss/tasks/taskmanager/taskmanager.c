@@ -22,7 +22,7 @@
 #define TASKMANAGER_MARGIN  4
 #define TASKMANAGER_GAP     8
 #define TASKMANAGER_COLUMNS 3 /* of figures, after the labels */
-#define TASKMANAGER_ROWS    5 /* the headings, then the statistics */
+#define TASKMANAGER_ROWS    6 /* the headings, then the statistics */
 
 /* only one instance: the icon lasts as long as wuss does */
 static struct
@@ -66,7 +66,7 @@ static result_t taskmanager_open(void)
 
   bmfont_get_info(font, NULL, &height, NULL, NULL);
 
-  tm.label_width = taskmanager_text_width("Allocations");
+  tm.label_width = taskmanager_text_width("Current allocations");
   tm.value_width = MAX(taskmanager_text_width("9,999,999,999"),
                        taskmanager_text_width("Highest"));
 
@@ -124,9 +124,9 @@ static result_t taskmanager_redraw(const wuss_event_t *event)
   };
   static const char *const labels[TASKMANAGER_ROWS - 1] =
   {
-    "Bytes", "Blocks", "Allocations", "Frees"
+    "Bytes", "Blocks", "Current allocations", "Total allocations", "Total frees"
   };
-  static const int ncolumns[TASKMANAGER_ROWS - 1] = { 3, 3, 1, 1 };
+  static const int ncolumns[TASKMANAGER_ROWS - 1] = { 3, 3, 1, 1, 1 };
 
   result_t rc;
   size_t   values[TASKMANAGER_ROWS - 1][TASKMANAGER_COLUMNS];
@@ -145,8 +145,9 @@ static result_t taskmanager_redraw(const wuss_event_t *event)
   values[1][0] = tm.shown.blocks;
   values[1][1] = tm.shown.blocks_low;
   values[1][2] = tm.shown.blocks_high;
-  values[2][0] = tm.shown.allocs;
-  values[3][0] = tm.shown.frees;
+  values[2][0] = tm.shown.allocs - tm.shown.frees;
+  values[3][0] = tm.shown.allocs;
+  values[4][0] = tm.shown.frees;
 
   for (column = 0; column < TASKMANAGER_COLUMNS; column++)
   {
