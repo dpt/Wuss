@@ -153,6 +153,15 @@ static void dithering_free_dithered(dithering_task_t *dt)
   dt->dithered = NULL;
 }
 
+/* Drop the swatch selection and any open picker: the entry they refer to has
+ * gone, or its window has */
+static void dithering_edit_end(dithering_task_t *dt)
+{
+  wuss_colourpicker_destroy(dt->picker);
+  dt->picker = NULL;
+  dt->cell   = -1;
+}
+
 /* Build the chosen palette and dither the source with it. If keep_palette is
  * set and the last dither succeeded, reuse its palette instead, sparing a
  * palette build when only the strength changed. On failure the window shows
@@ -242,7 +251,11 @@ static result_t dithering_dither(dithering_task_t *dt, int keep_palette)
   /* a reused palette leaves the swatches as they were, unless the dither
    * failed and they go blank */
   if (!keep_palette || rc != result_OK)
+  {
+    dt->edited = 0;
+    dithering_edit_end(dt);
     wuss_window_invalidate_visible(dt->palette_window);
+  }
 
   return result_OK;
 }
@@ -553,6 +566,7 @@ result_t dithering_create(wuss_t *wuss, dithering_task_t **out)
   task->wuss       = wuss;
   task->method     = dither_FLOYD_STEINBERG;
   task->palette    = DITHERING_PALETTE_OCTREE;
+  task->cell       = -1;
   task->colours_pos = 4 * DITHERING_COLOURS_STEPS; /* 16 */
   task->strength   = 100;
   task->strength_step = DITHERING_STRENGTH_STEP;
@@ -713,6 +727,7 @@ result_t dithering_app_create(wuss_t *wuss)
 
 void dithering_destroy(dithering_task_t *task)
 {
+  wuss_colourpicker_destroy(task->picker);
   wuss_dialogue_destroy(task->colours_dialogue);
   wuss_dialogue_destroy(task->strength_dialogue);
   wuss_saveas_destroy(task->saveas);
@@ -732,6 +747,7 @@ static result_t dithering_toggle_palette_window(dithering_task_t *dt)
   {
     wuss_window_close(dt->palette_window); /* fires no CLOSE */
     dt->palette_window = NULL;
+    dithering_edit_end(dt);
     return result_OK;
   }
 
@@ -748,27 +764,85 @@ static result_t dithering_toggle_palette_window(dithering_task_t *dt)
 }
 
 /* a roughly-square grid of the target palette across the visible content */
+static void dithering_swatches(const dithering_task_t *dt,
+                               const box_t            *bounds,
+                               wuss_swatches_t        *swatches)
+{
+  swatches->bbox     = (box_t) BOX_POS_SIZE(0, 0, bounds->x1 - bounds->x0,
+                                            bounds->y1 - bounds->y0);
+  swatches->columns  = 0;
+  swatches->gap      = 0;
+  swatches->outline  = 0;
+  swatches->colours  = dt->target;
+  swatches->ncolours = dt->ntarget;
+  swatches->selected = dt->cell;
+}
+
 static void dithering_redraw_palette(dithering_task_t   *dt,
                                      const wuss_event_t *event)
 {
-  const box_t    *bounds;
   wuss_swatches_t swatches;
 
   if (dt->ntarget == 0)
     return; /* the backdrop shows */
 
-  bounds = event->data.redraw.bounds;
-
-  swatches.bbox     = (box_t) BOX_POS_SIZE(0, 0, bounds->x1 - bounds->x0,
-                                           bounds->y1 - bounds->y0);
-  swatches.columns  = 0;
-  swatches.gap      = 0;
-  swatches.outline  = 0;
-  swatches.colours  = dt->target;
-  swatches.ncolours = dt->ntarget;
-  swatches.selected = -1;
-
+  dithering_swatches(dt, event->data.redraw.bounds, &swatches);
   wuss_swatches_draw(&swatches, event);
+}
+
+/* wuss_colourpicker_changed_fn_t: re-dither to the palette with the edited
+ * entry swapped in */
+static void dithering_picker_changed(colour_t colour, void *opaque)
+{
+  dithering_task_t *dt;
+
+  dt = opaque;
+
+  if (dt->editing >= dt->ntarget)
+    return; /* a failed dither emptied the palette */
+
+  dt->target[dt->editing] = colour;
+  dt->edited = 1;
+  (void) dithering_dither(dt, 1);
+  wuss_window_invalidate_visible(dt->palette_window);
+}
+
+/* Select on a swatch selects it, and a double-click edits it */
+static result_t dithering_swatch_click(dithering_task_t   *dt,
+                                       const wuss_event_t *event)
+{
+  result_t        rc;
+  box_t           content;
+  wuss_swatches_t swatches;
+  int             i;
+
+  wuss_window_get_content_bounds(dt->palette_window, &content);
+  dithering_swatches(dt, &content, &swatches);
+
+  i = wuss_swatches_hit_test(&swatches, event->data.mouse.point);
+  if (i < 0)
+    return result_OK;
+
+  if (i != dt->cell)
+  {
+    dt->cell = i;
+    wuss_window_invalidate_visible(dt->palette_window);
+  }
+
+  if (!(event->data.mouse.button & wuss_BUTTON_DOUBLE))
+    return result_OK;
+
+  if (dt->picker == NULL)
+  {
+    rc = wuss_colourpicker_create(&dt->picker, dt->wuss, "Target colour",
+                                  dithering_picker_changed, dt);
+    if (rc != result_OK)
+      return rc;
+  }
+
+  dt->editing = i;
+
+  return wuss_colourpicker_open(dt->picker, dt->target[i]);
 }
 
 /* True if the screen can show every target colour near enough: always in a
@@ -1047,12 +1121,13 @@ static result_t dithering_menu_select(dithering_task_t   *dt,
 }
 
 /* True if the Current palette no longer matches the screen's: a mode or
- * screen palette change sends tasks no event of its own. */
+ * screen palette change sends tasks no event of its own. An edited palette
+ * differs from the screen's on purpose, so never counts. */
 static int dithering_current_stale(const dithering_task_t *dt)
 {
   int n;
 
-  if (dt->palette != DITHERING_PALETTE_CURRENT)
+  if (dt->palette != DITHERING_PALETTE_CURRENT || dt->edited)
     return 0;
 
   n = pixelfmt_paletted_nentries(g_tasks.bm->format);
@@ -1112,7 +1187,14 @@ result_t dithering_handle(wuss_window_t      *window,
     return dithering_redraw(dt, window, event);
 
   case wuss_EVENT_MOUSE:
-    if (window != dt->window || event->data.mouse.action != wuss_MOUSE_DOWN)
+    if (event->data.mouse.action != wuss_MOUSE_DOWN)
+      return result_OK;
+
+    if (window == dt->palette_window &&
+        (event->data.mouse.button & wuss_BUTTON_SELECT))
+      return dithering_swatch_click(dt, event);
+
+    if (window != dt->window)
       return result_OK;
 
     if (event->data.mouse.button & wuss_BUTTON_SELECT)
@@ -1191,13 +1273,17 @@ result_t dithering_handle(wuss_window_t      *window,
     wuss_dialogue_handle_close(dt->strength_dialogue, window);
     wuss_dialogue_handle_close(dt->colours_dialogue, window);
     if (window == dt->palette_window)
+    {
       dt->palette_window = NULL;
+      dithering_edit_end(dt);
+    }
     if (window == dt->window)
     {
       dt->window = NULL;
       /* the swatches are meaningless without their image */
       wuss_window_close(dt->palette_window);
       dt->palette_window = NULL;
+      dithering_edit_end(dt);
       /* the hidden dialogues are more windows on this autoclose task:
        * close them too, else the task outlives its main window */
       wuss_dialogue_destroy(dt->strength_dialogue);

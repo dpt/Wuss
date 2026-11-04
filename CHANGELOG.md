@@ -18,6 +18,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Viewing: arrow keys, Page Up/Down and Home/End scroll the image. Space
   shows the next PNG in the directory and Shift-Space the previous one.
 - Dithering: Palette > Computed gains Wu, using DPTLib's `wu_make_palette`.
+- Dithering: double-click a swatch in the Target palette window to edit that
+  colour. The image re-dithers live, and the edit lasts until a fresh palette
+  is built.
 
 ### Changed
 

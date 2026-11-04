@@ -108,7 +108,9 @@ enum
  * between the dithered result and the original; Menu picks the options, and
  * every change re-dithers at once; Colours and Strength are slider
  * dialogues. Show palette opens a second window of swatches for the palette
- * the last dither targeted. Save writes the dithered result as a PNG. */
+ * the last dither targeted: Select selects one and a double-click edits it in
+ * a colour picker, re-dithering live. An edit lasts until something builds a
+ * fresh palette. Save writes the dithered result as a PNG. */
 typedef struct dithering_task
 {
   wuss_window_t     *window;
@@ -122,6 +124,11 @@ typedef struct dithering_task
   colour_t           target[256]; /* the palette dithered to; ntarget is 0
                                    * if the last dither failed */
   int                ntarget;
+  int                cell;     /* selected swatch, or -1 */
+  int                editing;  /* target[] entry the open picker edits */
+  int                edited;   /* target differs from the palette it was
+                                * built as */
+  wuss_colourpicker_t *picker; /* made on first edit; else NULL */
 
   dither_method_t    method;
   int                palette;  /* a DITHERING_PALETTE_* row */
