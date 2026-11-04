@@ -34,6 +34,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Dithering: changing the method or its options keeps the palette, rather
+  than rebuilding it and discarding any edits.
 - A handler that destroys another task during an idle, palette or message
   broadcast no longer leaves the broadcast using the freed task.
 

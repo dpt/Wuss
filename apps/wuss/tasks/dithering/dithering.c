@@ -260,14 +260,14 @@ static result_t dithering_dither(dithering_task_t *dt, int keep_palette)
   return result_OK;
 }
 
-/* A fresh palette and dither: slow on a big image, so show the hourglass.
- * The strength animation's per-tick dithers go without, lest it flicker. */
-static result_t dithering_apply(dithering_task_t *dt)
+/* A dither which may be slow on a big image, so show the hourglass. The
+ * strength animation's per-tick dithers go without, lest it flicker. */
+static result_t dithering_apply(dithering_task_t *dt, int keep_palette)
 {
   result_t rc;
 
   wuss_hourglass_on(dt->wuss);
-  rc = dithering_dither(dt, 0);
+  rc = dithering_dither(dt, keep_palette);
   wuss_hourglass_off(dt->wuss);
 
   return rc;
@@ -327,7 +327,7 @@ static result_t dithering_show(dithering_task_t *dt, const char *path)
 
   snprintf(dt->path, sizeof(dt->path), "%s", path);
   task_set_doc_title(dt->window, path_leaf(path), "Dithering", 0);
-  return dithering_apply(dt);
+  return dithering_apply(dt, 0);
 }
 
 /* ----- slider dialogues ----- */
@@ -1115,9 +1115,13 @@ static result_t dithering_menu_select(dithering_task_t   *dt,
                                   dithering_method_row(dt->method));
     wuss_menu_tick_item_live(dt->menu_handle, &dt->method_menu,
                              DITHERING_METHOD_LINEAR, dt->linear);
+
+    /* a method and its options don't affect the palette: keep it, sparing
+     * a rebuild and any edits */
+    return dithering_apply(dt, 1);
   }
 
-  return dithering_apply(dt);
+  return dithering_apply(dt, 0);
 }
 
 /* True if the Current palette no longer matches the screen's: a mode or
@@ -1151,7 +1155,7 @@ static result_t dithering_idle(dithering_task_t *dt)
     return result_OK;
 
   if (dithering_current_stale(dt))
-    return dithering_apply(dt);
+    return dithering_apply(dt, 0);
 
   if (!dt->animate)
     return result_OK;
@@ -1228,7 +1232,7 @@ result_t dithering_handle(wuss_window_t      *window,
       if (rc != result_OK)
         return rc;
 
-      return dithering_apply(dt);
+      return dithering_apply(dt, 0);
     }
     return result_OK;
 
@@ -1260,7 +1264,7 @@ result_t dithering_handle(wuss_window_t      *window,
 
   case wuss_EVENT_PALETTE:
     if (dt->palette == DITHERING_PALETTE_DESKTOP)
-      return dithering_apply(dt);
+      return dithering_apply(dt, 0);
     return result_OK;
 
   case wuss_EVENT_CLOSE_ADJUST:
