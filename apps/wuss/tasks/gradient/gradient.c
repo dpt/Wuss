@@ -66,16 +66,16 @@ static const int gradient_dithers[] = { 1, 2, 3, 0 };
  * (an 8-bit channel) adds nothing and only clamps. */
 static int dither(int index, int step, int v, int x, int y)
 {
-  int log2n, n, m;
+  int log2n, m;
 
   log2n = gradient_dithers[index];
   if (log2n == 0)
     return CLAMP(v, 0, 255);
 
-  n     = 1 << (2 * log2n);
-  m     = pattern_bayer_threshold_n(x, y, log2n);
+  m = pattern_bayer_threshold_n(x, y, log2n);
 
-  return CLAMP(v + m * step / n - step / 2, 0, 255);
+  /* m * step is never negative, so a shift divides by the matrix's cells */
+  return CLAMP(v + ((m * step) >> (2 * log2n)) - step / 2, 0, 255);
 }
 
 /* the gap between adjacent representable 8-bit values of each R, G, B
