@@ -151,8 +151,15 @@ through messages.
 - Menu: `New note`, `Colour >`, `Edit` (a toggle between editing the source
   and showing the rendered text), `Pin to backdrop` and `Delete`. A
   double-click on a rendered note also starts editing. ESC stops it.
-- Editing is simple. Typing goes at the end of the source only, and
-  BACKSPACE removes the last character. There is no movable caret.
+- Editing happens at a movable caret. A click places it, and a double-click
+  on a rendered note places it near that point in the source. The arrow keys,
+  Home, End, Page Up and Page Down move it. As in writable icons, Shift moves
+  by word and Ctrl to the end of the line (Alt also moves by word, and Cmd on
+  macOS acts as Ctrl). Ctrl+Home and Ctrl+End, or Ctrl+Up and Ctrl+Down, go to
+  the ends of the note. BACKSPACE and DELETE take the same modifiers. Ctrl+K
+  clears to the end of the line and Ctrl+U removes the line. Deleting by line
+  works on the source's lines, and moving by line on the wrapped lines. There
+  is no selection or clipboard.
 - **Notes directory.** A permanent per-user directory, created on first
   use by DPTLib's `path_user_data("Wuss/Notes")`. It survives between
   sessions:

@@ -29,6 +29,8 @@
 
 #define JOTTING_INSET     4
 #define JOTTING_TITLE_MAX 40
+#define JOTTING_COLUMN    (-1)    /* a pixel x meaning the caret's own column */
+#define JOTTING_LINE_END  0x10000 /* a pixel x past the end of any line */
 
 /* a note's file is <Notes><sep><title><ext>: RISC OS has '.' for a
  * separator and no extensions */
@@ -59,6 +61,8 @@ typedef struct jotting
   char              *src;       /* owned Markdown source, terminated */
   int                len;
   int                allocated;
+  int                caret;     /* byte index into src */
+  int                goal_x;    /* column held by vertical moves, or -1 */
   bool               editing;   /* showing the raw source, taking keys */
   bool               dirty;     /* edited since it was last saved */
   wuss_colour_t      colour;
@@ -117,8 +121,10 @@ static result_t jotting_set_source(jotting_t *note, const char *src, int len)
     return rc;
 
   memcpy(note->src, src, (size_t) len);
-  note->len           = len;
+  note->len            = len;
   note->src[note->len] = '\0';
+  note->caret          = len;
+  note->goal_x         = -1;
 
   return result_OK;
 }
@@ -311,32 +317,250 @@ static result_t jotting_set_editing(jotting_t *note, bool editing)
 
 /* ----------------------------------------------------------------------- */
 
-/* ponytail: typing goes at the end only; add a movable caret if notes grow
- * past a few lines */
-static result_t jotting_key(jotting_t *note, const wuss_event_t *event)
+/* key and click events can outrun the redraw that would lay the text out */
+static bool jotting_layout(jotting_t *note)
+{
+  box_t bounds;
+
+  wuss_window_get_content_bounds(note->window, &bounds);
+
+  return mdtext_layout(&note->md, bounds.x1 - bounds.x0 - 2 * JOTTING_INSET) ==
+         result_OK;
+}
+
+/* every caret change ends a run of vertical moves; those restore goal_x */
+static void jotting_caret_set(jotting_t *note, int index)
+{
+  note->caret  = index;
+  note->goal_x = -1;
+  wuss_window_invalidate_visible(note->window);
+}
+
+/* move the caret to the pixel x, or for JOTTING_COLUMN its own column, on the
+ * line 'lines' from its own */
+static void jotting_caret_to(jotting_t *note, int x, int lines)
+{
+  point_t pos;
+  int     goal;
+  int     index;
+
+  if (!jotting_layout(note) ||
+      !mdtext_caret_pos(&note->md, note->caret, &pos))
+    return;
+
+  /* a caret draws a pixel left of its boundary, and that pixel can fall in
+   * a narrow glyph: take the boundary, so Down then Up comes back */
+  goal = -1;
+  if (x == JOTTING_COLUMN)
+  {
+    goal = note->goal_x >= 0 ? note->goal_x : pos.x + 1;
+    x    = goal;
+  }
+
+  pos.x  = x;
+  pos.y += lines * mdtext_line_height(&note->md);
+  if (!mdtext_find_caret(&note->md, pos, &index))
+    return;
+
+  jotting_caret_set(note, index);
+  note->goal_x = goal;
+}
+
+/* lines in a window's height, for Page Up and Page Down */
+static int jotting_page_lines(jotting_t *note)
+{
+  box_t bounds;
+
+  wuss_window_get_content_bounds(note->window, &bounds);
+
+  return MAX((bounds.y1 - bounds.y0) / mdtext_line_height(&note->md), 1);
+}
+
+/* the bounds of the source line, not wrapped line, holding the caret */
+static int jotting_line_start(const jotting_t *note)
+{
+  int i;
+
+  i = note->caret;
+  while (i > 0 && note->src[i - 1] != '\n')
+    i--;
+
+  return i;
+}
+
+static int jotting_line_end(const jotting_t *note)
+{
+  return note->caret + (int) strcspn(note->src + note->caret, "\n");
+}
+
+/* replace the bytes lo..hi of the source with n bytes of 'ins', leaving the
+ * caret after them */
+static result_t jotting_splice(jotting_t  *note,
+                               int         lo,
+                               int         hi,
+                               const char *ins,
+                               int         n)
 {
   result_t rc;
-  int      code;
-  char     utf8[4];
-  int      n;
+
+  if (lo == hi && n == 0)
+    return result_OK;
+
+  rc = jotting_reserve(note, n);
+  if (rc != result_OK)
+    return rc;
+
+  memmove(note->src + lo + n, note->src + hi, (size_t) (note->len - hi + 1));
+  memcpy(note->src + lo, ins, (size_t) n);
+  note->len   += n - (hi - lo);
+  note->dirty  = true;
+  jotting_caret_set(note, lo + n);
+
+  return jotting_refresh(note);
+}
+
+/* remove the source line holding the caret, with one of its newlines */
+static result_t jotting_delete_line(jotting_t *note)
+{
+  int lo;
+  int hi;
+
+  lo = jotting_line_start(note);
+  hi = jotting_line_end(note);
+  if (note->src[hi] == '\n')
+    hi++;
+  else if (lo > 0)
+    lo--;
+
+  return jotting_splice(note, lo, hi, "", 0);
+}
+
+/* Modifiers follow writable icons: Shift moves by word (so does Alt, for
+ * macOS's Option) and Ctrl to the end of the line (Cmd on macOS). */
+static result_t jotting_key(jotting_t *note, const wuss_event_t *event)
+{
+  int           code;
+  int           word;
+  int           ctrl;
+  unsigned long codepoint;
+  int           index;
+  char          utf8[4];
+  int           n;
 
   code = event->data.key.code;
-  if (!note->editing ||
-      (event->data.key.modifiers & (wuss_KEY_MOD_CTRL | wuss_KEY_MOD_ALT)))
+  if (!note->editing)
+    return result_WUSS_KEY_UNCLAIMED;
+
+  word  = event->data.key.modifiers & (wuss_KEY_MOD_SHIFT | wuss_KEY_MOD_ALT);
+  ctrl  = event->data.key.modifiers & wuss_KEY_MOD_CTRL;
+  index = note->caret;
+
+  switch (code)
+  {
+  case wuss_KEY_LEFT:
+    if (ctrl)
+      jotting_caret_to(note, 0, 0);
+    else if (word)
+      jotting_caret_set(note, utf8_word_left(note->src, index));
+    else if (index > 0)
+      jotting_caret_set(note, utf8_prev(note->src, index));
+    return result_OK;
+
+  case wuss_KEY_RIGHT:
+    if (ctrl)
+      jotting_caret_to(note, JOTTING_LINE_END, 0);
+    else if (word)
+      jotting_caret_set(note, utf8_word_right(note->src, note->len, index));
+    else if (index < note->len)
+      jotting_caret_set(note, index + utf8_decode(note->src + index,
+                                                  note->len - index,
+                                                  &codepoint));
+    return result_OK;
+
+  case wuss_KEY_HOME:
+    if (ctrl)
+      jotting_caret_set(note, 0);
+    else
+      jotting_caret_to(note, 0, 0);
+    return result_OK;
+
+  case wuss_KEY_END:
+    if (ctrl)
+      jotting_caret_set(note, note->len);
+    else
+      jotting_caret_to(note, JOTTING_LINE_END, 0);
+    return result_OK;
+
+  case wuss_KEY_UP:
+    if (ctrl)
+      jotting_caret_set(note, 0);
+    else
+      jotting_caret_to(note, JOTTING_COLUMN, -1);
+    return result_OK;
+
+  case wuss_KEY_DOWN:
+    if (ctrl)
+      jotting_caret_set(note, note->len);
+    else
+      jotting_caret_to(note, JOTTING_COLUMN, 1);
+    return result_OK;
+
+  case wuss_KEY_PAGE_UP:
+    jotting_caret_to(note, JOTTING_COLUMN, -jotting_page_lines(note));
+    return result_OK;
+
+  case wuss_KEY_PAGE_DOWN:
+    jotting_caret_to(note, JOTTING_COLUMN, jotting_page_lines(note));
+    return result_OK;
+
+  case wuss_KEY_BACKSPACE:
+    if (ctrl)
+      n = jotting_line_start(note);
+    else if (word)
+      n = utf8_word_left(note->src, index);
+    else
+      n = index > 0 ? utf8_prev(note->src, index) : 0;
+    return jotting_splice(note, n, index, "", 0);
+
+  case wuss_KEY_DELETE:
+    if (ctrl)
+      n = jotting_line_end(note);
+    else if (word)
+      n = utf8_word_right(note->src, note->len, index);
+    else if (index < note->len)
+      n = index + utf8_decode(note->src + index, note->len - index, &codepoint);
+    else
+      n = index;
+    return jotting_splice(note, index, n, "", 0);
+
+  default:
+    break;
+  }
+
+  if (ctrl)
+  {
+    switch (code)
+    {
+    case 'u':
+    case 'U':
+      return jotting_delete_line(note);
+
+    case 'k':
+    case 'K':
+      return jotting_splice(note, index, jotting_line_end(note), "", 0);
+
+    default:
+      return result_WUSS_KEY_UNCLAIMED;
+    }
+  }
+
+  if (event->data.key.modifiers & wuss_KEY_MOD_ALT)
     return result_WUSS_KEY_UNCLAIMED;
 
   switch (code)
   {
   case wuss_KEY_ESCAPE:
     return jotting_set_editing(note, false);
-
-  case wuss_KEY_BACKSPACE:
-    if (note->len == 0)
-      return result_OK;
-    note->len            = utf8_prev(note->src, note->len);
-    note->src[note->len] = '\0';
-    note->dirty          = true;
-    return jotting_refresh(note);
 
   case wuss_KEY_RETURN:
     utf8[0] = '\n';
@@ -352,16 +576,19 @@ static result_t jotting_key(jotting_t *note, const wuss_event_t *event)
     break;
   }
 
-  rc = jotting_reserve(note, n);
-  if (rc != result_OK)
-    return rc;
+  return jotting_splice(note, index, index, utf8, n);
+}
 
-  memcpy(note->src + note->len, utf8, (size_t) n);
-  note->len            += n;
-  note->src[note->len]  = '\0';
-  note->dirty           = true;
+/* put the caret at a point in the content, as a mouse event gives it */
+static void jotting_caret_at_point(jotting_t *note, point_t point)
+{
+  int index;
 
-  return jotting_refresh(note);
+  if (jotting_layout(note) &&
+      mdtext_find_caret(&note->md,
+                        POINT(point.x - JOTTING_INSET, point.y - JOTTING_INSET),
+                        &index))
+    jotting_caret_set(note, index);
 }
 
 static void jotting_redraw(jotting_t *note, const wuss_event_t *event)
@@ -372,20 +599,18 @@ static void jotting_redraw(jotting_t *note, const wuss_event_t *event)
   point_t         caret;
   wuss_colour_t   ink;
 
-  bounds = event->data.redraw.bounds;
-  if (mdtext_layout(&note->md, bounds->x1 - bounds->x0 - 2 * JOTTING_INSET) !=
-      result_OK)
+  if (!jotting_layout(note))
     return;
 
+  bounds   = event->data.redraw.bounds;
   palette  = wuss_get_palette(note->wuss, NULL);
   origin.x = bounds->x0 - event->data.redraw.scroll.x + JOTTING_INSET;
   origin.y = bounds->y0 - event->data.redraw.scroll.y + JOTTING_INSET;
   mdtext_draw(&note->md, event->data.redraw.scr, origin, palette[note->fg],
               colour_rgba(0, 0, 0, 0));
 
-  /* typing goes at the end, so that is where the caret sits: red with the
-   * focus, grey without */
-  if (note->editing && mdtext_caret_pos(&note->md, note->len, &caret))
+  /* red with the focus, grey without */
+  if (note->editing && mdtext_caret_pos(&note->md, note->caret, &caret))
   {
     caret.x += origin.x;
     caret.y += origin.y;
@@ -497,6 +722,7 @@ static result_t jotting_load(jotting_t *note, const char *path)
   while (n == 256);
   fclose(f);
   note->src[note->len] = '\0';
+  note->caret          = note->len;
   if (rc != result_OK)
     return rc;
 
@@ -616,6 +842,7 @@ static result_t jotting_handle(wuss_window_t      *window,
                                const wuss_event_t *event,
                                void               *task_data)
 {
+  result_t   rc;
   jotting_t *note;
 
   NOT_USED(window);
@@ -643,7 +870,15 @@ static result_t jotting_handle(wuss_window_t      *window,
                                        &note->menu_handle);
     }
     if ((event->data.mouse.button & wuss_BUTTON_DOUBLE) && !note->editing)
-      return jotting_set_editing(note, true);
+    {
+      rc = jotting_set_editing(note, true);
+      if (rc != result_OK)
+        return rc;
+    }
+    /* entering the source from the rendered text, this is near, not exact:
+     * the source shows the Markdown markers too */
+    if (note->editing)
+      jotting_caret_at_point(note, event->data.mouse.point);
     return result_OK;
 
   case wuss_EVENT_KEY:
