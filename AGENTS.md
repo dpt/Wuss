@@ -20,7 +20,7 @@ Build directories are per-config; there is **no** plain `build/` — never invok
 
 - `build-asan/`  — **default**. Debug, tests (`BUILD_TESTS=YES`), ASan + UBSan on (`USE_ASAN=YES`). Use this unless told otherwise.
 - `build-sdl/`   — Release, ASan on, tests and apps on (`BUILD_APPS=ON`). Needed for the interactive `wuss` app (target `wuss`) and anything under `apps/wuss/tasks/`.
-- `build-wuss-min/` — Release, tests with `WUSS_FURNITURE=OFF`. Checks the subsystem options still build when trimmed. (`wuss-menu` fails its tick check in this config; this predates the split.) If missing, configure with `cmake -B build-wuss-min -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTS=YES -DWUSS_FURNITURE=OFF -DFETCHCONTENT_SOURCE_DIR_DPTLIB=../DPTLib`.
+- `build-wuss-min/` — Release, tests with `WUSS_FURNITURE=OFF`. Checks the subsystem options still build when trimmed. If missing, configure with `cmake -B build-wuss-min -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTS=YES -DWUSS_FURNITURE=OFF -DFETCHCONTENT_SOURCE_DIR_DPTLIB=../DPTLib`.
 - RISC OS: GCCSDK cross build via `cmake/riscos.cmake`; no build dir is kept. Leave alone unless working on RISC OS.
 - `build-emscripten/` — WebAssembly build of the demo. If missing, configure with `emcmake cmake -B build-emscripten -G Ninja -DBUILD_APPS=ON -DBUILD_TESTS=OFF`, build with `cmake --build build-emscripten --target wuss`, then serve the dir and open `wuss.html` (e.g. `python3 -m http.server -d build-emscripten`). Uses Emscripten's bundled SDL3 and libpng ports (`-sUSE_SDL=3`, `-sUSE_LIBPNG=1`); the browser owns the main loop via `emscripten_set_main_loop_arg`; `resources/` is baked into `wuss.data` and mounted at MEMFS `/resources`. `.github/workflows/pages.yml` publishes this build.
 

@@ -3,6 +3,8 @@
 #ifndef WUSS_ICONBAR_IMPL_H
 #define WUSS_ICONBAR_IMPL_H
 
+#ifdef WUSS_ICONBAR
+
 #include "geom/box.h"
 #include "geom/point.h"
 
@@ -89,5 +91,7 @@ void wuss__iconbar_task_destroyed(wuss_t *wuss, wuss_task_t *task);
 
 /* Free the bar's whole icon store. Teardown only: does not invalidate. */
 void wuss__iconbar_free(wuss_t *wuss);
+
+#endif /* WUSS_ICONBAR */
 
 #endif /* WUSS_ICONBAR_IMPL_H */

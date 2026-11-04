@@ -335,6 +335,7 @@ result_t wuss_message_test(const char *resources)
   }
 #endif
 
+#ifdef WUSS_ICONS
   printf("test: wuss_send_recorded_to a window's icon reaches the window's "
         "task with the icon, and bounces if the icon is deleted\n");
 
@@ -404,6 +405,7 @@ result_t wuss_message_test(const char *resources)
     wuss_window_close(win_recv);
     reap_test_tasks();
   }
+#endif /* WUSS_ICONS */
 
   printf("test: replying with your_ref == my_ref from within the handler "
         "counts as acknowledging a recorded send\n");

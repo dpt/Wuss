@@ -1217,9 +1217,9 @@ QuitFail:
     wuss_task_t       *towner;
     wuss_menu_handle_t h;
     struct wuss__menu *level;
-    wuss_window_t     *win;
-    wuss_event_t       ev;
-    int                i;
+    wuss_window_t *win;
+    wuss_event_t   ev;
+    int            i;
 
     fontfile = pathf("%s/resources/bmfonts/Tiny/Regular.png", resources);
     rc = bmfont_create(fontfile, &font);
@@ -1304,10 +1304,12 @@ QuitFail:
     wuss_menu_set_item_text_live(h, &tk_menu, 1, "Uno");
     if (strcmp(wuss_icon_get_text(wuss__menu_level_icon(level, 1)), "Uno"))
       goto TickCheckFail;
-    win = wuss__menu_level_window(level);
     wuss_menu_set_title_live(h, &tk_menu, "Live");
     wuss_menu_set_title_live(h, &tk_other, "Nope");
+#ifdef WUSS_FURNITURE /* a window without furniture keeps no title */
+    win = wuss__menu_level_window(level);
     if (strcmp(wuss_window_get_title(win), "Live"))       goto TickCheckFail;
+#endif
 
     wuss_menu_close(h);
     if (wuss__menu_chain(twuss) != NULL)                   goto TickCheckFail;

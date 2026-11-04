@@ -3,6 +3,8 @@
 #ifndef WUSS_ICON_IMPL_H
 #define WUSS_ICON_IMPL_H
 
+#ifdef WUSS_ICONS
+
 #include "base/utils.h"
 #include "geom/box.h"
 #include "geom/point.h"
@@ -346,5 +348,7 @@ const bitmap_t *wuss__iconpool_find(const wuss_t      *wuss,
  * so a screen depth change keeps icon colours right; bitmap_t addresses are
  * unchanged, so icons holding them stay valid. */
 result_t wuss__iconpool_match_screen(wuss_t *wuss);
+
+#endif /* WUSS_ICONS */
 
 #endif /* WUSS_ICON_IMPL_H */
