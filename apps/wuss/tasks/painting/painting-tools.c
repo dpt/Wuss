@@ -10,6 +10,7 @@
 #include "framebuf/screen.h"
 #include "geom/box.h"
 #include "utils/array.h"
+#include "utils/maths.h"
 #include "utils/rng.h"
 
 #include "painting.h"
@@ -374,8 +375,9 @@ void painting_invalidate_ants(painting_task_t *pt)
   box_t         bounds;
   const box_t  *spans;
   int           n, nboxes, g, tw, th;
+  unsigned int  rtw, rth;
   unsigned char hit[PAINTING_ANTS_GRID][PAINTING_ANTS_GRID];
-  int           i, c, r, c1, j;
+  int           i, r, cn, c, c1, j;
   box_t         run;
   box_t         boxes[PAINTING_ANTS_BOXES + 1];
 
@@ -388,12 +390,18 @@ void painting_invalidate_ants(painting_task_t *pt)
     tw = DIVIDE_ROUNDING_UP(bounds.x1 - bounds.x0, g);
     th = DIVIDE_ROUNDING_UP(bounds.y1 - bounds.y0, g);
 
+    /* every span shares these divisors, so divide by reciprocal */
+    rtw = DIV_RECIP(tw);
+    rth = DIV_RECIP(th);
+
     memset(hit, 0, sizeof(hit));
     for (i = 0; i < n; i++)
-      for (c = (spans[i].x0 - bounds.x0) / tw;
-           c <= (spans[i].x1 - 1 - bounds.x0) / tw;
-           c++)
-        hit[(spans[i].y0 - bounds.y0) / th][c] = 1;
+    {
+      r  = div_recip(spans[i].y0 - bounds.y0, th, rth);
+      cn = div_recip(spans[i].x1 - 1 - bounds.x0, tw, rtw);
+      for (c = div_recip(spans[i].x0 - bounds.x0, tw, rtw); c <= cn; c++)
+        hit[r][c] = 1;
+    }
 
     nboxes = 0;
     for (r = 0; r < g && nboxes <= PAINTING_ANTS_BOXES; r++)
