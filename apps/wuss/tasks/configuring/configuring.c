@@ -869,7 +869,7 @@ static result_t configuring_section_open(configuring_task_t *task,
   configuring_label_widths(task->wuss, all);
   n = configuring_section_items(all, section, items, map);
 
-  rc = stack_smallest(items, (size_t) n, &doc);
+  rc = stack_smallest(items, n, &doc);
   if (rc != result_OK)
     return rc;
 
@@ -887,7 +887,7 @@ static result_t configuring_section_open(configuring_task_t *task,
     return rc;
 
   root = (box_t) BOX_POS_SIZE(0, 0, doc.w, doc.h);
-  rc = stack_solve(items, (size_t) n, &root, solved);
+  rc = stack_solve(items, n, &root, solved);
   if (rc != result_OK)
     goto failure;
 
