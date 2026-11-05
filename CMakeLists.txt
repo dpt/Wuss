@@ -47,10 +47,17 @@ if(BUILD_APPS AND NOT USE_FORTIFY)
     set(DPTLIB_ALLOC_COUNT ON)
 endif()
 
+# The demo's CRT option. No Vulkan: nothing here recreates the window, which
+# Linux compositors need when a swapchain is reclaimed.
+if(BUILD_APPS AND NOT TARGET_RISCOS)
+    set(DPTLIB_CRT ON)
+    set(DPTLIB_CRT_VULKAN OFF)
+endif()
+
 include(FetchContent)
 FetchContent_Declare(dptlib
                      GIT_REPOSITORY https://github.com/dpt/DPTLib.git
-                     GIT_TAG a76e656928633b491a17e55955d8508171c0eef6)
+                     GIT_TAG 02d30bfd03c47bc70898f4170b77f7f09a2ecd35)
 FetchContent_MakeAvailable(dptlib)
 
 # The demo and the tests load bitmap fonts from resources/bmfonts, which are
@@ -546,8 +553,6 @@ if(BUILD_APPS)
         list(APPEND WUSS_APP_SOURCES apps/wuss/frontend-riscos.c)
     else()
         list(APPEND WUSS_APP_SOURCES
-            apps/wuss/crt.c
-            apps/wuss/crt.h
             apps/wuss/frontend-sdl.c)
     endif()
 
@@ -589,6 +594,10 @@ if(BUILD_APPS)
             # giving "Branch through zero" before main
             target_link_options(wuss PRIVATE -Wl,--gc-sections)
         endif()
+    endif()
+
+    if(NOT TARGET_RISCOS)
+        target_link_libraries(wuss DPTLibCRT)
     endif()
 
     if(TARGET_RISCOS)

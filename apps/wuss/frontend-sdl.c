@@ -21,7 +21,8 @@
 
 #include <SDL3/SDL.h>
 
-#include "crt.h"
+#include "sdl/crt.h"
+
 #include "frontend.h"
 #include "tasks/tasks.h" /* g_tasks.swap_mouse_buttons */
 
@@ -47,6 +48,22 @@
  * zoom. */
 #define WUSS_SDL_BORDER        16
 
+/* ponytail: Chase H.Q.'s by-eye tuning, fixed; plumb through if wuss ever
+ * wants a knob */
+static const crt_params_t sdl_crt_params =
+{
+  0.025f, /* curvature */
+  0.5f,   /* bloom_threshold */
+  0.025f, /* bloom_intensity */
+  1.1f,   /* brightness */
+  1.1f,   /* contrast */
+  1.0f,   /* saturation */
+  0.75f,  /* scanline_intensity */
+  0.3f,   /* vignette_strength */
+  0.6f,   /* chroma_bleed */
+  0.0f    /* glitch */
+};
+
 /* ----------------------------------------------------------------------- */
 
 struct wuss_frontend
@@ -54,7 +71,7 @@ struct wuss_frontend
   SDL_Window          *window;
   SDL_Renderer        *renderer;
   SDL_Texture         *texture;
-  wuss_crt_t          *crt; /* non-NULL: presenting via the CRT shader
+  crt_t               *crt; /* non-NULL: presenting via the CRT shader
                              * instead of renderer/texture (Debug > CRT) */
   int                  scr_width;
   int                  scr_height;
@@ -700,6 +717,8 @@ void wuss_frontend_present(wuss_frontend_t *fe,
                            const box_t     *dirty)
 {
   SDL_FRect screen;
+  float     density;
+  SDL_Rect  viewport;
   Uint64    now;
 
   if (fe->depth == 32)
@@ -768,18 +787,22 @@ void wuss_frontend_present(wuss_frontend_t *fe,
   }
 
 present:
+  screen = sdl_screen_rect(fe);
+
   if (fe->crt != NULL)
   {
-    wuss_crt_render(fe->crt, fe->window,
-                    (fe->depth == 32) ? bm->base : fe->conv.base,
-                    fe->scr_width, fe->scr_height,
-                    (int) (sdl_screen_rect(fe).x /
-                           SDL_GetWindowPixelDensity(fe->window)));
+    density    = SDL_GetWindowPixelDensity(fe->window);
+    viewport.x = (int) (screen.x / density);
+    viewport.y = (int) (screen.y / density);
+    viewport.w = (int) (screen.w / density);
+    viewport.h = (int) (screen.h / density);
+
+    crt_render(fe->crt, fe->window,
+               (fe->depth == 32) ? bm->base : fe->conv.base,
+               fe->scr_width, fe->scr_height, &viewport, &sdl_crt_params);
   }
   else
   {
-    screen = sdl_screen_rect(fe);
-
     SDL_SetRenderDrawColor(fe->renderer, 0, 0, 0, 255);
     SDL_RenderClear(fe->renderer);
     SDL_RenderTexture(fe->renderer, fe->texture, NULL, &screen);
@@ -830,14 +853,15 @@ bool wuss_frontend_set_crt(wuss_frontend_t *fe, bool on)
   if (on)
   {
     sdl_renderer_close(fe);
-    if (wuss_crt_create(fe->window, &fe->crt) == result_OK)
+    fe->crt = crt_create(fe->window, crt_FORMAT_BGRX8888);
+    if (fe->crt != NULL)
       return true;
 
     fprintf(stderr, "Warning: CRT effect unavailable, drawing plainly\n");
   }
   else
   {
-    wuss_crt_destroy(fe->crt, fe->window);
+    crt_destroy(fe->crt, fe->window);
     fe->crt = NULL;
   }
 
@@ -912,7 +936,7 @@ void wuss_frontend_close(wuss_frontend_t *fe)
   if (fe == NULL)
     return;
 
-  wuss_crt_destroy(fe->crt, fe->window);
+  crt_destroy(fe->crt, fe->window);
   sdl_renderer_close(fe);
   SDL_DestroyCursor(fe->wait_cursor);
   SDL_DestroyWindow(fe->window);
