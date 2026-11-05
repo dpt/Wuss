@@ -227,31 +227,6 @@ static void viewing_redraw_stage(viewing_task_t *ic,
   }
 }
 
-/* Repeat the image over the dirty box, one tile at (ox, oy), one copy at a
- * time so tiles are dithered like the single image.
- * ponytail: one call per tile, so a tiny image is slow to fill a large window;
- * add a dithered tiled copy to DPTLib if that matters. */
-static void viewing_redraw_tiles(viewing_task_t *ic,
-                                 screen_t       *scr,
-                                 const box_t    *dirty,
-                                 int             ox,
-                                 int             oy)
-{
-  int w, h;
-  int x0, y0;
-  int x, y;
-
-  w = ic->bitmap.size.w;
-  h = ic->bitmap.size.h;
-
-  x0 = dirty->x0 - ((dirty->x0 - ox) % w + w) % w;
-  y0 = dirty->y0 - ((dirty->y0 - oy) % h + h) % h;
-
-  for (y = y0; y < dirty->y1; y += h)
-    for (x = x0; x < dirty->x1; x += w)
-      viewing_draw_image(ic, scr, x, y);
-}
-
 static result_t viewing_redraw(const wuss_event_t *event, void *task_data)
 {
   viewing_task_t *ic;
@@ -261,6 +236,7 @@ static result_t viewing_redraw(const wuss_event_t *event, void *task_data)
   int             bx, by;
   int             bx0, bx1, by1;
   box_t           band[4];
+  point_t         origin;
 
   ic = task_data;
 
@@ -271,10 +247,12 @@ static result_t viewing_redraw(const wuss_event_t *event, void *task_data)
 
   if (ic->tile)
   {
-    viewing_redraw_tiles(ic, scr, event->data.redraw.content,
-                         bounds->x0 - sx + ic->origin.x,
-                         bounds->y0 - sy + ic->origin.y);
-    return result_OK;
+    origin = POINT(bounds->x0 - sx + ic->origin.x,
+                   bounds->y0 - sy + ic->origin.y);
+    if (ic->alpha)
+      task_draw_checks(scr, bounds, origin);
+    return screen_copy_bitmap_tiled_dithered(scr, bounds, &ic->bitmap, origin,
+                                             ic->dithering);
   }
 
   if (ic->stage)

@@ -57,7 +57,7 @@ endif()
 include(FetchContent)
 FetchContent_Declare(dptlib
                      GIT_REPOSITORY https://github.com/dpt/DPTLib.git
-                     GIT_TAG 02d30bfd03c47bc70898f4170b77f7f09a2ecd35)
+                     GIT_TAG 66e3820811f51401197642bd2e89c6771c81f0fb)
 FetchContent_MakeAvailable(dptlib)
 
 # The demo and the tests load bitmap fonts from resources/bmfonts, which are
