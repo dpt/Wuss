@@ -31,6 +31,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- Patterns is now part of Gradient: Menu > Shape > Two colour draws its blend,
+  Colours and Randomise (Ctrl-R) set its ends and show it, and Reset also makes
+  them black and white. The Patterns task is gone.
 - Tiling is now part of Viewing: Menu's Tile row repeats the image across a
   window filling the screen, Select drag moves the tile origin and Reset origin
   puts it back. Tiles follow Display's dithering. The Tiling task is gone.

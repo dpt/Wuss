@@ -80,9 +80,9 @@ Menu shortcuts (fire when the task has the focus):
 
 | Key           | Action          | Tasks                                                                                                                                                                 |
 | ------------- | --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| F3            | Save / Save as  | ball chars checker clock compositing curving dithering doughnut effecting fern fireworks gradient greebling oscillating orbing painting patterns resizing saturn sofa |
-| Ctrl-R        | Randomise       | checker doughnut fern greebling orbing oscillating patterns saturn sofa                                                                                               |
-| R             | Reset           | checker curving doughnut fern gradient orbing oscillating patterns saturn sofa                                                                                        |
+| F3            | Save / Save as  | ball chars checker clock compositing curving dithering doughnut effecting fern fireworks gradient greebling oscillating orbing painting resizing saturn sofa          |
+| Ctrl-R        | Randomise       | checker doughnut fern gradient greebling orbing oscillating saturn sofa                                                                                               |
+| R             | Reset           | checker curving doughnut fern gradient orbing oscillating saturn sofa                                                                                                 |
 | Space         | Pause           | ball compositing doughnut fern fireworks oscillating saturn sofa                                                                                                      |
 | A C G D       | Add ball, Clear, Gravity, Damping | ball                                                                                                                                                |
 | D S H         | Digital, Seconds, 12-hour | clock                                                                                                                                                       |
@@ -114,7 +114,7 @@ Direct keys:
 | ----------------------------------- | ------------------- | ------------------------------------------------------- |
 | appsfiler filing                    | Arrows              | Move cursor                                             |
 | appsfiler filing                    | Return              | Open item                                               |
-| ball chars clock fireworks patterns | menu shortcuts only | as above                                                |
+| ball chars clock fireworks          | menu shortcuts only | as above                                                |
 | checker                             | Left / Right        | Previous / next pattern                                 |
 | checker                             | Up / Down           | Wider / narrower bands                                  |
 | compositing                         | Left / Right        | Previous / next operator                                |

@@ -30,7 +30,6 @@ result_t keys_app_create(wuss_t *wuss);
 result_t minesweeping_app_create(wuss_t *wuss);
 result_t orbing_app_create(wuss_t *wuss);
 result_t oscillating_app_create(wuss_t *wuss);
-result_t patterns_app_create(wuss_t *wuss);
 result_t pinboard_app_create(wuss_t *wuss);
 result_t pooling_app_create(wuss_t *wuss);
 result_t resizing_app_create(wuss_t *wuss);

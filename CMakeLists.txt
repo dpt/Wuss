@@ -528,7 +528,6 @@ if(BUILD_APPS)
         apps/wuss/tasks/painting/painting-tools.h
         apps/wuss/tasks/palette/palette.c
         apps/wuss/tasks/fireworks/fireworks.c
-        apps/wuss/tasks/patterns/patterns.c
         apps/wuss/tasks/pinboard/pinboard.c
         apps/wuss/tasks/jottings/jottings.c
         apps/wuss/tasks/pooling/pooling.c

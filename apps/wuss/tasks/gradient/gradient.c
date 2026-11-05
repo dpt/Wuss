@@ -4,6 +4,7 @@
 
 #include <math.h>
 #include <stdlib.h>
+#include <time.h>
 
 #ifdef FORTIFY
 #include "fortify/fortify.h"
@@ -18,7 +19,10 @@
 #include "framebuf/colourspace.h"
 #include "framebuf/pattern.h"
 #include "framebuf/pixelfmt.h"
+#include "framebuf/screen.h"
 #include "geom/box.h"
+#include "utils/rng.h"
+#include "wuss/component/colourmenu.h"
 #include "wuss/menu.h"
 #include "wuss/window.h"
 
@@ -32,6 +36,7 @@ typedef enum gradient_shape
   gradient_SHAPE_LINEAR,  /* the original two-axis RGB ramp */
   gradient_SHAPE_RADIAL,  /* hue by distance from the document centre */
   gradient_SHAPE_CONICAL, /* hue by angle about the document centre */
+  gradient_SHAPE_TWO_COLOUR, /* colour a to b, as palette dither patterns */
   gradient_NSHAPES
 }
 gradient_shape_t;
@@ -42,20 +47,29 @@ gradient_shape_t;
  * the ordered-dither matrix forward/backward through 2x2, 4x4 and 8x8. An
  * ADJUST drag sets brightness (vertical, up is brighter) and saturation
  * (horizontal, right is more saturated). Menu > Shape swaps the two-axis
- * ramp for a radial or conical hue sweep; Menu > Reset restores the shape,
- * dither, brightness and saturation; Menu > Save opens a Save As
- * dialogue (drag its icon onto a Filer window, or Save with a full path
- * already typed) that writes the window's content out. Once a click has
- * given the window the input focus, S steps the shape, D steps the dither
- * matrix and R resets. */
+ * ramp for a radial or conical hue sweep, or a left-to-right blend between
+ * two colours. That blend is drawn in GRADIENT_STEP-pixel columns, each an
+ * ordered-dither pattern from pattern_from_colour against the system
+ * palette, so the dither matrix does not apply to it. Its colours start
+ * random; choosing one from Menu > Colours or picking Menu > Randomise (^R)
+ * switches to that shape. Menu > Reset restores the shape, dither,
+ * brightness and saturation and makes the two colours black and white;
+ * Menu > Save opens a Save As dialogue (drag its icon onto a Filer window,
+ * or Save with a full path already typed) that writes the window's content
+ * out. Once a click has given the window the input focus, S steps the shape,
+ * D steps the dither matrix and R resets. */
 typedef struct gradient_task
 {
   taskapp_instance_t  base;
-  wuss_menu_item_t    menu_items[3]; /* per-instance: a shared static would
+  wuss_menu_item_t    menu_items[5]; /* per-instance: a shared static would
                                        * leak one instance's .window pointer
                                        * into another's menu */
   wuss_menu_item_t    shape_items[gradient_NSHAPES];
   wuss_menu_t         shape_menu;
+  wuss_colourlist_t    colours;        /* Colour A/Colour B submenu */
+  rng_t                rng;            /* Randomise */
+  colour_t             a;              /* two colour blend's left edge */
+  colour_t             b;              /* two colour blend's right edge */
   gradient_shape_t     shape;
   int                  dither_index;
   int                  brightness;     /* 0..512, 256 is unchanged */
@@ -72,14 +86,19 @@ enum
 {
   GRADIENT_MENU_SAVE,
   GRADIENT_MENU_SHAPE,
+  GRADIENT_MENU_COLOURS,
+  GRADIENT_MENU_RANDOMISE,
   GRADIENT_MENU_RESET
 };
 
 /* "Shape" submenu rows, indexed by gradient_shape_t */
 static const char *const gradient_shape_names[gradient_NSHAPES] =
 {
-  "Linear", "Radial", "Conical"
+  "Linear", "Radial", "Conical", "Two colour"
 };
+
+/* Colours submenu rows: the a and b fields, in that order */
+static const char *const gradient_colour_names[] = { "Colour A", "Colour B" };
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -92,6 +111,7 @@ static const char *const gradient_shape_names[gradient_NSHAPES] =
 #define GRADIENT_UNITY          256 /* brightness/saturation of 1.0 */
 #define GRADIENT_ADJUST_MAX     512
 #define GRADIENT_DRAG_SCALE       2 /* adjust units per pixel dragged */
+#define GRADIENT_STEP             4 /* two colour pixels per column */
 
 /* ordered (Bayer) dither matrix sizes, as log2 of the side: 2x2, 4x4, 8x8,
  * then 0 for dithering off (plain truncation to the target format).
@@ -191,14 +211,107 @@ static void adjust(const gradient_task_t *gc, int rgb[3])
   }
 }
 
+/* channel c0 -> c1, f of n steps into the blend */
+static int gradient_lerp(unsigned int c0, unsigned int c1, int f, int n)
+{
+  return (int) (c0 * (n - f) + c1 * f) / n;
+}
+
+/* a dither of the adjusted colour f of n steps of the way from a to b */
+static pattern_t gradient_step_pattern(gradient_task_t *gc, int f, int n)
+{
+  unsigned int    ar, ag, ab;
+  unsigned int    br, bg, bb;
+  int             rgb[3];
+  colour_t        mix;
+  const colour_t *palette;
+  int             npalette;
+
+  colour_get_rgb(&gc->a, &ar, &ag, &ab);
+  colour_get_rgb(&gc->b, &br, &bg, &bb);
+
+  rgb[0] = gradient_lerp(ar, br, f, n);
+  rgb[1] = gradient_lerp(ag, bg, f, n);
+  rgb[2] = gradient_lerp(ab, bb, f, n);
+  adjust(gc, rgb);
+
+  mix = colour_rgb(CLAMP(rgb[0], 0, 255),
+                   CLAMP(rgb[1], 0, 255),
+                   CLAMP(rgb[2], 0, 255));
+
+  palette = wuss_get_palette(gc->base.wuss, &npalette);
+
+  return pattern_from_colour(palette, npalette, mix);
+}
+
+/* the two colour blend spans the work area, anchored at its (0,0) in screen
+ * space so it scrolls with the content and every dirty rectangle shares one
+ * dither phase */
+static void gradient_redraw_two_colour(gradient_task_t    *gc,
+                                       const wuss_event_t *event)
+{
+  const box_t *content;
+  const box_t *bounds;
+  int          ox;
+  int          nsteps;
+  int          s;
+  int          s0;
+  int          s1;
+  pattern_t    pat;
+  box_t        col;
+  box_t        clip;
+
+  content = event->data.redraw.content;
+  bounds  = event->data.redraw.bounds;
+
+  ox     = bounds->x0 - event->data.redraw.scroll.x;
+  nsteps = DIVIDE_ROUNDING_UP(bounds->x1 - bounds->x0, GRADIENT_STEP);
+
+  s0 = MAX(0, (content->x0 - ox) / GRADIENT_STEP);
+  s1 = MIN(nsteps - 1, (content->x1 - 1 - ox) / GRADIENT_STEP);
+
+  for (s = s0; s <= s1; s++)
+  {
+    pat          = gradient_step_pattern(gc, s, MAX(nsteps - 1, 1));
+    pat.origin.x = ox;
+    pat.origin.y = bounds->y0 - event->data.redraw.scroll.y;
+
+    col.x0 = ox + s * GRADIENT_STEP;
+    col.x1 = col.x0 + GRADIENT_STEP;
+    col.y0 = content->y0;
+    col.y1 = content->y1;
+    if (!box_intersection(&col, content, &clip))
+      screen_fill_pattern(event->data.redraw.scr, &clip, &pat);
+  }
+}
+
+/* pick both ends of the two colour blend afresh, the second standing out from
+ * the first */
+static void gradient_randomise(gradient_task_t *gc)
+{
+  gc->a = colour_random(&gc->rng);
+  gc->b = colour_random_contrast(&gc->rng, gc->a);
+}
+
 static result_t gradient_init(gradient_task_t *task)
 {
-  result_t rc;
-  int      i;
+  result_t  rc;
+  colour_t *fields[2];
+  int       i;
 
   task->dither_index = GRADIENT_DEFAULT_DITHER;
   task->brightness   = GRADIENT_UNITY;
   task->saturation   = GRADIENT_UNITY;
+
+  rng_seed(&task->rng, (uint32_t) time(NULL));
+  gradient_randomise(task);
+
+  fields[0] = &task->a;
+  fields[1] = &task->b;
+  rc = wuss_colourlist_init(&task->colours, task->base.wuss, NELEMS(fields),
+                            fields, gradient_colour_names);
+  if (rc != result_OK)
+    return rc;
 
   /* gradient_redraw paints every pixel itself */
   rc = wuss_window_create_at(task->base.delegate,
@@ -225,6 +338,12 @@ static result_t gradient_init(gradient_task_t *task)
 
   WUSS_MENU_ITEM_MENU(task->menu_items, GRADIENT_MENU_SHAPE, "Shape",
                       wuss_MENU_ITEM_NONE, &task->shape_menu);
+
+  WUSS_MENU_ITEM_MENU(task->menu_items, GRADIENT_MENU_COLOURS, "Colours",
+                      wuss_MENU_ITEM_DASHED, &task->colours.menu);
+
+  WUSS_MENU_ITEM_SHORTCUT(task->menu_items, GRADIENT_MENU_RANDOMISE,
+                          "Randomise", wuss_MENU_ITEM_NONE, "^R");
 
   WUSS_MENU_ITEM_SHORTCUT(task->menu_items, GRADIENT_MENU_RESET, "Reset",
                           wuss_MENU_ITEM_NONE, "R");
@@ -255,20 +374,27 @@ static result_t gradient_redraw(const wuss_event_t *event, void *task_data)
   sx      = event->data.redraw.scroll.x;
   sy      = event->data.redraw.scroll.y;
 
-  for (y = content->y0; y < content->y1; y++)
+  if (gc->shape == gradient_SHAPE_TWO_COLOUR)
   {
-    for (x = content->x0; x < content->x1; x++)
+    gradient_redraw_two_colour(gc, event);
+  }
+  else
+  {
+    for (y = content->y0; y < content->y1; y++)
     {
-      lx = x - bounds->x0 + sx;
-      ly = y - bounds->y0 + sy;
+      for (x = content->x0; x < content->x1; x++)
+      {
+        lx = x - bounds->x0 + sx;
+        ly = y - bounds->y0 + sy;
 
-      shade(gc->shape, lx, ly, rgb);
-      adjust(gc, rgb);
+        shade(gc->shape, lx, ly, rgb);
+        adjust(gc, rgb);
 
-      screen_set_pixel(scr, x, y,
-                       colour_rgb(dither(di, step[0], rgb[0], lx, ly),
-                                  dither(di, step[1], rgb[1], lx, ly),
-                                  dither(di, step[2], rgb[2], lx, ly)));
+        screen_set_pixel(scr, x, y,
+                         colour_rgb(dither(di, step[0], rgb[0], lx, ly),
+                                    dither(di, step[1], rgb[1], lx, ly),
+                                    dither(di, step[2], rgb[2], lx, ly)));
+      }
     }
   }
 
@@ -284,13 +410,17 @@ static result_t gradient_redraw(const wuss_event_t *event, void *task_data)
 
     char        matrix[8];
 
-    if (dim == 1)
+    if (gc->shape == gradient_SHAPE_TWO_COLOUR)
+      snprintf(matrix, sizeof(matrix), "pattern");
+    else if (dim == 1)
       snprintf(matrix, sizeof(matrix), "off");
     else
       snprintf(matrix, sizeof(matrix), "%dx%d", dim, dim);
 
     snprintf(label, sizeof(label), "%s%s b%d%% s%d%%",
-             matrix, step[1] == 1 ? " (n/a)" : "",
+             matrix,
+             gc->shape != gradient_SHAPE_TWO_COLOUR && step[1] == 1 ? " (n/a)"
+                                                                    : "",
              gc->brightness * 100 / GRADIENT_UNITY,
              gc->saturation * 100 / GRADIENT_UNITY);
 
@@ -384,42 +514,77 @@ static result_t gradient_mouse(const wuss_event_t *event, void *task_data)
   return result_OK;
 }
 
-/* restore the default shape, dither matrix, brightness and saturation */
+/* restore the default shape, dither matrix, brightness, saturation and two
+ * colours */
 static void gradient_reset(gradient_task_t *gc)
 {
   gc->shape        = gradient_SHAPE_LINEAR;
   gc->dither_index = GRADIENT_DEFAULT_DITHER;
   gc->brightness   = GRADIENT_UNITY;
   gc->saturation   = GRADIENT_UNITY;
+  gc->a            = colour_rgb(0x00, 0x00, 0x00);
+  gc->b            = colour_rgb(0xFF, 0xFF, 0xFF);
   wuss_window_invalidate_visible(gc->base.window);
 }
 
-/* Menu pick: a Shape row switches the fill; Reset restores the default
- * shape, dither matrix, brightness and saturation; Save shows the Save
- * As dialogue. A SELECT pick has already closed and freed the chain, so
- * drop the handle then. */
+/* switch the fill, keeping the Shape submenu's tick right if it is open */
+static void gradient_set_shape(gradient_task_t *gc, gradient_shape_t shape)
+{
+  gc->shape = shape;
+  wuss_menu_tick_exclusive_live(gc->base.menu_handle, &gc->shape_menu,
+                                gc->shape);
+  wuss_window_invalidate_visible(gc->base.window);
+}
+
+/* Menu pick: a Shape row switches the fill; a Colours row or Randomise
+ * changes the two colours and shows them; Reset restores the defaults; Save
+ * shows the Save As dialogue. A SELECT pick has already closed and freed the
+ * chain, so drop the handle then. */
 static result_t gradient_menu_select(gradient_task_t    *gc,
                                      const wuss_event_t *event)
 {
   if (event->data.menu_select.menu == &gc->shape_menu)
   {
-    gc->shape = (gradient_shape_t) event->data.menu_select.index;
-    wuss_menu_tick_exclusive_live(gc->base.menu_handle, &gc->shape_menu,
-                                  gc->shape);
-    wuss_window_invalidate_visible(gc->base.window);
+    gradient_set_shape(gc, (gradient_shape_t) event->data.menu_select.index);
 
     return result_OK;
   }
 
-  if (event->data.menu_select.menu != &gc->base.menu)
-    return result_OK;
+  if (wuss_colourlist_selected(&gc->colours, event))
+  {
+    gradient_set_shape(gc, gradient_SHAPE_TWO_COLOUR);
 
-  if (event->data.menu_select.index != GRADIENT_MENU_RESET)
     return result_OK;
+  }
 
-  gradient_reset(gc);
+  if (wuss_menu_select_is(event, &gc->base.menu, GRADIENT_MENU_RANDOMISE))
+  {
+    gradient_randomise(gc);
+    gradient_set_shape(gc, gradient_SHAPE_TWO_COLOUR);
+  }
+  else if (wuss_menu_select_is(event, &gc->base.menu, GRADIENT_MENU_RESET))
+  {
+    gradient_reset(gc);
+  }
 
   return result_OK;
+}
+
+/* Every submenu leaf fires wuss_EVENT_PRE_SUBMENU_OPEN; only the colour rows
+ * retarget the shared colourmenu. */
+static result_t gradient_pre_submenu_open(gradient_task_t    *gc,
+                                          const wuss_event_t *event)
+{
+  result_t rc;
+  int      index;
+
+  if (wuss_colourlist_pre_open(&gc->colours, gc->base.wuss, event, &rc))
+    return rc;
+
+  index = event->data.pre_submenu_open.index;
+
+  return wuss_menu_open_submenu_now(event->data.pre_submenu_open.handle, index,
+                                    gc->menu_items[index].submenu);
 }
 
 /* S steps the shape and D the dither matrix forward. The arrow keys are
@@ -475,6 +640,9 @@ static result_t gradient_handle(wuss_window_t      *window,
 
     return gradient_key(gc, window, event->data.key.code);
   }
+
+  case wuss_EVENT_PRE_SUBMENU_OPEN:
+    return gradient_pre_submenu_open(gc, event);
 
   case wuss_EVENT_MENU_SELECT:
     return gradient_menu_select(gc, event);
