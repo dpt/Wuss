@@ -54,6 +54,10 @@ result_t snapshot_save_png(wuss_window_t    *window,
   bounds.x1 = size.w;
   bounds.y1 = size.h;
 
+  /* a screen's fresh clip is empty, which its primitives read as unclipped
+   * but a handler using the clip to pick what to draw reads as nothing */
+  scr.clip = bounds;
+
   memset(&event, 0, sizeof(event));
   event.kind                = wuss_EVENT_REDRAW;
   event.data.redraw.scr     = &scr;
