@@ -502,7 +502,7 @@ static result_t effecting_show(effecting_task_t *ec, const char *path)
 
   opening = ec->base.window == NULL;
   rc = task_window_fit(ec->base.delegate, &ec->base.window, "Effecting",
-                       wuss_WINDOW_DEFAULT,
+                       wuss_WINDOW_DEFAULT | wuss_WINDOW_FOCUSABLE,
                        wuss_NO_BACKDROP, /* the image covers it all */
                        ec->source.size, SIZE2D(32, 32));
   if (rc != result_OK)
