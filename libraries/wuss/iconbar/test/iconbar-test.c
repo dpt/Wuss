@@ -213,6 +213,8 @@ result_t wuss_iconbar_test(const char *resources)
       box_t                bar, s0;
       wuss_iconbar_icon_t *ic;
       int                  i, y, x0;
+      box_t                cover_box;
+      wuss_window_t       *cover;
 
       spec.text = "Wide label";
       for (i = 0; i < 6; i++)
@@ -232,6 +234,24 @@ result_t wuss_iconbar_test(const char *resources)
       (void) wuss_idle(wuss);
       if (wuss->iconbar.scroll != 0)
         goto Failure;
+
+      /* right end, but under another window: no scroll */
+      cover_box.x0 = bar.x1 - 60;
+      cover_box.y0 = bar.y0 - 20;
+      cover_box.x1 = bar.x1 - 10;
+      cover_box.y1 = bar.y0 + 20;
+      rc = wuss_window_create(owner, &cover_box, "Cover", wuss_WINDOW_DEFAULT,
+                              wuss_NO_BACKDROP, box_size(&cover_box),
+                              SIZE2D(0, 0), &cover);
+      if (rc != result_OK)
+        goto Failure;
+      wuss->pointer = POINT(bar.x1 - 20, y);
+      if (wuss__window_at(wuss, wuss->pointer) != cover)
+        goto Failure;
+      (void) wuss_idle(wuss);
+      if (wuss->iconbar.scroll != 0)
+        goto Failure;
+      wuss_window_close(cover);
 
       /* right end: scrolls left, icon 0 moves left of where it was */
       wuss->pointer = POINT(bar.x1 - 1, y);

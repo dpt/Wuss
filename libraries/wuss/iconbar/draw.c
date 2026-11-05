@@ -8,6 +8,7 @@
 #include "framebuf/screen.h"
 
 #include "../core/types.h"
+#include "../core/input.h"
 #include "../core/invalidate.h"
 #include "../core/palette.h"
 #include "../font/font.h"
@@ -135,7 +136,8 @@ void wuss__iconbar_scroll_tick(wuss_t *wuss)
   }
   else
   {
-    if (box_contains_point(&bar, wuss->pointer.x, wuss->pointer.y))
+    /* not when another window is over that part of the bar */
+    if (wuss__window_at(wuss, wuss->pointer) == wuss->iconbar.window)
     {
       zone = WUSS_ICONBAR_SCROLL_ZONE;
       if (wuss->pointer.x < bar.x0 + zone)

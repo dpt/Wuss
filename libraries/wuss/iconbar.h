@@ -24,9 +24,10 @@
 #define WUSS_ICONBAR_HEIGHT     67
 #define WUSS_ICONBAR_TEXT_PAD   2  /* clear space above the label */
 
-/* An icon bar wider than the screen scrolls: while the pointer is within
- * WUSS_ICONBAR_SCROLL_ZONE pixels of either end of the bar, each idle moves
- * the icons WUSS_ICONBAR_SCROLL_STEP pixels. */
+/* An icon bar wider than the screen scrolls: while the pointer is directly
+ * over the bar, not over a window in front of it, and within
+ * WUSS_ICONBAR_SCROLL_ZONE pixels of either end, each idle moves the icons
+ * WUSS_ICONBAR_SCROLL_STEP pixels. */
 #define WUSS_ICONBAR_SCROLL_ZONE 40
 #define WUSS_ICONBAR_SCROLL_STEP 6
 
