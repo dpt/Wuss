@@ -265,6 +265,84 @@ FlashFail:
       return result_TEST_FAILED;
   }
 
+  printf("test: a menu opened on an inverted palette keeps its rows legible\n");
+  {
+    static const wuss_menu_item_t ink_items[] =
+    {
+      { "One", wuss_MENU_ITEM_NONE, NULL }
+    };
+    static const wuss_menu_t ink_menu =
+    {
+      "Ink", ink_items, NELEMS(ink_items)
+    };
+    /* the default black and white palette, swapped */
+    static const colour_t inverted[] =
+    {
+      { 0xFFFFFFFF },
+      { 0xFF000000 }
+    };
+
+    const char      *fontfile;
+    bmfont_t        *font = NULL;
+    wuss_font_desc_t fdesc;
+    screen_t         iscr;
+    bitmap_t         ibm;
+    void            *ipixels;
+    wuss_t          *iwuss;
+    test_task_t      itc;
+    wuss_task_t     *iowner;
+    wuss_colour_t    ink;
+
+    fontfile = pathf("%s/resources/bmfonts/Tiny/Regular.png", resources);
+    rc = bmfont_create(fontfile, &font);
+    if (rc != result_OK)
+    {
+      printf("wuss_test: ink test could not load %s\n", fontfile);
+      goto Failure;
+    }
+
+    ipixels = malloc((size_t) rowbytes * 200);
+    if (ipixels == NULL) { rc = result_OOM; goto InkFail; }
+    rc = bitmap_init(&ibm, SIZE2D(200, 200), pixelfmt_bgrx8888, rowbytes,
+                     NULL, ipixels);
+    if (rc != result_OK) goto InkFailFree;
+    screen_for_bitmap(&iscr, &ibm);
+
+    fdesc.font       = font;
+    fdesc.font_class = wuss_FONT_CLASS_NONE;
+    fdesc.name       = NULL;
+    rc = wuss_create(&iscr, &fdesc, 1, NULL, 0, NULL, NULL, NULL, &iwuss);
+    if (rc != result_OK) goto InkFailFree;
+
+    memset(&itc, 0, sizeof(itc));
+    iowner = mk_task(iwuss, test_handle, &itc);
+    if (iowner == NULL) { rc = result_OOM; goto InkDestroy; }
+
+    rc = wuss_set_palette(iwuss, inverted, NELEMS(inverted));
+    if (rc != result_OK) goto InkDestroy;
+
+    rc = wuss_menu_open(iowner, &ink_menu, POINT(40, 40), NULL);
+    if (rc != result_OK) goto InkDestroy;
+
+    ink = wuss__menu_level_icon(wuss__menu_chain(iwuss), 0)->spec.fg;
+    if (ink == iwuss->body.menu)
+    {
+      printf("wuss_test: menu ink is the menu body, palette entry %d\n",
+             (int) ink);
+      rc = result_TEST_FAILED;
+    }
+
+InkDestroy:
+    reap_test_tasks();
+    wuss_destroy(iwuss);
+InkFailFree:
+    free(ipixels);
+InkFail:
+    bmfont_destroy(font);
+    if (rc != result_OK)
+      return result_TEST_FAILED;
+  }
+
   printf("test: a parent menu row keeps its highlight while its submenu is "
          "open, and loses it once the submenu closes\n");
   {

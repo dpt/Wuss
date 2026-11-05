@@ -7,6 +7,7 @@
 #include "base/result.h"
 #include "base/utils.h"
 #include "framebuf/bmfont.h"
+#include "framebuf/colour.h"
 #include "geom/box.h"
 #include "geom/point.h"
 #include "geom/size.h"
@@ -23,6 +24,21 @@
 #include "impl.h"
 
 #define WUSS_MENU_TITLE_PAD       2 /* margin either side of the titlebar caption slot, matching wuss__titlebar_draw */
+
+/* ----------------------------------------------------------------------- */
+
+/* The ink for a menu's rows: black or white, whichever suits the menu's body.
+ * Named colours resolve to the nearest palette entry, so on an inverted
+ * palette black is the same entry as the body, which has moved to black. */
+static wuss_colour_t wuss__menu_ink(const wuss_t *wuss)
+{
+  unsigned int r, g, b;
+
+  colour_get_rgb(&wuss->palette[wuss->body.menu], &r, &g, &b);
+
+  return (r * 299 + g * 587 + b * 114) / 1000 >= 128 ? wuss_COLOUR_BLACK
+                                                     : wuss_COLOUR_WHITE;
+}
 
 /* ----------------------------------------------------------------------- */
 
@@ -51,6 +67,7 @@ result_t wuss__menu_spawn(wuss_t             *wuss,
   int                ndashed;
   int                nspecs;
   int                s;
+  wuss_colour_t      ink;
   int                outline_px;
   int                titlebar_height;
   point_t            carve;
@@ -220,8 +237,9 @@ result_t wuss__menu_spawn(wuss_t             *wuss,
   /* One MENU_ENTRY icon per item, in item order, preceded by an inert
    * wuss_ICON_TYPE_RULE icon for each dashed item. specs[] therefore holds
    * nspecs entries; s walks it while i walks the items. */
-  y = 0;
-  s = 0;
+  y   = 0;
+  s   = 0;
+  ink = wuss__menu_ink(wuss);
   for (i = 0; i < menu->nitems; i++)
   {
     const wuss_menu_item_t *item;
@@ -240,7 +258,7 @@ result_t wuss__menu_spawn(wuss_t             *wuss,
       specs[s].bbox.x1 = width;
       specs[s].bbox.y1 = y + sep_h;
       specs[s].text    = "";
-      specs[s].fg      = wuss_COLOUR_BLACK;
+      specs[s].fg      = ink;
       specs[s].bg      = wuss_NO_BACKGROUND;
       specs[s].u.menu_entry.swatch   = wuss_NO_BACKGROUND;
       specs[s].u.menu_entry.shortcut = NULL;
@@ -262,7 +280,7 @@ result_t wuss__menu_spawn(wuss_t             *wuss,
     specs[s].bbox.x1 = width;
     specs[s].bbox.y1 = y + pitch;
     specs[s].text    = item->text ? item->text : "";
-    specs[s].fg      = wuss_COLOUR_BLACK;
+    specs[s].fg      = ink;
     specs[s].bg      = wuss_NO_BACKGROUND;
     specs[s].u.menu_entry.swatch =
       (item->flags & wuss_MENU_ITEM_SWATCH) ? item->swatch : wuss_NO_BACKGROUND;
