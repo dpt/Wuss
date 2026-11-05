@@ -24,6 +24,9 @@
 #define TASKMANAGER_GAP     8
 #define TASKMANAGER_COLUMNS 3 /* of figures, after the labels */
 #define TASKMANAGER_ROWS    10 /* the headings, then the statistics */
+#define TASKMANAGER_HEADING (TASKMANAGER_ROWS + 1) /* row of the task names'
+                                                    * heading, after a gap */
+#define TASKMANAGER_NAMES   (TASKMANAGER_HEADING + 1) /* first task name */
 
 typedef struct taskmanager_stats
 {
@@ -43,6 +46,7 @@ static struct
   wuss_window_t      *window; /* the statistics window, or NULL when closed */
   int                 label_width;
   int                 value_width;
+  int                 row_height;
   taskmanager_stats_t shown;  /* the statistics last drawn */
 }
 tm;
@@ -68,11 +72,19 @@ static int taskmanager_text_width(const char *text)
   return width;
 }
 
+/* The document: the statistics, then one row for each task's name. */
+static size2d_t taskmanager_doc_size(int ntasks)
+{
+  return SIZE2D(2 * TASKMANAGER_MARGIN + tm.label_width +
+                TASKMANAGER_COLUMNS * (TASKMANAGER_GAP + tm.value_width),
+                2 * TASKMANAGER_MARGIN +
+                (TASKMANAGER_NAMES + ntasks) * tm.row_height);
+}
+
 static result_t taskmanager_open(void)
 {
   result_t  rc;
   bmfont_t *font;
-  int       height;
   size2d_t  size;
 
   if (tm.window != NULL)
@@ -85,18 +97,17 @@ static result_t taskmanager_open(void)
   if (font == NULL)
     return result_OK;
 
-  bmfont_get_info(font, NULL, &height, NULL, NULL);
+  bmfont_get_info(font, NULL, &tm.row_height, NULL, NULL);
 
   tm.label_width = taskmanager_text_width("Current allocations");
   tm.value_width = MAX(taskmanager_text_width("9,999,999,999"),
                        taskmanager_text_width("Highest"));
 
-  size = SIZE2D(2 * TASKMANAGER_MARGIN + tm.label_width +
-                TASKMANAGER_COLUMNS * (TASKMANAGER_GAP + tm.value_width),
-                2 * TASKMANAGER_MARGIN + TASKMANAGER_ROWS * height);
+  size = taskmanager_doc_size(wuss_task_count(tm.wuss));
 
   rc = wuss_window_create_at(tm.task, &task_place, size, "Task Manager",
-                             wuss_WINDOW_CLOSE | wuss_WINDOW_BACK,
+                             wuss_WINDOW_CLOSE | wuss_WINDOW_BACK |
+                             wuss_WINDOW_VSCROLL | wuss_WINDOW_RESIZE,
                              wuss_BACKDROP_COLOUR(wuss_COLOUR_WINDOW),
                              size, SIZE2D(0, 0), &tm.window);
   if (rc != result_OK)
@@ -107,9 +118,11 @@ static result_t taskmanager_open(void)
   return result_OK;
 }
 
-/* Draw 'text' in a row: left aligned in the labels at column 0, otherwise
- * right aligned in that column of figures. */
+/* Draw 'text' in a row, in font 'slot': left aligned in the labels at column
+ * 0, otherwise right aligned in that column of figures, which are measured in
+ * the regular font. */
 static result_t taskmanager_cell(const wuss_event_t *event,
+                                 int                 slot,
                                  int                 row,
                                  int                 column,
                                  const char         *text)
@@ -130,9 +143,10 @@ static result_t taskmanager_cell(const wuss_event_t *event,
     x += tm.label_width + column * (TASKMANAGER_GAP + tm.value_width) -
          taskmanager_text_width(text);
 
-  pos = POINT(x, bounds->y0 + TASKMANAGER_MARGIN + row * height + ascent);
+  pos = POINT(x, bounds->y0 - event->data.redraw.scroll.y +
+                 TASKMANAGER_MARGIN + row * height + ascent);
 
-  return wuss_text_draw(tm.wuss, 0, event->data.redraw.scr, text,
+  return wuss_text_draw(tm.wuss, slot, event->data.redraw.scr, text,
                         (int) strlen(text), colour_rgb(0x00, 0x00, 0x00),
                         colour_rgba(0, 0, 0, 0), &pos, NULL);
 }
@@ -153,11 +167,13 @@ static result_t taskmanager_redraw(const wuss_event_t *event)
     1, 1, 1, 1, 3, 3, 1, 1, 1
   };
 
-  result_t rc;
-  size_t   values[TASKMANAGER_ROWS - 1][TASKMANAGER_COLUMNS];
-  int      row;
-  int      column;
-  char     text[numfmt_GROUPED_MAX];
+  result_t           rc;
+  size_t             values[TASKMANAGER_ROWS - 1][TASKMANAGER_COLUMNS];
+  int                row;
+  int                column;
+  char               text[numfmt_GROUPED_MAX];
+  const wuss_task_t *task;
+  const char        *name;
 
   if (wuss_get_font(tm.wuss) == NULL)
     return result_OK;
@@ -180,24 +196,41 @@ static result_t taskmanager_redraw(const wuss_event_t *event)
 
   for (column = 0; column < TASKMANAGER_COLUMNS; column++)
   {
-    rc = taskmanager_cell(event, 0, column + 1, headings[column]);
+    rc = taskmanager_cell(event, 0, 0, column + 1, headings[column]);
     if (rc != result_OK)
       return rc;
   }
 
   for (row = 0; row < TASKMANAGER_ROWS - 1; row++)
   {
-    rc = taskmanager_cell(event, row + 1, 0, labels[row]);
+    rc = taskmanager_cell(event, 0, row + 1, 0, labels[row]);
     if (rc != result_OK)
       return rc;
 
     for (column = 0; column < ncolumns[row]; column++)
     {
       numfmt_grouped(values[row][column], text);
-      rc = taskmanager_cell(event, row + 1, column + 1, text);
+      rc = taskmanager_cell(event, 0, row + 1, column + 1, text);
       if (rc != result_OK)
         return rc;
     }
+  }
+
+  /* slot 1 is the bold weight, when one was supplied */
+  rc = taskmanager_cell(event, (wuss_get_font_n(tm.wuss, 1) != NULL) ? 1 : 0,
+                        TASKMANAGER_HEADING, 0, "Task names");
+  if (rc != result_OK)
+    return rc;
+
+  row = TASKMANAGER_NAMES;
+  for (task = wuss_task_next(tm.wuss, NULL);
+       task != NULL;
+       task = wuss_task_next(tm.wuss, task))
+  {
+    name = wuss_task_get_name(task);
+    rc   = taskmanager_cell(event, 0, row++, 0, name ? name : "(unnamed)");
+    if (rc != result_OK)
+      return rc;
   }
 
   return result_OK;
@@ -207,6 +240,7 @@ static result_t taskmanager_handle(wuss_window_t      *window,
                                    const wuss_event_t *event,
                                    void               *task_data)
 {
+  result_t            rc;
   taskmanager_stats_t stats;
 
   NOT_USED(task_data);
@@ -229,6 +263,14 @@ static result_t taskmanager_handle(wuss_window_t      *window,
     if (tm.window != NULL)
     {
       taskmanager_get_stats(&stats);
+      if (stats.tasks != tm.shown.tasks)
+      {
+        rc = wuss_window_set_doc(tm.window, taskmanager_doc_size(stats.tasks));
+        if (rc != result_OK)
+          return rc;
+      }
+      /* creating a task allocates, so this catches a change of names even
+       * when the number of tasks is unchanged */
       if (memcmp(&stats, &tm.shown, sizeof(stats)) != 0)
         wuss_window_invalidate_visible(tm.window);
     }

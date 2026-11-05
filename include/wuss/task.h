@@ -540,6 +540,23 @@ int wuss_task_has_windows(wuss_t *wuss, wuss_task_t *task);
 int wuss_task_count(const wuss_t *wuss);
 
 /**
+ * Step through the tasks in registration order, child tasks included.
+ *
+ * \param[in] wuss Window manager.
+ * \param[in] task The previous task, or NULL for the first.
+ * \return The next task, or NULL after the last.
+ */
+wuss_task_t *wuss_task_next(const wuss_t *wuss, const wuss_task_t *task);
+
+/**
+ * Fetch a task's name.
+ *
+ * \param[in] task Task to query.
+ * \return The name given to wuss_task_create, or NULL if it had none.
+ */
+const char *wuss_task_get_name(const wuss_task_t *task);
+
+/**
  * Test whether \p task, with its children, is hidden: it has windows hidden
  * by wuss_task_set_hidden (or the hide keys) and none visible.
  *

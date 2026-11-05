@@ -57,3 +57,17 @@ int wuss_task_count(const wuss_t *wuss)
 
   return count;
 }
+
+wuss_task_t *wuss_task_next(const wuss_t *wuss, const wuss_task_t *task)
+{
+  list_t *link;
+
+  link = (task != NULL) ? task->link.next : wuss->tasks.next;
+
+  return (link != NULL) ? wuss__task_from_link(link) : NULL;
+}
+
+const char *wuss_task_get_name(const wuss_task_t *task)
+{
+  return task->name;
+}

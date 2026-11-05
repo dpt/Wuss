@@ -465,6 +465,42 @@ result_t wuss_task_test(const char *resources)
       goto Failure;
   }
 
+  printf("test: wuss_task_next walks the tasks in registration order\n");
+  {
+    static test_task_t tc_i;
+    wuss_task_t       *task_i1, *task_i2;
+    wuss_task_t       *walk;
+    wuss_task_t       *last, *before_last;
+    int                count;
+
+    reap_test_tasks();
+    memset(&tc_i, 0, sizeof(tc_i));
+    task_i1 = mk_task(wuss, test_handle, &tc_i);
+    task_i2 = mk_task(wuss, test_handle, &tc_i);
+    if (task_i1 == NULL || task_i2 == NULL) goto Failure;
+
+    count       = 0;
+    last        = NULL;
+    before_last = NULL;
+    for (walk = wuss_task_next(wuss, NULL);
+         walk != NULL;
+         walk = wuss_task_next(wuss, walk))
+    {
+      before_last = last;
+      last        = walk;
+      count++;
+    }
+    if (count != wuss_task_count(wuss))
+      goto Failure;
+    if (before_last != task_i1 || last != task_i2)
+      goto Failure;
+
+    if (strcmp(wuss_task_get_name(task_i1), "Wuss-Test") != 0)
+      goto Failure;
+
+    reap_test_tasks();
+  }
+
   printf("test: app cycling, hide others and show all\n");
   {
     static test_task_t tc_a, tc_b;
