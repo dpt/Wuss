@@ -71,40 +71,49 @@ static result_t confdlg_cancel(void *opaque, wuss_button_t button)
   return result_OK;
 }
 
-/* Select applies and dismisses; Adjust applies and leaves the dialogue open */
-static result_t confdlg_apply(void *opaque, wuss_button_t button)
+/* Select applies and dismisses; Adjust applies and leaves the dialogue open.
+ * old is the value rows[0] held before the change. */
+static result_t confdlg_commit(confdlg_t    *conf,
+                               wuss_button_t button,
+                               int           old)
 {
-  confdlg_t *conf;
-  int        old;
-  int        row;
-
-  conf = opaque;
+  int row;
 
   if (button & wuss_BUTTON_SELECT)
     confdlg_dismiss(conf);
   else if (!(button & wuss_BUTTON_ADJUST))
     return result_OK;
 
-  old = *confdlg_field(conf, 0);
   for (row = 0; row < conf->desc->nrows; row++)
     *confdlg_field(conf, row) = wuss_icon_get_value(conf->rows[row].slider);
 
   return conf->desc->applied(conf->instance, old);
 }
 
-static result_t confdlg_default(void *opaque, wuss_button_t button)
+static result_t confdlg_apply(void *opaque, wuss_button_t button)
 {
-  result_t   rc;
   confdlg_t *conf;
 
   conf = opaque;
 
+  return confdlg_commit(conf, button, *confdlg_field(conf, 0));
+}
+
+static result_t confdlg_default(void *opaque, wuss_button_t button)
+{
+  result_t   rc;
+  confdlg_t *conf;
+  int        old;
+
+  conf = opaque;
+
+  old = *confdlg_field(conf, 0);
   memcpy(conf->config, conf->desc->defaults, conf->desc->config_size);
   rc = confdlg_fillout(conf);
   if (rc != result_OK)
     return rc;
 
-  return confdlg_apply(conf, button);
+  return confdlg_commit(conf, button, old);
 }
 
 result_t confdlg_create(confdlg_t            *conf,
