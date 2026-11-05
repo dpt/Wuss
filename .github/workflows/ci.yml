@@ -3,7 +3,9 @@
 #
 
 name: Wuss
-on: [push]
+on:
+  push:
+    branches: ['**']  # not tags: a release tag's commit is already built on its branch
 jobs:
   build:
     name: ${{ matrix.config.name }} (${{ matrix.build_type }})
