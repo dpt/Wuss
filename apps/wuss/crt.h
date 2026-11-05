@@ -8,13 +8,14 @@
 #include "base/result.h"
 
 /* Renders the framebuffer through a CRT fragment shader (curvature, chroma
- * bleed, bloom, scanlines, vignette) via SDL's GPU API. Lifted from Chase
- * H.Q.'s SDL3 frontend. The shader is MSL, so this only works on the Metal
- * backend (macOS); elsewhere wuss_crt_create fails and the caller falls back
- * to its plain SDL_Renderer path.
+ * bleed, bloom, scanlines, vignette). Lifted from Chase H.Q.'s SDL3
+ * frontend. Under Emscripten it draws with WebGL; otherwise via SDL's GPU API
+ * with an MSL shader, so only on the Metal backend (macOS). Elsewhere
+ * wuss_crt_create fails and the caller falls back to its plain SDL_Renderer
+ * path.
  *
- * Owns the window's swapchain while it lives: an SDL_Renderer must not be
- * created on the same window. */
+ * Owns the window's swapchain or GL context while it lives: an SDL_Renderer
+ * must not be created on the same window. */
 
 typedef struct wuss_crt wuss_crt_t;
 

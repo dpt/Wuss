@@ -25,6 +25,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   statistics: current, lowest and highest bytes and blocks, plus allocations
   and frees. `BUILD_APPS` turns on DPTLib's `DPTLIB_ALLOC_COUNT`, sending all
   allocation by Wuss, DPTLib and the demo through it.
+- The CRT effect now works in the browser, drawn with WebGL. Display shows its
+  option there too.
 
 ### Changed
 

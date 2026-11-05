@@ -12,16 +12,22 @@
 #endif
 
 #include "base/result.h"
+#include "base/utils.h"
 
 #include <SDL3/SDL.h>
+
+#ifdef __EMSCRIPTEN__
+#include <GLES2/gl2.h>
+#endif
 
 #include "crt.h"
 
 /* ----------------------------------------------------------------------- */
 
-/* Shader knobs, pushed to the fragment shader as a uniform each frame. Must
- * match the MSL Params struct below field-for-field: plain floats, same
- * order, no padding. Chase H.Q.'s time-driven glitch knob is left out. */
+/* Shader knobs, passed to the fragment shader as a uniform. Must match the
+ * MSL Params struct and the GLSL k[] names below field-for-field: plain
+ * floats, same order, no padding. Chase H.Q.'s time-driven glitch knob is
+ * left out. */
 typedef struct wuss_crt_params
 {
   float curvature;          /* barrel distortion strength */
@@ -35,17 +41,6 @@ typedef struct wuss_crt_params
   float chroma_bleed;       /* PAL horizontal colour smear, 0.0 = off */
 }
 wuss_crt_params_t;
-
-struct wuss_crt
-{
-  SDL_GPUDevice           *gpu;
-  SDL_GPUTexture          *texture;  /* holds the uploaded framebuffer */
-  SDL_GPUTransferBuffer   *transfer; /* staging buffer for the upload */
-  int                      width;    /* size texture/transfer were made at */
-  int                      height;
-  SDL_GPUSampler          *sampler;
-  SDL_GPUGraphicsPipeline *pipeline;
-};
 
 /* ----------------------------------------------------------------------- */
 
@@ -62,6 +57,278 @@ static const wuss_crt_params_t wuss_crt_params =
   0.75f,  /* scanline_intensity */
   0.3f,   /* vignette_strength */
   0.6f    /* chroma_bleed */
+};
+
+/* ----------------------------------------------------------------------- */
+
+#ifdef __EMSCRIPTEN__
+
+/* WebGL backend: SDL's GPU API has no browser driver, so this draws with
+ * GLES2, which Emscripten maps to WebGL. */
+
+struct wuss_crt
+{
+  SDL_GLContext context;
+  GLuint        program;
+  GLuint        buffer;
+  GLuint        texture; /* holds the uploaded framebuffer */
+  GLint         size;    /* location of the size uniform */
+  int           width;   /* size texture was made at */
+  int           height;
+};
+
+/* Fullscreen triangle, in clip space. */
+static const GLfloat wuss_crt_triangle[] = { -1, -1, 3, -1, -1, 3 };
+
+static const char wuss_crt_vertex_glsl[] =
+  "attribute vec2 pos;\n"
+  "varying vec2 v_uv;\n"
+  "void main() {\n"
+  "  v_uv = vec2(pos.x * 0.5 + 0.5, 0.5 - pos.y * 0.5);\n"
+  "  gl_Position = vec4(pos, 0.0, 1.0);\n"
+  "}\n";
+
+/* The MSL shader below, translated. WebGL has no BGRA upload, so the bytes
+ * arrive as RGBA and tap() swaps them back. */
+static const char wuss_crt_fragment_glsl[] =
+  "#extension GL_OES_standard_derivatives : enable\n"
+  "precision highp float;\n"
+  "varying vec2 v_uv;\n"
+  "uniform sampler2D tex;\n"
+  "uniform vec2 size;\n"
+  "uniform float k[9];\n"
+  "#define curvature k[0]\n"
+  "#define bloomThreshold k[1]\n"
+  "#define bloomIntensity k[2]\n"
+  "#define brightness k[3]\n"
+  "#define contrast k[4]\n"
+  "#define saturation k[5]\n"
+  "#define scanlineIntensity k[6]\n"
+  "#define vignetteStrength k[7]\n"
+  "#define chromaBleed k[8]\n"
+  "vec3 tap(vec2 uv) {\n"
+  "  return texture2D(tex, clamp(uv, 0.0, 1.0)).bgr;\n"
+  "}\n"
+  "void main() {\n"
+  /* barrel distortion via dot(coord,coord) radial distance */
+  "  vec2 coord = v_uv * 2.0 - 1.0;\n"
+  "  coord *= 1.0 + dot(coord, coord) * curvature;\n"
+  "  vec2 uv = coord * 0.5 + 0.5;\n"
+  /* soft edge: smoothstep border fade rather than a jagged hard cutoff */
+  "  vec2 edge = smoothstep(vec2(0.0), vec2(0.005), uv) *\n"
+  "              smoothstep(vec2(0.0), vec2(0.005), 1.0 - uv);\n"
+  "  float edgeMask = edge.x * edge.y;\n"
+  "  vec2 texel = 1.0 / size;\n"
+  "  vec3 c = tap(uv);\n"
+  /* PAL colour bleed: chroma smears rightwards over four decaying taps,
+   * luma from the centre tap only */
+  "  vec3 W = vec3(0.299, 0.587, 0.114);\n"
+  "  vec3 bleed = c * 0.4;\n"
+  "  bleed += tap(uv - vec2(texel.x, 0.0)) * 0.3;\n"
+  "  bleed += tap(uv - vec2(texel.x * 2.0, 0.0)) * 0.2;\n"
+  "  bleed += tap(uv - vec2(texel.x * 3.0, 0.0)) * 0.1;\n"
+  "  float ylum = dot(c, W);\n"
+  "  vec3 chroma = mix(c - ylum, bleed - dot(bleed, W), chromaBleed);\n"
+  "  c = ylum + chroma;\n"
+  "  c *= edgeMask;\n"
+  /* bloom: threshold-gated centre + 4-tap cross */
+  "  vec3 bloom = vec3(0.0);\n"
+  "  vec3 bc = c;\n"
+  "  vec3 bn = tap(uv + vec2(0.0, texel.y));\n"
+  "  vec3 bs = tap(uv - vec2(0.0, texel.y));\n"
+  "  vec3 be = tap(uv + vec2(texel.x, 0.0));\n"
+  "  vec3 bw = tap(uv - vec2(texel.x, 0.0));\n"
+  "  if (max(bc.r, max(bc.g, bc.b)) > bloomThreshold) bloom += bc;\n"
+  "  if (max(bn.r, max(bn.g, bn.b)) > bloomThreshold) bloom += bn;\n"
+  "  if (max(bs.r, max(bs.g, bs.b)) > bloomThreshold) bloom += bs;\n"
+  "  if (max(be.r, max(be.g, be.b)) > bloomThreshold) bloom += be;\n"
+  "  if (max(bw.r, max(bw.g, bw.b)) > bloomThreshold) bloom += bw;\n"
+  "  c += bloom * bloomIntensity;\n"
+  /* brightness / contrast / saturation */
+  "  c = (c - 0.5) * contrast + 0.5;\n"
+  "  c *= brightness;\n"
+  "  float lum = dot(c, W);\n"
+  "  c = mix(vec3(lum), c, saturation);\n"
+  /* one scanline per source row, intensity adapted to local luminance;
+   * band-limited via fwidth so it fades out rather than aliasing into moire
+   * when a device pixel spans several source rows */
+  "  float scanPhase = uv.y * size.y * 2.0 * 3.14159265;\n"
+  "  float scanWidth = fwidth(scanPhase);\n"
+  "  float scanAtten = scanWidth > 0.0001 ?\n"
+  "    clamp(sin(scanWidth * 0.5) / (scanWidth * 0.5), 0.0, 1.0) : 1.0;\n"
+  "  float scan = sin(scanPhase) * scanAtten * 0.5 + 0.5;\n"
+  "  float adaptive = mix(scanlineIntensity, scanlineIntensity * (1.0 - lum), 0.5);\n"
+  "  c *= 1.0 - adaptive * scan;\n"
+  /* vignette: Chebyshev (max-component) distance falloff */
+  "  vec2 d = abs(uv - 0.5) * 2.0;\n"
+  "  c *= 1.0 - max(d.x, d.y) * max(d.x, d.y) * vignetteStrength;\n"
+  "  gl_FragColor = vec4(c, 1.0);\n"
+  "}\n";
+
+/* ----------------------------------------------------------------------- */
+
+static void wuss_crt_attach_shader(GLuint      program,
+                                   GLenum      type,
+                                   const char *code)
+{
+  GLuint shader;
+  GLint  compiled;
+  char   log[512];
+
+  shader = glCreateShader(type);
+  glShaderSource(shader, 1, &code, NULL);
+  glCompileShader(shader);
+
+  glGetShaderiv(shader, GL_COMPILE_STATUS, &compiled);
+  if (!compiled)
+  {
+    glGetShaderInfoLog(shader, sizeof(log), NULL, log);
+    fprintf(stderr, "Error: CRT shader: %s\n", log);
+  }
+
+  /* a failed shader fails the link, which the caller checks */
+  glAttachShader(program, shader);
+  glDeleteShader(shader); /* only flagged: the program holds it */
+}
+
+result_t wuss_crt_create(SDL_Window *window, wuss_crt_t **pcrt)
+{
+  wuss_crt_t *crt;
+  GLint       linked;
+
+  crt = calloc(1, sizeof(*crt));
+  if (crt == NULL)
+    return result_OOM;
+
+  /* needs a window SDL_CreateRenderer already made into an OpenGL one */
+  crt->context = SDL_GL_CreateContext(window);
+  if (crt->context == NULL)
+  {
+    fprintf(stderr, "Error: SDL_GL_CreateContext: %s\n", SDL_GetError());
+    free(crt);
+    return result_NOT_SUPPORTED;
+  }
+
+  crt->program = glCreateProgram();
+  wuss_crt_attach_shader(crt->program, GL_VERTEX_SHADER, wuss_crt_vertex_glsl);
+  wuss_crt_attach_shader(crt->program, GL_FRAGMENT_SHADER, wuss_crt_fragment_glsl);
+  glBindAttribLocation(crt->program, 0, "pos");
+  glLinkProgram(crt->program);
+
+  glGetProgramiv(crt->program, GL_LINK_STATUS, &linked);
+  if (!linked)
+  {
+    fprintf(stderr, "Error: CRT program failed to link\n");
+    wuss_crt_destroy(crt, window);
+    return result_NOT_SUPPORTED;
+  }
+
+  glUseProgram(crt->program);
+  crt->size = glGetUniformLocation(crt->program, "size");
+  glUniform1i(glGetUniformLocation(crt->program, "tex"), 0);
+  glUniform1fv(glGetUniformLocation(crt->program, "k"),
+               sizeof(wuss_crt_params) / sizeof(float),
+               (const GLfloat *) &wuss_crt_params);
+
+  glGenBuffers(1, &crt->buffer);
+  glBindBuffer(GL_ARRAY_BUFFER, crt->buffer);
+  glBufferData(GL_ARRAY_BUFFER, sizeof(wuss_crt_triangle), wuss_crt_triangle,
+               GL_STATIC_DRAW);
+  glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, NULL);
+  glEnableVertexAttribArray(0);
+
+  /* linear filtering: the soft look is part of the effect */
+  glGenTextures(1, &crt->texture);
+  glActiveTexture(GL_TEXTURE0);
+  glBindTexture(GL_TEXTURE_2D, crt->texture);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+  /* A canvas has one WebGL context for life: each SDL context wraps the same
+   * one, so it arrives with the SDL_Renderer's state. Clear what would get in
+   * the way. Blending and scissoring stay off, as a new SDL_Renderer assumes
+   * of scissoring and sets for itself otherwise. */
+  glDisable(GL_BLEND);
+  glDisable(GL_SCISSOR_TEST);
+  glDisableVertexAttribArray(1);
+  glDisableVertexAttribArray(2);
+  glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+
+  *pcrt = crt;
+  return result_OK;
+}
+
+void wuss_crt_render(wuss_crt_t *crt,
+                     SDL_Window *window,
+                     const void *pixels,
+                     int         width,
+                     int         height,
+                     int         border)
+{
+  int win_w, win_h;
+  int sc_w, sc_h;
+  int x, y;
+
+  /* ponytail: uploads the whole frame each present, ignoring the dirty
+   * rect; a partial upload would save bandwidth if it ever matters */
+  if (width != crt->width || height != crt->height)
+  {
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA,
+                 GL_UNSIGNED_BYTE, pixels);
+    glUniform2f(crt->size, (GLfloat) width, (GLfloat) height);
+    crt->width  = width;
+    crt->height = height;
+  }
+  else
+  {
+    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height, GL_RGBA,
+                    GL_UNSIGNED_BYTE, pixels);
+  }
+
+  SDL_GetWindowSize(window, &win_w, &win_h);
+  SDL_GetWindowSizeInPixels(window, &sc_w, &sc_h);
+
+  glClear(GL_COLOR_BUFFER_BIT);
+
+  /* the canvas may be denser than the window on high-DPI displays */
+  x = border * sc_w / win_w;
+  y = border * sc_h / win_h;
+  glViewport(x, y, sc_w - 2 * x, sc_h - 2 * y);
+
+  glDrawArrays(GL_TRIANGLES, 0, 3);
+
+  SDL_GL_SwapWindow(window);
+}
+
+void wuss_crt_destroy(wuss_crt_t *crt, SDL_Window *window)
+{
+  NOT_USED(window);
+
+  if (crt == NULL)
+    return;
+
+  glDeleteTextures(1, &crt->texture);
+  glDeleteBuffers(1, &crt->buffer);
+  glDeleteProgram(crt->program);
+  SDL_GL_DestroyContext(crt->context);
+  free(crt);
+}
+
+#else /* !__EMSCRIPTEN__ */
+
+/* SDL GPU backend. */
+
+struct wuss_crt
+{
+  SDL_GPUDevice           *gpu;
+  SDL_GPUTexture          *texture;  /* holds the uploaded framebuffer */
+  SDL_GPUTransferBuffer   *transfer; /* staging buffer for the upload */
+  int                      width;    /* size texture/transfer were made at */
+  int                      height;
+  SDL_GPUSampler          *sampler;
+  SDL_GPUGraphicsPipeline *pipeline;
 };
 
 /* Fullscreen triangle generated from vertex_id, so no vertex buffer. */
@@ -390,6 +657,8 @@ void wuss_crt_destroy(wuss_crt_t *crt, SDL_Window *window)
   SDL_DestroyGPUDevice(crt->gpu);
   free(crt);
 }
+
+#endif /* __EMSCRIPTEN__ */
 
 #endif /* USE_SDL */
 #endif /* WUSS_APP */
