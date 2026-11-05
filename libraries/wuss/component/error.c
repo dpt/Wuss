@@ -448,7 +448,7 @@ static result_t error_create(wuss_t *wuss)
 
   desc.handle    = error_task_handle;
   desc.task_data = NULL;
-  desc.name      = "error";
+  desc.name      = "Error";
   rc = wuss_task_create(wuss, &desc, &g.task);
   if (rc != result_OK)
     return rc;

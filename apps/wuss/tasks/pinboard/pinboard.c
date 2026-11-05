@@ -1101,7 +1101,7 @@ result_t pinboard_app_create(wuss_t *wuss)
 
   desc.handle    = pinboard_handle;
   desc.task_data = pb;
-  desc.name      = "pinboard";
+  desc.name      = "Pinboard";
   rc = wuss_task_create(wuss, &desc, &pb->task);
   if (rc != result_OK)
   {

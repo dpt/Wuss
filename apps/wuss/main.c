@@ -622,7 +622,7 @@ static result_t run_wuss(const char    *resources,
 
     desc.handle    = task_handle_event;
     desc.task_data = NULL;
-    desc.name      = "menu";
+    desc.name      = "Menu";
     rc = wuss_task_create(wuss, &desc, &g_tasks.menu_task);
     logf_info("wuss: wuss_task_create(menu) -> rc=0x%X (%s)", rc,
               wuss_result_string(rc));

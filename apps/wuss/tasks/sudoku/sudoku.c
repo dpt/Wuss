@@ -184,7 +184,7 @@ result_t sudoku_create(wuss_t *wuss, sudoku_task_t **out)
 
   delegate_desc.handle    = sudoku_handle;
   delegate_desc.task_data = task;
-  delegate_desc.name      = "sudoku";
+  delegate_desc.name      = "Sudoku";
   rc = wuss_task_create(wuss, &delegate_desc, &delegate);
   if (rc != result_OK)
   {

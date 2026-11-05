@@ -218,7 +218,7 @@ static result_t palette_open(wuss_t *wuss, bool screen, palette_task_t **out)
   /* backdrop for any rounding gap around the grid */
   delegate_desc.handle    = palette_handle;
   delegate_desc.task_data = task;
-  delegate_desc.name      = "palette";
+  delegate_desc.name      = "Palette";
   rc = wuss_task_create(wuss, &delegate_desc, &task->delegate);
   if (rc != result_OK)
   {

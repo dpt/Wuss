@@ -221,7 +221,7 @@ result_t saturn_create(wuss_t *wuss, saturn_task_t **out)
   /* saturn_redraw paints its own background */
   delegate_desc.handle    = saturn_handle;
   delegate_desc.task_data = task;
-  delegate_desc.name      = "saturn";
+  delegate_desc.name      = "Saturn";
   rc = wuss_task_create(wuss, &delegate_desc, &delegate);
   if (rc != result_OK)
   {

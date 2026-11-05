@@ -404,7 +404,7 @@ wuss_task_t *wuss__menu_task(wuss_t *wuss)
   desc.handle    = wuss__menu_handle;
   desc.task_data = wuss; /* the ICON path walks the chain by window; the IDLE
                           * path (window == NULL) needs the wuss_t directly */
-  desc.name      = "wuss:menu";
+  desc.name      = "Wuss:Menu";
 
   if (wuss_task_create(wuss, &desc, &wuss->menu->task) != result_OK)
     return NULL;

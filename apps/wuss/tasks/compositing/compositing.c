@@ -143,7 +143,7 @@ result_t compositing_create(wuss_t *wuss, compositing_task_t **out)
   /* compositing_redraw paints every pixel itself */
   delegate_desc.handle    = compositing_handle;
   delegate_desc.task_data = task;
-  delegate_desc.name      = "compositing";
+  delegate_desc.name      = "Compositing";
   rc = wuss_task_create(wuss, &delegate_desc, &delegate);
   if (rc != result_OK)
     goto free_dst; /* nothing registered yet; nobody else owns task */

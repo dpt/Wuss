@@ -335,7 +335,7 @@ result_t fireworks_create(wuss_t *wuss, fireworks_task_t **out)
   /* fireworks_redraw paints its own background every frame */
   delegate_desc.handle    = fireworks_handle;
   delegate_desc.task_data = task;
-  delegate_desc.name      = "fireworks";
+  delegate_desc.name      = "Fireworks";
   rc = wuss_task_create(wuss, &delegate_desc, &delegate);
   if (rc != result_OK)
   {

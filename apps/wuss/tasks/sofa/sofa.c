@@ -441,7 +441,7 @@ result_t sofa_create(wuss_t *wuss, sofa_task_t **out)
   /* sofa_redraw paints its own background every frame */
   delegate_desc.handle    = sofa_handle;
   delegate_desc.task_data = task;
-  delegate_desc.name      = "sofa";
+  delegate_desc.name      = "Sofa";
   rc = wuss_task_create(wuss, &delegate_desc, &delegate);
   if (rc != result_OK)
   {

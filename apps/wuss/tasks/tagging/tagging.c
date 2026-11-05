@@ -245,7 +245,7 @@ static result_t tagging_name_create(tagging_task_t *tt)
 
   desc.handle    = tagging_name_handle;
   desc.task_data = tt;
-  desc.name      = "tagging-name";
+  desc.name      = "Tagging-Name";
   rc = wuss_task_create(tt->wuss, &desc, &tt->name_task);
   if (rc != result_OK)
     return rc;
@@ -475,7 +475,7 @@ result_t tagging_create(wuss_t *wuss, tagging_task_t **out)
 
   delegate_desc.handle    = tagging_handle;
   delegate_desc.task_data = task;
-  delegate_desc.name      = "tagging";
+  delegate_desc.name      = "Tagging";
   rc = wuss_task_create(wuss, &delegate_desc, &task->delegate);
   if (rc != result_OK)
   {

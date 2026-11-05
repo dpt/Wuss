@@ -314,7 +314,7 @@ result_t wuss_dcs_create(wuss_dcs_t          **out,
 
   desc.handle    = dcs_task_handle;
   desc.task_data = dcs;
-  desc.name      = "dcs";
+  desc.name      = "DCS";
   rc = wuss_task_create(wuss, &desc, &dcs->task);
   if (rc != result_OK)
     goto failure;

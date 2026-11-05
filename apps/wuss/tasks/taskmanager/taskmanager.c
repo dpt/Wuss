@@ -254,7 +254,7 @@ result_t taskmanager_create(wuss_t *wuss)
 
   desc.handle    = taskmanager_handle;
   desc.task_data = NULL;
-  desc.name      = "taskmanager";
+  desc.name      = "TaskManager";
   rc = wuss_task_create(wuss, &desc, &wtask);
   if (rc != result_OK)
     return rc;

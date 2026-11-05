@@ -44,7 +44,7 @@ result_t pooling_create(wuss_t *wuss, pooling_task_t **out)
 
   delegate_desc.handle    = pooling_handle;
   delegate_desc.task_data = task;
-  delegate_desc.name      = "pooling";
+  delegate_desc.name      = "Pooling";
   rc = wuss_task_create(wuss, &delegate_desc, &delegate);
   if (rc != result_OK)
   {

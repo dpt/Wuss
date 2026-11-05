@@ -195,7 +195,7 @@ result_t painting_create_with(wuss_t                     *wuss,
    * content area */
   delegate_desc.handle    = painting_handle;
   delegate_desc.task_data = task;
-  delegate_desc.name      = "painting";
+  delegate_desc.name      = "Painting";
   rc = wuss_task_create(wuss, &delegate_desc, &delegate);
   if (rc != result_OK)
   {

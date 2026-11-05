@@ -389,7 +389,7 @@ result_t shortcuts_create(wuss_t *wuss, shortcuts_task_t **out)
 
   delegate_desc.handle    = shortcuts_handle;
   delegate_desc.task_data = task;
-  delegate_desc.name      = "shortcuts";
+  delegate_desc.name      = "Shortcuts";
   rc = wuss_task_create(wuss, &delegate_desc, &delegate);
   if (rc != result_OK)
   {

@@ -394,7 +394,7 @@ result_t wuss_iconbar_test(const char *resources)
     memset(&tc, 0, sizeof(tc));
     desc.handle    = test_handle;
     desc.task_data = &tc;
-    desc.name      = "wuss-test";
+    desc.name      = "Wuss-Test";
     rc = wuss_task_create(fw, &desc, &owner);
     if (rc != result_OK)
       goto DrawFail;

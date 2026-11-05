@@ -658,7 +658,7 @@ result_t dithering_create(wuss_t *wuss, dithering_task_t **out)
 
   delegate_desc.handle    = dithering_handle;
   delegate_desc.task_data = task;
-  delegate_desc.name      = "dithering";
+  delegate_desc.name      = "Dithering";
   rc = wuss_task_create(wuss, &delegate_desc, &task->delegate);
   if (rc != result_OK)
   {

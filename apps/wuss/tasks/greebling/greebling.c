@@ -542,7 +542,7 @@ result_t greebling_create(wuss_t *wuss, greebling_task_t **out)
   /* greebling_redraw paints every pixel itself */
   delegate_desc.handle    = greebling_handle;
   delegate_desc.task_data = task;
-  delegate_desc.name      = "greebling";
+  delegate_desc.name      = "Greebling";
   rc = wuss_task_create(wuss, &delegate_desc, &delegate);
   if (rc != result_OK)
   {

@@ -112,7 +112,7 @@ result_t curving_create(wuss_t *wuss, curving_task_t **out)
   /* curving_redraw paints its own background */
   delegate_desc.handle    = curving_handle;
   delegate_desc.task_data = task;
-  delegate_desc.name      = "curving";
+  delegate_desc.name      = "Curving";
   rc = wuss_task_create(wuss, &delegate_desc, &delegate);
   if (rc != result_OK)
   {

@@ -464,7 +464,7 @@ result_t chars_create(wuss_t *wuss, chars_task_t **out)
   /* chars_redraw paints every cell itself */
   delegate_desc.handle    = chars_handle;
   delegate_desc.task_data = task;
-  delegate_desc.name      = "chars";
+  delegate_desc.name      = "Chars";
   rc = wuss_task_create(wuss, &delegate_desc, &delegate);
   if (rc != result_OK)
   {

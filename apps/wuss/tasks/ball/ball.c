@@ -137,7 +137,7 @@ result_t ball_create(wuss_t *wuss, ball_task_t **out)
   /* ball_redraw paints its own background every frame */
   delegate_desc.handle    = ball_handle;
   delegate_desc.task_data = task;
-  delegate_desc.name      = "ball";
+  delegate_desc.name      = "Ball";
   rc = wuss_task_create(wuss, &delegate_desc, &delegate);
   if (rc != result_OK)
   {

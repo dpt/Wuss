@@ -195,7 +195,7 @@ result_t resizing_create(wuss_t *wuss, resizing_task_t **out)
 
   delegate_desc.handle    = resizing_handle;
   delegate_desc.task_data = task;
-  delegate_desc.name      = "resizing";
+  delegate_desc.name      = "Resizing";
   rc = wuss_task_create(wuss, &delegate_desc, &task->delegate);
   if (rc != result_OK)
   {

@@ -118,7 +118,7 @@ result_t fern_create(wuss_t *wuss, fern_task_t **out)
 
   delegate_desc.handle    = fern_handle;
   delegate_desc.task_data = task;
-  delegate_desc.name      = "fern";
+  delegate_desc.name      = "Fern";
   rc = wuss_task_create(wuss, &delegate_desc, &delegate);
   if (rc != result_OK)
   {

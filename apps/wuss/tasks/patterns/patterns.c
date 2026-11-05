@@ -102,7 +102,7 @@ result_t patterns_create(wuss_t *wuss, patterns_task_t **out)
   /* patterns_redraw paints every pixel itself */
   delegate_desc.handle    = patterns_handle;
   delegate_desc.task_data = task;
-  delegate_desc.name      = "patterns";
+  delegate_desc.name      = "Patterns";
   rc = wuss_task_create(wuss, &delegate_desc, &delegate);
   if (rc != result_OK)
   {

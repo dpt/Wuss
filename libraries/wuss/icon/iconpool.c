@@ -1,6 +1,7 @@
 /* wuss/icon/iconpool.c -- wuss-wide icon set loaded from a directory of PNGs */
 
 #include <assert.h>
+#include <ctype.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -451,8 +452,9 @@ result_t wuss_task_iconpool_load(wuss_task_t *task, const char *dir)
 result_t wuss_task_iconpool_load_resource(wuss_task_t *task,
                                           const char  *resources)
 {
-  char sub[ICONS_DIR_MAX];
-  char dir[ICONS_DIR_MAX];
+  char  sub[ICONS_DIR_MAX];
+  char *p;
+  char  dir[ICONS_DIR_MAX];
 
   assert(task != NULL);
 
@@ -465,6 +467,10 @@ result_t wuss_task_iconpool_load_resource(wuss_task_t *task,
   if ((size_t) snprintf(sub, sizeof(sub), "wuss-tasks/%s/iconpool",
                         task->name) >= sizeof(sub))
     return result_BAD_ARG;
+
+  /* task names are for display; their directories are lower case */
+  for (p = sub; *p != '\0'; p++)
+    *p = (char) tolower((unsigned char) *p);
 
   icons_resource_dir(dir, resources, sub);
 

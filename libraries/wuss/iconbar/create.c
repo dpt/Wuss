@@ -39,7 +39,7 @@ static wuss_task_t *iconbar_task(wuss_t *wuss)
 
   desc.handle    = iconbar_window_handle;
   desc.task_data = wuss;
-  desc.name      = "wuss:iconbar";
+  desc.name      = "Wuss:Iconbar";
 
   if (wuss_task_create(wuss, &desc, &wuss->iconbar.task) != result_OK)
     return NULL;

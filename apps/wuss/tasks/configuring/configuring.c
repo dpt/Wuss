@@ -969,7 +969,7 @@ result_t configuring_create(wuss_t *wuss, configuring_task_t **out)
 
   delegate_desc.handle    = configuring_handle;
   delegate_desc.task_data = task;
-  delegate_desc.name      = "configuring";
+  delegate_desc.name      = "Configuring";
   rc = wuss_task_create(wuss, &delegate_desc, &delegate);
   if (rc != result_OK)
   {

@@ -455,7 +455,7 @@ result_t appsfiler_create(wuss_t *wuss)
 
   desc.handle    = apps_handle;
   desc.task_data = task;
-  desc.name      = "appsfiler";
+  desc.name      = "AppsFiler";
   rc = wuss_task_create(wuss, &desc, &task->delegate);
   if (rc != result_OK)
   {

@@ -396,7 +396,7 @@ result_t wuss_iconpool_test(const char *resources)
       memset(&tc_rs, 0, sizeof(tc_rs));
       desc.handle    = test_handle;
       desc.task_data = &tc_rs;
-      desc.name      = "minesweeping";
+      desc.name      = "Minesweeping";
       rc = wuss_task_create(wuss, &desc, &task_rs);
       if (rc != result_OK)
         goto Failure;

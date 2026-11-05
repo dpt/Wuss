@@ -46,7 +46,7 @@ result_t keys_create(wuss_t *wuss, keys_task_t **out)
 
   delegate_desc.handle    = keys_handle;
   delegate_desc.task_data = task;
-  delegate_desc.name      = "keys";
+  delegate_desc.name      = "Keys";
   rc = wuss_task_create(wuss, &delegate_desc, &delegate);
   if (rc != result_OK)
   {

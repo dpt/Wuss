@@ -105,7 +105,7 @@ result_t viewing_create(wuss_t *wuss, viewing_task_t **out)
   /* shows through the image's transparent pixels */
   delegate_desc.handle    = viewing_handle;
   delegate_desc.task_data = task;
-  delegate_desc.name      = "viewing";
+  delegate_desc.name      = "Viewing";
   rc = wuss_task_create(wuss, &delegate_desc, &delegate);
   if (rc != result_OK)
   {

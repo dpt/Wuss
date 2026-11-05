@@ -696,7 +696,7 @@ result_t wuss_colourpicker_create(wuss_colourpicker_t           **out,
 
   desc.handle    = cp_task_handle;
   desc.task_data = picker;
-  desc.name      = "colourpicker";
+  desc.name      = "ColourPicker";
   rc = wuss_task_create(wuss, &desc, &picker->task);
   if (rc != result_OK)
     goto failure;

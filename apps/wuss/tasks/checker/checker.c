@@ -100,7 +100,7 @@ result_t checker_create(wuss_t *wuss, checker_task_t **out)
   /* checker_redraw paints every pixel itself */
   delegate_desc.handle    = checker_handle;
   delegate_desc.task_data = task;
-  delegate_desc.name      = "checker";
+  delegate_desc.name      = "Checker";
   rc = wuss_task_create(wuss, &delegate_desc, &delegate);
   if (rc != result_OK)
   {

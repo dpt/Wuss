@@ -179,7 +179,7 @@ wuss_task_t *mk_task(wuss_t           *wuss,
 
   desc.handle    = handle;
   desc.task_data = task_data;
-  desc.name      = "wuss-test";
+  desc.name      = "Wuss-Test";
 
   if (wuss_task_create(wuss, &desc, &task) != result_OK)
     return NULL;

@@ -660,7 +660,7 @@ FontMenuOK: ;
       memset(&cmtc, 0, sizeof(cmtc));
       cmdesc.handle    = test_handle;
       cmdesc.task_data = &cmtc;
-      cmdesc.name      = "wuss-test";
+      cmdesc.name      = "Wuss-Test";
       rc = wuss_task_create(cmwuss, &cmdesc, &cmowner);
       if (rc != result_OK) { free(cmpixels); goto ColourMenuFail; }
 
@@ -701,7 +701,7 @@ FontMenuOK: ;
         cltc.wuss = cmwuss;
         cldesc.handle    = colourlist_test_handle;
         cldesc.task_data = &cltc;
-        cldesc.name      = "colourlist";
+        cldesc.name      = "ColourList";
         rc = wuss_task_create(cmwuss, &cldesc, &clowner);
         if (rc != result_OK) goto ColourMenuFail;
 

@@ -131,7 +131,7 @@ result_t oscillating_create(wuss_t *wuss, oscillating_task_t **out)
   /* redraw paints its own background every frame */
   delegate_desc.handle    = oscillating_handle;
   delegate_desc.task_data = task;
-  delegate_desc.name      = "oscillating";
+  delegate_desc.name      = "Oscillating";
   rc = wuss_task_create(wuss, &delegate_desc, &delegate);
   if (rc != result_OK)
   {

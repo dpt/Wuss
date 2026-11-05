@@ -664,7 +664,7 @@ static result_t jotting_create(wuss_t *wuss, jotting_t **out)
 
   desc.handle    = jotting_handle;
   desc.task_data = note;
-  desc.name      = "jotting";
+  desc.name      = "Jotting";
   rc = wuss_task_create(wuss, &desc, &note->delegate);
   if (rc != result_OK)
   {

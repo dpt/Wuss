@@ -679,7 +679,7 @@ result_t icons_create(wuss_t *wuss, icons_task_t **out)
 
   delegate_desc.handle    = icons_handle;
   delegate_desc.task_data = task;
-  delegate_desc.name      = "icons";
+  delegate_desc.name      = "Icons";
   rc = wuss_task_create(wuss, &delegate_desc, &delegate);
   if (rc != result_OK)
   {

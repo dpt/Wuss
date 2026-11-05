@@ -706,7 +706,7 @@ result_t orbing_create(wuss_t *wuss, orbing_task_t **out)
 
   delegate_desc.handle    = orbing_handle;
   delegate_desc.task_data = task;
-  delegate_desc.name      = "orbing";
+  delegate_desc.name      = "Orbing";
   rc = wuss_task_create(wuss, &delegate_desc, &delegate);
   if (rc != result_OK)
   {

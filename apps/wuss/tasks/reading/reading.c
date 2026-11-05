@@ -524,7 +524,7 @@ result_t reading_create(wuss_t *wuss, reading_task_t **out)
 
   delegate_desc.handle    = reading_handle;
   delegate_desc.task_data = task;
-  delegate_desc.name      = "reading";
+  delegate_desc.name      = "Reading";
   rc = wuss_task_create(wuss, &delegate_desc, &delegate);
   if (rc != result_OK)
   {

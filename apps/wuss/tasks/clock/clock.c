@@ -147,7 +147,7 @@ result_t clock_create(wuss_t *wuss, clock_task_t **out)
   /* clock_redraw paints its own background every frame */
   delegate_desc.handle    = clock_handle;
   delegate_desc.task_data = task;
-  delegate_desc.name      = "clock";
+  delegate_desc.name      = "Clock";
   rc = wuss_task_create(wuss, &delegate_desc, &delegate);
   if (rc != result_OK)
   {

@@ -291,7 +291,7 @@ result_t wuss_saveas_create(wuss_saveas_t        **out,
 
   desc.handle    = saveas_task_handle;
   desc.task_data = sa;
-  desc.name      = "saveas";
+  desc.name      = "SaveAs";
   rc = wuss_task_create(wuss, &desc, &sa->task);
   if (rc != result_OK)
     goto failure;

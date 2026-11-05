@@ -182,7 +182,7 @@ result_t gradient_create(wuss_t *wuss, gradient_task_t **out)
   /* gradient_redraw paints every pixel itself */
   delegate_desc.handle    = gradient_handle;
   delegate_desc.task_data = task;
-  delegate_desc.name      = "gradient";
+  delegate_desc.name      = "Gradient";
   rc = wuss_task_create(wuss, &delegate_desc, &delegate);
   if (rc != result_OK)
   {

@@ -569,7 +569,7 @@ result_t filing_create(wuss_t *wuss, filing_task_t **out)
 
   delegate_desc.handle    = filing_handle;
   delegate_desc.task_data = task;
-  delegate_desc.name      = "filing";
+  delegate_desc.name      = "Filing";
   rc = wuss_task_create(wuss, &delegate_desc, &task->delegate);
   if (rc != result_OK)
   {

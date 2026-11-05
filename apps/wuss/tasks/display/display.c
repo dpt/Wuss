@@ -401,7 +401,7 @@ result_t display_create(wuss_t *wuss, display_task_t **out)
 
   delegate_desc.handle    = display_handle;
   delegate_desc.task_data = task;
-  delegate_desc.name      = "display";
+  delegate_desc.name      = "Display";
   rc = wuss_task_create(wuss, &delegate_desc, &delegate);
   if (rc != result_OK)
   {

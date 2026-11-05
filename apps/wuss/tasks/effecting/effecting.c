@@ -581,7 +581,7 @@ result_t effecting_create(wuss_t *wuss, effecting_task_t **out)
 
   delegate_desc.handle    = effecting_handle;
   delegate_desc.task_data = task;
-  delegate_desc.name      = "effecting";
+  delegate_desc.name      = "Effecting";
   rc = wuss_task_create(wuss, &delegate_desc, &delegate);
   if (rc != result_OK)
   {

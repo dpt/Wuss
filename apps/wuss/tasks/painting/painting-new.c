@@ -366,7 +366,7 @@ result_t paintingnew_create(paintingnew_t          **slot,
 
   desc.handle    = paintingnew_handle;
   desc.task_data = pn;
-  desc.name      = "painting-new";
+  desc.name      = "Painting-New";
   rc = wuss_task_create(wuss, &desc, &pn->task);
   if (rc != result_OK)
   {

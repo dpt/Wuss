@@ -151,7 +151,7 @@ result_t gridview_bench_test(const char *resources)
 
   tdesc.handle    = bench_handle;
   tdesc.task_data = NULL;
-  tdesc.name      = "gridview-bench";
+  tdesc.name      = "GridView-Bench";
   rc = wuss_task_create(wuss, &tdesc, &task);
   if (rc != result_OK)
     goto failure;
