@@ -120,12 +120,42 @@ result_t wuss_set_text_test(const char *resources)
 
   real_malloc        = wuss->alloc.malloc;
   wuss->alloc.malloc = no_malloc;
-  rc = wuss_icon_set_text(window, label, "lost");
+  rc = wuss_icon_set_text(window, label, "lost text");
   wuss->alloc.malloc = real_malloc;
   if (rc != result_OOM)
     FAIL("OOM not reported");
   if (strcmp(wuss_icon_get_text(label), "kept") != 0)
     FAIL("OOM lost the old text");
+
+  printf("test: text that fits needs no memory\n");
+
+  wuss->alloc.malloc = no_malloc;
+  rc = wuss_icon_set_text(window, label, "same");
+  if (rc != result_OK || strcmp(wuss_icon_get_text(label), "same") != 0)
+    FAIL("same length");
+  rc = wuss_icon_set_text(window, label, "so");
+  if (rc != result_OK || strcmp(wuss_icon_get_text(label), "so") != 0)
+    FAIL("shorter");
+  rc = wuss_icon_set_text(window, label, wuss_icon_get_text(label) + 1);
+  if (rc != result_OK || strcmp(wuss_icon_get_text(label), "o") != 0)
+    FAIL("text within the old text");
+  wuss->alloc.malloc = real_malloc;
+
+  printf("test: unchanged text does not repaint\n");
+
+  rc = wuss_redraw_dirty(wuss);
+  if (rc != result_OK)
+    goto Failure;
+  rc = wuss_icon_set_text(window, label, "o");
+  if (rc != result_OK)
+    goto Failure;
+  if (wuss_get_dirty_count(wuss) != 0)
+    FAIL("unchanged label repainted");
+  rc = wuss_icon_set_text(window, label, "x");
+  if (rc != result_OK)
+    goto Failure;
+  if (wuss_get_dirty_count(wuss) == 0)
+    FAIL("changed label not repainted");
 
   /* a writable owns a fixed buffer, so needs no memory */
   wuss->alloc.malloc = no_malloc;

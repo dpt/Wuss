@@ -565,8 +565,10 @@ void wuss_icon_delete(wuss_window_t *window, wuss_icon_t *icon);
 
 /**
  * Replace an icon's label text. The new text is copied. Invalidates the
- * icon's bounding box. A wuss_ICON_TYPE_WRITABLE truncates the text to its
- * buffer and, if it holds the caret, moves the caret to the end.
+ * icon's bounding box, unless a label's text is unchanged. A
+ * wuss_ICON_TYPE_WRITABLE truncates the text to its buffer and, if it holds
+ * the caret, moves the caret to the end. Allocates only when a label's new
+ * text is longer than its current text.
  *
  * \param[in] window Window the icon belongs to.
  * \param[in] icon   Icon to change.
