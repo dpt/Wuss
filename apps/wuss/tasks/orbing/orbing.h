@@ -85,6 +85,8 @@ typedef struct orbing_task
   wuss_colourpicker_t *picker;      /* any 24-bit colour */
   int                  picker_which; /* ORBING_COLOUR_* it edits */
   int                  picker_light; /* index of the light it edits */
+  unsigned int        *pixels;       /* preview paint buffer; only ever grows */
+  int                  allocated;    /* elements in pixels */
 }
 orbing_task_t;
 

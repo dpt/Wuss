@@ -19,6 +19,7 @@
 #include "framebuf/screen.h"
 #include "geom/box.h"
 #include "geom/stack.h"
+#include "utils/array.h"
 #include "wuss/icon.h"
 #include "wuss/task.h"
 
@@ -830,16 +831,17 @@ void orbing_destroy(orbing_task_t *task)
     wuss_colourset_destroy(task->colour_sets[which]);
   wuss_colourpicker_destroy(task->picker);
   wuss_saveas_destroy(task->saveas);
+  free(task->pixels);
   free(task);
 }
 
-/* shade the dirty part of the preview pane into a bgra8888 buffer and blit it
- * dithered. The buffer's top-left is pulled back to a whole number of
+/* shade the dirty part of the preview pane into the task's bgra8888 buffer and
+ * blit it dithered. The bitmap's top-left is pulled back to a whole number of
  * dither tiles from the pane's corner, so the dither stays locked to the
  * pane across partial redraws; the clip is narrowed to the dirty box so the
- * unshaded margin that adds is never drawn */
-static result_t orbing_paint(screen_t             *scr,
-                             screen_dither_t       method,
+ * unshaded margin that adds, which holds stale pixels, is never drawn */
+static result_t orbing_paint(orbing_task_t        *task,
+                             screen_t             *scr,
                              const box_t          *content,
                              const box_t          *bounds,
                              const orbing_frame_t *f,
@@ -865,9 +867,10 @@ static result_t orbing_paint(screen_t             *scr,
   w  = content->x1 - ox;
   h  = content->y1 - oy;
 
-  pixels = calloc((size_t) w * h, sizeof(*pixels));
-  if (pixels == NULL)
+  if (array_grow((void **) &task->pixels, sizeof(*task->pixels), 0,
+                 &task->allocated, w * h, 1))
     return result_OOM;
+  pixels = task->pixels;
 
   for (y = content->y0; y < content->y1; y++)
   {
@@ -897,11 +900,9 @@ static result_t orbing_paint(screen_t             *scr,
     if (box_intersection(&saved, content, &scr->clip))
       rc = result_OK; /* nothing visible to draw */
     else
-      rc = screen_copy_bitmap_dithered(scr, ox, oy, &bm, method);
+      rc = screen_copy_bitmap_dithered(scr, ox, oy, &bm, task->dithering);
     scr->clip = saved;
   }
-
-  free(pixels);
 
   return rc;
 }
@@ -927,7 +928,7 @@ static result_t orbing_redraw(const wuss_event_t *event,
   cx += bounds->x0;
   cy += bounds->y0;
 
-  rc = orbing_paint(scr, task->dithering, content, bounds, &f, cx, cy, r);
+  rc = orbing_paint(task, scr, content, bounds, &f, cx, cy, r);
   if (rc != result_OK)
     return rc;
 
