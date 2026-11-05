@@ -8,7 +8,7 @@ Wuss is a minimal window manager in C99: window creation, z-ordering, mouse rout
 
 Wuss was split out of [DPTLib](https://github.com/dpt/DPTLib) and depends on it for everything below the window manager (bitmaps, bmfont, geometry, regions, streams, `result_t`, debug macros).
 
-- CMake fetches DPTLib with `FetchContent`, pinned by `GIT_TAG` in `CMakeLists.txt` — read that line for the current form (tag or commit hash) rather than assuming.
+- CMake fetches DPTLib with `FetchContent`, pinned by `GIT_TAG` in `CMakeLists.txt` — read that line for the current form (tag, commit hash or branch) rather than assuming.
 - For work on both repos at once, configure with `-DFETCHCONTENT_SOURCE_DIR_DPTLIB=../DPTLib` so the local checkout is used instead.
 - A change that needs a new DPTLib feature lands in DPTLib first. Bump the pin to the new DPTLib commit or tag as part of the same work, and say so: the local-checkout override hides a stale pin, so fetched builds stay broken until it moves. If the pin changes form, correct the line above in the same change.
 
