@@ -12,7 +12,6 @@
 #include "fortify/fortify.h"
 #endif
 
-#include "base/debug.h"
 #include "base/utils.h"
 #include "framebuf/bitmap.h"
 #include "framebuf/colour.h"
@@ -110,17 +109,6 @@ struct zxtask
   double               deadline; /* game thread only: pacing deadline,
                                   * seconds */
   int                  deadline_valid;
-
-  /* profiling counters, logged by zxtask_destroy */
-  double               started;  /* when the game thread started */
-  double               awoke;    /* game thread: when sleep last returned */
-  double               busy;     /* game thread: seconds outside sleep */
-  long                 sleeps;   /* game thread: zxtask_sleep calls */
-  long                 lags;     /* game thread: backlogs dropped */
-  long                 draws;    /* under lock: zxtask_draw calls, several
-                                  * per game frame */
-  long                 redraws;  /* main thread: redraw events */
-  double               redrawn;  /* main thread: seconds redrawing */
 };
 
 static wuss_window_fn_t zxtask_handle;
@@ -243,7 +231,6 @@ static result_t zxtask_start(zxtask_t *task, wuss_t *wuss)
   /* a game wants the keyboard straight away, not after a click */
   (void) wuss_set_focus(wuss, task->window);
 
-  task->started = zxtask_now();
   if (pthread_create(&task->thread, NULL, zxtask_thread, task) != 0)
   {
     wuss_task_destroy(delegate);
@@ -252,25 +239,6 @@ static result_t zxtask_start(zxtask_t *task, wuss_t *wuss)
   task->thread_started = 1;
 
   return result_OK;
-}
-
-/* Log the profiling counters, for timing a run such as a scripted 60 s
- * one. */
-static void zxtask_report(const zxtask_t *task)
-{
-  double elapsed;
-
-  elapsed = zxtask_now() - task->started;
-  if (elapsed <= 0.0)
-    return;
-
-  logf_info("%s: %.1f s: game busy %.2f s (%.1f%%), %ld sleeps, "
-            "%ld lag drops, %.1f draw calls/s; %ld redraws, %.3f ms each",
-            task->ops->name, elapsed,
-            task->busy, 100.0 * task->busy / elapsed,
-            task->sleeps, task->lags, task->draws / elapsed,
-            task->redraws,
-            task->redraws ? 1e3 * task->redrawn / task->redraws : 0.0);
 }
 
 static void zxtask_destroy(zxtask_t *task)
@@ -284,7 +252,6 @@ static void zxtask_destroy(zxtask_t *task)
     if (task->ops->stop)
       task->ops->stop(task->game);
     pthread_join(task->thread, NULL);
-    zxtask_report(task);
   }
 
   if (task->game)
@@ -329,7 +296,6 @@ static void zxtask_draw(const zxbox_t *dirty, void *opaque)
 
   pthread_mutex_lock(&task->lock);
   (void) box_list_add(task->damage, &task->ndamage, ZXTASK_MAX_DAMAGE, &box);
-  task->draws++;
   pthread_mutex_unlock(&task->lock);
 }
 
@@ -400,11 +366,6 @@ static int zxtask_sleep(int duration, void *opaque)
 
   task = opaque;
 
-  now = zxtask_now();
-  if (task->awoke > 0.0)
-    task->busy += now - task->awoke;
-  task->sleeps++;
-
   pthread_mutex_lock(&task->lock);
   if (task->paused && !task->quit)
   {
@@ -423,7 +384,6 @@ static int zxtask_sleep(int duration, void *opaque)
   if (speed >= ZXTASK_SPEED_MAX)
   {
     task->deadline_valid = 0;
-    task->awoke          = zxtask_now();
     return 0;
   }
 
@@ -438,10 +398,7 @@ static int zxtask_sleep(int duration, void *opaque)
   task->deadline += duration / task->ops->clock_hz *
                     ZXTASK_SPEED_NORMAL / speed;
   if (task->deadline < now - ZXTASK_MAX_LAG_SECS)
-  {
     task->deadline = now - ZXTASK_MAX_LAG_SECS;
-    task->lags++;
-  }
 
   delay = task->deadline - now;
   if (delay >= ZXTASK_MIN_WAIT_SECS)
@@ -450,7 +407,6 @@ static int zxtask_sleep(int duration, void *opaque)
     ts.tv_nsec = (long) ((delay - ts.tv_sec) * 1e9);
     nanosleep(&ts, NULL);
   }
-  task->awoke = zxtask_now();
 
   return 0;
 }
@@ -759,7 +715,6 @@ static result_t zxtask_handle(wuss_window_t      *window,
 {
   result_t  rc;
   zxtask_t *task;
-  double    then;
   box_t     damage[ZXTASK_MAX_DAMAGE];
   int       ndamage;
   int       i;
@@ -769,11 +724,7 @@ static result_t zxtask_handle(wuss_window_t      *window,
   switch (event->kind)
   {
   case wuss_EVENT_REDRAW:
-    then = zxtask_now();
-    rc   = zxtask_redraw(task, event);
-    task->redrawn += zxtask_now() - then;
-    task->redraws++;
-    return rc;
+    return zxtask_redraw(task, event);
 
   case wuss_EVENT_MOUSE:
     return zxtask_mouse(task, window, event);
