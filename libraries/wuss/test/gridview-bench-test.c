@@ -54,17 +54,6 @@ static void bench_item(int index, void *opaque, wuss_gridview_item_t *out)
   out->label = src->labels[index];
 }
 
-static result_t bench_handle(wuss_window_t      *window,
-                             const wuss_event_t *event,
-                             void               *task_data)
-{
-  NOT_USED(window);
-  NOT_USED(event);
-  NOT_USED(task_data);
-
-  return result_OK;
-}
-
 /* Print one line: the whole run in ms, and the cost of one repetition. */
 static void bench_report(const char *what, int reps, clock_t start)
 {
@@ -149,7 +138,7 @@ result_t gridview_bench_test(const char *resources)
   if (rc != result_OK)
     goto failure;
 
-  tdesc.handle    = bench_handle;
+  tdesc.handle    = NULL;
   tdesc.task_data = NULL;
   tdesc.name      = "GridView-Bench";
   rc = wuss_task_create(wuss, &tdesc, &task);

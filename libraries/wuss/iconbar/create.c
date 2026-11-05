@@ -13,23 +13,10 @@
 
 #ifdef WUSS_ICONBAR
 
-/* The bar's window never receives events of its own -- icons are delivered
- * to their individual owner tasks, not this one -- so its handle is never
- * actually called; it exists only to satisfy wuss_task_create's contract. */
-static result_t iconbar_window_handle(wuss_window_t      *window,
-                                      const wuss_event_t *event,
-                                      void               *task_data)
-{
-  NOT_USED(window);
-  NOT_USED(event);
-  NOT_USED(task_data);
-
-  return result_OK;
-}
-
 /* The internal task that owns the bar's window, created on the first
  * wuss_iconbar_icon_create of a session. Mirrors wuss__menu_task in
- * libraries/wuss/menu/menu.c. */
+ * libraries/wuss/menu/menu.c. It has no handle: icons are delivered to their
+ * individual owner tasks, not this one. */
 static wuss_task_t *iconbar_task(wuss_t *wuss)
 {
   wuss_task_desc_t desc;
@@ -37,7 +24,7 @@ static wuss_task_t *iconbar_task(wuss_t *wuss)
   if (wuss->iconbar.task != NULL)
     return wuss->iconbar.task;
 
-  desc.handle    = iconbar_window_handle;
+  desc.handle    = NULL;
   desc.task_data = wuss;
   desc.name      = "Wuss:Iconbar";
 

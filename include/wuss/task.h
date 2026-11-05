@@ -413,7 +413,10 @@ typedef struct wuss_task_desc
 {
   /**
    * Event callback, or NULL for a task that receives no events (its windows
-   * still get their background filled per wuss_window_create's bg). The one
+   * still get their background filled per wuss_window_create's bg). NULL is
+   * not the same as a callback that ignores everything: clicks on the
+   * windows of a NULL task do not reach their icons or capture the pointer,
+   * and wuss_drag_start and its variants return \ref result_BAD_ARG. The one
    * callback is invoked for both wuss_window_fn_t-shaped and
    * wuss_task_fn_t-shaped events; the two typedefs have the same signature.
    */
