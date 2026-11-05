@@ -120,6 +120,7 @@ typedef struct dithering_task
   bitmap_t           source;   /* owned base: rgbx8888 or rgba8888; NULL
                                 * base until the first DataLoad */
   bitmap_t          *dithered; /* owned; NULL if the last dither failed */
+  dither_scratch_t   scratch;  /* kept for re-dithering without allocating */
   int                show_original;
   colour_t           target[256]; /* the palette dithered to; ntarget is 0
                                    * if the last dither failed */

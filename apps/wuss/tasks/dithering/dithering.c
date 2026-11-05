@@ -173,6 +173,7 @@ static result_t dithering_dither(dithering_task_t *dt, int keep_palette)
   int              ncolours;
   const colour_t  *desktop;
   const char      *name;
+  int              reuse;
   dither_options_t opts;
   bitmap_t        *out;
 
@@ -223,6 +224,12 @@ static result_t dithering_dither(dithering_task_t *dt, int keep_palette)
                             NELEMS(palette), &ncolours);
   }
 
+  /* the same palette means the same format, so the last result can be
+   * overwritten, unless the source has since changed size */
+  reuse = keep_palette && dt->dithered != NULL &&
+          dt->dithered->size.w == dt->source.size.w &&
+          dt->dithered->size.h == dt->source.size.h;
+
   if (rc == result_OK)
   {
     opts.method     = dt->method;
@@ -231,10 +238,19 @@ static result_t dithering_dither(dithering_task_t *dt, int keep_palette)
     opts.strength   = dt->strength;
     opts.serpentine = dt->serpentine;
     opts.linear     = dt->linear;
-    rc = dither_bitmap(&dt->source, &opts, &out);
+    if (reuse)
+    {
+      rc  = dither_bitmap_into(&dt->source, &opts, &dt->scratch, dt->dithered);
+      out = dt->dithered;
+    }
+    else
+    {
+      rc = dither_bitmap(&dt->source, &opts, &out);
+    }
   }
 
-  dithering_free_dithered(dt);
+  if (!reuse || rc != result_OK)
+    dithering_free_dithered(dt);
   dt->ntarget = 0;
   if (rc == result_OK)
   {
@@ -732,6 +748,7 @@ void dithering_destroy(dithering_task_t *task)
   wuss_dialogue_destroy(task->strength_dialogue);
   wuss_saveas_destroy(task->saveas);
   dithering_free_dithered(task);
+  dither_scratch_free(&task->scratch);
   free(task->source.base);
   free(task);
 }
@@ -1182,6 +1199,7 @@ result_t dithering_handle(wuss_window_t      *window,
 {
   result_t          rc;
   dithering_task_t *dt;
+  int               old;
 
   dt = task_data;
 
@@ -1219,15 +1237,21 @@ result_t dithering_handle(wuss_window_t      *window,
     return dithering_idle(dt);
 
   case wuss_EVENT_ICON:
+    /* a press or a move needn't change the slider's value */
+    old = dt->strength;
     if (window == wuss_dialogue_window(dt->strength_dialogue) &&
         wuss_slider_row_event(window, &dt->strength_row, event,
                               &dt->strength))
-      return dithering_dither(dt, 1);
+      return (dt->strength != old) ? dithering_dither(dt, 1) : result_OK;
 
+    old = dt->colours_pos;
     if (window == wuss_dialogue_window(dt->colours_dialogue) &&
         wuss_slider_row_event(window, &dt->colours_row, event,
                               &dt->colours_pos))
     {
+      if (dt->colours_pos == old)
+        return result_OK;
+
       rc = dithering_colours_label(dt);
       if (rc != result_OK)
         return rc;
