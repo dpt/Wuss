@@ -28,6 +28,48 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - The CRT effect now works in the browser, drawn with WebGL, and recovers if the
   browser drops its context. Display shows its option there too. The effect now
   comes from DPTLib's `DPTLibCRT`, which `BUILD_APPS` turns on.
+- Pinboard task: owns the backdrop, with a menu to change its colour, pattern
+  and image, and holds files pinned by drop or message. Windows gain
+  `wuss_WINDOW_BACKDROP`, of which only one may exist
+  (`result_WUSS_BACKDROP_EXISTS`), and `wuss_MESSAGE_PINBOARD_PIN` asks for a
+  file to be pinned.
+- Jottings task: Markdown notes, saved per user, which can be pinned to the
+  backdrop. A click places the caret, drawn as a red I-beam when focused and
+  grey when not. Arrow keys, Home, End and the page keys move it, with
+  modifiers to move by word or to the ends of the line or note. Ctrl-K clears
+  to the end of the line and Ctrl-U removes the line.
+- Tagging task and `wuss_tagcloud` gadget: a centred cloud or columns of tags,
+  sorted by name or count, with click to toggle a highlight.
+- Desktop themes: `resources/themes` sets the font, palette, titlebar height
+  and icon pool, chosen in Configuring. `wuss_set_config` now changes the
+  titlebar height and body colours.
+- SDL: Alt-Return and `--fullscreen` go full screen, at the display's
+  resolution (reported through `wuss_INPUT_RESIZE`), and Retina displays are
+  supported.
+- RISC OS: a selector changes screen mode between 1, 2, 4, 8, 15, 16 and 32
+  bpp, and `wuss_frontend_resize` applies it live.
+- `wuss_get_pointer_bounds` and `wuss_set_pointer_bounds` lock the pointer to a
+  drag's bounds, warping the hardware pointer.
+- `wuss_drag_start_bitmap` and `wuss_drag_start_object` start drags which carry
+  an image.
+- `wuss_hourglass_on`, `wuss_hourglass_off` and `wuss_set_hourglass_handler`
+  show an hourglass, drawn on the software pointer. The demo shows it while
+  loading, saving, dithering and resizing.
+- `wuss_rubberband_t` gadget, with `wuss_rubberband_autoscroll` and a dashed
+  outline. Gridview uses it for rubber band selection.
+- Filing: a selection row in the menu, with Delete.
+- Palette: select and edit swatches, using `selected` on `wuss_swatches_t`.
+- The colour picker dithers its swatches with patterns.
+- Dithering: Palette > Fixed gains Current, with a warning when dithering to the
+  screen's palette, and linear light applies to the ordered methods.
+- Dithering and Resizing: a top level Display submenu sets screen dithering.
+- Effecting: an icon for each effect.
+- Painting: a Stabilise setting pulls the brush along on a string of up to 50
+  pixels, and the canvas has a one-pixel stage margin.
+- Task Manager: counts of apps, tasks and windows, Total and Current
+  allocations with grouped digits, and a scrolling list of task names.
+- Shortcuts lists the keys of every task, more compactly.
+- `taskapp_desc_t`'s `no_quit` leaves Quit off a task's menu.
 
 ### Changed
 
@@ -44,6 +86,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Menus and the colour menu allocate fewer blocks: a menu level keeps its
   icon handles and scratch arrays in single blocks, and the colour menu keeps
   its items and labels with the menu.
+- Painting: the pencil is always one pixel wide, so its Size setting is gone.
+- Task names are capitalised.
+- Reading renders with DPTLib's `mdtext`.
+- AppsFiler hides the System folder. Configuring, Pooling and Jottings move to
+  Utilities.
+- Palette and Display menus drop Quit.
+- Shift-click on toggle-size fills only the safe area.
+- A window with a resize icon but no scroll bars drops its bottom strip, letting
+  content run down to the outline.
+- `wuss_menu_tick_*_live` always sets the item flags and accepts a NULL handle.
+- Spectrum ports create themselves through `zxtask_create`, and `zxtask_report`
+  is gone.
+- Task code shares more: `common/confdlg`, `taskapp_instance_t` and
+  `taskapp_instance_create`, with Save in taskapp. Private task headers are
+  gone.
+- `BUILD_APPS` requires `WUSS_COMPONENTS`.
+- Marching ants redraw only around their outline.
+- Divisions are gone from Gradient, Painting's ants and spray, Saturn and
+  Checker, for targets without a hardware divide.
+- Toggle-size and toolbar moves blit their whole group rather than repainting
+  it.
 
 ### Fixed
 
@@ -52,6 +115,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - The icon pool frees the palettes of its bitmaps.
 - A handler that destroys another task during an idle, palette or message
   broadcast no longer leaves the broadcast using the freed task.
+- Gradient: the Shape tick stays right after Reset.
+- Menu row text stays legible on an inverted palette.
+- Saved snapshots use a real clip, so Chars no longer saves a blank PNG.
+- Effecting and Chars take the focus, so F3 works in them.
+- Saturn and Fern resize, as Default now passes the old value to `applied`.
+- Dithering's strength changes, label sets and Orbing's redraw no longer
+  allocate.
+- The icon bar scrolls only when the pointer is directly over the bar.
+- A palette copy no longer leaks per frame in SDL present and Doughnut.
+- `resources/bmfonts` is a relative link, or a copy on Windows.
+- WussTest builds in every subsystem variant, and the demo and core build
+  without the icon bar.
+- Off-palette icons are recoloured to PICO-8.
+- Jottings and Pinboard link on RISC OS.
+- Compositing's images are restored.
+- RISC OS: mouse bounds reset on a mode change.
+- A slider's active area matches its groove.
 
 ## [0.23.0] - 2026-10-29
 
