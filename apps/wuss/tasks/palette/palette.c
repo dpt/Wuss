@@ -584,10 +584,8 @@ static result_t palette_screen_menu_select(palette_task_t     *pc,
       n != pixelfmt_paletted_nentries(g_tasks.bm->format))
     return result_OK; /* the depth changed under the open menu */
 
-  if (event->data.menu_select.button & wuss_BUTTON_ADJUST)
-    wuss_menu_tick_exclusive_live(pc->base.menu_handle, &pc->load_menu, index);
+  wuss_menu_tick_exclusive_live(pc->base.menu_handle, &pc->load_menu, index);
   pc->selected = index;
-  wuss_menu_tick_exclusive(&pc->load_menu, index);
 
   return tasks_set_screen_palette(loaded, n);
 }
@@ -606,7 +604,6 @@ static result_t palette_menu_select(palette_task_t     *pc,
 {
   result_t     rc;
   int          index;
-  int          old;
   colour_t     loaded[PALETTE_NCOLOURS];
   int          i;
   unsigned int r, g, b, y;
@@ -621,35 +618,25 @@ static result_t palette_menu_select(palette_task_t     *pc,
       index == PALETTE_MENU_INVERT_INDEX)
   {
     pc->invert = !pc->invert;
-    if (event->data.menu_select.button & wuss_BUTTON_ADJUST)
-      wuss_menu_tick_item_live(pc->base.menu_handle, &pc->base.menu, index, pc->invert);
+    wuss_menu_tick_item_live(pc->base.menu_handle, &pc->base.menu, index, pc->invert);
   }
   else if (event->data.menu_select.menu == &pc->base.menu &&
            index == PALETTE_MENU_GREY_INDEX)
   {
     pc->grey = !pc->grey;
-    if (event->data.menu_select.button & wuss_BUTTON_ADJUST)
-      wuss_menu_tick_item_live(pc->base.menu_handle, &pc->base.menu, index, pc->grey);
+    wuss_menu_tick_item_live(pc->base.menu_handle, &pc->base.menu, index, pc->grey);
   }
   else if (event->data.menu_select.menu == &pc->load_menu &&
           index >= 0 && index < pc->nnames)
   {
-    old          = pc->selected;
     pc->selected = index;
     pc->invert   = false;
     pc->grey     = false;
-    /* the data tick too: a submenu reopened within the chain is rebuilt
-     * from the items */
-    wuss_menu_tick_exclusive(&pc->load_menu, index);
-    if (event->data.menu_select.button & wuss_BUTTON_ADJUST)
-    {
-      wuss_menu_tick_item_live(pc->base.menu_handle, &pc->load_menu, old, 0);
-      wuss_menu_tick_item_live(pc->base.menu_handle, &pc->load_menu, index, 1);
-      wuss_menu_tick_item_live(pc->base.menu_handle, &pc->base.menu,
-                               PALETTE_MENU_INVERT_INDEX, 0);
-      wuss_menu_tick_item_live(pc->base.menu_handle, &pc->base.menu,
-                               PALETTE_MENU_GREY_INDEX, 0);
-    }
+    wuss_menu_tick_exclusive_live(pc->base.menu_handle, &pc->load_menu, index);
+    wuss_menu_tick_item_live(pc->base.menu_handle, &pc->base.menu,
+                             PALETTE_MENU_INVERT_INDEX, 0);
+    wuss_menu_tick_item_live(pc->base.menu_handle, &pc->base.menu,
+                             PALETTE_MENU_GREY_INDEX, 0);
   }
   else
   {

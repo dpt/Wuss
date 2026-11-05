@@ -61,6 +61,10 @@ void wuss_menu_tick_item(wuss_menu_t *menu, int index, int ticked)
 
 /* ----------------------------------------------------------------------- */
 
+/* The *_tick_*_live setters take a const menu because events deliver one
+ * (wuss_event_t's menu_select.menu); like wuss__menu_item_set_ticked they
+ * write through to its items, so those must be writable. */
+
 /* Find the open chain level showing `menu`, or NULL if `handle` is stale or
  * `menu` is not a level of its chain. Shared by the *_live setters. */
 static struct wuss__menu *wuss__menu_open_level(wuss_menu_handle_t handle,
@@ -108,6 +112,8 @@ void wuss_menu_tick_exclusive_live(wuss_menu_handle_t handle,
   struct wuss__menu *node;
   int                i;
 
+  wuss_menu_tick_exclusive((wuss_menu_t *) menu, index);
+
   node = wuss__menu_open_level(handle, menu);
   if (node == NULL)
     return;
@@ -123,7 +129,7 @@ void wuss_menu_tick_set_live(wuss_menu_handle_t handle,
   struct wuss__menu *node;
   int                i;
 
-  assert(menu->nitems <= (int) (sizeof(ticked) * CHAR_BIT));
+  wuss_menu_tick_set((wuss_menu_t *) menu, ticked);
 
   node = wuss__menu_open_level(handle, menu);
   if (node == NULL)
@@ -141,6 +147,8 @@ void wuss_menu_tick_item_live(wuss_menu_handle_t handle,
 {
   struct wuss__menu *node;
   wuss_icon_t       *icon;
+
+  wuss_menu_tick_item((wuss_menu_t *) menu, index, ticked);
 
   icon = wuss__menu_live_icon(handle, menu, index, &node);
   if (icon != NULL)

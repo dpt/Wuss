@@ -44,7 +44,6 @@ static inline screen_dither_t dithermenu_select(dithermenu_t      *dm,
                                                 wuss_menu_handle_t handle,
                                                 int                index)
 {
-  wuss_menu_tick_exclusive(&dm->menu, index);
   wuss_menu_tick_exclusive_live(handle, &dm->menu, index);
 
   return (screen_dither_t) index;

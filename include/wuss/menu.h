@@ -439,62 +439,64 @@ result_t wuss_menu_open_ticked(wuss_task_t        *task,
 
 /* ----------------------------------------------------------------------- */
 
-/* Re-ticking a currently open menu level in place, for a task that keeps an
- * ADJUST-picked menu open (see wuss_menu_open) and wants its own tick to
- * change without rebuilding the chain: an ADJUST pick delivers
- * wuss_EVENT_MENU_SELECT but does not close or redraw the menu, so a task
- * that only edits its wuss_menu_item_t.flags array never sees it take effect
- * on screen. These invalidate the changed rows; the data-level functions
- * above do not. */
+/* Re-ticking a menu that may be open, for a task that keeps an ADJUST-picked
+ * menu open (see wuss_menu_open) and wants its own tick to change without
+ * rebuilding the chain: an ADJUST pick delivers wuss_EVENT_MENU_SELECT but
+ * does not close or redraw the menu, so a task that only edits its
+ * wuss_menu_item_t.flags array never sees it take effect on screen. These
+ * update the items as the data-level functions above do and, if the menu is
+ * open, invalidate the changed rows. \c menu is const so that a task can
+ * pass an event's own menu but its items must be writable. */
 
 /**
- * Ticks item \p index and unticks every other item of the open level whose
- * \c menu is \p menu (searched from \p handle's chain), then invalidates the
- * changed rows. A no-op if \p handle is NULL, \p menu is not an open level
- * of its chain, or \p index is out of range (still unticking every row in
- * that case).
+ * Ticks item \p index and unticks every other item of \p menu, then
+ * invalidates the changed rows of its open level (searched from \p handle's
+ * chain), if any. Only the items change if \p handle is NULL or \p menu is
+ * not an open level of its chain. An out-of-range \p index unticks every
+ * row.
  *
- * \param[in] handle Chain handle from wuss_menu_open.
- * \param[in] menu   The (sub)menu level to update; matched by pointer
- *                   against the description passed to wuss_menu_open or
- *                   reached via a wuss_menu_item_t.submenu.
- * \param[in] index  Row to tick, or -1 to untick every row.
+ * \param[in]     handle Chain handle from wuss_menu_open, or NULL.
+ * \param[in,out] menu   The (sub)menu to update; matched by pointer against
+ *                       the description passed to wuss_menu_open or reached
+ *                       via a wuss_menu_item_t.submenu.
+ * \param[in]     index  Row to tick, or -1 to untick every row.
  */
 void wuss_menu_tick_exclusive_live(wuss_menu_handle_t handle,
                                    const wuss_menu_t *menu,
                                    int                index);
 
 /**
- * Set every row's tick from \p ticked (row i ticked iff bit i is set) on a
- * currently open menu level in place, then invalidates the changed rows.
- * Live equivalent of wuss_menu_tick_set. A no-op if \p handle is NULL or \p
- * menu is not an open level of its chain. \c menu->nitems must not exceed
- * the bit width of <tt>unsigned int</tt>.
+ * Set every row's tick from \p ticked (row i ticked iff bit i is set), as
+ * wuss_menu_tick_set, then invalidates the changed rows of its open level,
+ * if any. Only the items change if \p handle is NULL or \p menu is not an
+ * open level of its chain. \c menu->nitems must not exceed the bit width of
+ * <tt>unsigned int</tt>.
  *
- * \param[in] handle Chain handle from wuss_menu_open.
- * \param[in] menu   The (sub)menu level to update; matched by pointer
- *                   against the description passed to wuss_menu_open or
- *                   reached via a wuss_menu_item_t.submenu.
- * \param[in] ticked Bit i ticks row i; 0 unticks every row.
+ * \param[in]     handle Chain handle from wuss_menu_open, or NULL.
+ * \param[in,out] menu   The (sub)menu to update; matched by pointer against
+ *                       the description passed to wuss_menu_open or reached
+ *                       via a wuss_menu_item_t.submenu.
+ * \param[in]     ticked Bit i ticks row i; 0 unticks every row.
  */
 void wuss_menu_tick_set_live(wuss_menu_handle_t handle,
                              const wuss_menu_t *menu,
                              unsigned int       ticked);
 
 /**
- * Set or clear a single item's tick on a currently open menu level in place,
- * leaving every other item's tick untouched. As
+ * Set or clear a single item's tick, leaving every other item's tick
+ * untouched, then invalidates the row of its open level, if any. As
  * wuss_menu_tick_exclusive_live, but for a menu that tracks more than one
  * independent tick at the same level (e.g. a selection plus an unrelated
  * toggle) where unticking every other row would clobber state the caller
- * wanted to keep.
+ * wanted to keep. Only the item changes if \p handle is NULL or \p menu is
+ * not an open level of its chain.
  *
- * \param[in] handle Chain handle from wuss_menu_open.
- * \param[in] menu   The (sub)menu level to update; matched by pointer
- *                   against the description passed to wuss_menu_open or
- *                   reached via a wuss_menu_item_t.submenu.
- * \param[in] index  Row to update. A no-op if out of range.
- * \param[in] ticked Non-zero to tick the row, zero to untick it.
+ * \param[in]     handle Chain handle from wuss_menu_open, or NULL.
+ * \param[in,out] menu   The (sub)menu to update; matched by pointer against
+ *                       the description passed to wuss_menu_open or reached
+ *                       via a wuss_menu_item_t.submenu.
+ * \param[in]     index  Row to update. A no-op if out of range.
+ * \param[in]     ticked Non-zero to tick the row, zero to untick it.
  */
 void wuss_menu_tick_item_live(wuss_menu_handle_t handle,
                               const wuss_menu_t *menu,

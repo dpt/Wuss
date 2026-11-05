@@ -316,7 +316,6 @@ static result_t reading_set_spacing(reading_task_t *task, int idx)
   task->md.spacing.letter_spacing = reading_spacing_presets[idx].letter_spacing;
   task->md.spacing.word_spacing   = reading_spacing_presets[idx].word_spacing;
 
-  wuss_menu_tick_exclusive(&task->spacing_menu, idx);
   wuss_menu_tick_exclusive_live(task->base.menu_handle, &task->spacing_menu, idx);
   wuss_window_invalidate_visible(task->base.window);
   return result_OK;
@@ -331,7 +330,6 @@ static result_t reading_set_align(reading_task_t *task, int idx)
 
   task->md.align = (mdtext_align_t) idx;
 
-  wuss_menu_tick_exclusive(&task->align_menu, idx);
   wuss_menu_tick_exclusive_live(task->base.menu_handle, &task->align_menu, idx);
   wuss_window_invalidate_visible(task->base.window);
   return result_OK;

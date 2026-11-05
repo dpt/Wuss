@@ -1293,10 +1293,29 @@ QuitFail:
         goto TickCheckFail;
     wuss_menu_tick_item_live(h, &tk_menu, 0, 1);
     wuss_menu_tick_item_live(h, &tk_menu, 3, 1);
+
+    /* live updates reach the items too, even with no chain to redraw */
+    if (!(tk_items[0].flags & wuss_MENU_ITEM_TICKED) ||
+        (tk_items[1].flags & wuss_MENU_ITEM_TICKED) ||
+        !(tk_items[2].flags & wuss_MENU_ITEM_TICKED))
+      goto TickCheckFail;
+
+    /* a menu that is not open has no rows to redraw */
     wuss_menu_tick_set_live(h, &tk_other, 0);
     if (!wuss_icon_get_selected(wuss__menu_level_icon(level, 0)) ||
         !wuss_icon_get_selected(wuss__menu_level_icon(level, 2)))
       goto TickCheckFail;
+
+    wuss_menu_tick_set_live(NULL, &tk_menu, 4);
+    wuss_menu_tick_item_live(NULL, &tk_menu, 2, 0);
+    if (tk_items[2].flags & wuss_MENU_ITEM_TICKED)        goto TickCheckFail;
+    wuss_menu_tick_set_live(NULL, &tk_menu, 2);
+    if (!(tk_items[1].flags & wuss_MENU_ITEM_TICKED))     goto TickCheckFail;
+    wuss_menu_tick_exclusive_live(NULL, &tk_menu, 0);
+    if (!(tk_items[0].flags & wuss_MENU_ITEM_TICKED) ||
+        (tk_items[1].flags & wuss_MENU_ITEM_TICKED))
+      goto TickCheckFail;
+    wuss_menu_tick_set_live(h, &tk_menu, 4);
     wuss_menu_disable_item_live(h, &tk_menu, 1, 1);
     if (!(wuss__menu_level_icon(level, 1)->spec.flags &
           wuss_ICON_FLAGS_DISABLED))

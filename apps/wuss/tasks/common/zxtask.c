@@ -589,9 +589,6 @@ static void zxtask_sync_menu(zxtask_t *task)
            task->speed);
   }
 
-  wuss_menu_tick_set(&task->speed_menu, ticked);
-  wuss_menu_tick_item(&task->menu, ZXTASK_MENU_MONO, task->mono);
-  wuss_menu_tick_item(&task->menu, ZXTASK_MENU_ZOOM, task->zoom > 1);
   wuss_menu_tick_set_live(task->menu_handle, &task->speed_menu, ticked);
   wuss_menu_set_title_live(task->menu_handle, &task->speed_menu,
                            task->speed_title);

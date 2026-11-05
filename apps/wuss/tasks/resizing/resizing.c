@@ -255,18 +255,10 @@ static result_t resizing_redraw(resizing_task_t    *rt,
                                      bm, rt->dithering);
 }
 
-/* Set the submenus' ticks from the task. Run on open and after every pick: a
- * submenu reopened within the same chain (hover away and back) is built
- * afresh from these items, so the live ticks alone would go stale. */
-static void resizing_menu_refresh(resizing_task_t *rt)
+static result_t resizing_menu_open(resizing_task_t *rt)
 {
   wuss_menu_tick_exclusive(&rt->method_menu, (int) rt->method);
   wuss_menu_tick_exclusive(&rt->scale_menu, rt->scale);
-}
-
-static result_t resizing_menu_open(resizing_task_t *rt)
-{
-  resizing_menu_refresh(rt);
 
   return wuss_menu_open_ticked(rt->base.delegate, &rt->base.menu,
                                rt->linear ? 1u << RESIZING_MENU_LINEAR : 0,
@@ -300,7 +292,6 @@ static result_t resizing_menu_select(resizing_task_t    *rt,
   else
     return result_OK;
 
-  resizing_menu_refresh(rt);
   if (menu == &rt->base.menu)
     wuss_menu_tick_item_live(rt->base.menu_handle, menu, index, rt->linear);
   else
