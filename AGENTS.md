@@ -57,7 +57,7 @@ Success prints `++ Tests completed in Ns: N of N tests passed.`
 
 To drive the real demo headless, write a script (`move`, `click`, `key`, `wait N`, `dump`, `png FILE`, `quit`; see `apps/wuss/script.h`) and run `SDL_VIDEODRIVER=dummy build-sdl/wuss --script FILE` from the repo root. `png` dumps the framebuffer, not the desktop.
 
-Painting demo: `SDL_VIDEODRIVER=dummy build-sdl/wuss --tasks Painting --script FILE`; open a canvas with `click select 488 450`, `wait 5`, `click select 608 411`, `wait 10`. The canvas content starts at y=117; the size bar pane is 222,90–622,116. Slider end caps ignore clicks: click inside the trough. Crop/zoom screenshots with `sips` (no PIL).
+Painting demo: `SDL_VIDEODRIVER=dummy build-sdl/wuss --tasks Painting --script FILE`; open a canvas with `click select 447 450`, `wait 5`, `click select 578 411`, `wait 10`. The canvas content starts at y=117; the size bar pane is 222,90–622,116. Slider end caps ignore clicks: click inside the trough. Crop/zoom screenshots with `sips` (no PIL).
 
 ### Adding a new test
 
