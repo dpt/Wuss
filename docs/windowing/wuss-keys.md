@@ -161,7 +161,7 @@ Direct keys:
 
 `zxtask` is the Spectrum games, Chase H.Q. and The Great Escape.
 
-Tasks with no key handling (all keys unclaimed): palette configuring icons display reading tiling pinboard pooling taskmanager. `keys` is the key-test task and records everything but the function keys.
+Tasks with no key handling (all keys unclaimed): palette configuring icons display reading pinboard pooling taskmanager. `keys` is the key-test task and records everything but the function keys.
 
 ## Collisions to avoid
 

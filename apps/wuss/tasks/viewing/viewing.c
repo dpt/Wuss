@@ -35,7 +35,8 @@
  * pixels are skipped and everything else is drawn at full strength). The
  * window starts empty; a wuss_MESSAGE_DATA_LOAD sent to it, whose payload is
  * the path of a PNG, shows that image; a file that will not load is not
- * acknowledged. */
+ * acknowledged. Menu's "Tile" repeats the image edge to edge over a
+ * screen-sized window instead; Select drag then moves the tile origin. */
 typedef struct viewing_task
 {
   taskapp_instance_t base;
@@ -58,6 +59,11 @@ typedef struct viewing_task
   int            stage;     /* nonzero: draw a stage (page, border, shadow)
                              * behind the image instead of a plain band */
   stageconfig_t  stagecfg;
+  int            tile;      /* nonzero: tile the image over the window, in
+                             * place of the stage or band */
+  point_t        origin;    /* window-local position of one tile's top-left */
+  point_t        grab;      /* pointer position at the last drag event */
+  int            dragging;  /* Select held: pointer moves drag the origin */
 }
 viewing_task_t;
 
@@ -67,15 +73,28 @@ viewing_task_t;
 #define VIEWING_SCROLL_STEP 20 /* pixels per arrow key, as a scroll arrow */
 
 /* rows of the main menu (its caption is not a row) */
-enum { VIEWING_MENU_DISPLAY, VIEWING_MENU_COLOURS, VIEWING_MENU_STAGE };
+enum
+{
+  VIEWING_MENU_DISPLAY,
+  VIEWING_MENU_COLOURS,
+  VIEWING_MENU_STAGE,
+  VIEWING_MENU_TILE,
+  VIEWING_MENU_RESET_ORIGIN
+};
 
-/* The window size that shows the image: with the stage, the smallest one
- * that fits it; without, the image in its band. */
+/* The window size that shows the image: tiled, the screen; with the stage,
+ * the smallest one that fits it; without, the image in its band. */
 static size2d_t viewing_size(const viewing_task_t *ic)
 {
   stagebox_t boxes[stage_MAX_BOXES];
   size_t     nboxes;
   size2d_t   sz;
+
+  if (ic->tile)
+  {
+    wuss_window_get_max_content(ic->base.window, &sz);
+    return sz;
+  }
 
   if (ic->stage)
   {
@@ -208,6 +227,31 @@ static void viewing_redraw_stage(viewing_task_t *ic,
   }
 }
 
+/* Repeat the image over the dirty box, one tile at (ox, oy), one copy at a
+ * time so tiles are dithered like the single image.
+ * ponytail: one call per tile, so a tiny image is slow to fill a large window;
+ * add a dithered tiled copy to DPTLib if that matters. */
+static void viewing_redraw_tiles(viewing_task_t *ic,
+                                 screen_t       *scr,
+                                 const box_t    *dirty,
+                                 int             ox,
+                                 int             oy)
+{
+  int w, h;
+  int x0, y0;
+  int x, y;
+
+  w = ic->bitmap.size.w;
+  h = ic->bitmap.size.h;
+
+  x0 = dirty->x0 - ((dirty->x0 - ox) % w + w) % w;
+  y0 = dirty->y0 - ((dirty->y0 - oy) % h + h) % h;
+
+  for (y = y0; y < dirty->y1; y += h)
+    for (x = x0; x < dirty->x1; x += w)
+      viewing_draw_image(ic, scr, x, y);
+}
+
 static result_t viewing_redraw(const wuss_event_t *event, void *task_data)
 {
   viewing_task_t *ic;
@@ -217,7 +261,6 @@ static result_t viewing_redraw(const wuss_event_t *event, void *task_data)
   int             bx, by;
   int             bx0, bx1, by1;
   box_t           band[4];
-  const colour_t *palette;
 
   ic = task_data;
 
@@ -225,6 +268,14 @@ static result_t viewing_redraw(const wuss_event_t *event, void *task_data)
   bounds = event->data.redraw.bounds;
   sx     = event->data.redraw.scroll.x;
   sy     = event->data.redraw.scroll.y;
+
+  if (ic->tile)
+  {
+    viewing_redraw_tiles(ic, scr, event->data.redraw.content,
+                         bounds->x0 - sx + ic->origin.x,
+                         bounds->y0 - sy + ic->origin.y);
+    return result_OK;
+  }
 
   if (ic->stage)
   {
@@ -410,7 +461,8 @@ static result_t viewing_open_menu(viewing_task_t *ic)
   int          i;
 
   rc = wuss_menu_create_from_desc(&m,
-         "Viewing, Display, Colours, !Stage", ic->stage);
+         "Viewing, Display, Colours, !~Stage, !Tile, ~Reset origin",
+         ic->stage, ic->tile, ic->tile, !ic->tile);
   if (rc != result_OK)
     return rc;
 
@@ -443,6 +495,74 @@ static result_t viewing_open_menu(viewing_task_t *ic)
                                    &ic->base.menu_handle);
 }
 
+/* Menu opens the menu; while tiled, Select drag moves the tile origin */
+static result_t viewing_mouse(viewing_task_t *ic, const wuss_event_t *event)
+{
+  point_t point;
+
+  point = event->data.mouse.point;
+
+  if (event->data.mouse.action == wuss_MOUSE_UP)
+  {
+    ic->dragging = 0;
+  }
+  else if (event->data.mouse.action == wuss_MOUSE_DOWN)
+  {
+    if (event->data.mouse.button & wuss_BUTTON_MENU)
+      return viewing_open_menu(ic);
+
+    if ((event->data.mouse.button & wuss_BUTTON_SELECT) && ic->tile)
+    {
+      ic->dragging = 1;
+      ic->grab     = point;
+    }
+  }
+  else if (ic->dragging) /* wuss_MOUSE_MOVE */
+  {
+    ic->origin.x += point.x - ic->grab.x;
+    ic->origin.y += point.y - ic->grab.y;
+    ic->grab      = point;
+    wuss_window_invalidate_visible(ic->base.window);
+  }
+
+  return result_OK;
+}
+
+/* Turn tiling on or off, shading the rows that apply only to the other mode,
+ * and refit the window: to the screen, or back to the image */
+static result_t viewing_toggle_tile(viewing_task_t    *ic,
+                                    const wuss_menu_t *menu)
+{
+  result_t rc;
+  box_t    visible;
+  box_t    content;
+
+  ic->tile     = !ic->tile;
+  ic->dragging = 0;
+
+  wuss_menu_tick_item_live(ic->base.menu_handle, menu, VIEWING_MENU_TILE,
+                           ic->tile);
+  wuss_menu_disable_item_live(ic->base.menu_handle, menu, VIEWING_MENU_STAGE,
+                              ic->tile);
+  wuss_menu_disable_item_live(ic->base.menu_handle, menu,
+                              VIEWING_MENU_RESET_ORIGIN, !ic->tile);
+
+  /* a resize stops at the screen's edge, so start from its top left */
+  if (ic->tile)
+  {
+    wuss_window_get_visible_bounds(ic->base.window, &visible);
+    wuss_window_get_content_bounds(ic->base.window, &content);
+    wuss_window_move(ic->base.window, POINT(content.x0 - visible.x0,
+                                            content.y0 - visible.y0));
+  }
+
+  rc = viewing_fit(ic);
+  if (rc != result_OK || ic->tile)
+    return rc;
+
+  return wuss_window_place(ic->base.window, &task_place);
+}
+
 static result_t viewing_handle(wuss_window_t      *window,
                                const wuss_event_t *event,
                                void               *task_data)
@@ -459,11 +579,7 @@ static result_t viewing_handle(wuss_window_t      *window,
     return viewing_redraw(event, task_data);
 
   case wuss_EVENT_MOUSE:
-    if (event->data.mouse.action != wuss_MOUSE_DOWN)
-      return result_OK;
-    if (event->data.mouse.button & wuss_BUTTON_MENU)
-      return viewing_open_menu(ic);
-    return result_OK;
+    return viewing_mouse(ic, event);
 
   case wuss_EVENT_MENU_SELECT:
     if (wuss_colourlist_selected(&ic->colours, event))
@@ -479,6 +595,14 @@ static result_t viewing_handle(wuss_window_t      *window,
       ic->stage = !ic->stage;
       wuss_menu_tick_item_live(ic->base.menu_handle, menu, index, ic->stage);
       return viewing_fit(ic);
+    }
+    if (menu == ic->menu && index == VIEWING_MENU_TILE)
+      return viewing_toggle_tile(ic, menu);
+    if (menu == ic->menu && index == VIEWING_MENU_RESET_ORIGIN)
+    {
+      ic->origin = POINT(0, 0);
+      wuss_window_invalidate_visible(ic->base.window);
+      return result_OK;
     }
     if (menu == &ic->dither.menu)
     {

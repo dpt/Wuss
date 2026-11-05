@@ -39,7 +39,6 @@ result_t shortcuts_app_create(wuss_t *wuss);
 result_t sofa_app_create(wuss_t *wuss);
 result_t sudoku_app_create(wuss_t *wuss);
 result_t tagging_app_create(wuss_t *wuss);
-result_t tiling_app_create(wuss_t *wuss);
 result_t viewing_app_create(wuss_t *wuss);
 
 #endif /* WUSS_APP */
