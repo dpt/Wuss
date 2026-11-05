@@ -498,7 +498,8 @@ static result_t chars_init(chars_task_t *task)
                              &task_place,
                              grid,
                              "Chars",
-                             wuss_WINDOW_DEFAULT & ~wuss_WINDOW_HSCROLL,
+                             (wuss_WINDOW_DEFAULT & ~wuss_WINDOW_HSCROLL) |
+                             wuss_WINDOW_FOCUSABLE,
                              wuss_NO_BACKDROP,
                              grid,
                              SIZE2D(64, 64),
