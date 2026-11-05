@@ -514,19 +514,6 @@ static result_t gradient_mouse(const wuss_event_t *event, void *task_data)
   return result_OK;
 }
 
-/* restore the default shape, dither matrix, brightness, saturation and two
- * colours */
-static void gradient_reset(gradient_task_t *gc)
-{
-  gc->shape        = gradient_SHAPE_LINEAR;
-  gc->dither_index = GRADIENT_DEFAULT_DITHER;
-  gc->brightness   = GRADIENT_UNITY;
-  gc->saturation   = GRADIENT_UNITY;
-  gc->a            = colour_rgb(0x00, 0x00, 0x00);
-  gc->b            = colour_rgb(0xFF, 0xFF, 0xFF);
-  wuss_window_invalidate_visible(gc->base.window);
-}
-
 /* switch the fill, keeping the Shape submenu's tick right if it is open */
 static void gradient_set_shape(gradient_task_t *gc, gradient_shape_t shape)
 {
@@ -534,6 +521,18 @@ static void gradient_set_shape(gradient_task_t *gc, gradient_shape_t shape)
   wuss_menu_tick_exclusive_live(gc->base.menu_handle, &gc->shape_menu,
                                 gc->shape);
   wuss_window_invalidate_visible(gc->base.window);
+}
+
+/* restore the default shape, dither matrix, brightness, saturation and two
+ * colours */
+static void gradient_reset(gradient_task_t *gc)
+{
+  gc->dither_index = GRADIENT_DEFAULT_DITHER;
+  gc->brightness   = GRADIENT_UNITY;
+  gc->saturation   = GRADIENT_UNITY;
+  gc->a            = colour_rgb(0x00, 0x00, 0x00);
+  gc->b            = colour_rgb(0xFF, 0xFF, 0xFF);
+  gradient_set_shape(gc, gradient_SHAPE_LINEAR);
 }
 
 /* Menu pick: a Shape row switches the fill; a Colours row or Randomise
