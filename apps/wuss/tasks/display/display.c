@@ -221,13 +221,13 @@ static int display_resolution_index(const wuss_t *wuss)
  * pick, or to revert the fields */
 static void display_sync(display_task_t *dc)
 {
-  wuss_icon_set_selected(dc->window, dc->crt, g_tasks.crt);
-  wuss_icon_set_selected(dc->window, dc->pointer, g_tasks.pointer);
+  wuss_icon_set_selected(dc->base.window, dc->crt, g_tasks.crt);
+  wuss_icon_set_selected(dc->base.window, dc->pointer, g_tasks.pointer);
   (void) wuss_stringset_set_index(dc->zoom,
                                   wuss_frontend_get_zoom(g_tasks.frontend) - 1);
   (void) wuss_stringset_set_index(dc->colours, display_depth_index());
   (void) wuss_stringset_set_index(dc->resolution,
-                                  display_resolution_index(dc->wuss));
+                                  display_resolution_index(dc->base.wuss));
 }
 
 /* apply every pick; on refusal show the settings still in force */
@@ -256,7 +256,7 @@ static result_t display_change(display_task_t *dc)
   res   = wuss_stringset_get_index(dc->resolution);
   depth = wuss_stringset_get_index(dc->colours);
   size  = (res < (int) NELEMS(g_display_resolutions))
-        ? g_display_resolutions[res] : wuss_get_screen_size(dc->wuss);
+        ? g_display_resolutions[res] : wuss_get_screen_size(dc->base.wuss);
   rc    = app_set_mode(size, g_display_depths[depth]);
   if (rc != result_OK)
     display_sync(dc);
@@ -266,8 +266,7 @@ static result_t display_change(display_task_t *dc)
 
 /* ----------------------------------------------------------------------- */
 
-static result_t display_create_window(display_task_t *task,
-                                      wuss_task_t    *delegate)
+static result_t display_init(display_task_t *task)
 {
   result_t         rc;
   size2d_t         size;
@@ -280,19 +279,19 @@ static result_t display_create_window(display_task_t *task,
   /* each label's natural width; the size group widens the other to match */
   memcpy(items, g_display_stack, sizeof(items));
   items[DISPLAY_ST_COLOURS_LABEL].axis_size =
-    task_text_width(task->wuss, "Colours");
+    task_text_width(task->base.wuss, "Colours");
   items[DISPLAY_ST_RESOLUTION_LABEL].axis_size =
-    task_text_width(task->wuss, "Resolution");
+    task_text_width(task->base.wuss, "Resolution");
   items[DISPLAY_ST_ZOOM_LABEL].axis_size =
-    task_text_width(task->wuss, "Zoom");
+    task_text_width(task->base.wuss, "Zoom");
   items[DISPLAY_ST_CRT].min = wuss_STD_GLYPH_SIZE + wuss_STD_GAP +
-                              task_text_width(task->wuss, "CRT effect");
+                              task_text_width(task->base.wuss, "CRT effect");
   items[DISPLAY_ST_POINTER].min = wuss_STD_GLYPH_SIZE + wuss_STD_GAP +
-    task_text_width(task->wuss, "Software pointer");
+    task_text_width(task->base.wuss, "Software pointer");
   items[DISPLAY_ST_CANCEL].min =
-    task_button_width(task->wuss, "Cancel", wuss_STD_SECONDARY_BUTTON_BORDER);
+    task_button_width(task->base.wuss, "Cancel", wuss_STD_SECONDARY_BUTTON_BORDER);
   items[DISPLAY_ST_CHANGE].min =
-    task_button_width(task->wuss, "Change", wuss_STD_SECONDARY_BUTTON_BORDER);
+    task_button_width(task->base.wuss, "Change", wuss_STD_SECONDARY_BUTTON_BORDER);
 
   rc = stack_smallest(items, NELEMS(items), &size);
   if (rc != result_OK)
@@ -303,7 +302,7 @@ static result_t display_create_window(display_task_t *task,
   if (rc != result_OK)
     return rc;
 
-  rc = wuss_window_create_at(delegate,
+  rc = wuss_window_create_at(task->base.delegate,
                              &g_display_place,
                              size,
                              "Display",
@@ -311,7 +310,7 @@ static result_t display_create_window(display_task_t *task,
                              wuss_BACKDROP_COLOUR(wuss_COLOUR_WINDOW),
                              size,
                              SIZE2D(0, 0),
-                             &task->window);
+                             &task->base.window);
   if (rc != result_OK)
     return rc;
 
@@ -333,7 +332,7 @@ static result_t display_create_window(display_task_t *task,
   wuss_icon_spec_action(&specs[DISPLAY_ICON_CHANGE],
                         boxes[DISPLAY_ST_CHANGE], "Change", 0);
 
-  rc = wuss_icon_create_array(task->window, specs, NELEMS(specs), made);
+  rc = wuss_icon_create_array(task->base.window, specs, NELEMS(specs), made);
   if (rc != result_OK)
     return rc;
 
@@ -342,7 +341,7 @@ static result_t display_create_window(display_task_t *task,
   task->cancel = made[DISPLAY_ICON_CANCEL];
   task->change = made[DISPLAY_ICON_CHANGE];
 
-  rc = wuss_stringset_create(&task->zoom, task->window,
+  rc = wuss_stringset_create(&task->zoom, task->base.window,
                              boxes[DISPLAY_ST_ZOOM], "Zoom", -1,
                              g_display_zoom_labels,
                              NELEMS(g_display_zoom_labels), NULL, NULL);
@@ -350,14 +349,14 @@ static result_t display_create_window(display_task_t *task,
     return rc;
 
   /* mode picks only update the fields; Change applies them */
-  rc = wuss_stringset_create(&task->colours, task->window,
+  rc = wuss_stringset_create(&task->colours, task->base.window,
                              boxes[DISPLAY_ST_COLOURS], "Colours", -1,
                              g_display_depth_labels,
                              NELEMS(g_display_depth_labels), NULL, NULL);
   if (rc != result_OK)
     return rc;
 
-  rc = wuss_stringset_create(&task->resolution, task->window,
+  rc = wuss_stringset_create(&task->resolution, task->base.window,
                              boxes[DISPLAY_ST_RESOLUTION], "Resolution", -1,
                              g_display_resolution_labels,
                              NELEMS(g_display_resolution_labels), NULL, NULL);
@@ -366,104 +365,9 @@ static result_t display_create_window(display_task_t *task,
 
   display_sync(task);
 
-  return result_OK;
-}
-
-result_t display_create(wuss_t *wuss, display_task_t **out)
-{
-  result_t         rc;
-  display_task_t  *task;
-  wuss_task_t     *delegate;
-  wuss_task_desc_t delegate_desc;
-
-  /* one closed but not yet quit no longer counts */
-  if (g_display != NULL && g_display->window != NULL)
-  {
-    (void) wuss_task_front(wuss, g_display->delegate);
-    if (out)
-      *out = g_display;
-    return result_OK;
-  }
-
-  task = calloc(1, sizeof(*task));
-  if (task == NULL)
-    return result_OOM;
-
-  task->wuss = wuss;
-
-  delegate_desc.handle    = display_handle;
-  delegate_desc.task_data = task;
-  delegate_desc.name      = "Display";
-  rc = wuss_task_create(wuss, &delegate_desc, &delegate);
-  if (rc != result_OK)
-  {
-    free(task); /* nothing registered yet; the spawner will not free it */
-    return rc;
-  }
-  wuss_task_set_autoclose(delegate, 1);
-  task->delegate = delegate;
-
-  rc = display_create_window(task, delegate);
-  if (rc != result_OK)
-  {
-    wuss_task_destroy(delegate); /* unregister; its QUIT frees the task block
-                                  * and any string sets made so far */
-    return rc;
-  }
-
   g_display = task;
 
-  if (out)
-    *out = task;
-
   return result_OK;
-}
-
-static const taskapp_desc_t display_desc =
-{
-  "Display",
-  "Set colours and resolution",
-  (taskapp_create_fn_t) display_create,
-  NULL,
-  false,
-  NULL,
-  true,
-  NULL,
-  NULL,
-  NULL,
-  NULL,
-  0x50000000, /* beside the Task Manager */
-  NULL,
-  true
-};
-
-result_t display_app_create(wuss_t *wuss)
-{
-  return taskapp_install(wuss, &display_desc);
-}
-
-static result_t display__spawn(wuss_t *wuss, void *param, void **out)
-{
-  NOT_USED(param);
-
-  return display_create(wuss, (display_task_t **) out);
-}
-
-result_t display_open(wuss_t *wuss)
-{
-  void *task;
-
-  return taskapp_spawn(wuss, &display_desc, display__spawn, NULL, &task);
-}
-
-void display_destroy(display_task_t *task)
-{
-  wuss_stringset_destroy(task->zoom);
-  wuss_stringset_destroy(task->colours);
-  wuss_stringset_destroy(task->resolution);
-  if (task == g_display)
-    g_display = NULL;
-  free(task);
 }
 
 /* offer an event to both string sets; 1 if one consumed it, its outcome in
@@ -477,12 +381,14 @@ static int display_offer(display_task_t     *dc,
          wuss_stringset_handle_event(dc->resolution, event, rc);
 }
 
-result_t display_handle(wuss_window_t      *window,
-                        const wuss_event_t *event,
-                        void               *task_data)
+static result_t display_handle(wuss_window_t      *window,
+                               const wuss_event_t *event,
+                               void               *task_data)
 {
   result_t        rc;
   display_task_t *dc;
+
+  NOT_USED(window);
 
   dc = task_data;
 
@@ -503,12 +409,12 @@ result_t display_handle(wuss_window_t      *window,
 
       /* Select closes, as on RISC OS; with autoclose this frees dc, so it
        * must not be touched afterwards */
-      return wuss_window_try_close(dc->window);
+      return wuss_window_try_close(dc->base.window);
     }
     if (event->data.icon.icon == dc->cancel)
     {
       if (!(event->data.icon.button & wuss_BUTTON_ADJUST))
-        return wuss_window_try_close(dc->window); /* frees dc likewise */
+        return wuss_window_try_close(dc->base.window); /* frees dc likewise */
 
       display_sync(dc); /* revert the fields to the settings in force */
     }
@@ -527,13 +433,12 @@ result_t display_handle(wuss_window_t      *window,
     (void) wuss_stringset_handle_event(dc->resolution, event, &rc);
     return result_OK;
 
-  case wuss_EVENT_CLOSE:
-    if (window == dc->window)
-      dc->window = NULL;
-    return result_OK;
-
   case wuss_EVENT_QUIT:
-    display_destroy(dc);
+    wuss_stringset_destroy(dc->zoom);
+    wuss_stringset_destroy(dc->colours);
+    wuss_stringset_destroy(dc->resolution);
+    if (dc == g_display)
+      g_display = NULL;
     return result_OK;
 
   case wuss_EVENT_KEY:
@@ -542,6 +447,56 @@ result_t display_handle(wuss_window_t      *window,
   default:
     return result_OK;
   }
+}
+
+/* ----------------------------------------------------------------------- */
+
+static result_t display_create(wuss_t *wuss, void **out);
+
+static const taskapp_desc_t display_desc =
+{
+  .name             = "Display",
+  .purpose          = "Set colours and resolution",
+  .create           = display_create,
+  .singleton        = true,
+  .iconbar_priority = 0x50000000, /* beside the Task Manager */
+  .no_quit          = true,
+  .instance_size    = sizeof(display_task_t),
+  .init             = (taskapp_init_fn_t) display_init,
+  .handle           = display_handle
+};
+
+static result_t display_create(wuss_t *wuss, void **out)
+{
+  /* one closed but not yet quit no longer counts */
+  if (g_display != NULL && g_display->base.window != NULL)
+  {
+    (void) wuss_task_front(wuss, g_display->base.delegate);
+    if (out)
+      *out = g_display;
+    return result_OK;
+  }
+
+  return taskapp_instance_create(wuss, &display_desc, out);
+}
+
+result_t display_app_create(wuss_t *wuss)
+{
+  return taskapp_install(wuss, &display_desc);
+}
+
+static result_t display__spawn(wuss_t *wuss, void *param, void **out)
+{
+  NOT_USED(param);
+
+  return display_create(wuss, out);
+}
+
+result_t display_open(wuss_t *wuss)
+{
+  void *task;
+
+  return taskapp_spawn(wuss, &display_desc, display__spawn, NULL, &task);
 }
 
 #endif /* WUSS_APP */

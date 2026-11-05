@@ -19,11 +19,52 @@
 #include "framebuf/pattern.h"
 #include "framebuf/pixelfmt.h"
 #include "geom/box.h"
+#include "wuss/menu.h"
+#include "wuss/window.h"
 
-#include "gradient.h"
+#include "../apps.h"
 #include "../common/taskapp.h"
 #include "../common/common.h"
-#include "../common/snapshot.h"
+
+/* fill shapes offered on the "Shape" menu */
+typedef enum gradient_shape
+{
+  gradient_SHAPE_LINEAR,  /* the original two-axis RGB ramp */
+  gradient_SHAPE_RADIAL,  /* hue by distance from the document centre */
+  gradient_SHAPE_CONICAL, /* hue by angle about the document centre */
+  gradient_NSHAPES
+}
+gradient_shape_t;
+
+/* fills its whole content area with a two-axis colour gradient; opens
+ * small (100x100) against a large (400x400) document, so scrollbars
+ * appear and the fill can be scrolled around. SELECT/ADJUST clicks cycle
+ * the ordered-dither matrix forward/backward through 2x2, 4x4 and 8x8. An
+ * ADJUST drag sets brightness (vertical, up is brighter) and saturation
+ * (horizontal, right is more saturated). Menu > Shape swaps the two-axis
+ * ramp for a radial or conical hue sweep; Menu > Reset restores the shape,
+ * dither, brightness and saturation; Menu > Save opens a Save As
+ * dialogue (drag its icon onto a Filer window, or Save with a full path
+ * already typed) that writes the window's content out. Once a click has
+ * given the window the input focus, S steps the shape, D steps the dither
+ * matrix and R resets. */
+typedef struct gradient_task
+{
+  taskapp_instance_t  base;
+  wuss_menu_item_t    menu_items[3]; /* per-instance: a shared static would
+                                       * leak one instance's .window pointer
+                                       * into another's menu */
+  wuss_menu_item_t    shape_items[gradient_NSHAPES];
+  wuss_menu_t         shape_menu;
+  gradient_shape_t     shape;
+  int                  dither_index;
+  int                  brightness;     /* 0..512, 256 is unchanged */
+  int                  saturation;     /* 0..512, 256 is unchanged */
+  int                  dragging;       /* non-zero while an Adjust drag is live */
+  int                  dragged;        /* non-zero once that drag has moved */
+  int                  drag_x, drag_y; /* last drag point, content space */
+}
+gradient_task_t;
 
 /* MENU click pops this menu; the item table and wuss_menu_t live
  * per-instance in gradient_task_t, not as a file-scope static */
@@ -33,8 +74,6 @@ enum
   GRADIENT_MENU_SHAPE,
   GRADIENT_MENU_RESET
 };
-
-#define GRADIENT_SAVE_NAME "gradient.png" /* Save As's initial leafname */
 
 /* "Shape" submenu rows, indexed by gradient_shape_t */
 static const char *const gradient_shape_names[gradient_NSHAPES] =
@@ -152,47 +191,17 @@ static void adjust(const gradient_task_t *gc, int rgb[3])
   }
 }
 
-/* wuss_saveas_save_fn_t: opaque is the gradient_task_t */
-static result_t gradient_saveas_save(const char *path, void *opaque)
+static result_t gradient_init(gradient_task_t *task)
 {
-  gradient_task_t *gc;
+  result_t rc;
+  int      i;
 
-  gc = opaque;
-
-  return snapshot_save_png(gc->window, gradient_handle, gc, path);
-}
-
-result_t gradient_create(wuss_t *wuss, gradient_task_t **out)
-{
-  result_t         rc;
-  gradient_task_t *task;
-  wuss_task_t     *delegate;
-  wuss_task_desc_t delegate_desc;
-  int              i;
-
-  task = calloc(1, sizeof(*task));
-  if (task == NULL)
-    return result_OOM;
-
-  task->wuss         = wuss;
   task->dither_index = GRADIENT_DEFAULT_DITHER;
   task->brightness   = GRADIENT_UNITY;
   task->saturation   = GRADIENT_UNITY;
 
   /* gradient_redraw paints every pixel itself */
-  delegate_desc.handle    = gradient_handle;
-  delegate_desc.task_data = task;
-  delegate_desc.name      = "Gradient";
-  rc = wuss_task_create(wuss, &delegate_desc, &delegate);
-  if (rc != result_OK)
-  {
-    free(task); /* nothing registered yet; the spawner will not free it */
-    return rc;
-  }
-  wuss_task_set_autoclose(delegate, 1);
-  task->delegate = delegate;
-
-  rc = wuss_window_create_at(delegate,
+  rc = wuss_window_create_at(task->base.delegate,
                              &task_place,
                              SIZE2D(GRADIENT_DOC_WIDTH, GRADIENT_DOC_HEIGHT),
                              "Gradient",
@@ -200,26 +209,12 @@ result_t gradient_create(wuss_t *wuss, gradient_task_t **out)
                              wuss_NO_BACKDROP,
                              SIZE2D(GRADIENT_DOC_WIDTH, GRADIENT_DOC_HEIGHT),
                              SIZE2D(0, 0),
-                             &task->window);
+                             &task->base.window);
   if (rc != result_OK)
-  {
-    wuss_task_destroy(delegate); /* unregister; its QUIT frees the task block */
     return rc;
-  }
 
-  rc = snapshot_saveas_create(&task->saveas, wuss, GRADIENT_SAVE_NAME,
-                              gradient_saveas_save, task);
-  if (rc != result_OK)
-  {
-    wuss_task_destroy(delegate);
-    return rc;
-  }
-
-  WUSS_MENU_ITEM_SHORTCUT(task->menu_items, GRADIENT_MENU_SAVE, "Save",
-                          wuss_MENU_ITEM_NONE, "F3");
-  /* hover opens the Save As dialogue as a submenu; F3 shows it standalone */
-  task->menu_items[GRADIENT_MENU_SAVE].window =
-    wuss_saveas_window(task->saveas);
+  taskapp_save_row(&task->base, task->menu_items, GRADIENT_MENU_SAVE,
+                   wuss_MENU_ITEM_NONE);
 
   for (i = 0; i < gradient_NSHAPES; i++)
     WUSS_MENU_ITEM(task->shape_items, i, gradient_shape_names[i],
@@ -234,31 +229,10 @@ result_t gradient_create(wuss_t *wuss, gradient_task_t **out)
   WUSS_MENU_ITEM_SHORTCUT(task->menu_items, GRADIENT_MENU_RESET, "Reset",
                           wuss_MENU_ITEM_NONE, "R");
 
-  WUSS_MENU_TITLE(task->menu, "Gradient", task->menu_items,
+  WUSS_MENU_TITLE(task->base.menu, "Gradient", task->menu_items,
                  NELEMS(task->menu_items));
 
-  if (out)
-    *out = task;
-
   return result_OK;
-}
-
-result_t gradient_app_create(wuss_t *wuss)
-{
-  static const taskapp_desc_t desc =
-  {
-    "Gradient",
-    "Dithered colour gradients",
-    (taskapp_create_fn_t) gradient_create
-  };
-
-  return taskapp_install(wuss, &desc);
-}
-
-void gradient_destroy(gradient_task_t *task)
-{
-  wuss_saveas_destroy(task->saveas);
-  free(task);
 }
 
 static result_t gradient_redraw(const wuss_event_t *event, void *task_data)
@@ -302,7 +276,7 @@ static result_t gradient_redraw(const wuss_event_t *event, void *task_data)
    * content: screen pos = content top-left - scroll + doc offset. Uses bounds,
    * not the per-redraw dirty piece, so it is drawn whole on a partial redraw */
   {
-    bmfont_t   *font = wuss_get_font(gc->wuss);
+    bmfont_t   *font = wuss_get_font(gc->base.wuss);
     int       dim  = 1 << gradient_dithers[gc->dither_index];
     char      label[32];
     colour_t    ink  = colour_rgb(0xFF, 0xFF, 0xFF);
@@ -327,7 +301,7 @@ static result_t gradient_redraw(const wuss_event_t *event, void *task_data)
 
       bmfont_get_info(font, NULL, NULL, &ascent, NULL);
       pos = POINT(bounds->x0 - sx + 2, bounds->y0 - sy + 2 + ascent);
-      wuss_text_draw(gc->wuss, 0, scr, label, (int) strlen(label), ink, bg,
+      wuss_text_draw(gc->base.wuss, 0, scr, label, (int) strlen(label), ink, bg,
                      &pos, NULL);
     }
   }
@@ -360,7 +334,7 @@ static result_t gradient_mouse(const wuss_event_t *event, void *task_data)
     gc->drag_x  = p.x;
     gc->drag_y  = p.y;
     gc->dragged = 1;
-    wuss_window_invalidate_visible(gc->window);
+    wuss_window_invalidate_visible(gc->base.window);
 
     return result_OK;
   }
@@ -375,7 +349,7 @@ static result_t gradient_mouse(const wuss_event_t *event, void *task_data)
       return result_OK;
 
     gc->dither_index = (gc->dither_index + n - 1) % n;
-    wuss_window_invalidate_visible(gc->window);
+    wuss_window_invalidate_visible(gc->base.window);
 
     return result_OK;
   }
@@ -386,8 +360,8 @@ static result_t gradient_mouse(const wuss_event_t *event, void *task_data)
   {
     wuss_menu_tick_exclusive(&gc->shape_menu, gc->shape);
 
-    return wuss_menu_open_at_pointer(gc->delegate, &gc->menu,
-                                     &gc->menu_handle);
+    return wuss_menu_open_at_pointer(gc->base.delegate, &gc->base.menu,
+                                     &gc->base.menu_handle);
   }
 
   if (button & wuss_BUTTON_ADJUST)
@@ -405,7 +379,7 @@ static result_t gradient_mouse(const wuss_event_t *event, void *task_data)
 
   gc->dither_index = (gc->dither_index + 1) % n;
 
-  wuss_window_invalidate_visible(gc->window); /* whole fill changes */
+  wuss_window_invalidate_visible(gc->base.window); /* whole fill changes */
 
   return result_OK;
 }
@@ -417,7 +391,7 @@ static void gradient_reset(gradient_task_t *gc)
   gc->dither_index = GRADIENT_DEFAULT_DITHER;
   gc->brightness   = GRADIENT_UNITY;
   gc->saturation   = GRADIENT_UNITY;
-  wuss_window_invalidate_visible(gc->window);
+  wuss_window_invalidate_visible(gc->base.window);
 }
 
 /* Menu pick: a Shape row switches the fill; Reset restores the default
@@ -430,20 +404,15 @@ static result_t gradient_menu_select(gradient_task_t    *gc,
   if (event->data.menu_select.menu == &gc->shape_menu)
   {
     gc->shape = (gradient_shape_t) event->data.menu_select.index;
-    wuss_menu_tick_exclusive_live(gc->menu_handle, &gc->shape_menu,
+    wuss_menu_tick_exclusive_live(gc->base.menu_handle, &gc->shape_menu,
                                   gc->shape);
-    wuss_window_invalidate_visible(gc->window);
+    wuss_window_invalidate_visible(gc->base.window);
 
     return result_OK;
   }
 
-  if (event->data.menu_select.menu != &gc->menu)
+  if (event->data.menu_select.menu != &gc->base.menu)
     return result_OK;
-
-  if (event->data.menu_select.index == GRADIENT_MENU_SAVE)
-  {
-    return wuss_saveas_open(gc->saveas);
-  }
 
   if (event->data.menu_select.index != GRADIENT_MENU_RESET)
     return result_OK;
@@ -481,9 +450,9 @@ static result_t gradient_key(gradient_task_t *gc,
   return result_OK;
 }
 
-result_t gradient_handle(wuss_window_t      *window,
-                         const wuss_event_t *event,
-                         void               *task_data)
+static result_t gradient_handle(wuss_window_t      *window,
+                                const wuss_event_t *event,
+                                void               *task_data)
 {
   gradient_task_t *gc;
 
@@ -495,19 +464,13 @@ result_t gradient_handle(wuss_window_t      *window,
     return gradient_redraw(event, task_data);
 
   case wuss_EVENT_MOUSE:
-    if (window != gc->window)
-      return result_OK; /* the proginfo dialogue has no click behaviour of
-                         * its own */
     return gradient_mouse(event, task_data);
 
   case wuss_EVENT_KEY:
   {
     result_t rc;
 
-    if (window != gc->window)
-      return result_WUSS_KEY_UNCLAIMED; /* not the proginfo dialogue */
-
-    if (!task_key_is_plain(gc->delegate, &gc->menu, event, &rc))
+    if (!task_key_is_plain(gc->base.delegate, &gc->base.menu, event, &rc))
       return rc;
 
     return gradient_key(gc, window, event->data.key.code);
@@ -516,17 +479,24 @@ result_t gradient_handle(wuss_window_t      *window,
   case wuss_EVENT_MENU_SELECT:
     return gradient_menu_select(gc, event);
 
-  case wuss_EVENT_MENU_CLOSED:
-    gc->menu_handle = NULL;
-    return result_OK;
-
-  case wuss_EVENT_QUIT:
-    gradient_destroy(gc);
-    return result_OK;
-
   default:
     return result_OK;
   }
+}
+
+result_t gradient_app_create(wuss_t *wuss)
+{
+  static const taskapp_desc_t desc =
+  {
+    .name          = "Gradient",
+    .purpose       = "Dithered colour gradients",
+    .instance_size = sizeof(gradient_task_t),
+    .init          = (taskapp_init_fn_t) gradient_init,
+    .handle        = gradient_handle,
+    .save_name     = "gradient.png"
+  };
+
+  return taskapp_install(wuss, &desc);
 }
 
 #endif /* WUSS_APP */

@@ -13,19 +13,66 @@
 #endif
 
 #include "base/utils.h"
+#include "framebuf/bmfont.h"
 #include "framebuf/bmfontfamily.h"
+#include "framebuf/colour.h"
 #include "framebuf/palettes.h"
 #include "geom/box.h"
 #include "geom/point.h"
 #include "io/path.h"
 #include "text/utf8.h"
+#include "wuss/component/fontmenu.h"
+#include "wuss/gadget/gridview.h"
 #include "wuss/icon.h"
 #include "wuss/menu.h"
+#include "wuss/task.h"
+#include "wuss/window.h"
 
-#include "chars.h"
+#include "../apps.h"
 #include "../common/taskapp.h"
 #include "../common/common.h"
-#include "../common/snapshot.h"
+
+#define CHARS_MAX_PAGES 16 /* "Page" submenu rows; pages past this are not
+                            * offered */
+
+/* displays one 256-codepoint Unicode page of a bitmap font as a grid
+ * (16 columns to start; the window width sets a power-of-two count), so the
+ * font can be eyeballed at a glance. A MENU click on the window opens a menu
+ * whose "Font" row is the shared wuss_fontmenu singleton over
+ * resources/bmfonts, swapping the font in place, and whose "Page" row lists
+ * the pages the current font has glyphs in. Select and Adjust clicks step
+ * to the next and previous of those pages. Menu > Save opens a Save As
+ * dialogue (drag its icon onto a Filer window, or Save with a full path
+ * already typed) that writes the grid out. */
+typedef struct chars_task
+{
+  taskapp_instance_t  base;
+  bmfont_t           *font;        /* currently shown; == fonts[current]
+                                    * once loaded */
+  bmfont_t           *index_font;  /* "Tiny Regular" for the cell numbers, or
+                                    * NULL to use the wuss system font */
+  bmfont_t          **fonts;       /* one slot per menu item, lazily loaded */
+  int                 nfonts;      /* length of fonts[]; == menu item count */
+  int                 current;     /* index into fonts[], or -1 if the
+                                    * system font is not listed */
+  int                 cols;        /* grid width in cells: a power of two
+                                    * that fits the window */
+  wuss_gridview_t    *gv;          /* lays out and draws the cells */
+  int                 rows;        /* rows of gv's grid, for the grid lines */
+  int                 offset;      /* index of gv's first item within the page:
+                                    * the rows above it hold no glyphs */
+  colour_t            fg, mg, bg;
+  unsigned long       page;        /* first codepoint of the page shown */
+  wuss_menu_item_t    page_items[CHARS_MAX_PAGES]; /* rebuilt each time
+                                    * "Page" opens, for the current font */
+  char                page_labels[CHARS_MAX_PAGES][8]; /* "U+1F400" */
+  unsigned long       page_bases[CHARS_MAX_PAGES]; /* page_items[i]'s page */
+  wuss_menu_t         page_menu;
+  wuss_menu_item_t    menu_items[3]; /* per-instance: a shared static would
+                                      * leak one instance's .window pointer
+                                      * into another's menu */
+}
+chars_task_t;
 
 #define CHARS_COLS 16 /* initial columns; see chars_task_t.cols */
 #define CHARS_PAD  1
@@ -44,8 +91,6 @@ enum
   CHARS_MENU_PAGE
 };
 
-#define CHARS_SAVE_NAME "chars.png" /* Save As's initial leafname */
-
 #define CHARS_INDEX_FONT "Tiny Regular" /* the font for the cell numbers */
 
 /* ----------------------------------------------------------------------- */
@@ -58,9 +103,9 @@ static const wuss_menu_t *chars_fontmenu(chars_task_t *task)
   const char *resources;
   const char *bmfonts_dir;
 
-  resources   = wuss_get_resources(task->wuss);
+  resources   = wuss_get_resources(task->base.wuss);
   bmfonts_dir = pathf("%s/resources/bmfonts", resources);
-  return wuss_fontmenu_menu(bmfonts_dir, "Font", task->wuss,
+  return wuss_fontmenu_menu(bmfonts_dir, "Font", task->base.wuss,
                             wuss_FONTMENU_NONE);
 }
 
@@ -117,7 +162,7 @@ static bmfont_t *chars_index_font(const chars_task_t *task)
   if (task->index_font != NULL)
     return task->index_font;
 
-  return wuss_get_font(task->wuss);
+  return wuss_get_font(task->base.wuss);
 }
 
 /* cell size at the given font's metrics. Each cell stacks the index (drawn
@@ -215,14 +260,15 @@ static bmfont_t *chars_load_named(chars_task_t *task, const char *name)
   char        filename[512];
   bmfont_t   *font;
 
-  resources = wuss_get_resources(task->wuss);
+  resources = wuss_get_resources(task->base.wuss);
   dir       = pathf("%s/resources/bmfonts", resources);
 
   rc = bmfontfamily_label_path(dir, name, filename, sizeof(filename));
   if (rc != result_OK)
     return NULL;
 
-  rc = bmfontcache_acquire(wuss_get_font_cache(task->wuss), filename, &font);
+  rc = bmfontcache_acquire(wuss_get_font_cache(task->base.wuss), filename,
+                           &font);
   if (rc != result_OK)
     return NULL;
 
@@ -248,10 +294,10 @@ static void chars_resize(chars_task_t *task)
 {
   chars_set_cell(task);
   chars_sync(task);
-  wuss_window_resize(task->window,
+  wuss_window_resize(task->base.window,
                      wuss_gridview_natural_size(task->gv, task->cols,
                                                 CHARS_PAGE_SIZE));
-  wuss_window_invalidate_visible(task->window);
+  wuss_window_invalidate_visible(task->base.window);
 }
 
 /* switch the grid to the font at menu row idx (label name), resizing to suit;
@@ -289,7 +335,7 @@ static result_t chars_set_page(chars_task_t       *task,
   task->page = task->page_bases[idx];
   chars_resize(task);
 
-  wuss_menu_tick_exclusive_live(task->menu_handle, &task->page_menu, idx);
+  wuss_menu_tick_exclusive_live(task->base.menu_handle, &task->page_menu, idx);
 
   return result_OK;
 }
@@ -354,9 +400,8 @@ static void chars_build_page_menu(chars_task_t *task)
 
 static result_t chars_open_menu(chars_task_t *task)
 {
-
-  return wuss_menu_open_at_pointer(task->delegate, &task->menu,
-                                   &task->menu_handle);
+  return wuss_menu_open_at_pointer(task->base.delegate, &task->base.menu,
+                                   &task->base.menu_handle);
 }
 
 /* "Font"'s hover: ticks the current font's row before handing the fontmenu
@@ -391,26 +436,14 @@ static result_t chars_pre_submenu_open(chars_task_t       *task,
                                     task->menu_items[index].submenu);
 }
 
-/* wuss_saveas_save_fn_t: opaque is the chars_task_t */
-static result_t chars_saveas_save(const char *path, void *opaque)
-{
-  chars_task_t *cc;
-
-  cc = opaque;
-
-  return snapshot_save_png(cc->window, chars_handle, cc, path);
-}
-
 static wuss_gridview_draw_fn_t chars_draw_cell;
 
 /* ----------------------------------------------------------------------- */
 
-result_t chars_create(wuss_t *wuss, chars_task_t **out)
+static result_t chars_init(chars_task_t *task)
 {
   result_t           rc;
-  chars_task_t      *task;
-  wuss_task_t       *delegate;
-  wuss_task_desc_t   delegate_desc;
+  wuss_t            *wuss;
   bmfont_t          *font;
   const wuss_menu_t *menu;
   const char        *sysname;
@@ -418,40 +451,30 @@ result_t chars_create(wuss_t *wuss, chars_task_t **out)
   size2d_t           grid;
   int                cell_w, cell_h;
 
+  wuss = task->base.wuss;
+
   font = wuss_get_font(wuss);
   if (font == NULL)
-    return result_OK; /* no window opened; nothing to free */
+    return result_BAD_ARG;
 
-  task = calloc(1, sizeof(*task));
-  if (task == NULL)
-    return result_OOM;
-
-  task->wuss        = wuss;
-  task->font        = font;
-  task->cols        = CHARS_COLS;
-  task->current     = -1; /* until the system font's row is found below */
-  task->menu_handle = NULL;
-  task->fg          = colour_rgb(0x00, 0x00, 0x00);
-  task->mg          = colour_rgb(0xBB, 0xBB, 0xBB);
-  task->bg          = colour_rgb(0xFF, 0xFF, 0xFF);
+  task->font    = font;
+  task->cols    = CHARS_COLS;
+  task->current = -1; /* until the system font's row is found below */
+  task->fg      = colour_rgb(0x00, 0x00, 0x00);
+  task->mg      = colour_rgb(0xBB, 0xBB, 0xBB);
+  task->bg      = colour_rgb(0xFF, 0xFF, 0xFF);
 
   /* the shared picker: every ".png" font under resources/bmfonts, sorted,
    * less any SYSTEM-class font (e.g. the one wuss draws menu ticks/arrows
    * from) */
   menu = chars_fontmenu(task);
   if (menu == NULL)
-  {
-    free(task); /* nothing registered yet; the spawner will not free it */
     return result_OOM;
-  }
 
-  task->nfonts  = menu->nitems;
-  task->fonts   = calloc((size_t) task->nfonts, sizeof(*task->fonts));
-  if (task->nfonts > 0 && task->fonts == NULL)
-  {
-    free(task);
+  task->fonts = calloc((size_t) menu->nitems, sizeof(*task->fonts));
+  if (menu->nitems > 0 && task->fonts == NULL)
     return result_OOM;
-  }
+  task->nfonts = menu->nitems; /* QUIT walks fonts[] by this */
 
   /* tick the system font's row, if the picker lists it. fonts[current]
    * stays NULL: the system font is wuss's, not ours to release. */
@@ -460,21 +483,6 @@ result_t chars_create(wuss_t *wuss, chars_task_t **out)
     for (i = 0; i < task->nfonts; i++)
       if (strcmp(menu->items[i].text, sysname) == 0)
         task->current = i;
-
-  /* chars_redraw paints every cell itself */
-  delegate_desc.handle    = chars_handle;
-  delegate_desc.task_data = task;
-  delegate_desc.name      = "Chars";
-  rc = wuss_task_create(wuss, &delegate_desc, &delegate);
-  if (rc != result_OK)
-  {
-    /* nothing registered yet; the spawner will not free it */
-    free(task->fonts);
-    free(task);
-    return rc;
-  }
-  wuss_task_set_autoclose(delegate, 1);
-  task->delegate = delegate;
 
   /* optional: without it the numbers use the wuss system font */
   task->index_font = chars_load_named(task, CHARS_INDEX_FONT);
@@ -485,7 +493,8 @@ result_t chars_create(wuss_t *wuss, chars_task_t **out)
   task->cols = MIN(task->cols, chars_cols_for_width(cell_w,
                    wuss_get_screen_size(wuss).w));
   grid = chars_window_size(task, font);
-  rc = wuss_window_create_at(delegate,
+  /* chars_redraw paints every cell itself */
+  rc = wuss_window_create_at(task->base.delegate,
                              &task_place,
                              grid,
                              "Chars",
@@ -493,22 +502,16 @@ result_t chars_create(wuss_t *wuss, chars_task_t **out)
                              wuss_NO_BACKDROP,
                              grid,
                              SIZE2D(64, 64),
-                             &task->window);
+                             &task->base.window);
   if (rc != result_OK)
-  {
-    wuss_task_destroy(delegate); /* unregister; its QUIT frees the task block */
     return rc;
-  }
 
   /* columns are limited by the screen and window, not by the item count,
    * which follows the columns (chars_sync) */
-  rc = wuss_gridview_create(&task->gv, task->window, CHARS_PAGE_SIZE,
+  rc = wuss_gridview_create(&task->gv, task->base.window, CHARS_PAGE_SIZE,
                             chars_item, 1, NULL, task);
   if (rc != result_OK)
-  {
-    wuss_task_destroy(delegate);
     return rc;
-  }
 
   wuss_gridview_set_layout(task->gv, CHARS_PAGE_SIZE, 1, wuss_STD_INSET);
   wuss_gridview_set_draw(task->gv, chars_draw_cell, 0);
@@ -516,18 +519,8 @@ result_t chars_create(wuss_t *wuss, chars_task_t **out)
   chars_set_cell(task);
   chars_sync(task);
 
-  rc = snapshot_saveas_create(&task->saveas, wuss, CHARS_SAVE_NAME,
-                              chars_saveas_save, task);
-  if (rc != result_OK)
-  {
-    wuss_task_destroy(delegate);
-    return rc;
-  }
-
-  WUSS_MENU_ITEM_SHORTCUT(task->menu_items, CHARS_MENU_SAVE, "Save",
-                          wuss_MENU_ITEM_NONE, "F3");
-  /* hover opens the Save As dialogue as a submenu; F3 shows it standalone */
-  task->menu_items[CHARS_MENU_SAVE].window = wuss_saveas_window(task->saveas);
+  taskapp_save_row(&task->base, task->menu_items, CHARS_MENU_SAVE,
+                   wuss_MENU_ITEM_NONE);
 
   WUSS_MENU_ITEM_MENU(task->menu_items, CHARS_MENU_FONT, "Font",
                       wuss_MENU_ITEM_BORROWED_SUBMENU | wuss_MENU_ITEM_PRE_OPEN,
@@ -537,41 +530,24 @@ result_t chars_create(wuss_t *wuss, chars_task_t **out)
   WUSS_MENU_ITEM_MENU(task->menu_items, CHARS_MENU_PAGE, "Page",
                       wuss_MENU_ITEM_PRE_OPEN, &task->page_menu);
 
-  WUSS_MENU_TITLE(task->menu, "Chars", task->menu_items,
+  WUSS_MENU_TITLE(task->base.menu, "Chars", task->menu_items,
                  NELEMS(task->menu_items));
-
-  if (out)
-    *out = task;
 
   return result_OK;
 }
 
-result_t chars_app_create(wuss_t *wuss)
-{
-  static const taskapp_desc_t desc =
-  {
-    "Chars",
-    "Font glyph grid",
-    (taskapp_create_fn_t) chars_create
-  };
-
-  return taskapp_install(wuss, &desc);
-}
-
-void chars_destroy(chars_task_t *task)
+static void chars_quit(chars_task_t *task)
 {
   int i;
 
   for (i = 0; i < task->nfonts; i++)
     if (task->fonts[i] != NULL)
-      bmfontcache_release(wuss_get_font_cache(task->wuss), task->fonts[i]);
+      bmfontcache_release(wuss_get_font_cache(task->base.wuss), task->fonts[i]);
   free(task->fonts);
   if (task->index_font != NULL)
-    bmfontcache_release(wuss_get_font_cache(task->wuss), task->index_font);
+    bmfontcache_release(wuss_get_font_cache(task->base.wuss), task->index_font);
 
   wuss_gridview_destroy(task->gv);
-  wuss_saveas_destroy(task->saveas);
-  free(task);
 }
 
 /* the lines on the top and left edges of every cell, drawn as one rule per
@@ -666,22 +642,19 @@ static void chars_draw_cell(wuss_gridview_t    *gv,
   screen_draw_line(scr, pos.x, adv_y, pos.x + advance - 1, adv_y, blue);
 }
 
-result_t chars_handle(wuss_window_t      *window,
-                      const wuss_event_t *event,
-                      void               *task_data)
+static result_t chars_handle(wuss_window_t      *window,
+                             const wuss_event_t *event,
+                             void               *task_data)
 {
   chars_task_t *cc = task_data;
 
   switch (event->kind)
   {
   case wuss_EVENT_QUIT:
-    chars_destroy(cc);
+    chars_quit(cc);
     return result_OK;
 
   case wuss_EVENT_MOUSE:
-    if (window != cc->window)
-      return result_OK; /* the proginfo dialogue has no click behaviour of
-                         * its own */
     if (event->data.mouse.action != wuss_MOUSE_DOWN)
       return result_OK;
 
@@ -695,7 +668,7 @@ result_t chars_handle(wuss_window_t      *window,
 
   case wuss_EVENT_OPEN:
   case wuss_EVENT_RELAYOUT:
-    if (window == cc->window)
+    if (window == cc->base.window)
       chars_relayout(cc, event);
     return result_OK;
 
@@ -706,11 +679,6 @@ result_t chars_handle(wuss_window_t      *window,
 
       if (event->data.menu_select.menu == &cc->page_menu)
         return chars_set_page(cc, event);
-
-      if (wuss_menu_select_is(event, &cc->menu, CHARS_MENU_SAVE))
-      {
-        return wuss_saveas_open(cc->saveas);
-      }
 
       name = wuss_fontmenu_selected(event);
       if (name == NULL)
@@ -726,27 +694,22 @@ result_t chars_handle(wuss_window_t      *window,
        * singleton at a new address while this handle's chain node still
        * points at the old one, which would leave the open submenu's
        * node->menu dangling. */
-      wuss_menu_tick_exclusive_live(cc->menu_handle,
+      wuss_menu_tick_exclusive_live(cc->base.menu_handle,
                                     event->data.menu_select.menu,
                                     cc->current);
 
       return rc;
     }
 
-  case wuss_EVENT_MENU_CLOSED:
-    cc->menu_handle = NULL; /* wuss closed the chain under us */
-    return result_OK;
-
   case wuss_EVENT_PRE_SUBMENU_OPEN:
     return chars_pre_submenu_open(cc, event);
 
   case wuss_EVENT_KEY:
-    if (window != cc->window)
-      return result_WUSS_KEY_UNCLAIMED; /* not the proginfo dialogue */
-    return wuss_menu_dispatch_shortcut(cc->delegate, &cc->menu, event);
+    return wuss_menu_dispatch_shortcut(cc->base.delegate, &cc->base.menu,
+                                       event);
 
   case wuss_EVENT_REDRAW:
-    if (window == cc->window)
+    if (window == cc->base.window)
     {
       (void) wuss_gridview_handle_event(cc->gv, event);
       chars_draw_grid(cc, event);
@@ -756,6 +719,21 @@ result_t chars_handle(wuss_window_t      *window,
   default:
     return result_OK;
   }
+}
+
+result_t chars_app_create(wuss_t *wuss)
+{
+  static const taskapp_desc_t desc =
+  {
+    .name          = "Chars",
+    .purpose       = "Font glyph grid",
+    .instance_size = sizeof(chars_task_t),
+    .init          = (taskapp_init_fn_t) chars_init,
+    .handle        = chars_handle,
+    .save_name     = "chars.png"
+  };
+
+  return taskapp_install(wuss, &desc);
 }
 
 #endif /* WUSS_APP */

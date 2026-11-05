@@ -12,17 +12,54 @@
 
 #include "base/debug.h"
 #include "base/utils.h"
+#include "framebuf/bitmap.h"
 #include "framebuf/palettes.h"
+#include "framebuf/screen.h"
 #include "geom/box.h"
+#include "geom/stage.h"
 #include "io/dirlist.h"
 #include "io/path.h"
+#include "wuss/component/colourmenu.h"
 #include "wuss/menu.h"
 #include "wuss/menu-desc.h"
 #include "wuss/message.h"
+#include "wuss/window.h"
 
-#include "viewing.h"
+#include "../apps.h"
+#include "../common/dithermenu.h"
 #include "../common/taskapp.h"
 #include "../common/common.h"
+
+/* window's task: a loaded PNG, alpha-tested against the window
+ * background (this test screen is paletted, so fully-transparent source
+ * pixels are skipped and everything else is drawn at full strength). The
+ * window starts empty; a wuss_MESSAGE_DATA_LOAD sent to it, whose payload is
+ * the path of a PNG, shows that image; a file that will not load is not
+ * acknowledged. */
+typedef struct viewing_task
+{
+  taskapp_instance_t base;
+  char           path[DPTLIB_MAXPATH]; /* file shown; "" until one is
+                                       * loaded */
+  bitmap_t       bitmap;    /* owned: base freed by the caller when done */
+  int            alpha;     /* nonzero: bitmap has transparent pixels, so
+                             * draw checks behind it */
+  wuss_menu_t   *menu;      /* owned: MENU-button demo tree, built from a
+                              * descriptor string; rebuilt on each open,
+                              * freed at QUIT */
+  dithermenu_t   dither;     /* "Display" submenu, borrowed by menu */
+  screen_dither_t dithering; /* method for paletted screens */
+  colour_t       colour_pasteboard; /* stage: outside the page */
+  colour_t       colour_paper;      /* page; the band behind the image when
+                                     * the stage is off */
+  colour_t       colour_shadow;
+  colour_t       colour_border;
+  wuss_colourlist_t colours; /* "Colours" submenu over the four above */
+  int            stage;     /* nonzero: draw a stage (page, border, shadow)
+                             * behind the image instead of a plain band */
+  stageconfig_t  stagecfg;
+}
+viewing_task_t;
 
 #define VIEWING_BORDERSZ 8 /* solid band drawn around the image */
 #define VIEWING_MARGINSZ VIEWING_BORDERSZ
@@ -58,34 +95,27 @@ static size2d_t viewing_size(const viewing_task_t *ic)
  * for that size, on the first image */
 static result_t viewing_fit(viewing_task_t *ic)
 {
-  return task_window_fit(ic->delegate, &ic->window, "Viewing",
+  return task_window_fit(ic->base.delegate, &ic->base.window, "Viewing",
                          wuss_WINDOW_DEFAULT | wuss_WINDOW_FOCUSABLE,
                          wuss_NO_BACKDROP,
                          viewing_size(ic), SIZE2D(32, 32));
 }
 
-result_t viewing_create(wuss_t *wuss, viewing_task_t **out)
+static result_t viewing_init(viewing_task_t *task)
 {
   static const char *const colour_names[4] =
   {
     "Pasteboard", "Paper", "Shadow", "Border"
   };
 
-  result_t         rc;
-  viewing_task_t  *task;
-  wuss_task_t     *delegate;
-  wuss_task_desc_t delegate_desc;
-  colour_t        *colour_fields[4];
+  colour_t *colour_fields[4];
 
-  task = calloc(1, sizeof(*task));
-  if (task == NULL)
-    return result_OOM;
+  /* No autoclose: QUIT is delivered at wuss_destroy instead. Closing the
+   * main window early leaks this block until then -- fine for a demo. The
+   * window opens with the first image, sized and placed for it */
+  wuss_task_set_autoclose(task->base.delegate, 0);
 
-  task->wuss        = wuss;
   task->bitmap.size = SIZE2D(VIEWING_EMPTYSZ, VIEWING_EMPTYSZ); /* no pixels */
-  task->delegate    = NULL;
-  task->menu        = NULL;
-  task->menu_handle = NULL;
   task->dithering   = screen_DITHER_BLUE_NOISE;
   task->stage       = 1;
   stageconfig_init(&task->stagecfg);
@@ -98,55 +128,12 @@ result_t viewing_create(wuss_t *wuss, viewing_task_t **out)
   colour_fields[1] = &task->colour_paper;
   colour_fields[2] = &task->colour_shadow;
   colour_fields[3] = &task->colour_border;
-  wuss_colourlist_init(&task->colours, wuss, 4, colour_fields, colour_names);
+  wuss_colourlist_init(&task->colours, task->base.wuss, 4, colour_fields,
+                       colour_names);
 
   dithermenu_init(&task->dither, task->dithering);
 
-  /* shows through the image's transparent pixels */
-  delegate_desc.handle    = viewing_handle;
-  delegate_desc.task_data = task;
-  delegate_desc.name      = "Viewing";
-  rc = wuss_task_create(wuss, &delegate_desc, &delegate);
-  if (rc != result_OK)
-  {
-    free(task->bitmap.base);
-    free(task); /* nothing registered yet; nobody else owns it */
-    return rc;
-  }
-  task->delegate = delegate;
-  /* No autoclose: QUIT is delivered at wuss_destroy instead. Closing the
-   * main window early leaks this block until then -- fine for a demo. The
-   * window opens with the first image, sized and placed for it */
-
-  if (out)
-    *out = task;
-
   return result_OK;
-}
-
-static result_t viewing_show(viewing_task_t *ic, const char *path);
-
-result_t viewing_app_create(wuss_t *wuss)
-{
-  static const unsigned short opens[] = { filetype_RISCOS_PNG, 0 };
-  static const taskapp_desc_t desc =
-  {
-    .name      = "Viewing",
-    .purpose   = "View PNG images",
-    .create    = (taskapp_create_fn_t) viewing_create,
-    .data_load = (taskapp_data_load_fn_t) viewing_show,
-    .drop_only = true,
-    .opens     = opens
-  };
-
-  return taskapp_install(wuss, &desc);
-}
-
-void viewing_destroy(viewing_task_t *task)
-{
-  wuss_menu_destroy(task->menu);
-  free(task->bitmap.base);
-  free(task); /* task_data was calloc'd per instance by the spawner */
 }
 
 /* Draw the image at (x, y), over checks if it has transparent pixels */
@@ -286,7 +273,7 @@ static result_t viewing_show(viewing_task_t *ic, const char *path)
     return rc;
 
   snprintf(ic->path, sizeof(ic->path), "%s", path);
-  task_set_doc_title(ic->window, path_leaf(path), "Viewing", 0);
+  task_set_doc_title(ic->base.window, path_leaf(path), "Viewing", 0);
   return result_OK;
 }
 
@@ -351,7 +338,7 @@ static result_t viewing_key(viewing_task_t *ic, const wuss_event_t *event)
   if (event->data.key.modifiers & (wuss_KEY_MOD_CTRL | wuss_KEY_MOD_ALT))
     return result_WUSS_KEY_UNCLAIMED;
 
-  wuss_window_get_content_bounds(ic->window, &content);
+  wuss_window_get_content_bounds(ic->base.window, &content);
   page = MAX(content.y1 - content.y0 - VIEWING_SCROLL_STEP, 1);
 
   switch (event->data.key.code)
@@ -361,35 +348,35 @@ static result_t viewing_key(viewing_task_t *ic, const wuss_event_t *event)
              (event->data.key.modifiers & wuss_KEY_MOD_SHIFT) ? -1 : 1);
 
   case wuss_KEY_UP:
-    wuss_window_scroll_by(ic->window, POINT(0, -VIEWING_SCROLL_STEP));
+    wuss_window_scroll_by(ic->base.window, POINT(0, -VIEWING_SCROLL_STEP));
     break;
 
   case wuss_KEY_DOWN:
-    wuss_window_scroll_by(ic->window, POINT(0, VIEWING_SCROLL_STEP));
+    wuss_window_scroll_by(ic->base.window, POINT(0, VIEWING_SCROLL_STEP));
     break;
 
   case wuss_KEY_LEFT:
-    wuss_window_scroll_by(ic->window, POINT(-VIEWING_SCROLL_STEP, 0));
+    wuss_window_scroll_by(ic->base.window, POINT(-VIEWING_SCROLL_STEP, 0));
     break;
 
   case wuss_KEY_RIGHT:
-    wuss_window_scroll_by(ic->window, POINT(VIEWING_SCROLL_STEP, 0));
+    wuss_window_scroll_by(ic->base.window, POINT(VIEWING_SCROLL_STEP, 0));
     break;
 
   case wuss_KEY_PAGE_UP:
-    wuss_window_scroll_by(ic->window, POINT(0, -page));
+    wuss_window_scroll_by(ic->base.window, POINT(0, -page));
     break;
 
   case wuss_KEY_PAGE_DOWN:
-    wuss_window_scroll_by(ic->window, POINT(0, page));
+    wuss_window_scroll_by(ic->base.window, POINT(0, page));
     break;
 
   case wuss_KEY_HOME:
-    wuss_window_scroll_by(ic->window, POINT(-INT_MAX / 2, -INT_MAX / 2));
+    wuss_window_scroll_by(ic->base.window, POINT(-INT_MAX / 2, -INT_MAX / 2));
     break;
 
   case wuss_KEY_END:
-    wuss_window_scroll_by(ic->window, POINT(0, INT_MAX / 2));
+    wuss_window_scroll_by(ic->base.window, POINT(0, INT_MAX / 2));
     break;
 
   default:
@@ -404,10 +391,10 @@ static result_t viewing_message(viewing_task_t     *ic,
                                 wuss_window_t      *window,
                                 const wuss_event_t *event)
 {
-  if (ic->window == NULL || window != ic->window)
+  if (ic->base.window == NULL || window != ic->base.window)
     return result_OK;
 
-  return taskapp_window_data_load(ic->wuss, ic->delegate, ic,
+  return taskapp_window_data_load(ic->base.wuss, ic->base.delegate, ic,
                                   (taskapp_data_load_fn_t) viewing_show,
                                   event->data.message);
 }
@@ -452,12 +439,13 @@ static result_t viewing_open_menu(viewing_task_t *ic)
   wuss_menu_destroy(ic->menu);
   ic->menu = m;
 
-  return wuss_menu_open_at_pointer(ic->delegate, ic->menu, &ic->menu_handle);
+  return wuss_menu_open_at_pointer(ic->base.delegate, ic->menu,
+                                   &ic->base.menu_handle);
 }
 
-result_t viewing_handle(wuss_window_t      *window,
-                        const wuss_event_t *event,
-                        void               *task_data)
+static result_t viewing_handle(wuss_window_t      *window,
+                               const wuss_event_t *event,
+                               void               *task_data)
 {
   viewing_task_t    *ic;
   const wuss_menu_t *menu;
@@ -471,8 +459,6 @@ result_t viewing_handle(wuss_window_t      *window,
     return viewing_redraw(event, task_data);
 
   case wuss_EVENT_MOUSE:
-    if (window != ic->window)
-      return result_OK; /* not the viewing window (e.g. the proginfo dialogue) */
     if (event->data.mouse.action != wuss_MOUSE_DOWN)
       return result_OK;
     if (event->data.mouse.button & wuss_BUTTON_MENU)
@@ -482,7 +468,7 @@ result_t viewing_handle(wuss_window_t      *window,
   case wuss_EVENT_MENU_SELECT:
     if (wuss_colourlist_selected(&ic->colours, event))
     {
-      wuss_window_invalidate_visible(ic->window);
+      wuss_window_invalidate_visible(ic->base.window);
       return result_OK;
     }
 
@@ -491,13 +477,13 @@ result_t viewing_handle(wuss_window_t      *window,
     if (menu == ic->menu && index == VIEWING_MENU_STAGE)
     {
       ic->stage = !ic->stage;
-      wuss_menu_tick_item_live(ic->menu_handle, menu, index, ic->stage);
+      wuss_menu_tick_item_live(ic->base.menu_handle, menu, index, ic->stage);
       return viewing_fit(ic);
     }
     if (menu == &ic->dither.menu)
     {
-      ic->dithering = dithermenu_select(&ic->dither, ic->menu_handle, index);
-      wuss_window_invalidate_visible(ic->window);
+      ic->dithering = dithermenu_select(&ic->dither, ic->base.menu_handle, index);
+      wuss_window_invalidate_visible(ic->base.window);
     }
     return result_OK;
 
@@ -505,7 +491,7 @@ result_t viewing_handle(wuss_window_t      *window,
     {
       result_t rc;
 
-      if (wuss_colourlist_pre_open(&ic->colours, ic->wuss, event, &rc))
+      if (wuss_colourlist_pre_open(&ic->colours, ic->base.wuss, event, &rc))
         return rc;
 
       return result_OK;
@@ -514,33 +500,41 @@ result_t viewing_handle(wuss_window_t      *window,
   case wuss_EVENT_MESSAGE:
     return viewing_message(ic, window, event);
 
-  case wuss_EVENT_MENU_CLOSED:
-    ic->menu_handle = NULL; /* wuss closed the chain under us */
-    return result_OK;
-
   case wuss_EVENT_CLOSE_ADJUST:
-    if (window != ic->window)
+    if (window != ic->base.window)
       return result_OK;
-    return task_close_adjust(ic->wuss, ic->delegate, window, ic->path,
+    return task_close_adjust(ic->base.wuss, ic->base.delegate, window, ic->path,
                              event);
 
-  case wuss_EVENT_CLOSE:
-    if (window == ic->window)
-      ic->window = NULL;
-    return result_OK;
-
   case wuss_EVENT_QUIT:
-    viewing_destroy(ic);
+    wuss_menu_destroy(ic->menu);
+    free(ic->bitmap.base);
     return result_OK;
 
   case wuss_EVENT_KEY:
-    if (window != ic->window)
-      return result_WUSS_KEY_UNCLAIMED;
     return viewing_key(ic, event);
 
   default:
     return result_OK;
   }
+}
+
+result_t viewing_app_create(wuss_t *wuss)
+{
+  static const unsigned short opens[] = { filetype_RISCOS_PNG, 0 };
+  static const taskapp_desc_t desc =
+  {
+    .name          = "Viewing",
+    .purpose       = "View PNG images",
+    .data_load     = (taskapp_data_load_fn_t) viewing_show,
+    .drop_only     = true,
+    .opens         = opens,
+    .instance_size = sizeof(viewing_task_t),
+    .init          = (taskapp_init_fn_t) viewing_init,
+    .handle        = viewing_handle
+  };
+
+  return taskapp_install(wuss, &desc);
 }
 
 #endif /* WUSS_APP */

@@ -17,6 +17,8 @@
 #include "wuss/task.h"
 #include "wuss/window.h"
 
+#include "../common/taskapp.h"
+
 /* window B's task: flows a text file dropped on its icon or window
  * (DataLoad) over its wuss-filled background, one line per bmfont_draw call.
  * A MENU click on the window opens a top-level menu with three submenus --
@@ -30,7 +32,7 @@
  * behind the window's content. */
 typedef struct reading_task
 {
-  wuss_window_t      *window;
+  taskapp_instance_t  base;
   mdtext_t            md;         /* the shown text, its fonts, spacing,
                                    * alignment and cached layout; md.font is
                                    * the current family's Regular face
@@ -39,10 +41,7 @@ typedef struct reading_task
                                    * (acquired) or NULL; md.text is NULL until
                                    * the first DataLoad */
   int                 doc_h;      /* document height last set */
-  wuss_task_t        *delegate;   /* the wuss task backing this window */
-  wuss_t             *wuss;       /* for wuss_get_pointer when opening the
-                                   * menu */
-  char                path[DPTLIB_MAXPATH]; /* file shown; "" until one
+  char               path[DPTLIB_MAXPATH]; /* file shown; "" until one
                                    * is loaded */
   int                 current;    /* font menu row of the current family, or
                                    * -1 for sysfont */
@@ -67,11 +66,7 @@ typedef struct reading_task
                                    * fontmenu exists so items[0].submenu can
                                    * borrow its live wuss_menu_t */
   wuss_menu_t         top_menu;   /* root menu passed to wuss_menu_open */
-  wuss_menu_handle_t  menu_handle; /* chain handle from the last
-                                   * wuss_menu_open, for the _live tick calls
-                                   * when an ADJUST pick keeps the chain
-                                   * open; NULL if closed */
-  int                 spacing_idx; /* index into reading_spacing_presets[]
+  int               spacing_idx; /* index into reading_spacing_presets[]
                                    * currently applied as md.spacing */
   wuss_colour_t       fg_index;   /* system palette index picked from
                                    * "Foreground" */
@@ -83,24 +78,12 @@ typedef struct reading_task
 }
 reading_task_t;
 
-wuss_window_fn_t reading_handle;
-
-/* create an empty Reading window against the given wuss instance; it shows
- * text once a file is dropped on it. the font picker loads bmfonts from
- * wuss_get_resources(wuss)/resources/bmfonts/<family>/<style>.png. if out is
- * non-NULL, the task block is also returned through it */
-result_t reading_create(wuss_t *wuss, reading_task_t **out);
-
 /* install the icon bar app that opens Reading windows on demand */
 result_t reading_app_create(wuss_t *wuss);
 
 /* open a Reading window showing the file at path; the app must be installed
  * (reading_app_create) first */
 result_t reading_open_file(wuss_t *wuss, const char *path);
-
-/* free a task block allocated by reading_create; normally called by the
- * window's wuss_EVENT_QUIT handler, not by callers directly */
-void reading_destroy(reading_task_t *task);
 
 #endif /* WUSS_APP */
 

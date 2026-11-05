@@ -9,13 +9,54 @@
 #endif
 
 #include "base/utils.h"
+#include "framebuf/colour.h"
 #include "framebuf/palettes.h"
 #include "geom/box.h"
+#include "utils/rng.h"
+#include "wuss/component/colourmenu.h"
+#include "wuss/menu.h"
+#include "wuss/window.h"
 
-#include "checker.h"
+#include "../apps.h"
 #include "../common/taskapp.h"
 #include "../common/common.h"
-#include "../common/snapshot.h"
+
+/* cycled by a content click, in this order, or picked from Menu > Pattern */
+typedef enum checker_pattern
+{
+  checker_PATTERN_CHECKERBOARD,
+  checker_PATTERN_HORIZONTAL,
+  checker_PATTERN_VERTICAL,
+  checker_PATTERN_DIAGONAL,
+  checker_PATTERN__COUNT
+}
+checker_pattern_t;
+
+/* fills the whole content area with a two-tone pattern, black and white
+ * until Menu > Colours recolours it (Menu > Swap colours exchanges the
+ * two); the pattern cycles forward on a Select click and back on Adjust, or
+ * is picked from Menu > Pattern; Menu > Save opens a Save As dialogue
+ * (drag its icon onto a Filer window, or Save with a full path already
+ * typed) that writes the window out; Menu > Randomise (^R) picks a pattern,
+ * band width and colours afresh and Menu > Reset (R) restores the starting
+ * ones. Once a click has given the window the
+ * input focus, Left/Right step the pattern and Up/Down widen/narrow its
+ * bands */
+typedef struct checker_task
+{
+  taskapp_instance_t   base;
+  wuss_menu_item_t     menu_items[6]; /* per-instance: a shared static would
+                                        * leak one instance's .window pointer
+                                        * into another's menu */
+  wuss_menu_item_t     pattern_items[checker_PATTERN__COUNT];
+  wuss_menu_t          pattern_menu;
+  colour_t             black, white;
+  wuss_colourlist_t    colours; /* Ink/Paper submenu */
+  checker_pattern_t    pattern;
+  int                  band; /* pixels per band, scroll-adjustable */
+  rng_t                rng;  /* Randomise */
+}
+checker_task_t;
 
 #define CHECKER_BAND_DEFAULT 8  /* pixels per band, so each pattern reads clearly */
 #define CHECKER_BAND_MIN     1
@@ -35,8 +76,6 @@ enum
   CHECKER_MENU_RESET
 };
 
-#define CHECKER_SAVE_NAME "checker.png" /* Save As's initial leafname */
-
 /* Colours submenu rows: the black and white fields, in that order */
 static const char *const checker_colour_names[] = { "Ink", "Paper" };
 
@@ -48,16 +87,6 @@ static const char *checker_pattern_names[checker_PATTERN__COUNT] =
   "Vertical",
   "Diagonal"
 };
-
-/* wuss_saveas_save_fn_t: opaque is the checker_task_t */
-static result_t checker_saveas_save(const char *path, void *opaque)
-{
-  checker_task_t *cc;
-
-  cc = opaque;
-
-  return snapshot_save_png(cc->window, checker_handle, cc, path);
-}
 
 /* the starting pattern, as checker_create and Reset restore it */
 static void checker_defaults(checker_task_t *task)
@@ -80,71 +109,24 @@ static void checker_randomise(checker_task_t *task)
   task->white   = colour_random_contrast(&task->rng, task->black);
 }
 
-result_t checker_create(wuss_t *wuss, checker_task_t **out)
+static result_t checker_init(checker_task_t *task)
 {
-  result_t         rc;
-  checker_task_t  *task;
-  wuss_task_t     *delegate;
-  wuss_task_desc_t delegate_desc;
-  colour_t        *fields[2];
-  int              i;
+  result_t  rc;
+  colour_t *fields[2];
+  int       i;
 
-  task = calloc(1, sizeof(*task));
-  if (task == NULL)
-    return result_OOM;
-
-  task->wuss     = wuss;
   rng_seed(&task->rng, (uint32_t) rand());
   checker_defaults(task);
 
-  /* checker_redraw paints every pixel itself */
-  delegate_desc.handle    = checker_handle;
-  delegate_desc.task_data = task;
-  delegate_desc.name      = "Checker";
-  rc = wuss_task_create(wuss, &delegate_desc, &delegate);
-  if (rc != result_OK)
-  {
-    free(task); /* nothing registered yet; the spawner will not free it */
-    return rc;
-  }
-  task->delegate = delegate;
-
-  rc = task_window_create(delegate,
-                          SIZE2D(160, 160),
-                          "Checker",
-                          &task->window);
-  if (rc != result_OK)
-  {
-    wuss_task_destroy(delegate); /* unregister; its QUIT frees the task block */
-    return rc;
-  }
-
-  /* window up: from here, closing it reaps the task and its wuss_EVENT_QUIT
-   * frees task_data */
-  wuss_task_set_autoclose(delegate, 1);
-
-  rc = snapshot_saveas_create(&task->saveas, wuss, CHECKER_SAVE_NAME,
-                              checker_saveas_save, task);
-  if (rc != result_OK)
-  {
-    wuss_task_destroy(delegate);
-    return rc;
-  }
-
   fields[0] = &task->black;
   fields[1] = &task->white;
-  rc = wuss_colourlist_init(&task->colours, wuss, NELEMS(fields), fields,
-                            checker_colour_names);
+  rc = wuss_colourlist_init(&task->colours, task->base.wuss, NELEMS(fields),
+                            fields, checker_colour_names);
   if (rc != result_OK)
-  {
-    wuss_task_destroy(delegate);
     return rc;
-  }
 
-  WUSS_MENU_ITEM_SHORTCUT(task->menu_items, CHECKER_MENU_SAVE, "Save",
-                          wuss_MENU_ITEM_NONE, "F3");
-  /* hover opens the Save As dialogue as a submenu; F3 shows it standalone */
-  task->menu_items[CHECKER_MENU_SAVE].window = wuss_saveas_window(task->saveas);
+  taskapp_save_row(&task->base, task->menu_items, CHECKER_MENU_SAVE,
+                   wuss_MENU_ITEM_NONE);
 
   for (i = 0; i < checker_PATTERN__COUNT; i++)
     WUSS_MENU_ITEM(task->pattern_items, i, checker_pattern_names[i],
@@ -168,31 +150,10 @@ result_t checker_create(wuss_t *wuss, checker_task_t **out)
   WUSS_MENU_ITEM_SHORTCUT(task->menu_items, CHECKER_MENU_RESET, "Reset",
                           wuss_MENU_ITEM_NONE, "R");
 
-  WUSS_MENU_TITLE(task->menu, "Checker", task->menu_items,
+  WUSS_MENU_TITLE(task->base.menu, "Checker", task->menu_items,
                  NELEMS(task->menu_items));
 
-  if (out)
-    *out = task;
-
   return result_OK;
-}
-
-result_t checker_app_create(wuss_t *wuss)
-{
-  static const taskapp_desc_t desc =
-  {
-    "Checker",
-    "Cycling checkerboard pattern",
-    (taskapp_create_fn_t) checker_create
-  };
-
-  return taskapp_install(wuss, &desc);
-}
-
-void checker_destroy(checker_task_t *task)
-{
-  wuss_saveas_destroy(task->saveas);
-  free(task);
 }
 
 static result_t checker_redraw(const wuss_event_t *event, void *task_data)
@@ -264,7 +225,7 @@ static result_t checker_mouse(int dir, void *task_data)
   cc->pattern = (cc->pattern + checker_PATTERN__COUNT + dir) %
                 checker_PATTERN__COUNT;
 
-  wuss_window_invalidate_visible(cc->window);
+  wuss_window_invalidate_visible(cc->base.window);
 
   return result_OK;
 }
@@ -278,7 +239,7 @@ static result_t checker_scroll(int delta, void *task_data)
   cc->band += delta;
   cc->band  = CLAMP(cc->band, CHECKER_BAND_MIN, CHECKER_BAND_MAX);
 
-  wuss_window_invalidate_visible(cc->window);
+  wuss_window_invalidate_visible(cc->base.window);
 
   return result_OK;
 }
@@ -306,7 +267,7 @@ static result_t checker_pre_submenu_open(checker_task_t     *cc,
   result_t rc;
   int      index;
 
-  if (wuss_colourlist_pre_open(&cc->colours, cc->wuss, event, &rc))
+  if (wuss_colourlist_pre_open(&cc->colours, cc->base.wuss, event, &rc))
     return rc;
 
   index = event->data.pre_submenu_open.index;
@@ -324,19 +285,13 @@ static result_t checker_menu_select(checker_task_t     *cc,
   if (event->data.menu_select.menu == &cc->pattern_menu)
   {
     cc->pattern = event->data.menu_select.index;
-    wuss_menu_tick_exclusive_live(cc->menu_handle, &cc->pattern_menu,
+    wuss_menu_tick_exclusive_live(cc->base.menu_handle, &cc->pattern_menu,
                                   event->data.menu_select.index);
-    wuss_window_invalidate_visible(cc->window);
+    wuss_window_invalidate_visible(cc->base.window);
     return result_OK;
   }
 
-  /* shows the Save As dialogue */
-  if (wuss_menu_select_is(event, &cc->menu, CHECKER_MENU_SAVE))
-  {
-    return wuss_saveas_open(cc->saveas);
-  }
-
-  if (event->data.menu_select.menu == &cc->menu &&
+  if (event->data.menu_select.menu == &cc->base.menu &&
       (event->data.menu_select.index == CHECKER_MENU_RANDOMISE ||
        event->data.menu_select.index == CHECKER_MENU_RESET))
   {
@@ -345,13 +300,13 @@ static result_t checker_menu_select(checker_task_t     *cc,
     else
       checker_defaults(cc);
 
-    wuss_menu_tick_exclusive_live(cc->menu_handle, &cc->pattern_menu,
+    wuss_menu_tick_exclusive_live(cc->base.menu_handle, &cc->pattern_menu,
                                   cc->pattern);
-    wuss_window_invalidate_visible(cc->window);
+    wuss_window_invalidate_visible(cc->base.window);
     return result_OK;
   }
 
-  if (wuss_menu_select_is(event, &cc->menu, CHECKER_MENU_SWAP))
+  if (wuss_menu_select_is(event, &cc->base.menu, CHECKER_MENU_SWAP))
   {
     tmp       = cc->black;
     cc->black = cc->white;
@@ -362,16 +317,18 @@ static result_t checker_menu_select(checker_task_t     *cc,
     return result_OK;
   }
 
-  wuss_window_invalidate_visible(cc->window);
+  wuss_window_invalidate_visible(cc->base.window);
 
   return result_OK;
 }
 
-result_t checker_handle(wuss_window_t      *window,
-                        const wuss_event_t *event,
-                        void               *task_data)
+static result_t checker_handle(wuss_window_t      *window,
+                               const wuss_event_t *event,
+                               void               *task_data)
 {
   checker_task_t *cc;
+
+  NOT_USED(window);
 
   cc = task_data;
 
@@ -381,17 +338,14 @@ result_t checker_handle(wuss_window_t      *window,
     return checker_redraw(event, task_data);
 
   case wuss_EVENT_MOUSE:
-    if (window != cc->window)
-      return result_OK; /* the proginfo dialogue has no click behaviour of
-                         * its own */
     if (event->data.mouse.action != wuss_MOUSE_DOWN)
       return result_OK;
     if (event->data.mouse.button & wuss_BUTTON_MENU)
     {
       wuss_menu_tick_exclusive(&cc->pattern_menu, cc->pattern);
 
-      return wuss_menu_open_at_pointer(cc->delegate, &cc->menu,
-                                       &cc->menu_handle);
+      return wuss_menu_open_at_pointer(cc->base.delegate, &cc->base.menu,
+                                       &cc->base.menu_handle);
     }
     if (event->data.mouse.button & wuss_BUTTON_SELECT)
       return checker_mouse(+1, task_data);
@@ -406,10 +360,7 @@ result_t checker_handle(wuss_window_t      *window,
   {
     result_t rc;
 
-    if (window != cc->window)
-      return result_WUSS_KEY_UNCLAIMED; /* not the proginfo dialogue */
-
-    if (!task_key_is_plain(cc->delegate, &cc->menu, event, &rc))
+    if (!task_key_is_plain(cc->base.delegate, &cc->base.menu, event, &rc))
       return rc;
 
     return checker_key(cc, event->data.key.code);
@@ -421,23 +372,25 @@ result_t checker_handle(wuss_window_t      *window,
   case wuss_EVENT_MENU_SELECT:
     return checker_menu_select(cc, event);
 
-  case wuss_EVENT_MENU_CLOSED:
-    cc->menu_handle = NULL;
-    return result_OK;
-
-  case wuss_EVENT_CLOSE:
-    if (window == cc->window)
-      cc->window = NULL;
-    return result_OK;
-
-  case wuss_EVENT_QUIT:
-    /* the task autocloses once its window goes, so free the block here */
-    checker_destroy(cc);
-    return result_OK;
-
   default:
     return result_OK;
   }
+}
+
+result_t checker_app_create(wuss_t *wuss)
+{
+  static const taskapp_desc_t desc =
+  {
+    .name          = "Checker",
+    .purpose       = "Cycling checkerboard pattern",
+    .instance_size = sizeof(checker_task_t),
+    .window_size   = { 160, 160 },
+    .init          = (taskapp_init_fn_t) checker_init,
+    .handle        = checker_handle,
+    .save_name     = "checker.png"
+  };
+
+  return taskapp_install(wuss, &desc);
 }
 
 #endif /* WUSS_APP */

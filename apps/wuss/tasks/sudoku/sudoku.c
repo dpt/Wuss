@@ -3,6 +3,7 @@
 #ifdef WUSS_APP
 
 #include <limits.h>
+#include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -11,12 +12,38 @@
 #endif
 
 #include "base/utils.h"
+#include "framebuf/bmfont.h"
 #include "framebuf/screen.h"
 #include "geom/point.h"
+#include "utils/rng.h"
+#include "wuss/menu.h"
+#include "wuss/task.h"
+#include "wuss/window.h"
 
-#include "sudoku.h"
+#include "../apps.h"
 #include "../common/taskapp.h"
 #include "../common/common.h"
+
+/* a 9x9 sudoku with a unique solution, generated afresh for each game.
+ * Select on a cell moves the cursor there; Select on the cursor cell steps
+ * its digit up, Adjust steps it down. With the input focus, the arrow keys
+ * move the cursor, 1-9 enter a digit and 0, Space, Backspace or Delete clear
+ * it. Entries that clash with another digit in their row, column or box are
+ * drawn in red; the board turns green once solved. A MENU-button click pops
+ * a menu with "New game" (N) and "Restart" (R), which clears every entry */
+typedef struct sudoku_task
+{
+  taskapp_instance_t  base;
+  wuss_menu_item_t    menu_items[2]; /* per-instance, as checker's */
+  bmfont_t          *font; /* borrowed; wuss's bold font */
+  rng_t               rng;
+  unsigned char       solution[9][9];
+  unsigned char       cell[9][9]; /* 0 = empty */
+  bool                given[9][9];
+  int                 cur_r, cur_c; /* cursor cell */
+  bool                solved;
+}
+sudoku_task_t;
 
 #define SUDOKU_CELL   20 /* pixels per cell */
 #define SUDOKU_BORDER 2  /* frame round the board */
@@ -166,75 +193,20 @@ static void sudoku_restart(sudoku_task_t *sd)
 
 /* ----------------------------------------------------------------------- */
 
-result_t sudoku_create(wuss_t *wuss, sudoku_task_t **out)
+static result_t sudoku_init(sudoku_task_t *task)
 {
-  result_t         rc;
-  sudoku_task_t   *task;
-  wuss_task_t     *delegate;
-  wuss_task_desc_t delegate_desc;
-
-  task = calloc(1, sizeof(*task));
-  if (task == NULL)
-    return result_OOM;
-
-  task->wuss = wuss;
-  task->font = wuss_get_font_n(wuss, 1);
+  task->font = wuss_get_font_n(task->base.wuss, 1);
   rng_seed(&task->rng, (uint32_t) rand());
   sudoku_new_game(task);
-
-  delegate_desc.handle    = sudoku_handle;
-  delegate_desc.task_data = task;
-  delegate_desc.name      = "Sudoku";
-  rc = wuss_task_create(wuss, &delegate_desc, &delegate);
-  if (rc != result_OK)
-  {
-    free(task); /* nothing registered yet; the spawner will not free it */
-    return rc;
-  }
-  task->delegate = delegate;
-
-  rc = task_window_create(delegate,
-                          SIZE2D(SUDOKU_SIZE, SUDOKU_SIZE),
-                          "Sudoku",
-                          &task->window);
-  if (rc != result_OK)
-  {
-    wuss_task_destroy(delegate); /* unregister; its QUIT frees the task block */
-    return rc;
-  }
-
-  /* window up: from here, closing it reaps the task and its wuss_EVENT_QUIT
-   * frees task_data */
-  wuss_task_set_autoclose(delegate, 1);
 
   WUSS_MENU_ITEM_SHORTCUT(task->menu_items, SUDOKU_MENU_NEW, "New game",
                           wuss_MENU_ITEM_NONE, "N");
   WUSS_MENU_ITEM_SHORTCUT(task->menu_items, SUDOKU_MENU_RESTART, "Restart",
                           wuss_MENU_ITEM_NONE, "R");
-  WUSS_MENU_TITLE(task->menu, "Sudoku", task->menu_items,
+  WUSS_MENU_TITLE(task->base.menu, "Sudoku", task->menu_items,
                   NELEMS(task->menu_items));
 
-  if (out)
-    *out = task;
-
   return result_OK;
-}
-
-result_t sudoku_app_create(wuss_t *wuss)
-{
-  static const taskapp_desc_t desc =
-  {
-    "Sudoku",
-    "Number placement puzzle",
-    (taskapp_create_fn_t) sudoku_create
-  };
-
-  return taskapp_install(wuss, &desc);
-}
-
-void sudoku_destroy(sudoku_task_t *task)
-{
-  free(task);
 }
 
 /* ----------------------------------------------------------------------- */
@@ -254,7 +226,7 @@ static result_t sudoku_redraw(const wuss_event_t *event, void *task_data)
   sd = task_data;
 
   scr     = event->data.redraw.scr;
-  focused = wuss_get_focus(sd->wuss) == sd->window;
+  focused = wuss_get_focus(sd->base.wuss) == sd->base.window;
   ox      = event->data.redraw.bounds->x0 - event->data.redraw.scroll.x;
   oy      = event->data.redraw.bounds->y0 - event->data.redraw.scroll.y;
   bmfont_get_info(sd->font, NULL, &fh, &ascent, NULL);
@@ -308,7 +280,7 @@ static result_t sudoku_set(sudoku_task_t *sd, int d)
 
   sd->cell[sd->cur_r][sd->cur_c] = d;
   sd->solved = memcmp(sd->cell, sd->solution, sizeof(sd->cell)) == 0;
-  wuss_window_invalidate_visible(sd->window);
+  wuss_window_invalidate_visible(sd->base.window);
 
   return result_OK;
 }
@@ -317,7 +289,7 @@ static void sudoku_move(sudoku_task_t *sd, int r, int c)
 {
   sd->cur_r = CLAMP(r, 0, 8);
   sd->cur_c = CLAMP(c, 0, 8);
-  wuss_window_invalidate_visible(sd->window);
+  wuss_window_invalidate_visible(sd->base.window);
 }
 
 /* which cell does document coordinate v fall in? -1 for a grid line */
@@ -339,8 +311,8 @@ static result_t sudoku_mouse(sudoku_task_t *sd,
   int r, c, step;
 
   if (button & wuss_BUTTON_MENU)
-    return wuss_menu_open_at_pointer(sd->delegate, &sd->menu,
-                                     &sd->menu_handle);
+    return wuss_menu_open_at_pointer(sd->base.delegate, &sd->base.menu,
+                                     &sd->base.menu_handle);
 
   r = sudoku_hit(point.y);
   c = sudoku_hit(point.x);
@@ -381,11 +353,13 @@ static result_t sudoku_key(sudoku_task_t *sd, int code)
   return result_OK;
 }
 
-result_t sudoku_handle(wuss_window_t      *window,
-                       const wuss_event_t *event,
-                       void               *task_data)
+static result_t sudoku_handle(wuss_window_t      *window,
+                              const wuss_event_t *event,
+                              void               *task_data)
 {
   sudoku_task_t *sd;
+
+  NOT_USED(window);
 
   sd = task_data;
 
@@ -395,7 +369,7 @@ result_t sudoku_handle(wuss_window_t      *window,
     return sudoku_redraw(event, task_data);
 
   case wuss_EVENT_MOUSE:
-    if (window != sd->window || event->data.mouse.action != wuss_MOUSE_DOWN)
+    if (event->data.mouse.action != wuss_MOUSE_DOWN)
       return result_OK;
     return sudoku_mouse(sd, event->data.mouse.point,
                         event->data.mouse.button);
@@ -404,10 +378,7 @@ result_t sudoku_handle(wuss_window_t      *window,
   {
     result_t rc;
 
-    if (window != sd->window)
-      return result_WUSS_KEY_UNCLAIMED;
-
-    if (!task_key_is_plain(sd->delegate, &sd->menu, event, &rc))
+    if (!task_key_is_plain(sd->base.delegate, &sd->base.menu, event, &rc))
       return rc;
 
     return sudoku_key(sd, event->data.key.code);
@@ -415,37 +386,38 @@ result_t sudoku_handle(wuss_window_t      *window,
 
   case wuss_EVENT_GAIN_FOCUS:
   case wuss_EVENT_LOSE_FOCUS:
-    wuss_window_invalidate_visible(sd->window); /* show or hide the cursor */
+    wuss_window_invalidate_visible(sd->base.window); /* show or hide the cursor */
     return result_OK;
 
   case wuss_EVENT_MENU_SELECT:
-    if (wuss_menu_select_is(event, &sd->menu, SUDOKU_MENU_NEW))
+    if (wuss_menu_select_is(event, &sd->base.menu, SUDOKU_MENU_NEW))
       sudoku_new_game(sd);
-    else if (wuss_menu_select_is(event, &sd->menu, SUDOKU_MENU_RESTART))
+    else if (wuss_menu_select_is(event, &sd->base.menu, SUDOKU_MENU_RESTART))
       sudoku_restart(sd);
     else
       return result_OK;
 
-    wuss_window_invalidate_visible(sd->window);
-    return result_OK;
-
-  case wuss_EVENT_MENU_CLOSED:
-    sd->menu_handle = NULL;
-    return result_OK;
-
-  case wuss_EVENT_CLOSE:
-    if (window == sd->window)
-      sd->window = NULL;
-    return result_OK;
-
-  case wuss_EVENT_QUIT:
-    /* the task autocloses once its window goes, so free the block here */
-    sudoku_destroy(sd);
+    wuss_window_invalidate_visible(sd->base.window);
     return result_OK;
 
   default:
     return result_OK;
   }
+}
+
+result_t sudoku_app_create(wuss_t *wuss)
+{
+  static const taskapp_desc_t desc =
+  {
+    .name          = "Sudoku",
+    .purpose       = "Number placement puzzle",
+    .instance_size = sizeof(sudoku_task_t),
+    .window_size   = { SUDOKU_SIZE, SUDOKU_SIZE },
+    .init          = (taskapp_init_fn_t) sudoku_init,
+    .handle        = sudoku_handle
+  };
+
+  return taskapp_install(wuss, &desc);
 }
 
 #endif /* WUSS_APP */

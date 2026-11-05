@@ -11,80 +11,50 @@
 
 #include "base/debug.h"
 #include "base/utils.h"
+#include "framebuf/bitmap.h"
+#include "geom/point.h"
 #include "io/path.h"
 #include "wuss/menu-desc.h"
+#include "wuss/menu.h"
+#include "wuss/window.h"
 
-#include "tiling.h"
+#include "../apps.h"
 #include "../common/taskapp.h"
 #include "../common/common.h"
 
-result_t tiling_create(wuss_t *wuss, tiling_task_t **out)
+/* fills a screen-sized window with a PNG repeated edge to edge, the PNG
+ * dropped on its icon or window (DataLoad). Select drag moves the tile
+ * origin by the pointer's movement; Menu opens Info and Reset origin */
+typedef struct tiling_task
 {
-  result_t         rc;
-  tiling_task_t   *task;
-  wuss_task_t     *delegate;
-  wuss_task_desc_t delegate_desc;
-  size2d_t         sz;
+  taskapp_instance_t base;
+  bitmap_t       bitmap; /* owned: base freed when replaced or at QUIT; NULL
+                          * base until the first DataLoad */
+  char           path[DPTLIB_MAXPATH]; /* file shown; "" until the
+                                       * first DataLoad */
+  point_t        origin; /* window-local position of one tile's top-left */
+  point_t        grab;   /* pointer position at the last drag event */
+  int            dragging; /* Select held: pointer moves drag the origin */
+  wuss_menu_t   *menu;      /* owned: built from a descriptor string on each
+                             * open, freed at QUIT */
+}
+tiling_task_t;
 
-  task = calloc(1, sizeof(*task));
-  if (task == NULL)
-    return result_OOM;
+static result_t tiling_init(tiling_task_t *task)
+{
+  size2d_t sz;
 
-  task->wuss = wuss;
-
-  delegate_desc.handle    = tiling_handle;
-  delegate_desc.task_data = task;
-  delegate_desc.name      = "Tiling";
-  rc = wuss_task_create(wuss, &delegate_desc, &delegate);
-  if (rc != result_OK)
-  {
-    free(task);
-    return rc;
-  }
-  task->delegate = delegate;
   /* No autoclose: QUIT is delivered at wuss_destroy instead. */
+  wuss_task_set_autoclose(task->base.delegate, 0);
 
-  sz = wuss_get_screen_size(wuss);
+  sz = wuss_get_screen_size(task->base.wuss);
 
-  rc = wuss_window_create_at(delegate, &task_place, sz, "Tiling",
-                             wuss_WINDOW_CLOSE | wuss_WINDOW_BACK |
-                             wuss_WINDOW_FOCUSABLE,
-                             wuss_BACKDROP_COLOUR(wuss_COLOUR_WINDOW), sz,
-                             SIZE2D(32, 32),
-                             &task->window);
-  if (rc != result_OK)
-  {
-    wuss_task_destroy(delegate); /* QUIT frees the bitmap and the block */
-    return rc;
-  }
-
-  if (out)
-    *out = task;
-
-  return result_OK;
-}
-
-static result_t tiling_show(tiling_task_t *tc, const char *path);
-
-result_t tiling_app_create(wuss_t *wuss)
-{
-  static const taskapp_desc_t desc =
-  {
-    "Tiling",
-    "Tile screen with PNG",
-    (taskapp_create_fn_t) tiling_create,
-    (taskapp_data_load_fn_t) tiling_show,
-    true
-  };
-
-  return taskapp_install(wuss, &desc);
-}
-
-void tiling_destroy(tiling_task_t *task)
-{
-  wuss_menu_destroy(task->menu);
-  free(task->bitmap.base);
-  free(task); /* task_data was calloc'd per instance by the spawner */
+  return wuss_window_create_at(task->base.delegate, &task_place, sz, "Tiling",
+                               wuss_WINDOW_CLOSE | wuss_WINDOW_BACK |
+                               wuss_WINDOW_FOCUSABLE,
+                               wuss_BACKDROP_COLOUR(wuss_COLOUR_WINDOW), sz,
+                               SIZE2D(32, 32),
+                               &task->base.window);
 }
 
 /* Load the PNG at path and show it tiled. A PNG that fails to load keeps the
@@ -109,11 +79,11 @@ static result_t tiling_show(tiling_task_t *tc, const char *path)
   tc->bitmap = next;
 
   snprintf(tc->path, sizeof(tc->path), "%s", path);
-  task_set_doc_title(tc->window, path_leaf(path), "Tiling", 0);
+  task_set_doc_title(tc->base.window, path_leaf(path), "Tiling", 0);
 
   /* the tiles now cover the content, so drop the backdrop rather than fill
    * under them (this invalidates the content) */
-  return wuss_window_set_background(tc->window, wuss_NO_BACKDROP);
+  return wuss_window_set_background(tc->base.window, wuss_NO_BACKDROP);
 }
 
 /* Menu shape built from a descriptor string. The tree must outlive the open
@@ -131,7 +101,8 @@ static result_t tiling_open_menu(tiling_task_t *tc)
   wuss_menu_destroy(tc->menu);
   tc->menu = m;
 
-  return wuss_menu_open_at_pointer(tc->delegate, tc->menu, &tc->menu_handle);
+  return wuss_menu_open_at_pointer(tc->base.delegate, tc->menu,
+                                   &tc->base.menu_handle);
 }
 
 static result_t tiling_redraw(const wuss_event_t *event, void *task_data)
@@ -153,9 +124,9 @@ static result_t tiling_redraw(const wuss_event_t *event, void *task_data)
                                   origin);
 }
 
-result_t tiling_handle(wuss_window_t      *window,
-                       const wuss_event_t *event,
-                       void               *task_data)
+static result_t tiling_handle(wuss_window_t      *window,
+                              const wuss_event_t *event,
+                              void               *task_data)
 {
   tiling_task_t *tc;
 
@@ -167,9 +138,6 @@ result_t tiling_handle(wuss_window_t      *window,
     return tiling_redraw(event, task_data);
 
   case wuss_EVENT_MOUSE:
-    if (window != tc->window)
-      return result_OK;
-
     if (event->data.mouse.action == wuss_MOUSE_UP)
     {
       tc->dragging = 0;
@@ -191,7 +159,7 @@ result_t tiling_handle(wuss_window_t      *window,
       tc->origin.x += event->data.mouse.point.x - tc->grab.x;
       tc->origin.y += event->data.mouse.point.y - tc->grab.y;
       tc->grab      = event->data.mouse.point;
-      wuss_window_invalidate_visible(tc->window);
+      wuss_window_invalidate_visible(tc->base.window);
     }
     return result_OK;
 
@@ -201,34 +169,26 @@ result_t tiling_handle(wuss_window_t      *window,
                     "Reset origin") == 0)
     {
       tc->origin = POINT(0, 0);
-      wuss_window_invalidate_visible(tc->window);
+      wuss_window_invalidate_visible(tc->base.window);
     }
     return result_OK;
 
   case wuss_EVENT_MESSAGE:
-    if (tc->window == NULL || window != tc->window)
+    if (tc->base.window == NULL || window != tc->base.window)
       return result_OK;
-    return taskapp_window_data_load(tc->wuss, tc->delegate, tc,
+    return taskapp_window_data_load(tc->base.wuss, tc->base.delegate, tc,
                                     (taskapp_data_load_fn_t) tiling_show,
                                     event->data.message);
 
-  case wuss_EVENT_MENU_CLOSED:
-    tc->menu_handle = NULL; /* wuss closed the chain under us */
-    return result_OK;
-
   case wuss_EVENT_CLOSE_ADJUST:
-    if (window != tc->window)
+    if (window != tc->base.window)
       return result_OK;
-    return task_close_adjust(tc->wuss, tc->delegate, window, tc->path,
-                             event);
-
-  case wuss_EVENT_CLOSE:
-    if (window == tc->window)
-      tc->window = NULL;
-    return result_OK;
+    return task_close_adjust(tc->base.wuss, tc->base.delegate, window,
+                             tc->path, event);
 
   case wuss_EVENT_QUIT:
-    tiling_destroy(tc);
+    wuss_menu_destroy(tc->menu);
+    free(tc->bitmap.base);
     return result_OK;
 
   case wuss_EVENT_KEY:
@@ -237,6 +197,22 @@ result_t tiling_handle(wuss_window_t      *window,
   default:
     return result_OK;
   }
+}
+
+result_t tiling_app_create(wuss_t *wuss)
+{
+  static const taskapp_desc_t desc =
+  {
+    .name          = "Tiling",
+    .purpose       = "Tile screen with PNG",
+    .data_load     = (taskapp_data_load_fn_t) tiling_show,
+    .drop_only     = true,
+    .instance_size = sizeof(tiling_task_t),
+    .init          = (taskapp_init_fn_t) tiling_init,
+    .handle        = tiling_handle
+  };
+
+  return taskapp_install(wuss, &desc);
 }
 
 #endif /* WUSS_APP */

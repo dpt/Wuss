@@ -14,17 +14,59 @@
 
 #include "base/utils.h"
 #include "framebuf/bmfont.h"
+#include "framebuf/colour.h"
 #include "framebuf/curve.h"
 #include "framebuf/palettes.h"
 #include "geom/box.h"
 #include "geom/hull.h"
+#include "geom/point.h"
 #include "utils/fxp.h"
+#include "wuss/component/colourmenu.h"
+#include "wuss/menu.h"
+#include "wuss/window.h"
 #include "wuss/wuss.h"
 
-#include "curving.h"
+#include "../apps.h"
 #include "../common/taskapp.h"
 #include "../common/common.h"
-#include "../common/snapshot.h"
+
+#define CURVING_MINCONTROLPTS 2 /* a straight line */
+#define CURVING_MAXCONTROLPTS 6 /* a quintic Bezier */
+#define CURVING_NKINDS (CURVING_MAXCONTROLPTS - CURVING_MINCONTROLPTS + 1)
+#define CURVING_NWIDTHS 6 /* rows in Menu > Width */
+
+/* a single Bezier curve with draggable control points, redrawn as nsegments
+ * straight line segments. The mouse wheel adjusts nsegments; an Adjust click
+ * cycles the curve type (line, quadratic, cubic, quartic, quintic) by
+ * stepping npoints, the count of points[] actually in play; Menu > Type
+ * picks it directly; Menu > Width sets the line thickness; Menu > Hull
+ * shows or hides the control points' convex hull; Menu > Reset points puts
+ * the control points back where they started; Menu > Save opens a Save As
+ * dialogue (drag its icon onto a Filer window, or Save with a full path
+ * already typed) that writes the
+ * window's content out. Once a click has given the window the input focus,
+ * Left/Right step the curve type, Up/Down step nsegments, H toggles the
+ * hull and R resets the points. */
+typedef struct curving_task
+{
+  taskapp_instance_t  base;
+  wuss_menu_item_t    menu_items[6]; /* per-instance: a shared static would
+                                       * leak one instance's .window pointer
+                                       * into another's menu */
+  wuss_menu_item_t    type_items[CURVING_NKINDS]; /* one row per curve type */
+  wuss_menu_t         type_menu;
+  wuss_menu_item_t    width_items[CURVING_NWIDTHS]; /* one row per line width */
+  wuss_menu_t         width_menu;
+  colour_t             bg, line, blob;
+  wuss_colourlist_t    colours; /* Menu > Colours, its one row Background */
+  point_t              points[CURVING_MAXCONTROLPTS];
+  int                  npoints;     /* CURVING_MINCONTROLPTS..CURVING_MAXCONTROLPTS */
+  int                  nsegments;
+  int                  width;       /* line width in pixels, from curving_widths */
+  int                  dragging;    /* index into points, or -1 if not dragging */
+  int                  hull;        /* draw the control points' convex hull */
+}
+curving_task_t;
 
 /* MENU click pops this menu; the item table and wuss_menu_t live per-instance
  * in curving_task_t, not as a file-scope static, so that each window's Info row
@@ -41,8 +83,6 @@ enum
 };
 
 static const char *const curving_colour_names[] = { "Background" };
-
-#define CURVING_SAVE_NAME "curving.png" /* Save As's initial leafname */
 
 /* Curve-type name for each valid task->npoints, indexed by
  * npoints - CURVING_MINCONTROLPTS; also the Menu > Type rows. */
@@ -75,33 +115,15 @@ static void curving_reset_points(curving_task_t *task)
   task->points[5] = POINT(110, 140);
 }
 
-/* wuss_saveas_save_fn_t: opaque is the curving_task_t */
-static result_t curving_saveas_save(const char *path, void *opaque)
+static result_t curving_init(curving_task_t *task)
 {
-  curving_task_t *task;
+  result_t  rc;
+  colour_t *fields[1];
+  int       i;
 
-  task = opaque;
-
-  return snapshot_save_png(task->window, curving_handle, task, path);
-}
-
-result_t curving_create(wuss_t *wuss, curving_task_t **out)
-{
-  result_t         rc;
-  curving_task_t  *task;
-  wuss_task_t     *delegate;
-  wuss_task_desc_t delegate_desc;
-  colour_t        *fields[1];
-  int              i;
-
-  task = calloc(1, sizeof(*task));
-  if (task == NULL)
-    return result_OOM;
-
-  task->bg        = colour_rgb(0xFF, 0xFF, 0xFF);
+  task->bg       = colour_rgb(0xFF, 0xFF, 0xFF);
   task->line      = colour_rgb(0x00, 0x00, 0x00);
   task->blob      = colour_rgb(0x66, 0xCC, 0xFF); /* light blue */
-  task->wuss      = wuss;
   task->nsegments = CURVING_SEGMENTS_DEFAULT;
   task->width     = curving_widths[0];
   task->npoints   = 4; /* cubic, matching the original task */
@@ -109,47 +131,14 @@ result_t curving_create(wuss_t *wuss, curving_task_t **out)
   task->hull      = 0;
   curving_reset_points(task);
 
-  /* curving_redraw paints its own background */
-  delegate_desc.handle    = curving_handle;
-  delegate_desc.task_data = task;
-  delegate_desc.name      = "Curving";
-  rc = wuss_task_create(wuss, &delegate_desc, &delegate);
-  if (rc != result_OK)
-  {
-    free(task); /* nothing registered yet; the spawner will not free it */
-    return rc;
-  }
-  wuss_task_set_autoclose(delegate, 1);
-  task->delegate = delegate;
-
-  rc = task_window_create(delegate, SIZE2D(220, 160), "Curving", &task->window);
-  if (rc != result_OK)
-  {
-    wuss_task_destroy(delegate); /* unregister; its QUIT frees the task block */
-    return rc;
-  }
-
-  rc = snapshot_saveas_create(&task->saveas, wuss, CURVING_SAVE_NAME,
-                              curving_saveas_save, task);
-  if (rc != result_OK)
-  {
-    wuss_task_destroy(delegate);
-    return rc;
-  }
-
   fields[0] = &task->bg;
-  rc = wuss_colourlist_init(&task->colours, wuss, NELEMS(fields), fields,
+  rc = wuss_colourlist_init(&task->colours, task->base.wuss, NELEMS(fields), fields,
                             curving_colour_names);
   if (rc != result_OK)
-  {
-    wuss_task_destroy(delegate);
     return rc;
-  }
 
-  WUSS_MENU_ITEM_SHORTCUT(task->menu_items, CURVING_MENU_SAVE, "Save",
-                          wuss_MENU_ITEM_NONE, "F3");
-  /* hover opens the Save As dialogue as a submenu; F3 shows it standalone */
-  task->menu_items[CURVING_MENU_SAVE].window = wuss_saveas_window(task->saveas);
+  taskapp_save_row(&task->base, task->menu_items, CURVING_MENU_SAVE,
+                   wuss_MENU_ITEM_NONE);
 
   for (i = 0; i < CURVING_NKINDS; i++)
     WUSS_MENU_ITEM(task->type_items, i, curving_kind_names[i],
@@ -180,31 +169,10 @@ result_t curving_create(wuss_t *wuss, curving_task_t **out)
   WUSS_MENU_ITEM_SHORTCUT(task->menu_items, CURVING_MENU_RESET, "Reset points",
                           wuss_MENU_ITEM_DASHED, "R");
 
-  WUSS_MENU_TITLE(task->menu, "Curving", task->menu_items,
+  WUSS_MENU_TITLE(task->base.menu, "Curving", task->menu_items,
                  NELEMS(task->menu_items));
 
-  if (out)
-    *out = task;
-
   return result_OK;
-}
-
-result_t curving_app_create(wuss_t *wuss)
-{
-  static const taskapp_desc_t desc =
-  {
-    "Curving",
-    "Draggable Bezier curve",
-    (taskapp_create_fn_t) curving_create
-  };
-
-  return taskapp_install(wuss, &desc);
-}
-
-void curving_destroy(curving_task_t *task)
-{
-  wuss_saveas_destroy(task->saveas);
-  free(task);
 }
 
 static int blob_hit(const point_t *p, int x, int y)
@@ -366,7 +334,7 @@ static result_t curving_redraw(const wuss_event_t *event,
    * not the per-redraw dirty piece "content", so it is drawn whole on a
    * partial redraw */
   {
-    bmfont_t   *font = wuss_get_font(task->wuss);
+    bmfont_t   *font = wuss_get_font(task->base.wuss);
     const char *name = curving_kind_name(task->npoints);
 
     if (font != NULL)
@@ -376,7 +344,7 @@ static result_t curving_redraw(const wuss_event_t *event,
 
       bmfont_get_info(font, NULL, NULL, &ascent, NULL);
       pos = POINT(bounds->x0 - sx + 2, bounds->y0 - sy + 2 + ascent);
-      wuss_text_draw(task->wuss, 0, scr, name, (int) strlen(name),
+      wuss_text_draw(task->base.wuss, 0, scr, name, (int) strlen(name),
                      task->line, task->bg, &pos, NULL);
     }
   }
@@ -404,10 +372,10 @@ static result_t curving_mouse(curving_task_t     *task,
       wuss_menu_tick_exclusive(&task->type_menu,
                                task->npoints - CURVING_MINCONTROLPTS);
       wuss_menu_tick_exclusive(&task->width_menu, curving_width_index(task));
-      wuss_menu_tick_item(&task->menu, CURVING_MENU_HULL, task->hull);
+      wuss_menu_tick_item(&task->base.menu, CURVING_MENU_HULL, task->hull);
 
-      return wuss_menu_open_at_pointer(task->delegate, &task->menu,
-                                       &task->menu_handle);
+      return wuss_menu_open_at_pointer(task->base.delegate, &task->base.menu,
+                                       &task->base.menu_handle);
     }
     if (button & wuss_BUTTON_ADJUST)
     {
@@ -491,54 +459,49 @@ static result_t curving_key(curving_task_t *task,
 static result_t curving_menu_select(curving_task_t     *task,
                                     const wuss_event_t *event)
 {
-  if (wuss_menu_select_is(event, &task->menu, CURVING_MENU_HULL))
+  if (wuss_menu_select_is(event, &task->base.menu, CURVING_MENU_HULL))
   {
     task->hull = !task->hull;
-    wuss_menu_tick_item_live(task->menu_handle, &task->menu,
+    wuss_menu_tick_item_live(task->base.menu_handle, &task->base.menu,
                              CURVING_MENU_HULL, task->hull);
-    wuss_window_invalidate_visible(task->window);
+    wuss_window_invalidate_visible(task->base.window);
     return result_OK;
   }
 
-  if (wuss_menu_select_is(event, &task->menu, CURVING_MENU_RESET))
+  if (wuss_menu_select_is(event, &task->base.menu, CURVING_MENU_RESET))
   {
     curving_reset_points(task);
-    wuss_window_invalidate_visible(task->window);
+    wuss_window_invalidate_visible(task->base.window);
     return result_OK;
-  }
-
-  if (wuss_menu_select_is(event, &task->menu, CURVING_MENU_SAVE))
-  {
-    return wuss_saveas_open(task->saveas);
   }
 
   if (event->data.menu_select.menu == &task->type_menu)
   {
     task->npoints = CURVING_MINCONTROLPTS + event->data.menu_select.index;
-    wuss_menu_tick_exclusive_live(task->menu_handle, &task->type_menu,
+    wuss_menu_tick_exclusive_live(task->base.menu_handle, &task->type_menu,
                                   event->data.menu_select.index);
-    wuss_window_invalidate_visible(task->window);
+    wuss_window_invalidate_visible(task->base.window);
     return result_OK;
   }
 
   if (event->data.menu_select.menu == &task->width_menu)
   {
     task->width = curving_widths[event->data.menu_select.index];
-    wuss_menu_tick_exclusive_live(task->menu_handle, &task->width_menu,
+    wuss_menu_tick_exclusive_live(task->base.menu_handle, &task->width_menu,
                                   event->data.menu_select.index);
-    wuss_window_invalidate_visible(task->window);
+    wuss_window_invalidate_visible(task->base.window);
     return result_OK;
   }
 
   if (wuss_colourlist_selected(&task->colours, event))
-    wuss_window_invalidate_visible(task->window);
+    wuss_window_invalidate_visible(task->base.window);
 
   return result_OK;
 }
 
-result_t curving_handle(wuss_window_t      *window,
-                        const wuss_event_t *event,
-                        void               *task_data)
+static result_t curving_handle(wuss_window_t      *window,
+                               const wuss_event_t *event,
+                               void               *task_data)
 {
   curving_task_t *task;
 
@@ -550,9 +513,6 @@ result_t curving_handle(wuss_window_t      *window,
     return curving_redraw(event, task);
 
   case wuss_EVENT_MOUSE:
-    if (window != task->window)
-      return result_OK; /* the proginfo dialogue has no click behaviour of
-                         * its own */
     return curving_mouse(task, event->data.mouse.action,
                        event->data.mouse.point.x, event->data.mouse.point.y,
                        event->data.mouse.button, window);
@@ -564,10 +524,7 @@ result_t curving_handle(wuss_window_t      *window,
   {
     result_t rc;
 
-    if (window != task->window)
-      return result_WUSS_KEY_UNCLAIMED; /* not the proginfo dialogue */
-
-    if (!task_key_is_plain(task->delegate, &task->menu, event, &rc))
+    if (!task_key_is_plain(task->base.delegate, &task->base.menu, event, &rc))
       return rc;
 
     return curving_key(task, window, event->data.key.code);
@@ -578,7 +535,7 @@ result_t curving_handle(wuss_window_t      *window,
     result_t rc;
 
     /* Colours > Background: the shared colourmenu, set up per open */
-    if (wuss_colourlist_pre_open(&task->colours, task->wuss, event, &rc))
+    if (wuss_colourlist_pre_open(&task->colours, task->base.wuss, event, &rc))
       return rc;
 
     return result_OK;
@@ -587,17 +544,25 @@ result_t curving_handle(wuss_window_t      *window,
   case wuss_EVENT_MENU_SELECT:
     return curving_menu_select(task, event);
 
-  case wuss_EVENT_MENU_CLOSED:
-    task->menu_handle = NULL;
-    return result_OK;
-
-  case wuss_EVENT_QUIT:
-    curving_destroy(task);
-    return result_OK;
-
   default:
     return result_OK;
   }
+}
+
+result_t curving_app_create(wuss_t *wuss)
+{
+  static const taskapp_desc_t desc =
+  {
+    .name          = "Curving",
+    .purpose       = "Draggable Bezier curve",
+    .instance_size = sizeof(curving_task_t),
+    .window_size   = { 220, 160 },
+    .init          = (taskapp_init_fn_t) curving_init,
+    .handle        = curving_handle,
+    .save_name     = "curving.png"
+  };
+
+  return taskapp_install(wuss, &desc);
 }
 
 #endif /* WUSS_APP */

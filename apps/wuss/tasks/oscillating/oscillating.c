@@ -10,14 +10,69 @@
 #endif
 
 #include "base/utils.h"
+#include "framebuf/colour.h"
 #include "framebuf/palettes.h"
 #include "geom/box.h"
 #include "utils/easing.h"
+#include "utils/rng.h"
+#include "wuss/component/colourmenu.h"
+#include "wuss/menu.h"
+#include "wuss/window.h"
 
-#include "oscillating.h"
+#include "../apps.h"
 #include "../common/taskapp.h"
 #include "../common/common.h"
-#include "../common/snapshot.h"
+
+#define OSCILLATING_POINTS 512 /* samples plotted along the curve */
+#define OSCILLATING_NFREQS 12  /* frequency pairs offered */
+#define OSCILLATING_NDECAYS 4   /* trail lengths offered; Off is the first */
+#define OSCILLATING_MAX_TRAIL 16 /* most previous frames drawn dimmed */
+#define OSCILLATING_NEASINGS 11 /* easing_NKINDS; None is the first */
+
+/* window task: a Lissajous figure x=sin(a*t+phase), y=sin(b*t) plotted as a
+ * ring of dots. The phase drifts each idle tick so the figure slowly morphs.
+ * Select cycles the frequency pair (a,b); Adjust reverses the drift. The
+ * menu's Ratio row picks the frequency pair directly; its Easing row picks
+ * the curve for the random backwards runs (None by default); its Decay row
+ * picks how many previous frames trail behind, dimmed (Off by default); its
+ * Colours
+ * row has Foreground and Background rows that pick fg and bg from the shared
+ * colourmenu; Randomise (^R) picks every setting afresh and Reset (R)
+ * restores the starting ones; Save
+ * opens a Save As dialogue (drag its icon onto a Filer window, or Save with
+ * a full path already typed) that writes the window's content out. Once a
+ * click has given the window the input focus, Space pauses/resumes and
+ * Left/Right step the frequency pair back/forward. */
+typedef struct oscillating_task
+{
+  taskapp_instance_t  base;
+  wuss_menu_item_t    menu_items[9]; /* per-instance: a shared static would
+                                       * leak one instance's .window pointer
+                                       * into another's menu */
+  int                 paused; /* Menu > Pause; idle does nothing while set */
+  int                 reversals; /* Menu > Reversals; random backwards runs */
+  wuss_menu_item_t    ratio_items[OSCILLATING_NFREQS]; /* one row per pair */
+  wuss_menu_t         ratio_menu;
+  wuss_menu_item_t    easing_items[OSCILLATING_NEASINGS]; /* one per curve */
+  wuss_menu_t         easing_menu;
+  wuss_colourlist_t   colours; /* Foreground, Background */
+  wuss_menu_item_t    decay_items[OSCILLATING_NDECAYS]; /* one per length */
+  wuss_menu_t         decay_menu;
+  int                 decay_index; /* index into oscillating_decays */
+  double              trail[OSCILLATING_MAX_TRAIL]; /* ring of past phases */
+  int                 trail_head; /* newest entry in trail */
+  int                 trail_count; /* valid entries in trail */
+  int                 easing_index; /* easing_kind_t; easing_LINEAR = None */
+  colour_t       bg, fg;
+  int            a, b;    /* frequency ratio */
+  double         phase;
+  double         drift;
+  double         reversing; /* fraction of the backwards run still to do */
+  double         reverse_from; /* phase at the start of the backwards run */
+  rng_t          rng;     /* Randomise */
+  int            freq_index; /* index into oscillating_freqs */
+}
+oscillating_task_t;
 
 /* MENU click pops this menu; the item table and wuss_menu_t live
  * per-instance in oscillating_task_t, not as a file-scope static, so that each
@@ -35,8 +90,6 @@ enum
   OSCILLATING_MENU_RANDOMISE,
   OSCILLATING_MENU_RESET
 };
-
-#define OSCILLATING_SAVE_NAME "oscillating.png" /* Save As's initial leafname */
 
 /* frequency pairs cycled by a Select click and listed in Menu > Ratio */
 static const struct
@@ -70,17 +123,7 @@ oscillating_decays[OSCILLATING_NDECAYS] =
   { 0, "Off" }, { 4, "Short" }, { 8, "Medium" }, { 16, "Long" }
 };
 
-/* wuss_saveas_save_fn_t: opaque is the oscillating_task_t */
-static result_t oscillating_saveas_save(const char *path, void *opaque)
-{
-  oscillating_task_t *lc;
-
-  lc = opaque;
-
-  return snapshot_save_png(lc->window, oscillating_handle, lc, path);
-}
-
-/* the starting figure, as oscillating_create and Reset restore it */
+/* the starting figure, as oscillating_init and Reset restore it */
 static void oscillating_defaults(oscillating_task_t *task)
 {
   task->bg           = colour_rgb(0x00, 0x00, 0x00);
@@ -112,61 +155,21 @@ static void oscillating_randomise(oscillating_task_t *task)
   task->fg           = colour_random_contrast(&task->rng, task->bg);
 }
 
-result_t oscillating_create(wuss_t *wuss, oscillating_task_t **out)
+static result_t oscillating_init(oscillating_task_t *task)
 {
-  result_t            rc;
-  oscillating_task_t *task;
-  wuss_task_t        *delegate;
-  wuss_task_desc_t    delegate_desc;
-  int                 i;
+  wuss_t *wuss;
+  int     i;
 
-  task = calloc(1, sizeof(*task));
-  if (task == NULL)
-    return result_OOM;
+  wuss = task->base.wuss;
 
-  task->wuss       = wuss;
   rng_seed(&task->rng, (uint32_t) rand());
   oscillating_defaults(task);
-
-  /* redraw paints its own background every frame */
-  delegate_desc.handle    = oscillating_handle;
-  delegate_desc.task_data = task;
-  delegate_desc.name      = "Oscillating";
-  rc = wuss_task_create(wuss, &delegate_desc, &delegate);
-  if (rc != result_OK)
-  {
-    free(task); /* nothing registered yet; the spawner will not free it */
-    return rc;
-  }
-  wuss_task_set_autoclose(delegate, 1);
-  task->delegate = delegate;
-
-  rc = task_window_create(delegate,
-                          SIZE2D(220, 220),
-                          "Oscillating",
-                          &task->window);
-  if (rc != result_OK)
-  {
-    wuss_task_destroy(delegate); /* unregister; its QUIT frees the task block */
-    return rc;
-  }
-
-  rc = snapshot_saveas_create(&task->saveas, wuss, OSCILLATING_SAVE_NAME,
-                              oscillating_saveas_save, task);
-  if (rc != result_OK)
-  {
-    wuss_task_destroy(delegate);
-    return rc;
-  }
 
   WUSS_MENU_ITEM_SHORTCUT(task->menu_items, OSCILLATING_MENU_PAUSE, "Pause",
                           wuss_MENU_ITEM_NONE, "SPACE");
 
-  WUSS_MENU_ITEM_SHORTCUT(task->menu_items, OSCILLATING_MENU_SAVE, "Save",
-                          wuss_MENU_ITEM_NONE, "F3");
-  /* hover opens the Save As dialogue as a submenu; F3 shows it standalone */
-  task->menu_items[OSCILLATING_MENU_SAVE].window =
-    wuss_saveas_window(task->saveas);
+  taskapp_save_row(&task->base, task->menu_items, OSCILLATING_MENU_SAVE,
+                   wuss_MENU_ITEM_NONE);
 
   for (i = 0; i < OSCILLATING_NFREQS; i++)
     WUSS_MENU_ITEM(task->ratio_items, i, oscillating_freqs[i].name,
@@ -212,31 +215,10 @@ result_t oscillating_create(wuss_t *wuss, oscillating_task_t **out)
   WUSS_MENU_ITEM_SHORTCUT(task->menu_items, OSCILLATING_MENU_RESET, "Reset",
                           wuss_MENU_ITEM_NONE, "R");
 
-  WUSS_MENU_TITLE(task->menu, "Oscillating", task->menu_items,
+  WUSS_MENU_TITLE(task->base.menu, "Oscillating", task->menu_items,
                  NELEMS(task->menu_items));
 
-  if (out)
-    *out = task;
-
   return result_OK;
-}
-
-result_t oscillating_app_create(wuss_t *wuss)
-{
-  static const taskapp_desc_t desc =
-  {
-    "Oscillating",
-    "Drifting Lissajous figure",
-    (taskapp_create_fn_t) oscillating_create
-  };
-
-  return taskapp_install(wuss, &desc);
-}
-
-void oscillating_destroy(oscillating_task_t *task)
-{
-  wuss_saveas_destroy(task->saveas);
-  free(task);
 }
 
 static result_t oscillating_redraw(const wuss_event_t *event,
@@ -305,11 +287,10 @@ static void oscillating_set_freq(oscillating_task_t *lc, int index)
   lc->freq_index = index;
   lc->a          = oscillating_freqs[index].a;
   lc->b          = oscillating_freqs[index].b;
-  wuss_window_invalidate_visible(lc->window); /* whole figure changes */
+  wuss_window_invalidate_visible(lc->base.window); /* whole figure changes */
 }
 
-static result_t oscillating_mouse(wuss_window_t      *window,
-                                  wuss_mouse_action_t action,
+static result_t oscillating_mouse(wuss_mouse_action_t action,
                                   wuss_button_t       button,
                                   void               *task_data)
 {
@@ -317,23 +298,20 @@ static result_t oscillating_mouse(wuss_window_t      *window,
 
   lc = task_data;
 
-  if (window != lc->window)
-    return result_OK; /* the proginfo dialogue has no click behaviour of
-                       * its own */
-
   if (action != wuss_MOUSE_DOWN)
     return result_OK;
 
   if (button & wuss_BUTTON_MENU)
   {
-    wuss_menu_tick_item(&lc->menu, OSCILLATING_MENU_PAUSE, lc->paused);
-    wuss_menu_tick_item(&lc->menu, OSCILLATING_MENU_REVERSALS, lc->reversals);
+    wuss_menu_tick_item(&lc->base.menu, OSCILLATING_MENU_PAUSE, lc->paused);
+    wuss_menu_tick_item(&lc->base.menu, OSCILLATING_MENU_REVERSALS,
+                        lc->reversals);
     wuss_menu_tick_exclusive(&lc->ratio_menu, lc->freq_index);
     wuss_menu_tick_exclusive(&lc->easing_menu, lc->easing_index);
     wuss_menu_tick_exclusive(&lc->decay_menu, lc->decay_index);
 
-    return wuss_menu_open_at_pointer(lc->delegate, &lc->menu,
-                                     &lc->menu_handle);
+    return wuss_menu_open_at_pointer(lc->base.delegate, &lc->base.menu,
+                                     &lc->base.menu_handle);
   }
 
   if (button & wuss_BUTTON_SELECT)
@@ -378,7 +356,7 @@ static result_t oscillating_idle(void *task_data)
    * delegate, so closing the main window alone never empties task->windows
    * and the task lingers until the dialogue closes too -- guard against the
    * dangling window in the meantime */
-  if (lc->window == NULL)
+  if (lc->base.window == NULL)
     return result_OK;
 
   if (lc->paused)
@@ -419,7 +397,7 @@ static result_t oscillating_idle(void *task_data)
   else if (lc->phase < 0.0)
     lc->phase += 2.0 * M_PI;
 
-  wuss_window_invalidate_visible(lc->window);
+  wuss_window_invalidate_visible(lc->base.window);
 
   return result_OK;
 }
@@ -430,7 +408,7 @@ static result_t oscillating_pre_submenu_open(oscillating_task_t *lc,
 {
   result_t rc;
 
-  if (wuss_colourlist_pre_open(&lc->colours, lc->wuss, event, &rc))
+  if (wuss_colourlist_pre_open(&lc->colours, lc->base.wuss, event, &rc))
     return rc;
 
   return result_OK;
@@ -439,7 +417,7 @@ static result_t oscillating_pre_submenu_open(oscillating_task_t *lc,
 static result_t oscillating_menu_select(oscillating_task_t *lc,
                                         const wuss_event_t *event)
 {
-  if (event->data.menu_select.menu == &lc->menu &&
+  if (event->data.menu_select.menu == &lc->base.menu &&
       (event->data.menu_select.index == OSCILLATING_MENU_RANDOMISE ||
        event->data.menu_select.index == OSCILLATING_MENU_RESET))
   {
@@ -448,22 +426,22 @@ static result_t oscillating_menu_select(oscillating_task_t *lc,
     else
       oscillating_defaults(lc);
 
-    wuss_menu_tick_exclusive_live(lc->menu_handle, &lc->ratio_menu,
+    wuss_menu_tick_exclusive_live(lc->base.menu_handle, &lc->ratio_menu,
                                   lc->freq_index);
-    wuss_menu_tick_exclusive_live(lc->menu_handle, &lc->easing_menu,
+    wuss_menu_tick_exclusive_live(lc->base.menu_handle, &lc->easing_menu,
                                   lc->easing_index);
-    wuss_menu_tick_exclusive_live(lc->menu_handle, &lc->decay_menu,
+    wuss_menu_tick_exclusive_live(lc->base.menu_handle, &lc->decay_menu,
                                   lc->decay_index);
-    wuss_menu_tick_item_live(lc->menu_handle, &lc->menu,
+    wuss_menu_tick_item_live(lc->base.menu_handle, &lc->base.menu,
                              OSCILLATING_MENU_REVERSALS, lc->reversals);
-    wuss_window_invalidate_visible(lc->window);
+    wuss_window_invalidate_visible(lc->base.window);
     return result_OK;
   }
 
   if (event->data.menu_select.menu == &lc->ratio_menu)
   {
     oscillating_set_freq(lc, event->data.menu_select.index);
-    wuss_menu_tick_exclusive_live(lc->menu_handle, &lc->ratio_menu,
+    wuss_menu_tick_exclusive_live(lc->base.menu_handle, &lc->ratio_menu,
                                   lc->freq_index);
     return result_OK;
   }
@@ -471,7 +449,7 @@ static result_t oscillating_menu_select(oscillating_task_t *lc,
   if (event->data.menu_select.menu == &lc->decay_menu)
   {
     lc->decay_index = event->data.menu_select.index;
-    wuss_menu_tick_exclusive_live(lc->menu_handle, &lc->decay_menu,
+    wuss_menu_tick_exclusive_live(lc->base.menu_handle, &lc->decay_menu,
                                   lc->decay_index);
     return result_OK;
   }
@@ -479,13 +457,13 @@ static result_t oscillating_menu_select(oscillating_task_t *lc,
   if (event->data.menu_select.menu == &lc->easing_menu)
   {
     lc->easing_index = event->data.menu_select.index;
-    wuss_menu_tick_exclusive_live(lc->menu_handle, &lc->easing_menu,
+    wuss_menu_tick_exclusive_live(lc->base.menu_handle, &lc->easing_menu,
                                   lc->easing_index);
     return result_OK;
   }
 
   if (wuss_colourlist_selected(&lc->colours, event))
-    wuss_window_invalidate_visible(lc->window);
+    wuss_window_invalidate_visible(lc->base.window);
 
   return result_OK;
 }
@@ -498,17 +476,19 @@ static result_t oscillating_toggle_pause(oscillating_task_t *lc,
 {
   lc->paused = !lc->paused;
 
-  wuss_menu_tick_item_live(lc->menu_handle, &lc->menu, OSCILLATING_MENU_PAUSE,
+  wuss_menu_tick_item_live(lc->base.menu_handle, &lc->base.menu, OSCILLATING_MENU_PAUSE,
                            lc->paused);
 
   return result_OK;
 }
 
-result_t oscillating_handle(wuss_window_t      *window,
-                            const wuss_event_t *event,
-                            void               *task_data)
+static result_t oscillating_handle(wuss_window_t      *window,
+                                   const wuss_event_t *event,
+                                   void               *task_data)
 {
   oscillating_task_t *lc;
+
+  NOT_USED(window);
 
   lc = task_data;
 
@@ -518,8 +498,8 @@ result_t oscillating_handle(wuss_window_t      *window,
     return oscillating_redraw(event, task_data);
 
   case wuss_EVENT_MOUSE:
-    return oscillating_mouse(window, event->data.mouse.action,
-                           event->data.mouse.button, task_data);
+    return oscillating_mouse(event->data.mouse.action,
+                             event->data.mouse.button, task_data);
 
   case wuss_EVENT_IDLE:
     return oscillating_idle(task_data);
@@ -528,10 +508,7 @@ result_t oscillating_handle(wuss_window_t      *window,
   {
     result_t rc;
 
-    if (window != lc->window)
-      return result_WUSS_KEY_UNCLAIMED; /* not the proginfo dialogue */
-
-    if (!task_key_is_plain(lc->delegate, &lc->menu, event, &rc))
+    if (!task_key_is_plain(lc->base.delegate, &lc->base.menu, event, &rc))
       return rc;
 
     return oscillating_key(lc, event->data.key.code);
@@ -541,37 +518,36 @@ result_t oscillating_handle(wuss_window_t      *window,
     return oscillating_pre_submenu_open(lc, event);
 
   case wuss_EVENT_MENU_SELECT:
-    if (wuss_menu_select_is(event, &lc->menu, OSCILLATING_MENU_PAUSE))
+    if (wuss_menu_select_is(event, &lc->base.menu, OSCILLATING_MENU_PAUSE))
       return oscillating_toggle_pause(lc, event);
-    if (wuss_menu_select_is(event, &lc->menu, OSCILLATING_MENU_REVERSALS))
+    if (wuss_menu_select_is(event, &lc->base.menu, OSCILLATING_MENU_REVERSALS))
     {
       lc->reversals = !lc->reversals;
-      wuss_menu_tick_item_live(lc->menu_handle, &lc->menu,
+      wuss_menu_tick_item_live(lc->base.menu_handle, &lc->base.menu,
                                OSCILLATING_MENU_REVERSALS, lc->reversals);
       return result_OK;
     }
-    if (wuss_menu_select_is(event, &lc->menu, OSCILLATING_MENU_SAVE))
-    {
-      return wuss_saveas_open(lc->saveas);
-    }
     return oscillating_menu_select(lc, event);
-
-  case wuss_EVENT_MENU_CLOSED:
-    lc->menu_handle = NULL;
-    return result_OK;
-
-  case wuss_EVENT_CLOSE:
-    if (window == lc->window)
-      lc->window = NULL;
-    return result_OK;
-
-  case wuss_EVENT_QUIT:
-    oscillating_destroy(lc);
-    return result_OK;
 
   default:
     return result_OK;
   }
+}
+
+result_t oscillating_app_create(wuss_t *wuss)
+{
+  static const taskapp_desc_t desc =
+  {
+    .name          = "Oscillating",
+    .purpose       = "Drifting Lissajous figure",
+    .instance_size = sizeof(oscillating_task_t),
+    .window_size   = { 220, 220 },
+    .init          = (taskapp_init_fn_t) oscillating_init,
+    .handle        = oscillating_handle,
+    .save_name     = "oscillating.png"
+  };
+
+  return taskapp_install(wuss, &desc);
 }
 
 #endif /* WUSS_APP */

@@ -2,6 +2,7 @@
 
 #ifdef WUSS_APP
 
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -15,15 +16,43 @@
 
 #include "base/utils.h"
 #include "framebuf/bmfont.h"
+#include "framebuf/colour.h"
 #include "framebuf/screen.h"
 #include "geom/box.h"
 #include "geom/point.h"
 #include "utils/fxp.h"
+#include "wuss/component/colourmenu.h"
+#include "wuss/menu.h"
+#include "wuss/window.h"
 
-#include "clock.h"
+#include "../apps.h"
 #include "../common/taskapp.h"
 #include "../common/common.h"
-#include "../common/snapshot.h"
+
+/* a round-faced analogue clock: a tick-marked bezel with 1..12 numerals and
+ * hour, minute and second hands read from the system clock and advanced on
+ * every idle tick. A Select click, or Menu > Seconds, shows or hides the
+ * seconds. An Adjust click, or Menu > Digital, swaps the face for an
+ * HH:MM:SS readout (and back); Menu > 12-hour shows that readout as
+ * 12-hour time with AM/PM; Menu > Save opens a Save As dialogue (drag
+ * its icon onto a Filer window, or Save with a full path already typed)
+ * that writes the window's content out. Once a click has given the window
+ * the input focus, D, S and H toggle Digital, Seconds and 12-hour. */
+typedef struct clock_task
+{
+  taskapp_instance_t  base;
+  wuss_menu_item_t    menu_items[5]; /* per-instance: a shared static would
+                                       * leak one instance's .window pointer
+                                       * into another's menu */
+  bmfont_t          *font; /* borrowed; the numerals are drawn with it */
+  colour_t            bg, bezel, hand, second_hand;
+  wuss_colourlist_t   colours; /* Menu > Colours, its one row Background */
+  bool                show_second;
+  bool                digital; /* Menu > Digital: text readout, no face */
+  bool                twelve_hour; /* Menu > 12-hour: AM/PM readout */
+  time_t              shown; /* time last painted, to the second or minute */
+}
+clock_task_t;
 
 /* MENU click pops this menu; the item table and wuss_menu_t live per-instance
  * in clock_task_t, not as a file-scope static, so that each window's Info row
@@ -39,8 +68,6 @@ enum
 };
 
 static const char *const clock_colour_names[] = { "Background" };
-
-#define CLOCK_SAVE_NAME "clock.png" /* Save As's initial leafname */
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -107,84 +134,26 @@ static void clock_draw_centred(bmfont_t   *font,
              NULL);
 }
 
-static result_t clock_create_window(wuss_t       *wuss,
-                                    clock_task_t *task,
-                                    wuss_task_t  *delegate)
+static result_t clock_init(clock_task_t *task)
 {
-  return task_window_create(delegate, SIZE2D(160, 160), "Clock", &task->window);
-}
+  result_t  rc;
+  colour_t *fields[1];
 
-/* wuss_saveas_save_fn_t: opaque is the clock_task_t */
-static result_t clock_saveas_save(const char *path, void *opaque)
-{
-  clock_task_t *cc;
-
-  cc = opaque;
-
-  return snapshot_save_png(cc->window, clock_handle, cc, path);
-}
-
-result_t clock_create(wuss_t *wuss, clock_task_t **out)
-{
-  result_t         rc;
-  clock_task_t    *task;
-  wuss_task_t     *delegate;
-  wuss_task_desc_t delegate_desc;
-  colour_t        *fields[1];
-
-  task = calloc(1, sizeof(*task));
-  if (task == NULL)
-    return result_OOM;
-
-  task->wuss        = wuss;
-  task->font        = wuss_get_font_n(wuss, 0);
+  task->font        = wuss_get_font_n(task->base.wuss, 0);
   task->bg          = colour_rgb(0x1D, 0x2B, 0x53);
   task->bezel       = colour_rgb(0xFF, 0xF1, 0xE8);
   task->hand        = colour_rgb(0xFF, 0xF1, 0xE8);
   task->second_hand = colour_rgb(0xFF, 0x00, 0x4D);
   task->show_second = true;
 
-  /* clock_redraw paints its own background every frame */
-  delegate_desc.handle    = clock_handle;
-  delegate_desc.task_data = task;
-  delegate_desc.name      = "Clock";
-  rc = wuss_task_create(wuss, &delegate_desc, &delegate);
-  if (rc != result_OK)
-  {
-    free(task); /* nothing registered yet; the spawner will not free it */
-    return rc;
-  }
-  wuss_task_set_autoclose(delegate, 1);
-  task->delegate = delegate;
-
-  rc = clock_create_window(wuss, task, delegate);
-  if (rc != result_OK)
-  {
-    wuss_task_destroy(delegate); /* unregister; its QUIT frees the task block */
-    return rc;
-  }
-
-  rc = snapshot_saveas_create(&task->saveas, wuss, CLOCK_SAVE_NAME,
-                              clock_saveas_save, task);
-  if (rc != result_OK)
-  {
-    wuss_task_destroy(delegate);
-    return rc;
-  }
-
   fields[0] = &task->bg;
-  rc = wuss_colourlist_init(&task->colours, wuss, NELEMS(fields), fields,
-                            clock_colour_names);
+  rc = wuss_colourlist_init(&task->colours, task->base.wuss, NELEMS(fields),
+                            fields, clock_colour_names);
   if (rc != result_OK)
-  {
-    wuss_task_destroy(delegate);
     return rc;
-  }
 
-  WUSS_MENU_ITEM_SHORTCUT(task->menu_items, CLOCK_MENU_SAVE, "Save",
-                          wuss_MENU_ITEM_NONE, "F3");
-  /* hover opens the Save As dialogue as a submenu; F3 shows it standalone */
-  task->menu_items[CLOCK_MENU_SAVE].window = wuss_saveas_window(task->saveas);
+  taskapp_save_row(&task->base, task->menu_items, CLOCK_MENU_SAVE,
+                   wuss_MENU_ITEM_NONE);
 
   WUSS_MENU_ITEM_SHORTCUT(task->menu_items, CLOCK_MENU_DIGITAL, "Digital",
                           wuss_MENU_ITEM_DASHED, "D");
@@ -198,31 +167,10 @@ result_t clock_create(wuss_t *wuss, clock_task_t **out)
   WUSS_MENU_ITEM_MENU(task->menu_items, CLOCK_MENU_COLOURS, "Colours",
                       wuss_MENU_ITEM_NONE, &task->colours.menu);
 
-  WUSS_MENU_TITLE(task->menu, "Clock", task->menu_items,
+  WUSS_MENU_TITLE(task->base.menu, "Clock", task->menu_items,
                  NELEMS(task->menu_items));
 
-  if (out)
-    *out = task;
-
   return result_OK;
-}
-
-result_t clock_app_create(wuss_t *wuss)
-{
-  static const taskapp_desc_t desc =
-  {
-    "Clock",
-    "Analogue or digital clock",
-    (taskapp_create_fn_t) clock_create
-  };
-
-  return taskapp_install(wuss, &desc);
-}
-
-void clock_destroy(clock_task_t *task)
-{
-  wuss_saveas_destroy(task->saveas);
-  free(task);
 }
 
 static result_t clock_redraw(const wuss_event_t *event, void *task_data)
@@ -330,23 +278,23 @@ static result_t clock_mouse(clock_task_t *cc, wuss_button_t button)
 {
   if (button & wuss_BUTTON_MENU)
   {
-    wuss_menu_tick_item(&cc->menu, CLOCK_MENU_DIGITAL, cc->digital);
-    wuss_menu_tick_item(&cc->menu, CLOCK_MENU_SECONDS, cc->show_second);
-    wuss_menu_tick_item(&cc->menu, CLOCK_MENU_12_HOUR, cc->twelve_hour);
+    wuss_menu_tick_item(&cc->base.menu, CLOCK_MENU_DIGITAL, cc->digital);
+    wuss_menu_tick_item(&cc->base.menu, CLOCK_MENU_SECONDS, cc->show_second);
+    wuss_menu_tick_item(&cc->base.menu, CLOCK_MENU_12_HOUR, cc->twelve_hour);
 
-    return wuss_menu_open_at_pointer(cc->delegate, &cc->menu,
-                                     &cc->menu_handle);
+    return wuss_menu_open_at_pointer(cc->base.delegate, &cc->base.menu,
+                                     &cc->base.menu_handle);
   }
 
   if (button & wuss_BUTTON_SELECT)
   {
     cc->show_second = !cc->show_second;
-    wuss_window_invalidate_visible(cc->window);
+    wuss_window_invalidate_visible(cc->base.window);
   }
   else if (button & wuss_BUTTON_ADJUST)
   {
     cc->digital = !cc->digital;
-    wuss_window_invalidate_visible(cc->window);
+    wuss_window_invalidate_visible(cc->base.window);
   }
 
   return result_OK;
@@ -356,7 +304,7 @@ static result_t clock_menu_select(clock_task_t       *cc,
                                   const wuss_event_t *event)
 {
   if (wuss_colourlist_selected(&cc->colours, event))
-    wuss_window_invalidate_visible(cc->window);
+    wuss_window_invalidate_visible(cc->base.window);
 
   return result_OK;
 }
@@ -379,18 +327,20 @@ static result_t clock_toggle(clock_task_t *cc, const wuss_event_t *event)
     flag = &cc->twelve_hour;
   *flag = !*flag;
 
-  wuss_menu_tick_item_live(cc->menu_handle, &cc->menu, index, *flag);
+  wuss_menu_tick_item_live(cc->base.menu_handle, &cc->base.menu, index, *flag);
 
-  wuss_window_invalidate_visible(cc->window);
+  wuss_window_invalidate_visible(cc->base.window);
 
   return result_OK;
 }
 
-result_t clock_handle(wuss_window_t      *window,
-                      const wuss_event_t *event,
-                      void               *task_data)
+static result_t clock_handle(wuss_window_t      *window,
+                             const wuss_event_t *event,
+                             void               *task_data)
 {
   clock_task_t *cc;
+
+  NOT_USED(window);
 
   cc = task_data;
 
@@ -400,17 +350,12 @@ result_t clock_handle(wuss_window_t      *window,
     return clock_redraw(event, task_data);
 
   case wuss_EVENT_MOUSE:
-    if (window != cc->window)
-      return result_OK; /* the proginfo dialogue has no click behaviour of
-                         * its own */
     if (event->data.mouse.action != wuss_MOUSE_DOWN)
       return result_OK;
     return clock_mouse(cc, event->data.mouse.button);
 
   case wuss_EVENT_KEY:
-    if (window != cc->window)
-      return result_WUSS_KEY_UNCLAIMED; /* not the proginfo dialogue */
-    return wuss_menu_dispatch_shortcut(cc->delegate, &cc->menu, event);
+    return wuss_menu_dispatch_shortcut(cc->base.delegate, &cc->base.menu, event);
 
   case wuss_EVENT_IDLE:
   {
@@ -420,7 +365,7 @@ result_t clock_handle(wuss_window_t      *window,
      * delegate, so closing the clock window alone never empties
      * task->windows and the task lingers until the dialogue closes too --
      * guard against the dangling window in the meantime */
-    if (cc->window == NULL)
+    if (cc->base.window == NULL)
       return result_OK;
 
     /* repaint only when the time shown changes: each second with seconds
@@ -432,7 +377,7 @@ result_t clock_handle(wuss_window_t      *window,
       return result_OK;
 
     cc->shown = now;
-    wuss_window_invalidate_visible(cc->window);
+    wuss_window_invalidate_visible(cc->base.window);
     return result_OK;
   }
 
@@ -441,40 +386,39 @@ result_t clock_handle(wuss_window_t      *window,
     result_t rc;
 
     /* Colours > Background: the shared colourmenu, set up per open */
-    if (wuss_colourlist_pre_open(&cc->colours, cc->wuss, event, &rc))
+    if (wuss_colourlist_pre_open(&cc->colours, cc->base.wuss, event, &rc))
       return rc;
 
     return result_OK;
   }
 
   case wuss_EVENT_MENU_SELECT:
-    if (event->data.menu_select.menu == &cc->menu &&
+    if (event->data.menu_select.menu == &cc->base.menu &&
         (event->data.menu_select.index == CLOCK_MENU_DIGITAL ||
          event->data.menu_select.index == CLOCK_MENU_SECONDS ||
          event->data.menu_select.index == CLOCK_MENU_12_HOUR))
       return clock_toggle(cc, event);
-    if (wuss_menu_select_is(event, &cc->menu, CLOCK_MENU_SAVE))
-    {
-      return wuss_saveas_open(cc->saveas);
-    }
     return clock_menu_select(cc, event);
-
-  case wuss_EVENT_MENU_CLOSED:
-    cc->menu_handle = NULL;
-    return result_OK;
-
-  case wuss_EVENT_CLOSE:
-    if (window == cc->window)
-      cc->window = NULL;
-    return result_OK;
-
-  case wuss_EVENT_QUIT:
-    clock_destroy(cc);
-    return result_OK;
 
   default:
     return result_OK;
   }
+}
+
+result_t clock_app_create(wuss_t *wuss)
+{
+  static const taskapp_desc_t desc =
+  {
+    .name          = "Clock",
+    .purpose       = "Analogue or digital clock",
+    .instance_size = sizeof(clock_task_t),
+    .window_size   = { 160, 160 },
+    .init          = (taskapp_init_fn_t) clock_init,
+    .handle        = clock_handle,
+    .save_name     = "clock.png"
+  };
+
+  return taskapp_install(wuss, &desc);
 }
 
 #endif /* WUSS_APP */

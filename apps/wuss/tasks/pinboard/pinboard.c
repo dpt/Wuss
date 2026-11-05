@@ -24,7 +24,7 @@
 #include "wuss/menu.h"
 #include "wuss/message.h"
 
-#include "pinboard.h"
+#include "../apps.h"
 #include "../common/common.h"
 #include "../tasks.h"
 

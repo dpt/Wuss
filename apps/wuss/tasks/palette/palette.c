@@ -121,28 +121,49 @@ static struct
 }
 g;
 
+static wuss_window_fn_t palette_handle;
+
+static result_t palette_create(wuss_t *wuss, void **out);
+static result_t palette_screen_create(wuss_t *wuss, void **out);
+
+static const taskapp_desc_t palette_desc =
+{
+  .name             = "Palette",
+  .purpose          = "Desktop palette swatches",
+  .create           = palette_create,
+  .singleton        = true,
+  .adjust           = palette_screen_create,
+  .create_label     = "Desktop palette",
+  .adjust_label     = "System palette",
+  .iconbar_priority = 0x40000000, /* inside Display */
+  .no_quit          = true,
+  .instance_size    = sizeof(palette_task_t),
+  .handle           = palette_handle,
+  .all_windows      = true /* a Screen task's window is not the base window */
+};
+
 /* Make a task block and open one window on it: the desktop palette, or with
  * screen the physical screen's ("Screen") */
-static result_t palette_open(wuss_t *wuss, bool screen, palette_task_t **out)
+static result_t palette_open(wuss_t *wuss, bool screen, void **out)
 {
-  result_t         rc;
-  palette_task_t  *task;
-  palette_task_t  *existing;
-  wuss_task_desc_t delegate_desc;
-  const char      *resources;
-  const char      *dir;
-  const colour_t  *current;
-  int              ncurrent;
-  bool             matched;
-  int              kept;
-  int              i;
+  result_t        rc;
+  palette_task_t *existing;
+  void           *instance;
+  palette_task_t *task;
+  const char     *resources;
+  const char     *dir;
+  const colour_t *current;
+  int             ncurrent;
+  bool            matched;
+  int             kept;
+  int             i;
 
   existing = screen ? g.screen : g.desktop;
   if (existing != NULL)
   {
     wuss_window_t *open_window;
 
-    open_window = screen ? existing->window2 : existing->window;
+    open_window = screen ? existing->window2 : existing->base.window;
     if (open_window != NULL)
       wuss_window_restack(open_window, wuss_ZORDER_FRONT);
     if (out)
@@ -150,15 +171,12 @@ static result_t palette_open(wuss_t *wuss, bool screen, palette_task_t **out)
     return result_OK;
   }
 
-  task = calloc(1, sizeof(*task));
-  if (task == NULL)
-    return result_OOM;
+  rc = taskapp_instance_create(wuss, &palette_desc, &instance);
+  if (rc != result_OK)
+    return rc;
+  task = instance;
 
-  task->wuss      = wuss;
-  task->invert    = false;
-  task->nnames    = 0;
-  task->selected  = 0;
-  task->cell      = -1;
+  task->cell = -1;
 
   resources = wuss_get_resources(wuss);
   dir       = pathf("%s/resources/wuss-tasks/palettes", resources);
@@ -212,21 +230,11 @@ static result_t palette_open(wuss_t *wuss, bool screen, palette_task_t **out)
                 "Greyscale", wuss_MENU_ITEM_NONE);
   WUSS_MENU_ITEM(task->menu_items, PALETTE_MENU_EDIT_INDEX,
                 "Edit colour...", wuss_MENU_ITEM_DASHED);
-  WUSS_MENU_TITLE(task->menu, "Palette", task->menu_items,
+  WUSS_MENU_TITLE(task->base.menu, "Palette", task->menu_items,
                  NELEMS(task->menu_items));
 
   /* backdrop for any rounding gap around the grid */
-  delegate_desc.handle    = palette_handle;
-  delegate_desc.task_data = task;
-  delegate_desc.name      = "Palette";
-  rc = wuss_task_create(wuss, &delegate_desc, &task->delegate);
-  if (rc != result_OK)
-  {
-    free(task); /* nothing registered yet; the spawner will not free it */
-    return rc;
-  }
-
-  rc = wuss_window_create_at(task->delegate,
+  rc = wuss_window_create_at(task->base.delegate,
                              &palette_place,
                              SIZE2D(100, 100),
                              screen ? "Screen" : "Palette",
@@ -234,16 +242,12 @@ static result_t palette_open(wuss_t *wuss, bool screen, palette_task_t **out)
                              wuss_BACKDROP_COLOUR(palette_PICO8_BLACK),
                              SIZE2D(100, 100),
                              SIZE2D(0, 0),
-                             screen ? &task->window2 : &task->window);
+                             screen ? &task->window2 : &task->base.window);
   if (rc != result_OK)
   {
-    wuss_task_destroy(task->delegate); /* unregister; its QUIT frees the task block */
+    wuss_task_destroy(task->base.delegate); /* its QUIT frees the block */
     return rc;
   }
-
-  /* window up: closing it reaps the task and its wuss_EVENT_QUIT frees
-   * task_data */
-  wuss_task_set_autoclose(task->delegate, 1);
 
   if (screen)
     g.screen = task;
@@ -256,48 +260,19 @@ static result_t palette_open(wuss_t *wuss, bool screen, palette_task_t **out)
   return result_OK;
 }
 
-result_t palette_create(wuss_t *wuss, palette_task_t **out)
+static result_t palette_create(wuss_t *wuss, void **out)
 {
   return palette_open(wuss, false, out);
 }
 
-result_t palette_screen_create(wuss_t *wuss, palette_task_t **out)
+static result_t palette_screen_create(wuss_t *wuss, void **out)
 {
   return palette_open(wuss, true, out);
 }
 
 result_t palette_app_create(wuss_t *wuss)
 {
-  static const taskapp_desc_t desc =
-  {
-    "Palette",
-    "Desktop palette swatches",
-    (taskapp_create_fn_t) palette_create,
-    NULL,
-    false,
-    NULL,
-    true,
-    (taskapp_create_fn_t) palette_screen_create,
-    "Desktop palette",
-    "System palette",
-    NULL,
-    0x40000000, /* inside Display */
-    NULL,
-    true
-  };
-
-  return taskapp_install(wuss, &desc);
-}
-
-void palette_destroy(palette_task_t *task)
-{
-  if (task == g.desktop)
-    g.desktop = NULL;
-  if (task == g.screen)
-    g.screen = NULL;
-
-  wuss_colourpicker_destroy(task->picker);
-  free(task);
+  return taskapp_install(wuss, &palette_desc);
 }
 
 /* shared by both windows: a roughly-square grid of npalette swatches
@@ -337,7 +312,7 @@ static result_t palette_redraw(const wuss_event_t *event, void *task_data)
   int             npalette;
 
   pc      = task_data;
-  palette = wuss_get_palette(pc->wuss, &npalette);
+  palette = wuss_get_palette(pc->base.wuss, &npalette);
 
   palette_draw_grid(event, palette, npalette, pc->cell);
 
@@ -348,8 +323,8 @@ static result_t palette_redraw(const wuss_event_t *event, void *task_data)
  * own (NULL with *n 0 on an unpaletted screen) */
 static const colour_t *palette_colours(const palette_task_t *pc, int *n)
 {
-  if (pc->window != NULL)
-    return wuss_get_palette(pc->wuss, n);
+  if (pc->base.window!= NULL)
+    return wuss_get_palette(pc->base.wuss, n);
 
   *n = (g_tasks.bm->palette != NULL) ?
        pixelfmt_paletted_nentries(g_tasks.bm->format) : 0;
@@ -367,7 +342,7 @@ static void palette_picker_changed(colour_t colour, void *opaque)
 
   pc = opaque;
 
-  if (pc->window == NULL && pc->window2 == NULL)
+  if (pc->base.window== NULL && pc->window2 == NULL)
     return; /* closing: the QUIT that frees the picker is on its way */
 
   current = palette_colours(pc, &ncurrent);
@@ -376,8 +351,8 @@ static void palette_picker_changed(colour_t colour, void *opaque)
 
   memcpy(edited, current, ncurrent * sizeof(*edited));
   edited[pc->editing] = colour;
-  if (pc->window != NULL)
-    wuss_set_palette(pc->wuss, edited, ncurrent);
+  if (pc->base.window!= NULL)
+    wuss_set_palette(pc->base.wuss, edited, ncurrent);
   else
     tasks_set_screen_palette(edited, ncurrent);
 }
@@ -396,8 +371,8 @@ static result_t palette_edit(palette_task_t *pc)
 
   if (pc->picker == NULL)
   {
-    rc = wuss_colourpicker_create(&pc->picker, pc->wuss,
-                                  pc->window != NULL ? "Desktop colour" :
+    rc = wuss_colourpicker_create(&pc->picker, pc->base.wuss,
+                                  pc->base.window!= NULL ? "Desktop colour" :
                                   "Screen colour",
                                   palette_picker_changed, pc);
     if (rc != result_OK)
@@ -420,7 +395,7 @@ static result_t palette_swatch_click(palette_task_t     *pc,
   wuss_swatches_t swatches;
   int             i;
 
-  window = pc->window != NULL ? pc->window : pc->window2;
+  window = pc->base.window!= NULL ? pc->base.window: pc->window2;
   wuss_window_get_content_bounds(window, &content);
   palette = palette_colours(pc, &npalette);
   palette_grid(&swatches, &content, palette, npalette, pc->cell);
@@ -460,7 +435,7 @@ static result_t palette_redraw_screen(palette_task_t     *pc,
   {
     const char *label;
 
-    bmfont_t          *font   = wuss_get_font(pc->wuss);
+    bmfont_t          *font   = wuss_get_font(pc->base.wuss);
     colour_t           ink    = colour_rgb(0xFF, 0xFF, 0xFF);
     colour_t           bg     = colour_rgba(0, 0, 0, 0); /* transparent */
 
@@ -481,7 +456,7 @@ static result_t palette_redraw_screen(palette_task_t     *pc,
 
       bmfont_get_info(font, NULL, NULL, &ascent, NULL);
       pos = POINT(bounds->x0 - sx + 2, bounds->y0 - sy + 2 + ascent);
-      wuss_text_draw(pc->wuss, 0, scr, label, (int) strlen(label), ink, bg,
+      wuss_text_draw(pc->base.wuss, 0, scr, label, (int) strlen(label), ink, bg,
                      &pos, NULL);
     }
     return result_OK;
@@ -514,8 +489,8 @@ static result_t palette_menu_open(palette_task_t *pc)
   if (pc->grey)
     ticks |= 1u << PALETTE_MENU_GREY_INDEX;
 
-  return wuss_menu_open_ticked(pc->delegate, &pc->menu, ticks,
-                               wuss_get_pointer(pc->wuss), &pc->menu_handle);
+  return wuss_menu_open_ticked(pc->base.delegate, &pc->base.menu, ticks,
+                               wuss_get_pointer(pc->base.wuss), &pc->base.menu_handle);
 }
 
 /* Rebuild the Screen window's Load submenu from the *.hex files of exactly
@@ -531,7 +506,7 @@ static result_t palette_screen_menu_open(palette_task_t *pc)
   int         n;
   int         i;
 
-  resources = wuss_get_resources(pc->wuss);
+  resources = wuss_get_resources(pc->base.wuss);
   nentries  = pixelfmt_paletted_nentries(g_tasks.bm->format);
   if (nentries == 0)
     return result_OK;
@@ -564,10 +539,10 @@ static result_t palette_screen_menu_open(palette_task_t *pc)
                  "Edit colour...",
                  pc->cell < 0 ? wuss_MENU_ITEM_DISABLED :
                  wuss_MENU_ITEM_NONE);
-  WUSS_MENU_TITLE(pc->menu, "Screen", pc->menu_items, 2);
+  WUSS_MENU_TITLE(pc->base.menu, "Screen", pc->menu_items, 2);
 
-  return wuss_menu_open_at_pointer(pc->delegate, &pc->menu,
-                                   &pc->menu_handle);
+  return wuss_menu_open_at_pointer(pc->base.delegate, &pc->base.menu,
+                                   &pc->base.menu_handle);
 }
 
 static result_t palette_click(palette_task_t *pc, const wuss_event_t *event)
@@ -597,20 +572,20 @@ static result_t palette_screen_menu_select(palette_task_t     *pc,
   int      n;
 
   index = event->data.menu_select.index;
-  if (event->data.menu_select.menu == &pc->menu)
+  if (event->data.menu_select.menu == &pc->base.menu)
     return index == PALETTE_SCREEN_MENU_EDIT_INDEX ? palette_edit(pc) :
            result_OK;
   if (index < 0 || index >= pc->nscreen)
     return result_OK;
 
-  if (palette_load_hex_n(wuss_get_resources(pc->wuss),
+  if (palette_load_hex_n(wuss_get_resources(pc->base.wuss),
                          pc->names[pc->screen_map[index]], loaded,
                          NELEMS(loaded), &n) != result_OK ||
       n != pixelfmt_paletted_nentries(g_tasks.bm->format))
     return result_OK; /* the depth changed under the open menu */
 
   if (event->data.menu_select.button & wuss_BUTTON_ADJUST)
-    wuss_menu_tick_exclusive_live(pc->menu_handle, &pc->load_menu, index);
+    wuss_menu_tick_exclusive_live(pc->base.menu_handle, &pc->load_menu, index);
   pc->selected = index;
   wuss_menu_tick_exclusive(&pc->load_menu, index);
 
@@ -638,23 +613,23 @@ static result_t palette_menu_select(palette_task_t     *pc,
 
   index = event->data.menu_select.index;
 
-  if (event->data.menu_select.menu == &pc->menu &&
+  if (event->data.menu_select.menu == &pc->base.menu &&
       index == PALETTE_MENU_EDIT_INDEX)
     return palette_edit(pc);
 
-  if (event->data.menu_select.menu == &pc->menu &&
+  if (event->data.menu_select.menu == &pc->base.menu &&
       index == PALETTE_MENU_INVERT_INDEX)
   {
     pc->invert = !pc->invert;
     if (event->data.menu_select.button & wuss_BUTTON_ADJUST)
-      wuss_menu_tick_item_live(pc->menu_handle, &pc->menu, index, pc->invert);
+      wuss_menu_tick_item_live(pc->base.menu_handle, &pc->base.menu, index, pc->invert);
   }
-  else if (event->data.menu_select.menu == &pc->menu &&
+  else if (event->data.menu_select.menu == &pc->base.menu &&
            index == PALETTE_MENU_GREY_INDEX)
   {
     pc->grey = !pc->grey;
     if (event->data.menu_select.button & wuss_BUTTON_ADJUST)
-      wuss_menu_tick_item_live(pc->menu_handle, &pc->menu, index, pc->grey);
+      wuss_menu_tick_item_live(pc->base.menu_handle, &pc->base.menu, index, pc->grey);
   }
   else if (event->data.menu_select.menu == &pc->load_menu &&
           index >= 0 && index < pc->nnames)
@@ -668,11 +643,11 @@ static result_t palette_menu_select(palette_task_t     *pc,
     wuss_menu_tick_exclusive(&pc->load_menu, index);
     if (event->data.menu_select.button & wuss_BUTTON_ADJUST)
     {
-      wuss_menu_tick_item_live(pc->menu_handle, &pc->load_menu, old, 0);
-      wuss_menu_tick_item_live(pc->menu_handle, &pc->load_menu, index, 1);
-      wuss_menu_tick_item_live(pc->menu_handle, &pc->menu,
+      wuss_menu_tick_item_live(pc->base.menu_handle, &pc->load_menu, old, 0);
+      wuss_menu_tick_item_live(pc->base.menu_handle, &pc->load_menu, index, 1);
+      wuss_menu_tick_item_live(pc->base.menu_handle, &pc->base.menu,
                                PALETTE_MENU_INVERT_INDEX, 0);
-      wuss_menu_tick_item_live(pc->menu_handle, &pc->menu,
+      wuss_menu_tick_item_live(pc->base.menu_handle, &pc->base.menu,
                                PALETTE_MENU_GREY_INDEX, 0);
     }
   }
@@ -684,7 +659,7 @@ static result_t palette_menu_select(palette_task_t     *pc,
   if (pc->nnames == 0)
     return result_OK;
 
-  rc = palette_load_hex(wuss_get_resources(pc->wuss), pc->names[pc->selected],
+  rc = palette_load_hex(wuss_get_resources(pc->base.wuss), pc->names[pc->selected],
                         loaded);
   if (rc != result_OK)
     return result_OK;
@@ -702,14 +677,14 @@ static result_t palette_menu_select(palette_task_t     *pc,
       loaded[i] = colour_rgba(y, y, y, colour_get_alpha(&loaded[i]));
     }
 
-  wuss_set_palette(pc->wuss, loaded, PALETTE_NCOLOURS);
+  wuss_set_palette(pc->base.wuss, loaded, PALETTE_NCOLOURS);
 
   return result_OK;
 }
 
-result_t palette_handle(wuss_window_t      *window,
-                        const wuss_event_t *event,
-                        void               *task_data)
+static result_t palette_handle(wuss_window_t      *window,
+                               const wuss_event_t *event,
+                               void               *task_data)
 {
   palette_task_t *pc;
 
@@ -730,21 +705,17 @@ result_t palette_handle(wuss_window_t      *window,
       return palette_screen_menu_select(task_data, event);
     return palette_menu_select(task_data, event);
 
-  case wuss_EVENT_MENU_CLOSED:
-    pc->menu_handle = NULL; /* wuss closed the chain under us */
-    return result_OK;
-
   case wuss_EVENT_CLOSE:
     if (window == pc->window2)
       pc->window2 = NULL;
-    else
-      pc->window = NULL;
     return result_OK;
 
   case wuss_EVENT_QUIT:
-    /* one calloc'd block backs both windows; the task autocloses once the
-     * second one goes, so free it here */
-    palette_destroy(pc);
+    if (pc == g.desktop)
+      g.desktop = NULL;
+    if (pc == g.screen)
+      g.screen = NULL;
+    wuss_colourpicker_destroy(pc->picker);
     return result_OK;
 
   case wuss_EVENT_KEY:

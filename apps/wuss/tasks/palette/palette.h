@@ -12,6 +12,8 @@
 #include "wuss/menu.h"
 #include "wuss/window.h"
 
+#include "../common/taskapp.h"
+
 /* ponytail: fixed cap on the number of *.hex files the picker menu will
  * list, so the menu_items/names arrays can live inline in palette_task_t
  * with no malloc bookkeeping. Raise it if resources/palettes ever grows
@@ -44,9 +46,8 @@
  * desktop palette or mode change. */
 typedef struct palette_task
 {
-  wuss_t              *wuss;
-  wuss_task_t         *delegate;
-  wuss_window_t       *window;  /* desktop palette; NULL in a Screen task */
+  taskapp_instance_t   base;    /* window: desktop palette; NULL in a Screen
+                                 * task */
   wuss_window_t       *window2; /* Screen task's window, else NULL:
                                   * the physical screen's own palette
                                   * (1/2/4/8bpp) or a "none" label (32bpp
@@ -83,14 +84,8 @@ typedef struct palette_task
   wuss_menu_item_t     menu_items[4]; /* Load, Invert, Greyscale, Edit
                                        * colour; a Screen task uses only
                                        * Load and Edit colour */
-  wuss_menu_t          menu;
-  wuss_menu_handle_t   menu_handle; /* for wuss_menu_tick_item_live on an
-                                     * ADJUST pick, which keeps the chain
-                                     * open */
 }
 palette_task_t;
-
-wuss_window_fn_t palette_handle;
 
 /* load a named *.hex file (leafname, no extension, e.g. "PICO-8") from
  * resources/palettes into a wuss_SYSTEM_PALETTE_LENGTH-entry colour_t
@@ -108,23 +103,8 @@ result_t palette_load_hex_n(const char *resources,
                             int         max,
                             int        *n);
 
-/* create the palette-swatch-grid window against the given wuss instance.
- * wuss_get_resources(wuss)/resources/palettes holds the *.hex files; it is
- * scanned once here to build the picker menu, ticking whichever file's
- * content matches wuss's current system palette (wuss_get_palette), if any.
- * if out is non-NULL, the task block is also returned through it. */
-result_t palette_create(wuss_t *wuss, palette_task_t **out);
-
-/* as palette_create, but opens the "Screen" window (the physical screen's
- * own palette) instead of the desktop palette's */
-result_t palette_screen_create(wuss_t *wuss, palette_task_t **out);
-
 /* install the icon bar app that opens palette windows on demand */
 result_t palette_app_create(wuss_t *wuss);
-
-/* free a task block allocated by palette_create; normally called by the
- * window's wuss_EVENT_QUIT handler, not by callers directly */
-void palette_destroy(palette_task_t *task);
 
 #endif /* WUSS_APP */
 

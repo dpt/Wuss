@@ -6,19 +6,50 @@
 #ifdef WUSS_APP
 
 #include <stdbool.h>
+#include <stddef.h>
 
 #include "base/result.h"
 #include "framebuf/bitmap.h"
+#include "geom/size.h"
+#include "wuss/component/saveas.h"
+#include "wuss/menu.h"
 #include "wuss/message.h"
 #include "wuss/task.h"
+#include "wuss/window.h"
 #include "wuss/wuss.h"
 
-/* Every demo task's X_create shares one shape: (wuss_t *, X_task_t **). The
- * task block it allocates is owned by its window and freed by X_destroy from
- * the task's wuss_EVENT_QUIT handler, so an app only ever calls X_create with
- * NULL for the block, which is type-compatible however the second parameter
- * is spelt. */
+typedef struct taskapp_desc taskapp_desc_t;
+
+/* The first member of an instance block that taskapp owns: see
+ * taskapp_desc_t::instance_size. Filled in by taskapp, apart from what the
+ * comments say the task sets. */
+typedef struct taskapp_instance
+{
+  wuss_t               *wuss;
+  const taskapp_desc_t *desc;
+  wuss_task_t          *delegate;
+  wuss_window_t        *window;      /* the main window, NULL once closed */
+  wuss_menu_t           menu;        /* the task sets this, if it has a menu */
+  wuss_menu_handle_t    menu_handle; /* the task sets this when opening a menu;
+                                      * NULL again once it closes */
+  wuss_saveas_t        *saveas;      /* see taskapp_desc_t::save_name;
+                                      * destroyed with the instance */
+  int                   save_row;    /* see taskapp_save_row; -1 for none */
+}
+taskapp_instance_t;
+
+/* Open an instance as desc->create does for a task that manages its own
+ * block. Such a block is owned by its window and freed from the task's
+ * wuss_EVENT_QUIT handler, so an app only ever calls create with NULL for the
+ * block, which is type-compatible however the second parameter is spelt. */
 typedef result_t (*taskapp_create_fn_t)(wuss_t *wuss, void **out);
+
+/* Set up an instance whose block taskapp has allocated, its task registered
+ * and its window (if it has a window_size) open. On failure, the block goes
+ * through the task's wuss_EVENT_QUIT as usual, so that must cope with an
+ * instance set up only in part. The parameter is the task's own block type,
+ * whose first member is a taskapp_instance_t. */
+typedef result_t (*taskapp_init_fn_t)(void *instance);
 
 /* Load the file at path into an instance create has just returned. Optional
  * in a taskapp_desc: with none, a file dropped on the app's icon is not
@@ -37,11 +68,12 @@ typedef result_t (*taskapp_spawn_fn_t)(wuss_t *wuss, void *param, void **out);
 
 /* A task's description of its app. Each task keeps one as a static const and
  * passes it to taskapp_install from its X_app_create. */
-typedef struct taskapp_desc
+struct taskapp_desc
 {
   const char          *name;    /* icon label, menu title, proginfo name */
   const char          *purpose; /* proginfo "Purpose" row */
-  taskapp_create_fn_t  create;  /* opens an instance of the main window */
+  taskapp_create_fn_t  create;  /* opens an instance of the main window; NULL
+                                 * for taskapp_instance_create to do so */
   taskapp_data_load_fn_t data_load; /* optional: file dropped on the icon */
   bool                 drop_only;   /* SELECT on the icon opens nothing and
                                      * the menu has no "New" row */
@@ -65,8 +97,26 @@ typedef struct taskapp_desc
                                       * leaving the rest to other apps */
   bool                 no_quit;      /* the menu has no "Quit" row: a system
                                       * app that stays on the icon bar */
-}
-taskapp_desc_t;
+
+  /* for taskapp_instance_create: */
+  size_t               instance_size; /* bytes in the task's block, whose first
+                                       * member is a taskapp_instance_t */
+  size2d_t             window_size;  /* of the main window; zero for init to
+                                      * open its own */
+  const char          *window_title; /* optional: name if NULL */
+  taskapp_init_fn_t    init;         /* optional: see taskapp_init_fn_t */
+  wuss_window_fn_t    *handle;       /* the task's events; see
+                                      * taskapp_instance_create */
+  bool                 all_windows;  /* pass handle wuss_EVENT_MOUSE,
+                                      * wuss_EVENT_SCROLL and wuss_EVENT_KEY
+                                      * for every window */
+  const char          *save_name;    /* Save As's initial leafname; with this
+                                      * or save, the instance gets a PNG saveas
+                                      * before init runs */
+  wuss_saveas_save_fn_t *save;       /* optional: writes the file, its opaque
+                                      * the block; if NULL, a snapshot of the
+                                      * main window through handle */
+};
 
 /* Install the app for desc: a task with an icon bar icon (labelled name,
  * drawn with the application glyph) and a menu of Info, New (unless
@@ -87,6 +137,28 @@ taskapp_desc_t;
  * Does nothing, returning result_OK, if desc is already installed. Without
  * the icon bar, calls desc->create at once instead. */
 result_t taskapp_install(wuss_t *wuss, const taskapp_desc_t *desc);
+
+/* Allocate a zeroed block of desc->instance_size, register its task, open its
+ * main window, which reaps the task when it closes, create its saveas if it
+ * has one, then call desc->init. desc->handle receives the block as task_data,
+ * and every event except wuss_EVENT_MOUSE, wuss_EVENT_SCROLL and
+ * wuss_EVENT_KEY on a window other than the main one, unless
+ * desc->all_windows, and the selection of a row made by taskapp_save_row,
+ * which opens the saveas instead.
+ * taskapp clears menu_handle on wuss_EVENT_MENU_CLOSED first and, after handle
+ * returns, clears window on its wuss_EVENT_CLOSE and destroys saveas and frees
+ * the block on wuss_EVENT_QUIT. */
+result_t taskapp_instance_create(wuss_t               *wuss,
+                                 const taskapp_desc_t *desc,
+                                 void                **out);
+
+/* Make row of items, the rows of instance->menu, the standard Save row:
+ * hovering opens the Save As dialogue as a submenu, and selecting it or F3
+ * shows the dialogue standalone. */
+void taskapp_save_row(taskapp_instance_t    *instance,
+                      wuss_menu_item_t      *items,
+                      int                    row,
+                      wuss_menu_item_flags_t flags);
 
 /* Open an instance of desc's app by calling fn(wuss, param, out), as create
  * would be called: the instance becomes a child task of the app's, so Quit

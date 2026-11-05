@@ -11,14 +11,88 @@
 #endif
 
 #include "base/utils.h"
+#include "framebuf/colour.h"
+#include "framebuf/screen.h"
 #include "geom/box.h"
 #include "geom/size.h"
 #include "geom/stack.h"
+#include "utils/rng.h"
+#include "wuss/component/colourmenu.h"
+#include "wuss/component/dialogue.h"
+#include "wuss/icon-spec.h"
+#include "wuss/menu.h"
+#include "wuss/window.h"
 
+#include "explosion.h" /* fetched from github.com/dpt/Explosion */
+
+#include "../apps.h"
 #include "../common/common.h"
-#include "fireworks.h"
-#include "../common/snapshot.h"
 #include "../common/taskapp.h"
+
+#define FIREWORKS_NSTYLES 4
+
+/* window task: the Explosion particle engine. Select bursts a random mix of
+ * styles at the click; Adjust bursts flecks. The pointer trails particles
+ * while over the content. Menu > Add > Emitter adds a smoke emitter, at a
+ * chosen intensity, where the menu was opened; Menu > Add > Attractor and
+ * Menu > Add > Repeller open a shared Strength dialogue (a 1..100 slider,
+ * Cancel/Apply) and add an attractor/repeller there too, at the applied
+ * strength; Menu > Colours > Background picks the fill; Menu > Gravity
+ * scales every style's pull; Menu > Walls bounces particles off the edges;
+ * Menu > Markers shows rings round emitters (green),
+ * repellers (red) and attractors (orange); Menu > Clear removes every
+ * particle and emitter; Menu > Save opens a Save As dialogue (drag its
+ * icon onto a Filer window, or Save with a full path already typed) that
+ * writes the window's content out.
+ * Space toggles pause, W toggles walls, M markers and C clears, once a click
+ * has given the window the input focus. A fresh burst fires by itself whenever the
+ * window falls quiet. */
+typedef struct fireworks_task
+{
+  taskapp_instance_t  base;
+  wuss_menu_item_t    menu_items[8]; /* per-instance, not a shared static */
+  int                 paused; /* Menu > Pause; idle does nothing while set */
+  int                 markers; /* Menu > Markers; rings on emitters etc. */
+  wuss_menu_item_t    add_items[3]; /* Add > Emitter / Attractor / Repeller */
+  wuss_menu_t         add_menu;
+  wuss_menu_item_t    emitter_items[3]; /* one row per intensity */
+  wuss_menu_t         emitter_menu;
+  wuss_dialogue_t    *strength_dialogue; /* Add > Attractor/Repeller's shared
+                                          * Strength dialogue; borrowed
+                                          * window leaf, never closed here */
+  wuss_slider_row_t   strength_row;
+  wuss_slider_row_t   range_row; /* the force's sphere of influence, pixels */
+  wuss_icon_t        *strength_cancel;
+  wuss_icon_t        *strength_apply;
+  int                 strength_which; /* FIREWORKS_ADD_ATTRACTOR or
+                                       * FIREWORKS_ADD_REPELLER: set from the
+                                       * leaf's PRE_SHOW index, read by Apply */
+  wuss_menu_item_t    gravity_items[5]; /* one row per strength */
+  wuss_menu_t         gravity_menu;
+  int                 gravity; /* index into fireworks_gravities */
+  int                 menu_x, menu_y; /* where the menu was opened: an
+                                       * emitter picked from it goes here */
+  rng_t               rng;
+  unsigned int        now_ms;   /* simulated clock, advanced per idle tick */
+  particle_style_t    styles[FIREWORKS_NSTYLES];
+  colour_t            bg;
+  wuss_colourlist_t   colours; /* Menu > Colours, its one row Background */
+  colour_t            palette[FIREWORKS_NSTYLES * PALETTE_SIZE];
+  particle_system_t   ps;
+
+  /* pointer trail: last seen position and velocity (pixels/second) */
+  int                 pointer_in; /* moved over content since last exit */
+  int                 mx, my;
+  float               mvx, mvy;
+  unsigned int        last_move_ms;
+  unsigned int        last_emit_ms;
+
+  /* valid only during redraw, for the engine's render callback */
+  screen_t           *scr;
+  int                 ox, oy;
+  pixelfmt_any_t      pixels[FIREWORKS_NSTYLES * PALETTE_SIZE]; /* palette[] in scr's format */
+}
+fireworks_task_t;
 
 #define FIREWORKS_WIDTH     480
 #define FIREWORKS_HEIGHT    384
@@ -29,8 +103,6 @@
 #define FIREWORKS_TRAIL_RATE    5.0f  /* particles per second */
 #define FIREWORKS_TRAIL_MAX     10    /* cap per idle tick */
 #define FIREWORKS_TRAIL_DAMPING 0.25f /* fraction of pointer velocity kept */
-
-#define FIREWORKS_SAVE_NAME "fireworks.png" /* Save As's initial leafname */
 
 /* MENU click pops this menu; the item table and wuss_menu_t live
  * per-instance in fireworks_task_t, not as a file-scope static */
@@ -287,31 +359,15 @@ static void fireworks_render(int   x,
 
 /* ----------------------------------------------------------------------- */
 
-/* wuss_saveas_save_fn_t: opaque is the fireworks_task_t */
-static result_t fireworks_saveas_save(const char *path, void *opaque)
+static result_t fireworks_init(fireworks_task_t *task)
 {
-  fireworks_task_t *pt;
+  result_t  rc;
+  wuss_t   *wuss;
+  int       i;
+  colour_t *fields[1];
 
-  pt = opaque;
-
-  return snapshot_save_png(pt->window, fireworks_handle, pt, path);
-}
-
-result_t fireworks_create(wuss_t *wuss, fireworks_task_t **out)
-{
-  result_t          rc;
-  fireworks_task_t *task;
-  wuss_task_t      *delegate;
-  wuss_task_desc_t  delegate_desc;
-  int               i;
-  colour_t         *fields[1];
-
-  task = calloc(1, sizeof(*task));
-  if (task == NULL)
-    return result_OOM;
-
-  task->wuss = wuss;
-  task->bg   = colour_rgb(0x00, 0x00, 0x00);
+  wuss     = task->base.wuss;
+  task->bg = colour_rgb(0x00, 0x00, 0x00);
   rng_seed(&task->rng, (uint32_t) rand());
 
   fireworks_ramp(fireworks_firey,  &task->palette[PALETTE_SIZE * FIREWORKS_FIREY]);
@@ -332,54 +388,17 @@ result_t fireworks_create(wuss_t *wuss, fireworks_task_t **out)
   task->ps.width  = FIREWORKS_WIDTH;
   task->ps.height = FIREWORKS_HEIGHT;
 
-  /* fireworks_redraw paints its own background every frame */
-  delegate_desc.handle    = fireworks_handle;
-  delegate_desc.task_data = task;
-  delegate_desc.name      = "Fireworks";
-  rc = wuss_task_create(wuss, &delegate_desc, &delegate);
-  if (rc != result_OK)
-  {
-    free(task); /* nothing registered yet; nobody else owns it */
-    return rc;
-  }
-  wuss_task_set_autoclose(delegate, 1);
-  task->delegate = delegate;
-
-  rc = task_window_create(delegate,
-                          SIZE2D(FIREWORKS_WIDTH, FIREWORKS_HEIGHT),
-                          "Fireworks",
-                          &task->window);
-  if (rc != result_OK)
-  {
-    wuss_task_destroy(delegate); /* unregister; its QUIT frees the task block */
-    return rc;
-  }
-
   WUSS_MENU_ITEM_SHORTCUT(task->menu_items, FIREWORKS_MENU_PAUSE, "Pause",
                           wuss_MENU_ITEM_NONE, "SPACE");
 
-  rc = snapshot_saveas_create(&task->saveas, wuss, FIREWORKS_SAVE_NAME,
-                              fireworks_saveas_save, task);
-  if (rc != result_OK)
-  {
-    wuss_task_destroy(delegate);
-    return rc;
-  }
-
-  WUSS_MENU_ITEM_SHORTCUT(task->menu_items, FIREWORKS_MENU_SAVE, "Save",
-                          wuss_MENU_ITEM_NONE, "F3");
-  /* hover opens the Save As dialogue as a submenu; F3 shows it standalone */
-  task->menu_items[FIREWORKS_MENU_SAVE].window =
-    wuss_saveas_window(task->saveas);
+  taskapp_save_row(&task->base, task->menu_items, FIREWORKS_MENU_SAVE,
+                   wuss_MENU_ITEM_NONE);
 
   fields[0] = &task->bg;
   rc = wuss_colourlist_init(&task->colours, wuss, NELEMS(fields), fields,
                             fireworks_colour_names);
   if (rc != result_OK)
-  {
-    wuss_task_destroy(delegate);
     return rc;
-  }
 
   for (i = 0; i < NELEMS(task->emitter_items); i++)
     WUSS_MENU_ITEM(task->emitter_items, i, fireworks_intensities[i].name,
@@ -425,45 +444,19 @@ result_t fireworks_create(wuss_t *wuss, fireworks_task_t **out)
   WUSS_MENU_ITEM_SHORTCUT(task->menu_items, FIREWORKS_MENU_MARKERS, "Markers",
                           wuss_MENU_ITEM_NONE, "M");
 
-  WUSS_MENU_TITLE(task->menu, "Fireworks", task->menu_items,
+  WUSS_MENU_TITLE(task->base.menu, "Fireworks", task->menu_items,
                  NELEMS(task->menu_items));
 
   rc = fireworks_strength_dialogue_create(task);
   if (rc != result_OK)
-  {
-    wuss_task_destroy(delegate); /* unregisters; its QUIT frees the task
-                                  * block, its window too */
     return rc;
-  }
 
   task->add_items[FIREWORKS_ADD_ATTRACTOR].window =
     wuss_dialogue_window(task->strength_dialogue);
   task->add_items[FIREWORKS_ADD_REPELLER].window =
     wuss_dialogue_window(task->strength_dialogue);
 
-  if (out)
-    *out = task;
-
   return result_OK;
-}
-
-result_t fireworks_app_create(wuss_t *wuss)
-{
-  static const taskapp_desc_t desc =
-  {
-    "Fireworks",
-    "Retro explosion particles",
-    (taskapp_create_fn_t) fireworks_create
-  };
-
-  return taskapp_install(wuss, &desc);
-}
-
-void fireworks_destroy(fireworks_task_t *task)
-{
-  wuss_saveas_destroy(task->saveas);
-  wuss_dialogue_destroy(task->strength_dialogue);
-  free(task);
 }
 
 /* stack items for the Strength dialogue's layout: label/slider/value-echo
@@ -543,24 +536,24 @@ static result_t fireworks_strength_dialogue_create(fireworks_task_t *task)
 
   /* each label/value's natural width; the size groups widen the rest to match */
   memcpy(items, g_fireworks_strength_stack, sizeof(items));
-  items[PST_LABL].axis_size  = task_text_width(task->wuss, "Strength");
-  items[PST_LABL2].axis_size = task_text_width(task->wuss, "Range");
+  items[PST_LABL].axis_size  = task_text_width(task->base.wuss, "Strength");
+  items[PST_LABL2].axis_size = task_text_width(task->base.wuss, "Range");
   snprintf(widest, sizeof(widest), "%d", FIREWORKS_STRENGTH_MAX);
-  items[PST_VAL].axis_size   = task_text_width(task->wuss, widest);
+  items[PST_VAL].axis_size   = task_text_width(task->base.wuss, widest);
   snprintf(widest, sizeof(widest), "%d", FIREWORKS_RANGE_MAX);
-  items[PST_VAL2].axis_size  = task_text_width(task->wuss, widest);
+  items[PST_VAL2].axis_size  = task_text_width(task->base.wuss, widest);
 
   /* the buttons share the widest label's width */
-  items[PST_CNCL].min = task_button_width(task->wuss, "Cancel",
+  items[PST_CNCL].min = task_button_width(task->base.wuss, "Cancel",
                                           wuss_STD_SECONDARY_BUTTON_BORDER);
-  items[PST_APLY].min = task_button_width(task->wuss, "Cancel",
+  items[PST_APLY].min = task_button_width(task->base.wuss, "Cancel",
                                           wuss_STD_SECONDARY_BUTTON_BORDER);
 
   rc = stack_smallest(items, NELEMS(items), &min_sz);
   if (rc != result_OK)
     return rc;
 
-  rc = wuss_dialogue_create(&task->strength_dialogue, task->delegate, min_sz,
+  rc = wuss_dialogue_create(&task->strength_dialogue, task->base.delegate, min_sz,
                             "Strength", fireworks_strength_fillout, task);
   if (rc != result_OK)
     return rc;
@@ -682,8 +675,8 @@ static result_t fireworks_strength_cancel(void *opaque, wuss_button_t button)
 
   if (button & wuss_BUTTON_SELECT)
   {
-    wuss_menu_close(task->menu_handle);
-    task->menu_handle = NULL;
+    wuss_menu_close(task->base.menu_handle);
+    task->base.menu_handle = NULL;
     return result_OK;
   }
   if (button & wuss_BUTTON_ADJUST)
@@ -702,8 +695,8 @@ static result_t fireworks_strength_apply_action(void         *opaque,
 
   if (button & wuss_BUTTON_SELECT)
   {
-    wuss_menu_close(task->menu_handle);
-    task->menu_handle = NULL;
+    wuss_menu_close(task->base.menu_handle);
+    task->base.menu_handle = NULL;
     fireworks_strength_apply(task);
     return result_OK;
   }
@@ -834,8 +827,7 @@ static void fireworks_trail(fireworks_task_t *pt)
   pt->last_emit_ms = pt->now_ms;
 }
 
-static result_t fireworks_mouse(wuss_window_t      *window,
-                                wuss_mouse_action_t action,
+static result_t fireworks_mouse(wuss_mouse_action_t action,
                                 int                 x,
                                 int                 y,
                                 wuss_button_t       button,
@@ -844,10 +836,6 @@ static result_t fireworks_mouse(wuss_window_t      *window,
   fireworks_task_t *pt;
 
   pt = task_data;
-
-  if (window != pt->window)
-    return result_OK; /* the proginfo dialogue has no click behaviour of
-                       * its own */
 
   /* x,y arrive in virtual content space, as the particles are held */
   if (action == wuss_MOUSE_MOVE)
@@ -864,14 +852,14 @@ static result_t fireworks_mouse(wuss_window_t      *window,
     pt->menu_x = x;
     pt->menu_y = y;
 
-    wuss_menu_tick_item(&pt->menu, FIREWORKS_MENU_PAUSE, pt->paused);
+    wuss_menu_tick_item(&pt->base.menu, FIREWORKS_MENU_PAUSE, pt->paused);
     wuss_menu_tick_exclusive(&pt->gravity_menu, pt->gravity);
-    wuss_menu_tick_item(&pt->menu, FIREWORKS_MENU_WALLS,
+    wuss_menu_tick_item(&pt->base.menu, FIREWORKS_MENU_WALLS,
                         !!(pt->ps.flags & PARTICLE_FLAG_WALLS));
-    wuss_menu_tick_item(&pt->menu, FIREWORKS_MENU_MARKERS, pt->markers);
+    wuss_menu_tick_item(&pt->base.menu, FIREWORKS_MENU_MARKERS, pt->markers);
 
-    return wuss_menu_open_at_pointer(pt->delegate, &pt->menu,
-                                     &pt->menu_handle);
+    return wuss_menu_open_at_pointer(pt->base.delegate, &pt->base.menu,
+                                     &pt->base.menu_handle);
   }
 
   if (button & wuss_BUTTON_SELECT)
@@ -904,7 +892,7 @@ static void fireworks_set_gravity(fireworks_task_t   *pt,
   for (i = 0; i < FIREWORKS_NSTYLES; i++)
     pt->styles[i].gravity *= fireworks_gravities[pt->gravity].scale;
 
-  wuss_menu_tick_exclusive_live(pt->menu_handle, &pt->gravity_menu,
+  wuss_menu_tick_exclusive_live(pt->base.menu_handle, &pt->gravity_menu,
                                 pt->gravity);
 }
 
@@ -949,7 +937,7 @@ static result_t fireworks_idle(void *task_data)
    * delegate, so closing the main window alone never empties task->windows
    * and the task lingers until the dialogue closes too -- guard against the
    * dangling window in the meantime */
-  if (pt->window == NULL)
+  if (pt->base.window == NULL)
     return result_OK;
 
   if (pt->paused)
@@ -972,7 +960,7 @@ static result_t fireworks_idle(void *task_data)
                      (int) (fireworks_rand(16, pt) % pt->ps.height),
                      0.0f, 0.0f, FIREWORKS_BURST);
 
-  wuss_window_invalidate_visible(pt->window);
+  wuss_window_invalidate_visible(pt->base.window);
 
   return result_OK;
 }
@@ -1004,14 +992,14 @@ static result_t fireworks_toggle(fireworks_task_t   *pt,
   case FIREWORKS_MENU_MARKERS:
     pt->markers = !pt->markers;
     ticked = pt->markers;
-    wuss_window_invalidate_visible(pt->window); /* repaint if paused */
+    wuss_window_invalidate_visible(pt->base.window); /* repaint if paused */
     break;
 
   default:
     return result_OK;
   }
 
-  wuss_menu_tick_item_live(pt->menu_handle, &pt->menu, index, ticked);
+  wuss_menu_tick_item_live(pt->base.menu_handle, &pt->base.menu, index, ticked);
 
   return result_OK;
 }
@@ -1020,12 +1008,12 @@ static result_t fireworks_toggle(fireworks_task_t   *pt,
 static void fireworks_clear(fireworks_task_t *pt)
 {
   reset_particle_system(&pt->ps);
-  wuss_window_invalidate_visible(pt->window);
+  wuss_window_invalidate_visible(pt->base.window);
 }
 
-result_t fireworks_handle(wuss_window_t      *window,
-                          const wuss_event_t *event,
-                          void               *task_data)
+static result_t fireworks_handle(wuss_window_t      *window,
+                                 const wuss_event_t *event,
+                                 void               *task_data)
 {
   fireworks_task_t *pt;
 
@@ -1037,7 +1025,7 @@ result_t fireworks_handle(wuss_window_t      *window,
     return fireworks_redraw(event, task_data);
 
   case wuss_EVENT_MOUSE:
-    return fireworks_mouse(window, event->data.mouse.action,
+    return fireworks_mouse(event->data.mouse.action,
                            event->data.mouse.point.x,
                            event->data.mouse.point.y,
                            event->data.mouse.button, task_data);
@@ -1046,21 +1034,19 @@ result_t fireworks_handle(wuss_window_t      *window,
     return fireworks_idle(task_data);
 
   case wuss_EVENT_POINTER_EXIT:
-    if (window == pt->window)
+    if (window == pt->base.window)
       pt->pointer_in = 0;
     return result_OK;
 
   case wuss_EVENT_KEY:
-    if (window != pt->window)
-      return result_WUSS_KEY_UNCLAIMED; /* not the proginfo dialogue */
-    return wuss_menu_dispatch_shortcut(pt->delegate, &pt->menu, event);
+    return wuss_menu_dispatch_shortcut(pt->base.delegate, &pt->base.menu, event);
 
   case wuss_EVENT_PRE_SUBMENU_OPEN:
   {
     result_t rc;
 
     /* Colours > Background: the shared colourmenu, set up per open */
-    if (wuss_colourlist_pre_open(&pt->colours, pt->wuss, event, &rc))
+    if (wuss_colourlist_pre_open(&pt->colours, pt->base.wuss, event, &rc))
       return rc;
 
     return result_OK;
@@ -1072,25 +1058,17 @@ result_t fireworks_handle(wuss_window_t      *window,
     return result_OK;
 
   case wuss_EVENT_MENU_SELECT:
-    if (wuss_menu_select_is(event, &pt->menu, FIREWORKS_MENU_CLEAR))
+    if (wuss_menu_select_is(event, &pt->base.menu, FIREWORKS_MENU_CLEAR))
     {
       fireworks_clear(pt);
       return result_OK;
     }
-    if (wuss_menu_select_is(event, &pt->menu, FIREWORKS_MENU_SAVE))
-      return wuss_saveas_open(pt->saveas);
-    if (event->data.menu_select.menu == &pt->menu)
+    if (event->data.menu_select.menu == &pt->base.menu)
       return fireworks_toggle(pt, event);
     return fireworks_menu_select(pt, event);
 
-  case wuss_EVENT_MENU_CLOSED:
-    pt->menu_handle = NULL;
-    return result_OK;
-
   case wuss_EVENT_CLOSE:
     wuss_dialogue_handle_close(pt->strength_dialogue, window);
-    if (window == pt->window)
-      pt->window = NULL;
     return result_OK;
 
   case wuss_EVENT_PRE_SHOW:
@@ -1115,12 +1093,28 @@ result_t fireworks_handle(wuss_window_t      *window,
   }
 
   case wuss_EVENT_QUIT:
-    fireworks_destroy(pt);
+    wuss_dialogue_destroy(pt->strength_dialogue);
     return result_OK;
 
   default:
     return result_OK;
   }
+}
+
+result_t fireworks_app_create(wuss_t *wuss)
+{
+  static const taskapp_desc_t desc =
+  {
+    .name          = "Fireworks",
+    .purpose       = "Retro explosion particles",
+    .instance_size = sizeof(fireworks_task_t),
+    .window_size   = { FIREWORKS_WIDTH, FIREWORKS_HEIGHT },
+    .init          = (taskapp_init_fn_t) fireworks_init,
+    .handle        = fireworks_handle,
+    .save_name     = "fireworks.png"
+  };
+
+  return taskapp_install(wuss, &desc);
 }
 
 #endif /* WUSS_APP */

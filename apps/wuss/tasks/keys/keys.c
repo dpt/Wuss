@@ -11,12 +11,35 @@
 #endif
 
 #include "base/utils.h"
+#include "framebuf/bmfont.h"
+#include "framebuf/colour.h"
 #include "geom/box.h"
+#include "wuss/menu.h"
 #include "wuss/task.h"
+#include "wuss/window.h"
 
-#include "keys.h"
+#include "../apps.h"
 #include "../common/taskapp.h"
 #include "../common/common.h"
+
+#define KEYS_HISTORY 6 /* most recent keys shown, newest first */
+
+/* a focusable window that shows whether it holds the input focus and the
+ * last few keys it was sent, each with its modifiers. A Select click gives
+ * it the focus; Menu > Clear empties the history. */
+typedef struct keys_task
+{
+  taskapp_instance_t   base;
+  wuss_menu_item_t     menu_items[1]; /* per-instance: a shared static would
+                                        * leak one instance's .window
+                                        * pointer into another's menu */
+  bmfont_t            *font; /* borrowed */
+  colour_t             bg, fg;
+  int                  keys[KEYS_HISTORY]; /* newest first */
+  wuss_key_modifiers_t mods[KEYS_HISTORY]; /* keys[i]'s modifiers */
+  int                  nkeys; /* used entries of keys[] */
+}
+keys_task_t;
 
 /* MENU click pops this menu; the item table lives per-instance in
  * keys_task_t so each window's Info row can hold its own .window pointer to
@@ -26,78 +49,32 @@ enum
   KEYS_MENU_CLEAR = 0
 };
 
-result_t keys_create(wuss_t *wuss, keys_task_t **out)
+static result_t keys_init(keys_task_t *task)
 {
-  result_t         rc;
-  keys_task_t     *task;
-  wuss_task_t     *delegate;
-  wuss_task_desc_t delegate_desc;
-  int              fh;
-  size2d_t         size;
+  result_t rc;
+  int      fh;
+  size2d_t size;
 
-  task = calloc(1, sizeof(*task));
-  if (task == NULL)
-    return result_OOM;
-
-  task->wuss = wuss;
-  task->font = wuss_get_font_n(wuss, 0);
+  task->font = wuss_get_font_n(task->base.wuss, 0);
   task->bg   = colour_rgb(0xFF, 0xFF, 0xFF);
   task->fg   = colour_rgb(0x00, 0x00, 0x00);
-
-  delegate_desc.handle    = keys_handle;
-  delegate_desc.task_data = task;
-  delegate_desc.name      = "Keys";
-  rc = wuss_task_create(wuss, &delegate_desc, &delegate);
-  if (rc != result_OK)
-  {
-    free(task); /* nothing registered yet; the spawner will not free it */
-    return rc;
-  }
-  wuss_task_set_autoclose(delegate, 1);
-  task->delegate = delegate;
 
   /* a Focus line, then one line per history entry */
   bmfont_get_info(task->font, NULL, &fh, NULL, NULL);
   size = SIZE2D(160, 8 + (1 + KEYS_HISTORY) * fh);
 
-  rc = task_window_create(delegate, size, "Keys", &task->window);
+  rc = task_window_create(task->base.delegate, size, "Keys",
+                          &task->base.window);
   if (rc != result_OK)
-  {
-    wuss_task_destroy(delegate); /* its QUIT frees the task block */
     return rc;
-  }
 
   WUSS_MENU_ITEM(task->menu_items, KEYS_MENU_CLEAR, "Clear",
                  wuss_MENU_ITEM_NONE);
 
-  WUSS_MENU_TITLE(task->menu, "Keys", task->menu_items,
+  WUSS_MENU_TITLE(task->base.menu, "Keys", task->menu_items,
                  NELEMS(task->menu_items));
 
-  if (out)
-    *out = task;
-
   return result_OK;
-}
-
-result_t keys_app_create(wuss_t *wuss)
-{
-  static const taskapp_desc_t desc =
-  {
-    "Keys",
-    "Key input and focus",
-    (taskapp_create_fn_t) keys_create,
-    NULL,
-    false,
-    NULL,
-    true
-  };
-
-  return taskapp_install(wuss, &desc);
-}
-
-void keys_destroy(keys_task_t *task)
-{
-  free(task);
 }
 
 /* describe a key code: the character itself if printable ASCII, a name for
@@ -149,7 +126,7 @@ static result_t keys_redraw(wuss_window_t      *window,
                    box_size(content), kt->bg);
 
   snprintf(lines[0], sizeof(lines[0]), "Focus: %s",
-           (wuss_get_focus(kt->wuss) == window)
+           (wuss_get_focus(kt->base.wuss) == window)
              ? "yes" : "no (click)");
   nlines = 1;
 
@@ -191,12 +168,13 @@ static result_t keys_mouse(keys_task_t *kt, const wuss_event_t *event)
   else
     kt->menu_items[KEYS_MENU_CLEAR].flags |= wuss_MENU_ITEM_DISABLED;
 
-  return wuss_menu_open_at_pointer(kt->delegate, &kt->menu, &kt->menu_handle);
+  return wuss_menu_open_at_pointer(kt->base.delegate, &kt->base.menu,
+                                   &kt->base.menu_handle);
 }
 
-result_t keys_handle(wuss_window_t      *window,
-                     const wuss_event_t *event,
-                     void               *task_data)
+static result_t keys_handle(wuss_window_t      *window,
+                            const wuss_event_t *event,
+                            void               *task_data)
 {
   keys_task_t *kt;
 
@@ -225,28 +203,16 @@ result_t keys_handle(wuss_window_t      *window,
     return result_OK;
 
   case wuss_EVENT_MOUSE:
-    if (window != kt->window)
-      return result_OK; /* the proginfo dialogue has no click behaviour of
-                         * its own */
     return keys_mouse(kt, event);
 
   case wuss_EVENT_MENU_SELECT:
-    if (event->data.menu_select.menu == &kt->menu &&
+    if (event->data.menu_select.menu == &kt->base.menu &&
         event->data.menu_select.index == KEYS_MENU_CLEAR &&
-        kt->window != NULL)
+        kt->base.window != NULL)
     {
       kt->nkeys = 0;
-      wuss_window_invalidate_visible(kt->window);
+      wuss_window_invalidate_visible(kt->base.window);
     }
-    return result_OK;
-
-  case wuss_EVENT_MENU_CLOSED:
-    kt->menu_handle = NULL;
-    return result_OK;
-
-  case wuss_EVENT_CLOSE:
-    if (window == kt->window)
-      kt->window = NULL;
     return result_OK;
 
   case wuss_EVENT_GAIN_FOCUS:
@@ -254,13 +220,24 @@ result_t keys_handle(wuss_window_t      *window,
     wuss_window_invalidate_visible(window);
     return result_OK;
 
-  case wuss_EVENT_QUIT:
-    keys_destroy(kt);
-    return result_OK;
-
   default:
     return result_OK;
   }
+}
+
+result_t keys_app_create(wuss_t *wuss)
+{
+  static const taskapp_desc_t desc =
+  {
+    .name          = "Keys",
+    .purpose       = "Key input and focus",
+    .singleton     = true,
+    .instance_size = sizeof(keys_task_t),
+    .init          = (taskapp_init_fn_t) keys_init,
+    .handle        = keys_handle
+  };
+
+  return taskapp_install(wuss, &desc);
 }
 
 #endif /* WUSS_APP */

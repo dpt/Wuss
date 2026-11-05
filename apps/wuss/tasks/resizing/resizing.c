@@ -12,14 +12,61 @@
 
 #include "base/debug.h"
 #include "base/utils.h"
+#include "framebuf/bitmap.h"
 #include "io/path.h"
+#include "wuss/component/saveas.h"
 #include "wuss/menu.h"
+#include "wuss/window.h"
 
 #include "../common/common.h"
+#include "../common/dithermenu.h"
 
-#include "resizing.h"
-#include "../common/snapshot.h"
+#include "../apps.h"
 #include "../common/taskapp.h"
+
+#define RESIZING_MAX_NAME_LEN 64
+#define RESIZING_NSCALES      8  /* rows in the Scale submenu */
+
+/* Main menu rows */
+enum
+{
+  RESIZING_MENU_DISPLAY,
+  RESIZING_MENU_SAVE,
+  RESIZING_MENU_METHOD,
+  RESIZING_MENU_SCALE,
+  RESIZING_MENU_LINEAR,
+  RESIZING_MENU__LIMIT
+};
+
+/* window's task: a PNG dropped on its icon or window (DataLoad) resampled by
+ * bitmap_resize to the chosen scale. Menu picks the method and scale, and
+ * every change resamples at once. Save writes the resized result as a
+ * PNG. */
+typedef struct resizing_task
+{
+  taskapp_instance_t base;
+  bitmap_t           source;  /* owned base: rgbx8888 or rgba8888; NULL
+                               * base until the first DataLoad */
+  bitmap_t          *resized; /* owned; NULL if the last resize failed */
+
+  bitmap_resample_t  method;
+  int                scale;   /* index into the Scale rows */
+  int                linear;  /* blend in linear light */
+  screen_dither_t    dithering; /* how the image is blitted to the screen */
+
+  char               path[DPTLIB_MAXPATH]; /* file shown; "" until the first
+                               * DataLoad */
+  char               name[RESIZING_MAX_NAME_LEN]; /* leafname of the shown
+                               * image, less ".png" */
+
+  wuss_menu_item_t   method_items[bitmap_resample__LIMIT];
+  wuss_menu_t        method_menu;
+  wuss_menu_item_t   scale_items[RESIZING_NSCALES];
+  wuss_menu_t        scale_menu;
+  dithermenu_t       dither;  /* "Display" submenu: screen dithering */
+  wuss_menu_item_t   menu_items[RESIZING_MENU__LIMIT];
+}
+resizing_task_t;
 
 /* ----------------------------------------------------------------------- */
 
@@ -70,9 +117,9 @@ static result_t resizing_apply(resizing_task_t *rt)
   size.w  = MAX(1, rt->source.size.w * percent / 100);
   size.h  = MAX(1, rt->source.size.h * percent / 100);
 
-  wuss_hourglass_on(rt->wuss);
+  wuss_hourglass_on(rt->base.wuss);
   rc = bitmap_resize(&rt->source, size, rt->method, rt->linear, &out);
-  wuss_hourglass_off(rt->wuss);
+  wuss_hourglass_off(rt->base.wuss);
 
   resizing_free_resized(rt);
   if (rc == result_OK)
@@ -82,14 +129,14 @@ static result_t resizing_apply(resizing_task_t *rt)
 
   /* the window opens with the first image, sized and placed for it */
   size = rt->resized ? rt->resized->size : rt->source.size;
-  rc   = task_window_fit(rt->delegate, &rt->window, "Resizing",
+  rc   = task_window_fit(rt->base.delegate, &rt->base.window, "Resizing",
                          wuss_WINDOW_DEFAULT | wuss_WINDOW_FOCUSABLE,
                          wuss_NO_BACKDROP, /* the image covers it all */
                          size, SIZE2D(0, 0));
   if (rc != result_OK)
     return rc;
 
-  wuss_window_invalidate_visible(rt->window);
+  wuss_window_invalidate_visible(rt->base.window);
 
   return result_OK;
 }
@@ -112,7 +159,7 @@ static void resizing_saveas_name(resizing_task_t *rt)
   char leafname[RESIZING_MAX_NAME_LEN + 16];
 
   snprintf(leafname, sizeof(leafname), "%s-resized.png", rt->name);
-  wuss_saveas_set_leafname(rt->saveas, leafname);
+  wuss_saveas_set_leafname(rt->base.saveas, leafname);
 }
 
 /* Load the PNG at path and resize it. A load failure keeps the current
@@ -143,28 +190,21 @@ static result_t resizing_show(resizing_task_t *rt, const char *path)
     return rc;
 
   snprintf(rt->path, sizeof(rt->path), "%s", path);
-  task_set_doc_title(rt->window, path_leaf(path), "Resizing", 0);
+  task_set_doc_title(rt->base.window, path_leaf(path), "Resizing", 0);
   return result_OK;
 }
 
 /* ----------------------------------------------------------------------- */
 
-result_t resizing_create(wuss_t *wuss, resizing_task_t **out)
+/* The window opens with the first image. */
+static result_t resizing_init(resizing_task_t *task)
 {
-  result_t         rc;
-  resizing_task_t *task;
-  wuss_task_desc_t delegate_desc;
-  int              i;
+  int i;
 
-  task = calloc(1, sizeof(*task));
-  if (task == NULL)
-    return result_OOM;
-
-  task->wuss         = wuss;
-  task->method       = bitmap_resample_BILINEAR;
-  task->scale        = 3; /* 100% */
-  task->linear       = 1;
-  task->dithering    = screen_DITHER_BLUE_NOISE;
+  task->method    = bitmap_resample_BILINEAR;
+  task->scale     = 3; /* 100% */
+  task->linear    = 1;
+  task->dithering = screen_DITHER_BLUE_NOISE;
 
   for (i = 0; i < bitmap_resample__LIMIT; i++)
     WUSS_MENU_ITEM(task->method_items, i, resizing_method_names[i],
@@ -181,69 +221,18 @@ result_t resizing_create(wuss_t *wuss, resizing_task_t **out)
   dithermenu_init(&task->dither, task->dithering);
   WUSS_MENU_ITEM_MENU(task->menu_items, RESIZING_MENU_DISPLAY, "Display",
                       wuss_MENU_ITEM_NONE, &task->dither.display);
-  WUSS_MENU_ITEM_SHORTCUT(task->menu_items, RESIZING_MENU_SAVE, "Save",
-                          wuss_MENU_ITEM_DASHED, "F3");
-  /* window set once saveas exists */
+  taskapp_save_row(&task->base, task->menu_items, RESIZING_MENU_SAVE,
+                   wuss_MENU_ITEM_DASHED);
   WUSS_MENU_ITEM_MENU(task->menu_items, RESIZING_MENU_METHOD, "Method",
                       wuss_MENU_ITEM_DASHED, &task->method_menu);
   WUSS_MENU_ITEM_MENU(task->menu_items, RESIZING_MENU_SCALE, "Scale",
                       wuss_MENU_ITEM_NONE, &task->scale_menu);
   WUSS_MENU_ITEM(task->menu_items, RESIZING_MENU_LINEAR, "Linear light",
                  wuss_MENU_ITEM_NONE);
-  WUSS_MENU_TITLE(task->menu, "Resizing", task->menu_items,
+  WUSS_MENU_TITLE(task->base.menu, "Resizing", task->menu_items,
                   RESIZING_MENU__LIMIT);
 
-  delegate_desc.handle    = resizing_handle;
-  delegate_desc.task_data = task;
-  delegate_desc.name      = "Resizing";
-  rc = wuss_task_create(wuss, &delegate_desc, &task->delegate);
-  if (rc != result_OK)
-  {
-    free(task); /* nothing registered yet; nobody else owns it */
-    return rc;
-  }
-
-  /* closing the window reaps the task; its QUIT frees the block. The window
-   * opens with the first image */
-  wuss_task_set_autoclose(task->delegate, 1);
-
-  rc = snapshot_saveas_create(&task->saveas, wuss, NULL, resizing_saveas_save,
-                              task);
-  if (rc != result_OK)
-  {
-    wuss_task_destroy(task->delegate); /* QUIT frees the block */
-    return rc;
-  }
-  /* hover opens the Save As dialogue as a submenu; F3 shows it standalone */
-  task->menu_items[RESIZING_MENU_SAVE].window =
-    wuss_saveas_window(task->saveas);
-
-  if (out)
-    *out = task;
-
   return result_OK;
-}
-
-result_t resizing_app_create(wuss_t *wuss)
-{
-  static const taskapp_desc_t desc =
-  {
-    "Resizing",
-    "Image resizing",
-    (taskapp_create_fn_t) resizing_create,
-    (taskapp_data_load_fn_t) resizing_show,
-    true
-  };
-
-  return taskapp_install(wuss, &desc);
-}
-
-void resizing_destroy(resizing_task_t *task)
-{
-  wuss_saveas_destroy(task->saveas);
-  resizing_free_resized(task);
-  free(task->source.base);
-  free(task);
 }
 
 /* ----------------------------------------------------------------------- */
@@ -279,9 +268,10 @@ static result_t resizing_menu_open(resizing_task_t *rt)
 {
   resizing_menu_refresh(rt);
 
-  return wuss_menu_open_ticked(rt->delegate, &rt->menu,
+  return wuss_menu_open_ticked(rt->base.delegate, &rt->base.menu,
                                rt->linear ? 1u << RESIZING_MENU_LINEAR : 0,
-                               wuss_get_pointer(rt->wuss), &rt->menu_handle);
+                               wuss_get_pointer(rt->base.wuss),
+                               &rt->base.menu_handle);
 }
 
 static result_t resizing_menu_select(resizing_task_t    *rt,
@@ -293,15 +283,11 @@ static result_t resizing_menu_select(resizing_task_t    *rt,
   menu  = event->data.menu_select.menu;
   index = event->data.menu_select.index;
 
-  /* clicking the row, rather than hovering, shows Save As standalone */
-  if (menu == &rt->menu && index == RESIZING_MENU_SAVE)
-    return wuss_saveas_open(rt->saveas);
-
   /* display only: the resize itself is unchanged */
   if (menu == &rt->dither.menu)
   {
-    rt->dithering = dithermenu_select(&rt->dither, rt->menu_handle, index);
-    wuss_window_invalidate_visible(rt->window);
+    rt->dithering = dithermenu_select(&rt->dither, rt->base.menu_handle, index);
+    wuss_window_invalidate_visible(rt->base.window);
     return result_OK;
   }
 
@@ -309,23 +295,23 @@ static result_t resizing_menu_select(resizing_task_t    *rt,
     rt->method = (bitmap_resample_t) index;
   else if (menu == &rt->scale_menu)
     rt->scale = index;
-  else if (menu == &rt->menu && index == RESIZING_MENU_LINEAR)
+  else if (menu == &rt->base.menu && index == RESIZING_MENU_LINEAR)
     rt->linear = !rt->linear;
   else
     return result_OK;
 
   resizing_menu_refresh(rt);
-  if (menu == &rt->menu)
-    wuss_menu_tick_item_live(rt->menu_handle, menu, index, rt->linear);
+  if (menu == &rt->base.menu)
+    wuss_menu_tick_item_live(rt->base.menu_handle, menu, index, rt->linear);
   else
-    wuss_menu_tick_exclusive_live(rt->menu_handle, menu, index);
+    wuss_menu_tick_exclusive_live(rt->base.menu_handle, menu, index);
 
   return resizing_apply(rt);
 }
 
-result_t resizing_handle(wuss_window_t      *window,
-                         const wuss_event_t *event,
-                         void               *task_data)
+static result_t resizing_handle(wuss_window_t      *window,
+                                const wuss_event_t *event,
+                                void               *task_data)
 {
   resizing_task_t *rt;
 
@@ -337,7 +323,7 @@ result_t resizing_handle(wuss_window_t      *window,
     return resizing_redraw(rt, event);
 
   case wuss_EVENT_MOUSE:
-    if (window != rt->window || event->data.mouse.action != wuss_MOUSE_DOWN)
+    if (event->data.mouse.action != wuss_MOUSE_DOWN)
       return result_OK;
 
     if (event->data.mouse.button & wuss_BUTTON_MENU)
@@ -348,38 +334,47 @@ result_t resizing_handle(wuss_window_t      *window,
   case wuss_EVENT_MENU_SELECT:
     return resizing_menu_select(rt, event);
 
-  case wuss_EVENT_MENU_CLOSED:
-    rt->menu_handle = NULL; /* wuss closed the chain under us */
-    return result_OK;
-
   case wuss_EVENT_MESSAGE:
-    if (rt->window == NULL || window != rt->window)
+    if (rt->base.window == NULL || window != rt->base.window)
       return result_OK;
-    return taskapp_window_data_load(rt->wuss, rt->delegate, rt,
+    return taskapp_window_data_load(rt->base.wuss, rt->base.delegate, rt,
                                     (taskapp_data_load_fn_t) resizing_show,
                                     event->data.message);
 
   case wuss_EVENT_CLOSE_ADJUST:
-    if (window != rt->window)
+    if (window != rt->base.window)
       return result_OK;
-    return task_close_adjust(rt->wuss, rt->delegate, window, rt->path,
+    return task_close_adjust(rt->base.wuss, rt->base.delegate, window, rt->path,
                              event);
 
-  case wuss_EVENT_CLOSE:
-    if (window == rt->window)
-      rt->window = NULL;
-    return result_OK;
-
   case wuss_EVENT_QUIT:
-    resizing_destroy(rt);
+    resizing_free_resized(rt);
+    free(rt->source.base);
     return result_OK;
 
   case wuss_EVENT_KEY:
-    return wuss_menu_dispatch_shortcut(rt->delegate, &rt->menu, event);
+    return wuss_menu_dispatch_shortcut(rt->base.delegate, &rt->base.menu, event);
 
   default:
     return result_OK;
   }
+}
+
+result_t resizing_app_create(wuss_t *wuss)
+{
+  static const taskapp_desc_t desc =
+  {
+    .name          = "Resizing",
+    .purpose       = "Image resizing",
+    .data_load     = (taskapp_data_load_fn_t) resizing_show,
+    .drop_only     = true,
+    .instance_size = sizeof(resizing_task_t),
+    .init          = (taskapp_init_fn_t) resizing_init,
+    .handle        = resizing_handle,
+    .save          = resizing_saveas_save
+  };
+
+  return taskapp_install(wuss, &desc);
 }
 
 #endif /* WUSS_APP */

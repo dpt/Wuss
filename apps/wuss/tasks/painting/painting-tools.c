@@ -182,7 +182,7 @@ void painting_invalidate_box(painting_task_t *pt, const box_t *box)
 
   b = (box_t) { box->x0 + pt->page.x, box->y0 + pt->page.y,
                 box->x1 + pt->page.x, box->y1 + pt->page.y };
-  wuss_window_invalidate(pt->window, &b);
+  wuss_window_invalidate(pt->base.window, &b);
 }
 
 /* the colour a stroke in progress paints: the eraser always wipes to

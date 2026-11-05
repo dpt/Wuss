@@ -22,7 +22,6 @@
 
 #include "effecting.h"
 #include "effecting-edit.h"
-#include "../common/snapshot.h"
 #include "../common/taskapp.h"
 #include "../common/common.h"
 
@@ -106,13 +105,13 @@ static result_t effecting_run(effecting_task_t *ec, int rechain)
              (size_t) ec->source.rowbytes * ec->source.size.h);
 
     /* rerunning the stack is the slow part: a level drag only blends */
-    wuss_hourglass_on(ec->wuss);
+    wuss_hourglass_on(ec->base.wuss);
     rc = result_OK;
     for (i = 0; i < ec->nelements && rc == result_OK; i++)
       rc = effecting_apply_element(&ec->elements[i],
                                    i == 0 ? &ec->source : &ec->chain,
                                    &ec->chain);
-    wuss_hourglass_off(ec->wuss);
+    wuss_hourglass_off(ec->base.wuss);
     if (rc != result_OK)
       return rc;
   }
@@ -130,7 +129,7 @@ void effecting_update(effecting_task_t *ec, int rechain)
     logf_warning("effecting: cannot apply effects (rc=0x%X)", rc);
 
   ec->show_original = 0;
-  wuss_window_invalidate_visible(ec->window);
+  wuss_window_invalidate_visible(ec->base.window);
 }
 
 /* Allocate chain and result to match source, then run. */
@@ -447,7 +446,7 @@ static void effecting_saveas_name(effecting_task_t *ec)
   char leafname[EFFECTING_MAX_NAME_LEN + 16];
 
   snprintf(leafname, sizeof(leafname), "%s-effects.png", ec->name);
-  wuss_saveas_set_leafname(ec->saveas, leafname);
+  wuss_saveas_set_leafname(ec->base.saveas, leafname);
 }
 
 /* Open the effect stack list window, placed beside the image window. Its
@@ -457,8 +456,8 @@ static result_t effecting_open_list(effecting_task_t *ec)
   result_t     rc;
   wuss_place_t place;
 
-  place = task_place_after(ec->window);
-  rc = wuss_gridview_window_create(&ec->list, ec->delegate, &place,
+  place = task_place_after(ec->base.window);
+  rc = wuss_gridview_window_create(&ec->list, ec->base.delegate, &place,
                                    "Effect stack", 0, effecting_item,
                                    EFFECTING_LABEL_CHARS, NULL, ec,
                                    wuss_WINDOW_CLOSE, &ec->list_window);
@@ -501,8 +500,8 @@ static result_t effecting_show(effecting_task_t *ec, const char *path)
   if (rc != result_OK)
     return rc;
 
-  opening = ec->window == NULL;
-  rc = task_window_fit(ec->delegate, &ec->window, "Effecting",
+  opening = ec->base.window == NULL;
+  rc = task_window_fit(ec->base.delegate, &ec->base.window, "Effecting",
                        wuss_WINDOW_DEFAULT,
                        wuss_NO_BACKDROP, /* the image covers it all */
                        ec->source.size, SIZE2D(32, 32));
@@ -510,8 +509,8 @@ static result_t effecting_show(effecting_task_t *ec, const char *path)
     return rc;
 
   snprintf(ec->path, sizeof(ec->path), "%s", path);
-  task_set_doc_title(ec->window, path_leaf(path), "Effecting", 0);
-  wuss_window_invalidate_visible(ec->window);
+  task_set_doc_title(ec->base.window, path_leaf(path), "Effecting", 0);
+  wuss_window_invalidate_visible(ec->base.window);
   if (opening)
     return effecting_open_list(ec);
 
@@ -534,11 +533,8 @@ static void effecting_build_menus(effecting_task_t *task)
 
   WUSS_MENU_ITEM_MENU(task->menu_items, EFFECTING_MENU_DISPLAY, "Display",
                       wuss_MENU_ITEM_BORROWED_SUBMENU, &task->dither.display);
-  WUSS_MENU_ITEM_SHORTCUT(task->menu_items, EFFECTING_MENU_SAVE, "Save",
-                          wuss_MENU_ITEM_DASHED, "F3");
-  /* hover opens the Save As dialogue as a submenu; F3 shows it standalone */
-  task->menu_items[EFFECTING_MENU_SAVE].window =
-    wuss_saveas_window(task->saveas);
+  taskapp_save_row(&task->base, task->menu_items, EFFECTING_MENU_SAVE,
+                   wuss_MENU_ITEM_DASHED);
   WUSS_MENU_ITEM_MENU(task->menu_items, EFFECTING_MENU_ADD, "Add",
                       wuss_MENU_ITEM_DASHED | wuss_MENU_ITEM_BORROWED_SUBMENU,
                       &task->add_menu);
@@ -558,88 +554,45 @@ static void effecting_build_menus(effecting_task_t *task)
                  wuss_MENU_ITEM_DASHED);
   WUSS_MENU_ITEM(task->menu_items, EFFECTING_MENU_CANCEL, "Cancel",
                  wuss_MENU_ITEM_NONE);
-  WUSS_MENU_TITLE(task->menu, "Effects", task->menu_items,
+  WUSS_MENU_TITLE(task->base.menu, "Effects", task->menu_items,
                   NELEMS(task->menu_items));
 }
 
-result_t effecting_create(wuss_t *wuss, effecting_task_t **out)
+static result_t effecting_init(effecting_task_t *task)
 {
-  result_t          rc;
-  effecting_task_t *task;
-  wuss_task_t      *delegate;
-  wuss_task_desc_t  delegate_desc;
-  int               i;
+  result_t     rc;
+  wuss_t      *wuss;
+  wuss_task_t *delegate;
+  int          i;
 
-  task = calloc(1, sizeof(*task));
-  if (task == NULL)
-    return result_OOM;
+  wuss     = task->base.wuss;
+  delegate = task->base.delegate;
 
-  task->wuss       = wuss;
+  /* No autoclose: QUIT is delivered at wuss_destroy instead. The windows
+   * open with the first image */
+  wuss_task_set_autoclose(delegate, 0);
+
   task->level      = 100;
   task->drag_index = -1;
   task->dithering  = screen_DITHER_BLUE_NOISE;
 
-  delegate_desc.handle    = effecting_handle;
-  delegate_desc.task_data = task;
-  delegate_desc.name      = "Effecting";
-  rc = wuss_task_create(wuss, &delegate_desc, &delegate);
-  if (rc != result_OK)
-  {
-    free(task);
-    return rc;
-  }
-  task->delegate = delegate;
-  /* No autoclose: QUIT is delivered at wuss_destroy instead. The windows
-   * open with the first image */
-
   rc = wuss_task_iconpool_load_resource(delegate, wuss_get_resources(wuss));
   if (rc != result_OK)
-  {
-    wuss_task_destroy(delegate);
     return rc;
-  }
 
   for (i = 0; i < EFFECTING__LIMIT; i++)
     task->glyphs[i] = wuss_task_iconpool_find(delegate, g_glyph_names[i]);
 
-  rc = snapshot_saveas_create(&task->saveas, wuss, NULL, effecting_saveas_save,
-                              task);
-  if (rc != result_OK)
-  {
-    wuss_task_destroy(delegate);
-    return rc;
-  }
-
   rc = effecting_edit_create(task, &task->edit);
   if (rc != result_OK)
-  {
-    wuss_task_destroy(delegate);
     return rc;
-  }
 
   effecting_build_menus(task);
-
-  if (out)
-    *out = task;
 
   return result_OK;
 }
 
-result_t effecting_app_create(wuss_t *wuss)
-{
-  static const taskapp_desc_t desc =
-  {
-    "Effecting",
-    "Apply effects to PNGs",
-    (taskapp_create_fn_t) effecting_create,
-    (taskapp_data_load_fn_t) effecting_show,
-    true
-  };
-
-  return taskapp_install(wuss, &desc);
-}
-
-void effecting_destroy(effecting_task_t *task)
+static void effecting_quit(effecting_task_t *task)
 {
   int i;
 
@@ -649,11 +602,9 @@ void effecting_destroy(effecting_task_t *task)
 
   wuss_gridview_destroy(task->list);
   effecting_edit_destroy(task->edit);
-  wuss_saveas_destroy(task->saveas);
   free(task->source.base);
   free(task->chain.base);
   free(task->result.base);
-  free(task);
 }
 
 /* ----------------------------------------------------------------------- */
@@ -689,7 +640,7 @@ static void effecting_menu_enable(effecting_task_t *ec, int row, int enabled)
   else
     ec->menu_items[row].flags |= wuss_MENU_ITEM_DISABLED;
 
-  wuss_menu_disable_item_live(ec->menu_handle, &ec->menu, row, !enabled);
+  wuss_menu_disable_item_live(ec->base.menu_handle, &ec->base.menu, row, !enabled);
 }
 
 /* Sets the rows to match the selection and the stack. */
@@ -709,7 +660,7 @@ static void effecting_menu_update(effecting_task_t *ec)
     switch (el->type)
     {
     case EFFECTING_CLEAR:
-      edit_row->submenu = wuss_colourmenu_menu(ec->wuss);
+      edit_row->submenu = wuss_colourmenu_menu(ec->base.wuss);
       edit_row->flags   = wuss_MENU_ITEM_PRE_OPEN;
       break;
 
@@ -730,7 +681,7 @@ static void effecting_menu_update(effecting_task_t *ec)
     }
   }
 
-  wuss_menu_disable_item_live(ec->menu_handle, &ec->menu, EFFECTING_MENU_EDIT,
+  wuss_menu_disable_item_live(ec->base.menu_handle, &ec->base.menu, EFFECTING_MENU_EDIT,
                               edit_row->flags & wuss_MENU_ITEM_DISABLED);
   effecting_menu_enable(ec, EFFECTING_MENU_DELETE, el != NULL);
   effecting_menu_enable(ec, EFFECTING_MENU_DELETE_ALL, ec->nelements > 0);
@@ -742,7 +693,7 @@ static result_t effecting_open_menu(effecting_task_t *ec)
 {
   effecting_menu_update(ec);
 
-  return wuss_menu_open_at_pointer(ec->delegate, &ec->menu, &ec->menu_handle);
+  return wuss_menu_open_at_pointer(ec->base.delegate, &ec->base.menu, &ec->base.menu_handle);
 }
 
 static result_t effecting_menu_select(effecting_task_t   *ec,
@@ -776,12 +727,12 @@ static result_t effecting_menu_select(effecting_task_t   *ec,
 
   if (menu == &ec->dither.menu)
   {
-    ec->dithering = dithermenu_select(&ec->dither, ec->menu_handle, index);
-    wuss_window_invalidate_visible(ec->window);
+    ec->dithering = dithermenu_select(&ec->dither, ec->base.menu_handle, index);
+    wuss_window_invalidate_visible(ec->base.window);
     return result_OK;
   }
 
-  if (menu != &ec->menu)
+  if (menu != &ec->base.menu)
     return result_OK;
 
   switch (index)
@@ -803,17 +754,14 @@ static result_t effecting_menu_select(effecting_task_t   *ec,
     effecting_cancel(ec);
     return result_OK;
 
-  case EFFECTING_MENU_SAVE:
-    return wuss_saveas_open(ec->saveas); /* a click, not a hover */
-
   default:
     return result_OK;
   }
 }
 
-result_t effecting_handle(wuss_window_t      *window,
-                          const wuss_event_t *event,
-                          void               *task_data)
+static result_t effecting_handle(wuss_window_t      *window,
+                                 const wuss_event_t *event,
+                                 void               *task_data)
 {
   result_t          rc;
   effecting_task_t *ec;
@@ -853,14 +801,14 @@ result_t effecting_handle(wuss_window_t      *window,
         return effecting_open_menu(ec);
       return result_OK;
     }
-    if (window != ec->window)
+    if (window != ec->base.window)
       return result_OK;
     if (event->data.mouse.action != wuss_MOUSE_DOWN)
       return result_OK;
     if (event->data.mouse.button & wuss_BUTTON_SELECT)
     {
       ec->show_original = !ec->show_original;
-      wuss_window_invalidate_visible(ec->window);
+      wuss_window_invalidate_visible(ec->base.window);
       return result_OK;
     }
     if (event->data.mouse.button & wuss_BUTTON_MENU)
@@ -884,7 +832,7 @@ result_t effecting_handle(wuss_window_t      *window,
 
     /* the Edit row of a Clear element: the colour menu */
     el = effecting_selected(ec, NULL);
-    return wuss_colourmenu_open_rgb(ec->wuss, event, "Clear colour",
+    return wuss_colourmenu_open_rgb(ec->base.wuss, event, "Clear colour",
                                     el != NULL && el->type == EFFECTING_CLEAR ?
                                     el->u.clear : colour_rgb(0, 0, 0));
   }
@@ -893,14 +841,13 @@ result_t effecting_handle(wuss_window_t      *window,
     return effecting_menu_select(ec, event);
 
   case wuss_EVENT_MESSAGE:
-    if (ec->window == NULL || window != ec->window)
+    if (ec->base.window == NULL || window != ec->base.window)
       return result_OK;
-    return taskapp_window_data_load(ec->wuss, ec->delegate, ec,
+    return taskapp_window_data_load(ec->base.wuss, ec->base.delegate, ec,
                                     (taskapp_data_load_fn_t) effecting_show,
                                     event->data.message);
 
   case wuss_EVENT_MENU_CLOSED:
-    ec->menu_handle = NULL; /* wuss closed the chain under us */
     if (ec->list != NULL)
     {
       (void) wuss_gridview_handle_event(ec->list, event);
@@ -909,17 +856,15 @@ result_t effecting_handle(wuss_window_t      *window,
     return result_OK;
 
   case wuss_EVENT_CLOSE_ADJUST:
-    if (window != ec->window)
+    if (window != ec->base.window)
       return result_OK;
-    return task_close_adjust(ec->wuss, ec->delegate, window, ec->path,
+    return task_close_adjust(ec->base.wuss, ec->base.delegate, window, ec->path,
                              event);
 
   case wuss_EVENT_CLOSE:
     effecting_edit_closed(ec->edit, window);
-    if (window == ec->window)
+    if (window == ec->base.window)
     {
-      ec->window = NULL;
-
       /* the stack is meaningless without its image; its own CLOSE
        * tears down the gridview */
       wuss_window_close(ec->list_window);
@@ -948,7 +893,7 @@ result_t effecting_handle(wuss_window_t      *window,
                                      event->data.pre_show.index);
 
   case wuss_EVENT_QUIT:
-    effecting_destroy(ec);
+    effecting_quit(ec);
     return result_OK;
 
   case wuss_EVENT_KEY:
@@ -961,11 +906,30 @@ result_t effecting_handle(wuss_window_t      *window,
         effecting_delete(ec, selected);
       return result_OK;
     }
-    return wuss_menu_dispatch_shortcut(ec->delegate, &ec->menu, event);
+    return wuss_menu_dispatch_shortcut(ec->base.delegate, &ec->base.menu,
+                                       event);
 
   default:
     return result_OK;
   }
+}
+
+result_t effecting_app_create(wuss_t *wuss)
+{
+  static const taskapp_desc_t desc =
+  {
+    .name          = "Effecting",
+    .purpose       = "Apply effects to PNGs",
+    .data_load     = (taskapp_data_load_fn_t) effecting_show,
+    .drop_only     = true,
+    .instance_size = sizeof(effecting_task_t),
+    .init          = (taskapp_init_fn_t) effecting_init,
+    .handle        = effecting_handle,
+    .all_windows   = true, /* the list window takes clicks and keys too */
+    .save          = effecting_saveas_save
+  };
+
+  return taskapp_install(wuss, &desc);
 }
 
 #endif /* WUSS_APP */

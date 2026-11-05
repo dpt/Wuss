@@ -491,6 +491,7 @@ if(BUILD_APPS)
         apps/wuss/theme.h
         apps/wuss/tasks/taskmanager/taskmanager.c
         apps/wuss/tasks/taskmanager/taskmanager.h
+        apps/wuss/tasks/apps.h
         apps/wuss/tasks/tasks.c
         apps/wuss/tasks/ball/ball.c
         apps/wuss/tasks/chasehq/chasehq.c
@@ -519,7 +520,6 @@ if(BUILD_APPS)
         apps/wuss/tasks/painting/painting-new.c
         apps/wuss/tasks/painting/painting-new.h
         apps/wuss/tasks/fern/fern.c
-        apps/wuss/tasks/fern/fern.h
         apps/wuss/tasks/painting/painting.c
         apps/wuss/tasks/painting/painting.h
         apps/wuss/tasks/painting/painting-bars.c
@@ -541,9 +541,7 @@ if(BUILD_APPS)
         apps/wuss/tasks/orbing/orbing.c
         apps/wuss/tasks/reading/reading.c
         apps/wuss/tasks/resizing/resizing.c
-        apps/wuss/tasks/resizing/resizing.h
         apps/wuss/tasks/tagging/tagging.c
-        apps/wuss/tasks/tagging/tagging.h
         apps/wuss/tasks/tiling/tiling.c
         apps/wuss/tasks/common/taskapp.c
         apps/wuss/tasks/common/taskapp.h

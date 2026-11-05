@@ -10,18 +10,60 @@
 #endif
 
 #include "base/utils.h"
+#include "framebuf/colour.h"
 #include "framebuf/palettes.h"
 #include "framebuf/screen.h"
 #include "geom/box.h"
+#include "utils/rng.h"
+#include "wuss/component/colourmenu.h"
+#include "wuss/menu.h"
+#include "wuss/window.h"
 
-#include "ball.h"
-#include "../common/snapshot.h"
+#include "../apps.h"
 #include "../common/taskapp.h"
 #include "../common/common.h"
 
+#define BALL_MAX 32 /* Menu > Add ball beyond this is ignored */
+
+/* one bouncing ball, centre in local content coords */
+typedef struct ball
+{
+  int      x, y;
+  int      dx, dy;
+  int      radius;
+  colour_t colour;
+}
+ball_t;
+
+/* window A's task: balls that bounce off the content box's edges, so the
+ * redraw loop has something moving to repaint every frame. Select grabs the
+ * ball under the pointer, which follows the pointer until release and is
+ * then thrown with the pointer's last movement; an Adjust click removes the
+ * most recently added ball; Menu > Add ball adds one at the centre of the
+ * view; Menu > Clear removes all but the first; Menu > Gravity pulls them
+ * downward; Menu > Damping makes wall bounces lose speed. Once a click has
+ * given the window the input focus, Space pauses/resumes, A adds a ball, G
+ * toggles gravity, D toggles damping and C clears. Menu > Save opens a
+ * Save As dialogue (drag its icon onto a Filer window, or Save with a full
+ * path already typed) that writes the window's content out. */
+typedef struct ball_task
+{
+  taskapp_instance_t  base;
+  wuss_menu_item_t    menu_items[7]; /* per-instance, not a shared static */
+  int               paused; /* Menu > Pause; idle does nothing while set */
+  int                 gravity; /* Menu > Gravity; dy grows each tick */
+  int                 damping; /* Menu > Damping; wall bounces lose speed */
+  colour_t            bg;
+  wuss_colourlist_t   colours; /* Menu > Colours, its one row Background */
+  ball_t              balls[BALL_MAX];
+  int                 nballs;
+  int                 grabbed; /* index of the ball held by Select, or -1 */
+  rng_t               rng;     /* new balls' radii and colours */
+}
+ball_task_t;
+
 #define BALL_MIN_LARGE_RADIUS 14 /* every radius from here up is allowed */
 #define BALL_MAX_RADIUS       20
-#define BALL_SAVE_NAME "ball.png" /* Save As's initial leafname */
 #define BALL_MAX_DY     16 /* cap on vertical speed under gravity */
 
 /* with damping on, a wall bounce keeps 3/4 of the speed, truncated towards
@@ -69,7 +111,7 @@ static colour_t ball_random_colour(ball_task_t *bc)
   int             npalette;
   colour_t        c;
 
-  palette = wuss_get_palette(bc->wuss, &npalette);
+  palette = wuss_get_palette(bc->base.wuss, &npalette);
   do
     c = palette[rng_range(&bc->rng, npalette)];
   while (c.primary == bc->bg.primary);
@@ -95,29 +137,14 @@ static box_t ball_local_box(int vx0, int vy0, int vx1, int vy1, int radius)
   return local;
 }
 
-/* wuss_saveas_save_fn_t: opaque is the ball_task_t */
-static result_t ball_saveas_save(const char *path, void *opaque)
+static result_t ball_init(ball_task_t *task)
 {
-  ball_task_t *bc;
+  result_t  rc;
+  wuss_t   *wuss;
+  colour_t *fields[1];
 
-  bc = opaque;
+  wuss = task->base.wuss;
 
-  return snapshot_save_png(bc->window, ball_handle, bc, path);
-}
-
-result_t ball_create(wuss_t *wuss, ball_task_t **out)
-{
-  result_t         rc;
-  ball_task_t     *task;
-  wuss_task_t     *delegate;
-  wuss_task_desc_t delegate_desc;
-  colour_t        *fields[1];
-
-  task = calloc(1, sizeof(*task));
-  if (task == NULL)
-    return result_OOM;
-
-  task->wuss    = wuss;
   rng_seed(&task->rng, (uint32_t) rand());
   /* a palette entry, so ball_random_colour can avoid it exactly */
   task->bg      = wuss_get_palette(wuss, NULL)[wuss_nearest_colour(wuss, 0xFF,
@@ -134,53 +161,17 @@ result_t ball_create(wuss_t *wuss, ball_task_t **out)
   task->balls[0].radius = ball_random_radius(task);
   task->balls[0].colour = ball_random_colour(task);
 
-  /* ball_redraw paints its own background every frame */
-  delegate_desc.handle    = ball_handle;
-  delegate_desc.task_data = task;
-  delegate_desc.name      = "Ball";
-  rc = wuss_task_create(wuss, &delegate_desc, &delegate);
-  if (rc != result_OK)
-  {
-    free(task); /* nothing registered yet; nobody else owns it */
-    return rc;
-  }
-  wuss_task_set_autoclose(delegate, 1);
-  task->delegate = delegate;
-
-  rc = task_window_create(delegate,
-                          SIZE2D(200, 160),
-                          "Bouncing Ball",
-                          &task->window);
-  if (rc != result_OK)
-  {
-    wuss_task_destroy(delegate); /* unregister; its QUIT frees the task block */
-    return rc;
-  }
-
-  rc = snapshot_saveas_create(&task->saveas, wuss, BALL_SAVE_NAME,
-                              ball_saveas_save, task);
-  if (rc != result_OK)
-  {
-    wuss_task_destroy(delegate);
-    return rc;
-  }
-
   fields[0] = &task->bg;
   rc = wuss_colourlist_init(&task->colours, wuss, NELEMS(fields), fields,
                             ball_colour_names);
   if (rc != result_OK)
-  {
-    wuss_task_destroy(delegate);
     return rc;
-  }
 
   WUSS_MENU_ITEM_SHORTCUT(task->menu_items, BALL_MENU_PAUSE, "Pause",
                           wuss_MENU_ITEM_NONE, "SPACE");
 
-  WUSS_MENU_ITEM_SHORTCUT(task->menu_items, BALL_MENU_SAVE, "Save",
-                          wuss_MENU_ITEM_NONE, "F3");
-  /* hover opens the Save As dialogue as a submenu; F3 shows it standalone */
-  task->menu_items[BALL_MENU_SAVE].window = wuss_saveas_window(task->saveas);
+  taskapp_save_row(&task->base, task->menu_items, BALL_MENU_SAVE,
+                   wuss_MENU_ITEM_NONE);
 
   WUSS_MENU_ITEM_SHORTCUT(task->menu_items, BALL_MENU_ADD, "Add ball",
                           wuss_MENU_ITEM_DASHED, "A");
@@ -197,31 +188,10 @@ result_t ball_create(wuss_t *wuss, ball_task_t **out)
   WUSS_MENU_ITEM_MENU(task->menu_items, BALL_MENU_COLOURS, "Colours",
                       wuss_MENU_ITEM_NONE, &task->colours.menu);
 
-  WUSS_MENU_TITLE(task->menu, "Bouncing Ball", task->menu_items,
+  WUSS_MENU_TITLE(task->base.menu, "Bouncing Ball", task->menu_items,
                  NELEMS(task->menu_items));
 
-  if (out)
-    *out = task;
-
   return result_OK;
-}
-
-result_t ball_app_create(wuss_t *wuss)
-{
-  static const taskapp_desc_t desc =
-  {
-    "Ball",
-    "Balls bouncing off edges",
-    (taskapp_create_fn_t) ball_create
-  };
-
-  return taskapp_install(wuss, &desc);
-}
-
-void ball_destroy(ball_task_t *task)
-{
-  wuss_saveas_destroy(task->saveas);
-  free(task);
 }
 
 static result_t ball_redraw(const wuss_event_t *event, void *task_data)
@@ -266,9 +236,9 @@ static void ball_set_title(ball_task_t *bc)
   const char *title;
 
   title = (bc->nballs > 1) ? "Bouncing Balls" : "Bouncing Ball";
-  wuss_window_set_title(bc->window, title);
-  bc->menu.title = title; /* read on the next wuss_menu_open */
-  wuss_menu_set_title_live(bc->menu_handle, &bc->menu, title);
+  wuss_window_set_title(bc->base.window, title);
+  bc->base.menu.title = title; /* read on the next wuss_menu_open */
+  wuss_menu_set_title_live(bc->base.menu_handle, &bc->base.menu, title);
 
   /* the held ball may have just been removed */
   if (bc->grabbed >= bc->nballs)
@@ -279,12 +249,11 @@ static void ball_set_title(ball_task_t *bc)
     bc->menu_items[BALL_MENU_CLEAR].flags &= ~wuss_MENU_ITEM_DISABLED;
   else
     bc->menu_items[BALL_MENU_CLEAR].flags |= wuss_MENU_ITEM_DISABLED;
-  wuss_menu_disable_item_live(bc->menu_handle, &bc->menu, BALL_MENU_CLEAR,
+  wuss_menu_disable_item_live(bc->base.menu_handle, &bc->base.menu, BALL_MENU_CLEAR,
                               bc->nballs <= 1);
 }
 
-static result_t ball_mouse(wuss_window_t      *window,
-                           wuss_mouse_action_t action,
+static result_t ball_mouse(wuss_mouse_action_t action,
                            int                 x,
                            int                 y,
                            wuss_button_t       button,
@@ -294,10 +263,6 @@ static result_t ball_mouse(wuss_window_t      *window,
   box_t        local;
 
   bc = task_data;
-
-  if (window != bc->window)
-    return result_OK; /* the proginfo dialogue has no click behaviour of
-                       * its own */
 
   if (action == wuss_MOUSE_MOVE)
   {
@@ -325,7 +290,7 @@ static result_t ball_mouse(wuss_window_t      *window,
     local = ball_local_box(MIN(old_x, b->x), MIN(old_y, b->y),
                            MAX(old_x, b->x), MAX(old_y, b->y),
                            b->radius);
-    wuss_window_invalidate(bc->window, &local);
+    wuss_window_invalidate(bc->base.window, &local);
 
     return result_OK;
   }
@@ -338,12 +303,12 @@ static result_t ball_mouse(wuss_window_t      *window,
 
   if (button & wuss_BUTTON_MENU)
   {
-    wuss_menu_tick_item(&bc->menu, BALL_MENU_PAUSE, bc->paused);
-    wuss_menu_tick_item(&bc->menu, BALL_MENU_GRAVITY, bc->gravity);
-    wuss_menu_tick_item(&bc->menu, BALL_MENU_DAMPING, bc->damping);
+    wuss_menu_tick_item(&bc->base.menu, BALL_MENU_PAUSE, bc->paused);
+    wuss_menu_tick_item(&bc->base.menu, BALL_MENU_GRAVITY, bc->gravity);
+    wuss_menu_tick_item(&bc->base.menu, BALL_MENU_DAMPING, bc->damping);
 
-    return wuss_menu_open_at_pointer(bc->delegate, &bc->menu,
-                                     &bc->menu_handle);
+    return wuss_menu_open_at_pointer(bc->base.delegate, &bc->base.menu,
+                                     &bc->base.menu_handle);
   }
 
   if (button & wuss_BUTTON_SELECT)
@@ -376,7 +341,7 @@ static result_t ball_mouse(wuss_window_t      *window,
     b = &bc->balls[--bc->nballs];
 
     local = ball_local_box(b->x, b->y, b->x, b->y, b->radius);
-    wuss_window_invalidate(bc->window, &local);
+    wuss_window_invalidate(bc->base.window, &local);
 
     ball_set_title(bc);
   }
@@ -398,14 +363,14 @@ static result_t ball_idle(void *task_data)
    * delegate, so closing the ball window alone never empties task->windows
    * and the task lingers until the dialogue closes too -- guard against the
    * dangling window in the meantime */
-  if (bc->window == NULL)
+  if (bc->base.window == NULL)
     return result_OK;
 
   if (bc->paused)
     return result_OK;
 
-  wuss_window_get_content_bounds(bc->window, &content);
-  wuss_window_get_scroll(bc->window, &scroll);
+  wuss_window_get_content_bounds(bc->base.window, &content);
+  wuss_window_get_scroll(bc->base.window, &scroll);
   width  = content.x1 - content.x0;
   height = content.y1 - content.y0;
 
@@ -438,7 +403,7 @@ static result_t ball_idle(void *task_data)
                            MAX(old_x, b->x), MAX(old_y, b->y),
                            b->radius);
 
-    wuss_window_invalidate(bc->window, &local);
+    wuss_window_invalidate(bc->base.window, &local);
   }
 
   /* collisions: mass goes with area, so a big ball shoves a small one. The
@@ -497,9 +462,9 @@ static result_t ball_idle(void *task_data)
         b->y += cy * pb / d;
 
         local = ball_local_box(a->x, a->y, a->x, a->y, a->radius + pen + 1);
-        wuss_window_invalidate(bc->window, &local);
+        wuss_window_invalidate(bc->base.window, &local);
         local = ball_local_box(b->x, b->y, b->x, b->y, b->radius + pen + 1);
-        wuss_window_invalidate(bc->window, &local);
+        wuss_window_invalidate(bc->base.window, &local);
       }
 
       k = (a->dx - b->dx) * cx + (a->dy - b->dy) * cy;
@@ -531,7 +496,7 @@ static result_t ball_menu_select(ball_task_t *bc, const wuss_event_t *event)
     if (bc->balls[i].colour.primary == bc->bg.primary)
       bc->balls[i].colour = old_bg;
 
-  wuss_window_invalidate_visible(bc->window);
+  wuss_window_invalidate_visible(bc->base.window);
 
   return result_OK;
 }
@@ -554,7 +519,7 @@ static result_t ball_toggle(ball_task_t *bc, const wuss_event_t *event)
     flag = &bc->damping;
   *flag = !*flag;
 
-  wuss_menu_tick_item_live(bc->menu_handle, &bc->menu, index, *flag);
+  wuss_menu_tick_item_live(bc->base.menu_handle, &bc->base.menu, index, *flag);
 
   return result_OK;
 }
@@ -567,11 +532,11 @@ static result_t ball_add(ball_task_t *bc)
   ball_t *b;
   box_t   local;
 
-  if (bc->window == NULL || bc->nballs >= BALL_MAX)
+  if (bc->base.window == NULL || bc->nballs >= BALL_MAX)
     return result_OK;
 
-  wuss_window_get_content_bounds(bc->window, &content);
-  wuss_window_get_scroll(bc->window, &scroll);
+  wuss_window_get_content_bounds(bc->base.window, &content);
+  wuss_window_get_scroll(bc->base.window, &scroll);
 
   b         = &bc->balls[bc->nballs++];
   b->x      = scroll.x + (content.x1 - content.x0) / 2;
@@ -582,7 +547,7 @@ static result_t ball_add(ball_task_t *bc)
   b->colour = ball_random_colour(bc);
 
   local = ball_local_box(b->x, b->y, b->x, b->y, b->radius);
-  wuss_window_invalidate(bc->window, &local);
+  wuss_window_invalidate(bc->base.window, &local);
 
   ball_set_title(bc);
 
@@ -592,21 +557,23 @@ static result_t ball_add(ball_task_t *bc)
 /* The "Clear" row: remove every ball but the first. */
 static result_t ball_clear(ball_task_t *bc)
 {
-  if (bc->window == NULL || bc->nballs <= 1)
+  if (bc->base.window == NULL || bc->nballs <= 1)
     return result_OK;
 
   bc->nballs = 1;
   ball_set_title(bc);
-  wuss_window_invalidate_visible(bc->window);
+  wuss_window_invalidate_visible(bc->base.window);
 
   return result_OK;
 }
 
-result_t ball_handle(wuss_window_t      *window,
-                     const wuss_event_t *event,
-                     void               *task_data)
+static result_t ball_handle(wuss_window_t      *window,
+                            const wuss_event_t *event,
+                            void               *task_data)
 {
   ball_task_t *bc;
+
+  NOT_USED(window);
 
   bc = task_data;
 
@@ -616,56 +583,58 @@ result_t ball_handle(wuss_window_t      *window,
     return ball_redraw(event, task_data);
 
   case wuss_EVENT_MOUSE:
-    return ball_mouse(window, event->data.mouse.action, event->data.mouse.point.x,
+    return ball_mouse(event->data.mouse.action, event->data.mouse.point.x,
                       event->data.mouse.point.y, event->data.mouse.button, task_data);
 
   case wuss_EVENT_IDLE:
     return ball_idle(task_data);
 
   case wuss_EVENT_KEY:
-    return wuss_menu_dispatch_shortcut(bc->delegate, &bc->menu, event);
+    return wuss_menu_dispatch_shortcut(bc->base.delegate, &bc->base.menu, event);
 
   case wuss_EVENT_PRE_SUBMENU_OPEN:
   {
     result_t rc;
 
     /* Colours > Background: the shared colourmenu, set up per open */
-    if (wuss_colourlist_pre_open(&bc->colours, bc->wuss, event, &rc))
+    if (wuss_colourlist_pre_open(&bc->colours, bc->base.wuss, event, &rc))
       return rc;
 
     return result_OK;
   }
 
   case wuss_EVENT_MENU_SELECT:
-    if (event->data.menu_select.menu == &bc->menu &&
+    if (event->data.menu_select.menu == &bc->base.menu &&
         (event->data.menu_select.index == BALL_MENU_PAUSE ||
          event->data.menu_select.index == BALL_MENU_GRAVITY ||
          event->data.menu_select.index == BALL_MENU_DAMPING))
       return ball_toggle(bc, event);
-    if (wuss_menu_select_is(event, &bc->menu, BALL_MENU_ADD))
+    if (wuss_menu_select_is(event, &bc->base.menu, BALL_MENU_ADD))
       return ball_add(bc);
-    if (wuss_menu_select_is(event, &bc->menu, BALL_MENU_CLEAR))
+    if (wuss_menu_select_is(event, &bc->base.menu, BALL_MENU_CLEAR))
       return ball_clear(bc);
-    if (wuss_menu_select_is(event, &bc->menu, BALL_MENU_SAVE))
-      return wuss_saveas_open(bc->saveas);
     return ball_menu_select(bc, event);
-
-  case wuss_EVENT_MENU_CLOSED:
-    bc->menu_handle = NULL;
-    return result_OK;
-
-  case wuss_EVENT_CLOSE:
-    if (window == bc->window)
-      bc->window = NULL;
-    return result_OK;
-
-  case wuss_EVENT_QUIT:
-    ball_destroy(bc);
-    return result_OK;
 
   default:
     return result_OK;
   }
+}
+
+result_t ball_app_create(wuss_t *wuss)
+{
+  static const taskapp_desc_t desc =
+  {
+    .name          = "Ball",
+    .purpose       = "Balls bouncing off edges",
+    .instance_size = sizeof(ball_task_t),
+    .window_size   = { 200, 160 },
+    .window_title  = "Bouncing Ball",
+    .init          = (taskapp_init_fn_t) ball_init,
+    .handle        = ball_handle,
+    .save_name     = "ball.png"
+  };
+
+  return taskapp_install(wuss, &desc);
 }
 
 #endif /* WUSS_APP */

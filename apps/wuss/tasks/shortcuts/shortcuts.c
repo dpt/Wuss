@@ -11,15 +11,27 @@
 
 #include "base/utils.h"
 #include "framebuf/bmfont.h"
+#include "wuss/gadget/gridview.h"
 #include "wuss/icon.h"
+#include "wuss/task.h"
+#include "wuss/window.h"
 
-#include "shortcuts.h"
+#include "../apps.h"
 #include "../common/taskapp.h"
 #include "../common/common.h"
 
 #define SHORTCUTS_LABEL_CHARS 20 /* label column width */
 #define SHORTCUTS_COLUMNS      2 /* keys, then action */
 #define SHORTCUTS_ROWS        24 /* window opens at most this many tall */
+
+/* shows every system-wide keyboard shortcut as a two-column grid: the keys,
+ * then what they do */
+typedef struct shortcuts_task
+{
+  taskapp_instance_t base;
+  wuss_gridview_t   *gv;
+}
+shortcuts_task_t;
 
 /* First the chords handled ahead of any window's task: tasks_system_key, the
  * main loop's key case and tasks_launcher_key in apps/wuss, the core's drag and
@@ -334,7 +346,7 @@ static colour_t shortcuts_colour(const shortcuts_task_t *task,
                                  int                     g,
                                  int                     b)
 {
-  return wuss_get_palette(task->wuss, NULL)[wuss_nearest_colour(task->wuss,
+  return wuss_get_palette(task->base.wuss, NULL)[wuss_nearest_colour(task->base.wuss,
                                                                 r, g, b)];
 }
 
@@ -362,53 +374,29 @@ static void shortcuts_draw_cell(wuss_gridview_t    *gv,
     return;
 
   slot = (shortcuts[index / 2].action == NULL &&
-          wuss_get_font_n(task->wuss, 1) != NULL) ? 1 : 0;
-  bmfont_get_info(wuss_get_font_n(task->wuss, slot), NULL, &height, &ascent,
+          wuss_get_font_n(task->base.wuss, 1) != NULL) ? 1 : 0;
+  bmfont_get_info(wuss_get_font_n(task->base.wuss, slot), NULL, &height, &ascent,
                   NULL);
   pos.x = screen_box->x0 + wuss_STD_GAP;
   pos.y = screen_box->y0 + (screen_box->y1 - screen_box->y0 - height) / 2 +
           ascent;
-  (void) wuss_text_draw(task->wuss, slot, event->data.redraw.scr, text,
+  (void) wuss_text_draw(task->base.wuss, slot, event->data.redraw.scr, text,
                         (int) strlen(text),
                         shortcuts_colour(task, 0x00, 0x00, 0x00),
                         shortcuts_colour(task, 0xFF, 0xFF, 0xFF), &pos, NULL);
 }
 
-result_t shortcuts_create(wuss_t *wuss, shortcuts_task_t **out)
+static result_t shortcuts_init(shortcuts_task_t *task)
 {
-  result_t          rc;
-  shortcuts_task_t *task;
-  wuss_task_t      *delegate;
-  wuss_task_desc_t  delegate_desc;
+  result_t rc;
 
-  task = calloc(1, sizeof(*task));
-  if (task == NULL)
-    return result_OOM;
-
-  task->wuss = wuss;
-
-  delegate_desc.handle    = shortcuts_handle;
-  delegate_desc.task_data = task;
-  delegate_desc.name      = "Shortcuts";
-  rc = wuss_task_create(wuss, &delegate_desc, &delegate);
-  if (rc != result_OK)
-  {
-    free(task); /* nothing registered yet; the spawner will not free it */
-    return rc;
-  }
-  wuss_task_set_autoclose(delegate, 1);
-  task->delegate = delegate;
-
-  rc = wuss_gridview_window_create(&task->gv, delegate, &task_place,
+  rc = wuss_gridview_window_create(&task->gv, task->base.delegate, &task_place,
                                    "Shortcuts",
                                    (int) NELEMS(shortcuts) * 2,
                                    shortcuts_item, SHORTCUTS_LABEL_CHARS,
-                                   NULL, task, 0, &task->window);
+                                   NULL, task, 0, &task->base.window);
   if (rc != result_OK)
-  {
-    wuss_task_destroy(delegate); /* its QUIT frees the task block */
     return rc;
-  }
 
   /* one or two columns, so each pair keeps to a row when there is room */
   wuss_gridview_set_layout(task->gv, SHORTCUTS_COLUMNS, 1, 0);
@@ -420,47 +408,23 @@ result_t shortcuts_create(wuss_t *wuss, shortcuts_task_t **out)
   wuss_gridview_fit_window(task->gv, SHORTCUTS_COLUMNS, SHORTCUTS_ROWS,
                            &task_place);
 
-  if (out)
-    *out = task;
-
   return result_OK;
 }
 
-result_t shortcuts_app_create(wuss_t *wuss)
-{
-  static const taskapp_desc_t desc =
-  {
-    "Shortcuts",
-    "Keyboard shortcut list",
-    (taskapp_create_fn_t) shortcuts_create
-  };
-
-  return taskapp_install(wuss, &desc);
-}
-
-void shortcuts_destroy(shortcuts_task_t *task)
-{
-  wuss_gridview_destroy(task->gv);
-  free(task);
-}
-
-result_t shortcuts_handle(wuss_window_t      *window,
-                          const wuss_event_t *event,
-                          void               *task_data)
+static result_t shortcuts_handle(wuss_window_t      *window,
+                                 const wuss_event_t *event,
+                                 void               *task_data)
 {
   shortcuts_task_t *st;
+
+  NOT_USED(window);
 
   st = task_data;
 
   switch (event->kind)
   {
-  case wuss_EVENT_CLOSE:
-    if (window == st->window)
-      st->window = NULL;
-    return result_OK;
-
   case wuss_EVENT_QUIT:
-    shortcuts_destroy(st);
+    wuss_gridview_destroy(st->gv);
     return result_OK;
 
   case wuss_EVENT_PALETTE:
@@ -477,6 +441,20 @@ result_t shortcuts_handle(wuss_window_t      *window,
       (void) wuss_gridview_handle_event(st->gv, event);
     return result_OK;
   }
+}
+
+result_t shortcuts_app_create(wuss_t *wuss)
+{
+  static const taskapp_desc_t desc =
+  {
+    .name          = "Shortcuts",
+    .purpose       = "Keyboard shortcut list",
+    .instance_size = sizeof(shortcuts_task_t),
+    .init          = (taskapp_init_fn_t) shortcuts_init,
+    .handle        = shortcuts_handle
+  };
+
+  return taskapp_install(wuss, &desc);
 }
 
 #endif /* WUSS_APP */

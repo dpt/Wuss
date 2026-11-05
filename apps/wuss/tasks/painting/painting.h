@@ -18,6 +18,7 @@
 #include "wuss/window.h"
 
 #include "../common/dithermenu.h"
+#include "../common/taskapp.h"
 
 #include "painting-doc.h"
 #include "painting-new.h"
@@ -105,10 +106,8 @@ enum
  * canvas window closes the toolbars and pane too */
 typedef struct painting_task
 {
-  wuss_t            *wuss;
-  wuss_task_t       *delegate;
-  wuss_window_t     *window;    /* the canvas window; NULL once closed */
-  wuss_window_t     *toolbox;   /* the tools toolbar; NULL once closed */
+  taskapp_instance_t base;      /* window: the canvas; NULL once closed */
+  wuss_window_t     *toolbox;  /* the tools toolbar; NULL once closed */
   wuss_window_t     *optionbar; /* the colours and options toolbar; NULL once
                                  * closed */
   wuss_window_t     *sizebar;   /* the tool settings pane; NULL once closed */
@@ -116,8 +115,7 @@ typedef struct painting_task
   stageconfig_t      stagecfg;  /* the pasteboard, border and shadow around
                                  * the canvas */
   point_t            page;      /* the canvas's origin in the window */
-  wuss_saveas_t     *saveas;
-  char               path[DPTLIB_MAXPATH]; /* document's file; "" until
+  char              path[DPTLIB_MAXPATH]; /* document's file; "" until
                                             * loaded or saved */
   colour_t           fg, bg;
   painting_tool_t    tool;
@@ -151,9 +149,7 @@ typedef struct painting_task
   wuss_icon_t       *nozzle_icon; /* the nozzle button, or NULL if not shown */
   wuss_slider_row_t  rows[painting_SETTING__COUNT]; /* live only for the
                                  * slider settings the current tool shows */
-  wuss_menu_handle_t menu_handle; /* live only between open and a pick */
   wuss_menu_item_t   menu_items[PAINTING_MENU__COUNT];
-  wuss_menu_t        menu;
   wuss_menu_item_t   sel_items[PAINTING_SEL__COUNT];
   wuss_menu_t        sel_menu;
   wuss_menu_item_t   nozzle_items[paintingdoc_NOZZLE__COUNT];
@@ -165,23 +161,8 @@ typedef struct painting_task
 }
 painting_task_t;
 
-wuss_window_fn_t painting_handle;
-
-/* create the paint windows against the given wuss instance;
- * if out is non-NULL, the task block is also returned through it */
-result_t painting_create(wuss_t *wuss, painting_task_t **out);
-
-/* as painting_create, but with a canvas of the given size and colour */
-result_t painting_create_with(wuss_t                     *wuss,
-                              const paintingnew_params_t *params,
-                              painting_task_t           **out);
-
 /* install the icon bar app that opens paint windows on demand */
 result_t painting_app_create(wuss_t *wuss);
-
-/* free a task block allocated by painting_create; normally called by the
- * task's wuss_EVENT_QUIT handler, not by callers directly */
-void painting_destroy(painting_task_t *task);
 
 #endif /* WUSS_APP */
 

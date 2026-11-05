@@ -703,7 +703,7 @@ static void configuring_section_specs(configuring_task_t *task,
                          boxes[CONFIGURING_ST_FONT_LABEL],
                          "System font", wuss_ICON_FLAGS_JUSTIFY_RIGHT);
 
-    font_name = wuss_get_font_name_n(task->wuss, 0);
+    font_name = wuss_get_font_name_n(task->base.wuss, 0);
     wuss_icon_spec_display(&specs[CONFIGURING_ICON_FONT_NAME],
                            boxes[CONFIGURING_ST_FONT_NAME],
                            (font_name != NULL) ? font_name : "", 0);
@@ -861,20 +861,20 @@ static result_t configuring_section_open(configuring_task_t *task,
   if (task->windows[section] != NULL)
   {
     wuss_window_restack(task->windows[section], wuss_ZORDER_FRONT);
-    return wuss_set_focus(task->wuss, task->windows[section]);
+    return wuss_set_focus(task->base.wuss, task->windows[section]);
   }
 
   sec = &g_configuring_sections[section];
 
-  configuring_label_widths(task->wuss, all);
+  configuring_label_widths(task->base.wuss, all);
   n = configuring_section_items(all, section, items, map);
 
   rc = stack_smallest(items, n, &doc);
   if (rc != result_OK)
     return rc;
 
-  place = task_place_after(task->window);
-  rc = wuss_window_create_at(task->delegate,
+  place = task_place_after(task->base.window);
+  rc = wuss_window_create_at(task->base.delegate,
                              &place,
                              doc,
                              sec->name,
@@ -916,12 +916,12 @@ static result_t configuring_section_open(configuring_task_t *task,
                            g_tasks.swap_mouse_buttons);
     wuss_icon_set_selected(window, task->reverse_scroll_icon,
                            g_tasks.reverse_scroll);
-    wuss_get_config(task->wuss, &config);
+    wuss_get_config(task->base.wuss, &config);
     wuss_icon_set_selected(window, task->solid_drags_icon,
                            !config.mouse.outline_drags);
   }
 
-  return wuss_set_focus(task->wuss, window);
+  return wuss_set_focus(task->base.wuss, window);
 
 failure:
   wuss_window_close(window);
@@ -942,19 +942,14 @@ static void configuring_item(int                   index,
   out->glyph = task->glyphs[index];
 }
 
-result_t configuring_create(wuss_t *wuss, configuring_task_t **out)
+static result_t configuring_init(configuring_task_t *task)
 {
-  result_t            rc;
-  configuring_task_t *task;
-  wuss_task_t        *delegate;
-  wuss_task_desc_t    delegate_desc;
-  int                 i;
+  result_t     rc;
+  wuss_task_t *delegate;
+  int          i;
 
-  task = calloc(1, sizeof(*task));
-  if (task == NULL)
-    return result_OOM;
+  delegate = task->base.delegate;
 
-  task->wuss    = wuss;
   task->fg      = wuss_COLOUR_BLACK;
   task->bg      = wuss_COLOUR_WHITE;
   task->pattern = screen_PATTERN_SOLID;
@@ -967,27 +962,12 @@ result_t configuring_create(wuss_t *wuss, configuring_task_t **out)
            sizeof(task->drag_threshold_px_text),
            "%d", CONFIGURING_DRAG_THRESHOLD_PX_DEFAULT);
 
-  delegate_desc.handle    = configuring_handle;
-  delegate_desc.task_data = task;
-  delegate_desc.name      = "Configuring";
-  rc = wuss_task_create(wuss, &delegate_desc, &delegate);
-  if (rc != result_OK)
-  {
-    free(task); /* nothing registered yet; the spawner will not free it */
-    return rc;
-  }
-
-  task->delegate = delegate;
-
   /* the section glyphs live in the task's private pool */
   rc = wuss_task_iconpool_load(delegate,
                                pathf("%s/resources/wuss-tasks/configuring",
-                                     wuss_get_resources(wuss)));
+                                     wuss_get_resources(task->base.wuss)));
   if (rc != result_OK)
-  {
-    wuss_task_destroy(delegate); /* unregister; its QUIT frees the task block */
     return rc;
-  }
 
   for (i = 0; i < CONFIGURING_SECTION__LIMIT; i++)
     task->glyphs[i] = wuss_task_iconpool_find(delegate,
@@ -996,62 +976,16 @@ result_t configuring_create(wuss_t *wuss, configuring_task_t **out)
   rc = wuss_gridview_window_create(&task->gridview, delegate, &task_place,
                                    "Configuring", CONFIGURING_SECTION__LIMIT,
                                    configuring_item, CONFIGURING_LABEL_CHARS,
-                                   NULL, task, 0, &task->window);
+                                   NULL, task, 0, &task->base.window);
   if (rc != result_OK)
-  {
-    wuss_task_destroy(delegate); /* unregister; its QUIT frees the task block */
     return rc;
-  }
 
   /* a click opens a section, so there is no selection to show */
   wuss_gridview_set_draw(task->gridview, NULL, 0);
   wuss_gridview_fit_window(task->gridview, CONFIGURING_SECTION__LIMIT, 1,
                            &task_place);
 
-  /* fully built: from here a last-window close reaps the task and its
-   * wuss_EVENT_QUIT frees task_data */
-  wuss_task_set_autoclose(delegate, 1);
-
-  if (out)
-    *out = task;
-
   return result_OK;
-}
-
-static const taskapp_desc_t configuring_desc =
-{
-  "Configuring",
-  "System settings",
-  (taskapp_create_fn_t) configuring_create,
-  NULL,
-  false,
-  NULL,
-  true
-};
-
-result_t configuring_app_create(wuss_t *wuss)
-{
-  return taskapp_install(wuss, &configuring_desc);
-}
-
-static result_t configuring__spawn(wuss_t *wuss, void *param, void **out)
-{
-  NOT_USED(param);
-
-  return configuring_create(wuss, (configuring_task_t **) out);
-}
-
-result_t configuring_open(wuss_t *wuss)
-{
-  void *task;
-
-  return taskapp_spawn(wuss, &configuring_desc, configuring__spawn, NULL, &task);
-}
-
-void configuring_destroy(configuring_task_t *task)
-{
-  wuss_gridview_destroy(task->gridview);
-  free(task);
 }
 
 /* Plot one CONFIGURING_CELL-square colour swatch, solid-filled in colour; a
@@ -1162,14 +1096,14 @@ static result_t configuring_redraw(configuring_task_t *task,
   return result_OK;
 }
 
-/* the shared fontmenu singleton, retargeted at task->wuss's bmfonts dir */
+/* the shared fontmenu singleton, retargeted at task->base.wuss's bmfonts dir */
 static const wuss_menu_t *configuring_fontmenu(configuring_task_t *task)
 {
   const char *resources;
 
-  resources = wuss_get_resources(task->wuss);
+  resources = wuss_get_resources(task->base.wuss);
   return wuss_fontmenu_menu(pathf("%s/resources/bmfonts", resources), "Font",
-                            task->wuss, wuss_FONTMENU_NONE);
+                            task->base.wuss, wuss_FONTMENU_NONE);
 }
 
 /* Open the font menu at the pointer with the system font's row ticked. */
@@ -1184,7 +1118,7 @@ static result_t configuring_open_fontmenu(configuring_task_t *task)
   if (menu == NULL)
     return result_OOM;
 
-  current = wuss_get_font_name_n(task->wuss, 0);
+  current = wuss_get_font_name_n(task->base.wuss, 0);
   ticked  = -1;
   if (current != NULL)
     for (i = 0; i < menu->nitems; i++)
@@ -1192,7 +1126,7 @@ static result_t configuring_open_fontmenu(configuring_task_t *task)
         ticked = i;
 
   wuss_fontmenu_set_ticked(ticked);
-  return wuss_menu_open_at_pointer(task->delegate, menu, NULL);
+  return wuss_menu_open_at_pointer(task->base.delegate, menu, NULL);
 }
 
 /* Make the face labelled name ("Family Style") the system font, and the next
@@ -1216,7 +1150,7 @@ static result_t configuring_set_font(configuring_task_t *task,
   if (rc != result_OK)
     return rc;
 
-  resources = wuss_get_resources(task->wuss);
+  resources = wuss_get_resources(task->base.wuss);
   rc = bmfontfamily_scan(pathf("%s/resources/bmfonts/%s", resources,
                                family_name),
                          &family);
@@ -1236,7 +1170,7 @@ static result_t configuring_set_font(configuring_task_t *task,
 
   faces[1] = bmfontfamily_heavier(family, faces[0]);
 
-  cache = wuss_get_font_cache(task->wuss);
+  cache = wuss_get_font_cache(task->base.wuss);
   rc = bmfontcache_acquire(cache, faces[0]->path, &fonts[0]);
   if (rc != result_OK)
   {
@@ -1264,7 +1198,7 @@ static result_t configuring_set_font(configuring_task_t *task,
     desc.name       = g.names[i];
 
     /* the slot is replaced even when a task's relayout handler fails */
-    frc = wuss_set_font(task->wuss, i, &desc);
+    frc = wuss_set_font(task->base.wuss, i, &desc);
     if (frc != result_OK && rc == result_OK)
       rc = frc;
 
@@ -1295,7 +1229,7 @@ static result_t configuring_open_thememenu(configuring_task_t *task)
   result_t rc;
   int      i;
 
-  rc = theme_list(wuss_get_resources(task->wuss), task->theme_names,
+  rc = theme_list(wuss_get_resources(task->base.wuss), task->theme_names,
                   &task->ntheme_names);
   if (rc != result_OK)
     return rc;
@@ -1307,7 +1241,7 @@ static result_t configuring_open_thememenu(configuring_task_t *task)
   WUSS_MENU_TITLE(task->theme_menu, "Theme", task->theme_items,
                   task->ntheme_names);
 
-  return wuss_menu_open_at_pointer(task->delegate, &task->theme_menu, NULL);
+  return wuss_menu_open_at_pointer(task->base.delegate, &task->theme_menu, NULL);
 }
 
 /* Apply theme "name": its palette, chrome colours, titlebar height and
@@ -1327,7 +1261,7 @@ static result_t configuring_set_theme(configuring_task_t *task,
   const bmfontface_t *regular;
   char                label[128];
 
-  resources = wuss_get_resources(task->wuss);
+  resources = wuss_get_resources(task->base.wuss);
 
   rc = theme_load(resources, name, &theme);
   if (rc != result_OK)
@@ -1337,15 +1271,15 @@ static result_t configuring_set_theme(configuring_task_t *task,
   if (rc != result_OK)
     return rc;
 
-  rc = wuss_set_palette(task->wuss, palette, wuss_SYSTEM_PALETTE_LENGTH);
+  rc = wuss_set_palette(task->base.wuss, palette, wuss_SYSTEM_PALETTE_LENGTH);
   if (rc != result_OK)
     return rc;
 
-  wuss_get_config(task->wuss, &old);
+  wuss_get_config(task->base.wuss, &old);
   theme_fill_config(&theme, &config);
   config.mouse          = old.mouse;
   config.backdrop.image = old.backdrop.image;
-  rc = wuss_set_config(task->wuss, &config);
+  rc = wuss_set_config(task->base.wuss, &config);
   if (rc != result_OK)
     return rc;
 
@@ -1398,9 +1332,9 @@ static result_t configuring_icon(const wuss_event_t *event, void *task_data)
   {
     wuss_config_t config;
 
-    wuss_get_config(cc->wuss, &config);
+    wuss_get_config(cc->base.wuss, &config);
     config.mouse.outline_drags = !wuss_icon_get_selected(icon);
-    return wuss_set_config(cc->wuss, &config);
+    return wuss_set_config(cc->base.wuss, &config);
   }
   else if (icon == cc->choose_font_icon)
   {
@@ -1415,7 +1349,7 @@ static result_t configuring_icon(const wuss_event_t *event, void *task_data)
     wuss_backdrop_t backdrop;
 
     backdrop = wuss_BACKDROP_PATTERN(cc->fg, cc->pattern, cc->bg);
-    return wuss_set_backdrop(cc->wuss, &backdrop);
+    return wuss_set_backdrop(cc->base.wuss, &backdrop);
   }
   else if (icon == cc->apply_timing_icon)
   {
@@ -1423,7 +1357,7 @@ static result_t configuring_icon(const wuss_event_t *event, void *task_data)
 
     /* Round-trip the rest of the config unchanged: wuss_set_config replaces
      * every field, there is no partial update. */
-    wuss_get_config(cc->wuss, &config);
+    wuss_get_config(cc->base.wuss, &config);
     config.mouse.double_click_ms   = atoi(wuss_icon_get_text(cc->double_click_ms_icon));
     config.mouse.double_click_px   = atoi(wuss_icon_get_text(cc->double_click_px_icon));
     config.mouse.drag_threshold_px = atoi(wuss_icon_get_text(cc->drag_threshold_px_icon));
@@ -1432,7 +1366,7 @@ static result_t configuring_icon(const wuss_event_t *event, void *task_data)
         config.mouse.drag_threshold_px < 0)
       return result_BAD_ARG;
 
-    return wuss_set_config(cc->wuss, &config);
+    return wuss_set_config(cc->base.wuss, &config);
   }
 
   return result_OK;
@@ -1488,22 +1422,21 @@ static result_t configuring_click(configuring_task_t *task,
   return result_OK;
 }
 
-result_t configuring_handle(wuss_window_t      *window,
-                            const wuss_event_t *event,
-                            void               *task_data)
+static result_t configuring_handle(wuss_window_t      *window,
+                                   const wuss_event_t *event,
+                                   void               *task_data)
 {
   configuring_task_t *cc;
   int                 i;
 
   cc = task_data;
 
-  if (window != NULL && window == cc->window)
+  if (window != NULL && window == cc->base.window)
   {
     if (event->kind == wuss_EVENT_CLOSE)
     {
       wuss_gridview_destroy(cc->gridview);
       cc->gridview = NULL;
-      cc->window   = NULL;
       return result_OK;
     }
 
@@ -1572,7 +1505,7 @@ result_t configuring_handle(wuss_window_t      *window,
     return result_OK;
 
   case wuss_EVENT_QUIT:
-    configuring_destroy(cc);
+    wuss_gridview_destroy(cc->gridview);
     return result_OK;
 
   case wuss_EVENT_KEY:
@@ -1581,6 +1514,36 @@ result_t configuring_handle(wuss_window_t      *window,
   default:
     return result_OK;
   }
+}
+
+static const taskapp_desc_t configuring_desc =
+{
+  .name          = "Configuring",
+  .purpose       = "System settings",
+  .singleton     = true,
+  .instance_size = sizeof(configuring_task_t),
+  .init          = (taskapp_init_fn_t) configuring_init,
+  .handle        = configuring_handle,
+  .all_windows   = true /* the section windows take clicks too */
+};
+
+result_t configuring_app_create(wuss_t *wuss)
+{
+  return taskapp_install(wuss, &configuring_desc);
+}
+
+static result_t configuring__spawn(wuss_t *wuss, void *param, void **out)
+{
+  NOT_USED(param);
+
+  return taskapp_instance_create(wuss, &configuring_desc, out);
+}
+
+result_t configuring_open(wuss_t *wuss)
+{
+  void *task;
+
+  return taskapp_spawn(wuss, &configuring_desc, configuring__spawn, NULL, &task);
 }
 
 #endif /* WUSS_APP */

@@ -17,18 +17,88 @@
 #include "geom/size.h"
 #include "geom/stack.h"
 #include "utils/rng.h"
+#include "wuss/component/colourmenu.h"
+#include "wuss/component/dialogue.h"
+#include "wuss/icon-spec.h"
+#include "wuss/icon.h"
+#include "wuss/menu.h"
+#include "wuss/task.h"
+#include "wuss/window.h"
 
-#include "fern.h"
+#include "../apps.h"
 #include "../common/taskapp.h"
 #include "../common/common.h"
-#include "../common/snapshot.h"
+
+/* window task: plots Michael Barnsley's iterated-function-system fern.
+ * Menu > Configuration sets the window size, the number of points plotted
+ * and the curl (a percentage scaling the small shear terms of the main frond
+ * transform: 100 is Barnsley's fern, 0 a straight stem, higher bends it
+ * over). Select re-seeds for a fresh fern and Adjust steps back; Left/Right
+ * step back and forward once the window has the input focus, and Space toggles
+ * Menu > Pause; unticked, it re-seeds every null event. The wheel zooms in and
+ * out about the centre. Menu > Colours sets the
+ * foreground and background. Menu > Randomise (^R) picks a fresh seed,
+ * curl and colours; Menu > Reset (R) restores the starting configuration,
+ * colours and seed. Menu > Save writes the window's content
+ * out. The plot is deterministic in the seed. */
+typedef struct fern_config
+{
+  int size;   /* window size (both axes) */
+  int points; /* points plotted */
+  int curl;   /* percent, 100 = Barnsley's coefficients */
+}
+fern_config_t;
+
+#define FERN_CONFIG_DEFAULT { 256, 20000, 100 }
+
+#define FERN_SIZE_MIN  128
+#define FERN_SIZE_MAX  512
+#define FERN_SIZE_STEP 64
+
+enum
+{
+  FERN_ROW_SIZE = 0,
+  FERN_ROW_POINTS,
+  FERN_ROW_CURL,
+
+  FERN_NROWS
+};
+
+typedef struct fern_conf
+{
+  wuss_dialogue_t  *dialogue;
+  wuss_slider_row_t rows[FERN_NROWS];
+  wuss_icon_t      *deflt;
+  wuss_icon_t      *cancel;
+  wuss_icon_t      *apply;
+}
+fern_conf_t;
+
+/* zoom range/step for the wheel: 1.0 fits the window, larger zooms in about
+ * the centre */
+#define FERN_ZOOM_MIN  0.3
+#define FERN_ZOOM_MAX  4.0
+#define FERN_ZOOM_STEP 0.1
+
+typedef struct fern_task
+{
+  taskapp_instance_t base;
+  fern_config_t      config;
+  colour_t           bg, fg;
+  unsigned long      seed;        /* RNG state; Select/Adjust step it */
+  fern_conf_t        conf;
+  wuss_colourlist_t  colours; /* per-instance, see saturn.c */
+  wuss_menu_item_t   menu_items[6];
+  int             animate;     /* Menu > Pause, inverted: re-seed on idle */
+  double             zoom;        /* wheel-adjustable */
+  rng_t              rng;         /* Randomise */
+}
+fern_task_t;
 
 /* Barnsley's fern: start at (0,0) and repeatedly apply one of four affine
  * maps chosen at random (1%, 85%, 7%, 7%), plotting each result. The fern
  * lies in x -2.182..2.656, y 0..9.998. config.curl scales the 0.04 shear
  * terms of the 85% map. */
-#define FERN_SAVE_NAME "fern.png"
-
 #define FERN_X_MIN (-2.2)
 #define FERN_Y_MAX 10.0
 #define FERN_SEED_STEP 0x9E3779B9UL /* golden-ratio step between ferns */
@@ -78,17 +148,7 @@ static int *fern_field(fern_task_t *task, int row)
 static result_t fern_conf_dialogue_create(fern_task_t *task);
 static result_t fern_conf_fillout(void *opaque);
 
-/* wuss_saveas_save_fn_t: opaque is the fern_task_t */
-static result_t fern_saveas_save(const char *path, void *opaque)
-{
-  fern_task_t *task;
-
-  task = opaque;
-
-  return snapshot_save_png(task->window, fern_handle, task, path);
-}
-
-/* the starting fern, as fern_create and Reset restore it */
+/* the starting fern, as fern_init and Reset restore it */
 static void fern_defaults(fern_task_t *task)
 {
   static const fern_config_t default_config = FERN_CONFIG_DEFAULT;
@@ -101,46 +161,22 @@ static void fern_defaults(fern_task_t *task)
   task->zoom    = 1.0;
 }
 
-result_t fern_create(wuss_t *wuss, fern_task_t **out)
+static result_t fern_init(fern_task_t *task)
 {
-  result_t         rc;
-  fern_task_t     *task;
-  wuss_task_t     *delegate;
-  wuss_task_desc_t delegate_desc;
+  result_t rc;
+  wuss_t  *wuss;
 
-  task = calloc(1, sizeof(*task));
-  if (task == NULL)
-    return result_OOM;
-
-  task->wuss   = wuss;
+  wuss = task->base.wuss;
   rng_seed(&task->rng, (uint32_t) rand());
   fern_defaults(task);
-
-  delegate_desc.handle    = fern_handle;
-  delegate_desc.task_data = task;
-  delegate_desc.name      = "Fern";
-  rc = wuss_task_create(wuss, &delegate_desc, &delegate);
-  if (rc != result_OK)
-  {
-    free(task);
-    return rc;
-  }
-  task->delegate = delegate;
-  wuss_task_set_autoclose(delegate, 1);
-
-  rc = snapshot_saveas_create(&task->saveas, wuss, FERN_SAVE_NAME,
-                              fern_saveas_save, task);
-  if (rc != result_OK)
-    goto fail_delegate;
 
   wuss_colourlist_init_pair(&task->colours, wuss, &task->fg, &task->bg);
 
   WUSS_MENU_ITEM_SHORTCUT(task->menu_items, FERN_MENU_PAUSE, "Pause",
                           wuss_MENU_ITEM_NONE, "SPACE");
 
-  WUSS_MENU_ITEM_SHORTCUT(task->menu_items, FERN_MENU_SAVE, "Save",
-                          wuss_MENU_ITEM_NONE, "F3");
-  task->menu_items[FERN_MENU_SAVE].window = wuss_saveas_window(task->saveas);
+  taskapp_save_row(&task->base, task->menu_items, FERN_MENU_SAVE,
+                   wuss_MENU_ITEM_NONE);
 
   WUSS_MENU_ITEM(task->menu_items, FERN_MENU_SIZE, "Configuration",
                  wuss_MENU_ITEM_DASHED | wuss_MENU_ITEM_BORROWED_SUBMENU |
@@ -155,50 +191,24 @@ result_t fern_create(wuss_t *wuss, fern_task_t **out)
   WUSS_MENU_ITEM_SHORTCUT(task->menu_items, FERN_MENU_RESET, "Reset",
                           wuss_MENU_ITEM_NONE, "R");
 
-  WUSS_MENU_TITLE(task->menu, "Fern", task->menu_items,
+  WUSS_MENU_TITLE(task->base.menu, "Fern", task->menu_items,
                   NELEMS(task->menu_items));
 
-  rc = task_window_create(delegate,
+  /* the window's size comes from the config */
+  rc = task_window_create(task->base.delegate,
                           SIZE2D(task->config.size, task->config.size),
-                          "Fern", &task->window);
+                          "Fern", &task->base.window);
   if (rc != result_OK)
-    goto fail_delegate;
+    return rc;
 
   rc = fern_conf_dialogue_create(task);
   if (rc != result_OK)
-    goto fail_delegate;
+    return rc;
 
   task->menu_items[FERN_MENU_SIZE].window =
     wuss_dialogue_window(task->conf.dialogue);
 
-  if (out)
-    *out = task;
-
   return result_OK;
-
-fail_delegate:
-  wuss_saveas_destroy(task->saveas);
-  wuss_task_destroy(delegate); /* its QUIT frees the task block */
-  return rc;
-}
-
-result_t fern_app_create(wuss_t *wuss)
-{
-  static const taskapp_desc_t desc =
-  {
-    "Fern",
-    "Barnsley fern",
-    (taskapp_create_fn_t) fern_create
-  };
-
-  return taskapp_install(wuss, &desc);
-}
-
-void fern_destroy(fern_task_t *task)
-{
-  wuss_dialogue_destroy(task->conf.dialogue);
-  wuss_saveas_destroy(task->saveas);
-  free(task);
 }
 
 static result_t fern_redraw(const wuss_event_t *event, fern_task_t *task)
@@ -263,35 +273,29 @@ static result_t fern_redraw(const wuss_event_t *event, fern_task_t *task)
   return result_OK;
 }
 
-static result_t fern_scroll(fern_task_t   *task,
-                            wuss_window_t *window,
-                            int            delta)
+static result_t fern_scroll(fern_task_t *task, int delta)
 {
-  if (window != task->window)
-    return result_OK;
-
   task->zoom += (delta > 0 ? 1 : -1) * FERN_ZOOM_STEP;
   task->zoom  = CLAMP(task->zoom, FERN_ZOOM_MIN, FERN_ZOOM_MAX);
 
-  wuss_window_invalidate_visible(task->window);
+  wuss_window_invalidate_visible(task->base.window);
 
   return result_OK;
 }
 
 static result_t fern_mouse(fern_task_t        *task,
                            wuss_mouse_action_t action,
-                           wuss_button_t       button,
-                           wuss_window_t      *window)
+                           wuss_button_t       button)
 {
-  if (action != wuss_MOUSE_DOWN || window != task->window)
+  if (action != wuss_MOUSE_DOWN)
     return result_OK;
 
   if (button & wuss_BUTTON_MENU)
   {
-    wuss_menu_tick_item(&task->menu, FERN_MENU_PAUSE, !task->animate);
+    wuss_menu_tick_item(&task->base.menu, FERN_MENU_PAUSE, !task->animate);
 
-    return wuss_menu_open_at_pointer(task->delegate, &task->menu,
-                                     &task->menu_handle);
+    return wuss_menu_open_at_pointer(task->base.delegate, &task->base.menu,
+                                     &task->base.menu_handle);
   }
 
   /* the seed step is invertible, so Adjust walks back through the ferns */
@@ -302,7 +306,7 @@ static result_t fern_mouse(fern_task_t        *task,
   else
     return result_OK;
 
-  wuss_window_invalidate_visible(window);
+  wuss_window_invalidate_visible(task->base.window);
 
   return result_OK;
 }
@@ -330,11 +334,11 @@ static result_t fern_key(fern_task_t *task, wuss_window_t *window, int code)
  * window. */
 static result_t fern_idle(fern_task_t *task)
 {
-  if (!task->animate || task->window == NULL)
+  if (!task->animate || task->base.window == NULL)
     return result_OK;
 
   task->seed += FERN_SEED_STEP;
-  wuss_window_invalidate_visible(task->window);
+  wuss_window_invalidate_visible(task->base.window);
 
   return result_OK;
 }
@@ -347,7 +351,7 @@ static result_t fern_pre_submenu_open(fern_task_t        *task,
   result_t rc;
   int      index;
 
-  if (wuss_colourlist_pre_open(&task->colours, task->wuss, event, &rc))
+  if (wuss_colourlist_pre_open(&task->colours, task->base.wuss, event, &rc))
     return rc;
 
   index = event->data.pre_submenu_open.index;
@@ -439,15 +443,15 @@ static result_t fern_conf_dialogue_create(fern_task_t *task)
     const fern_rowdesc_t *desc = &g_fern_rows[row];
     char                  widest[WUSS_SLIDER_ROW_BUF];
 
-    items[label_box[row]].axis_size = task_text_width(task->wuss, desc->label);
+    items[label_box[row]].axis_size = task_text_width(task->base.wuss, desc->label);
     snprintf(widest, sizeof(widest), "%d", desc->max);
-    items[value_box[row]].axis_size = task_text_width(task->wuss, widest);
+    items[value_box[row]].axis_size = task_text_width(task->base.wuss, widest);
     snprintf(widest, sizeof(widest), "%d", desc->min);
     items[value_box[row]].axis_size = MAX(items[value_box[row]].axis_size,
-                                          task_text_width(task->wuss, widest));
+                                          task_text_width(task->base.wuss, widest));
   }
 
-  items[ST_DFLT].min = task_button_width(task->wuss, "Default",
+  items[ST_DFLT].min = task_button_width(task->base.wuss, "Default",
                                          wuss_STD_SECONDARY_BUTTON_BORDER);
   items[ST_CNCL].min = items[ST_DFLT].min;
   items[ST_APLY].min = items[ST_DFLT].min;
@@ -456,7 +460,7 @@ static result_t fern_conf_dialogue_create(fern_task_t *task)
   if (rc != result_OK)
     return rc;
 
-  rc = wuss_dialogue_create(&task->conf.dialogue, task->delegate, min_sz,
+  rc = wuss_dialogue_create(&task->conf.dialogue, task->base.delegate, min_sz,
                             "Configuration", fern_conf_fillout, task);
   if (rc != result_OK)
     return rc;
@@ -544,21 +548,21 @@ static result_t fern_resize(fern_task_t *task, int old_size)
   result_t rc;
   int      size;
 
-  if (task->window == NULL)
+  if (task->base.window == NULL)
     return result_OK; /* fern window closed while the dialogue lingers */
 
   size = task->config.size;
   if (size != old_size)
   {
-    rc = wuss_window_resize(task->window, SIZE2D(size, size));
+    rc = wuss_window_resize(task->base.window, SIZE2D(size, size));
     if (rc != result_OK)
       return rc;
-    rc = wuss_window_set_doc(task->window, SIZE2D(size, size));
+    rc = wuss_window_set_doc(task->base.window, SIZE2D(size, size));
     if (rc != result_OK)
       return rc;
   }
 
-  wuss_window_invalidate_visible(task->window);
+  wuss_window_invalidate_visible(task->base.window);
 
   return result_OK;
 }
@@ -584,8 +588,8 @@ static result_t fern_conf_cancel(void *opaque, wuss_button_t button)
 
   if (button & wuss_BUTTON_SELECT)
   {
-    wuss_menu_close(task->menu_handle);
-    task->menu_handle = NULL;
+    wuss_menu_close(task->base.menu_handle);
+    task->base.menu_handle = NULL;
   }
   else if (button & wuss_BUTTON_ADJUST)
   {
@@ -604,8 +608,8 @@ static result_t fern_conf_apply_action(void *opaque, wuss_button_t button)
 
   if (button & wuss_BUTTON_SELECT)
   {
-    wuss_menu_close(task->menu_handle);
-    task->menu_handle = NULL;
+    wuss_menu_close(task->base.menu_handle);
+    task->base.menu_handle = NULL;
   }
   else if (!(button & wuss_BUTTON_ADJUST))
   {
@@ -652,47 +656,44 @@ static result_t fern_conf_dialogue_icon(fern_task_t        *task,
 static result_t fern_menu_select(fern_task_t        *task,
                                  const wuss_event_t *event)
 {
-  if (wuss_menu_select_is(event, &task->menu, FERN_MENU_PAUSE))
+  if (wuss_menu_select_is(event, &task->base.menu, FERN_MENU_PAUSE))
   {
     task->animate = !task->animate;
-    wuss_menu_tick_item_live(task->menu_handle, &task->menu,
+    wuss_menu_tick_item_live(task->base.menu_handle, &task->base.menu,
                              FERN_MENU_PAUSE, !task->animate);
     return result_OK;
   }
 
-  if (wuss_menu_select_is(event, &task->menu, FERN_MENU_SAVE))
-    return wuss_saveas_open(task->saveas);
-
-  if (wuss_menu_select_is(event, &task->menu, FERN_MENU_RANDOMISE))
+  if (wuss_menu_select_is(event, &task->base.menu, FERN_MENU_RANDOMISE))
   {
     task->seed        = rng_xorshift32(&task->rng);
     task->config.curl = rng_range(&task->rng, 601) - 300;
     task->bg          = colour_random(&task->rng);
     task->fg          = colour_random_contrast(&task->rng, task->bg);
-    wuss_window_invalidate_visible(task->window);
+    wuss_window_invalidate_visible(task->base.window);
     return result_OK;
   }
 
-  if (wuss_menu_select_is(event, &task->menu, FERN_MENU_RESET))
+  if (wuss_menu_select_is(event, &task->base.menu, FERN_MENU_RESET))
   {
     int old_size;
 
     old_size = task->config.size;
     fern_defaults(task);
-    wuss_menu_tick_item_live(task->menu_handle, &task->menu,
+    wuss_menu_tick_item_live(task->base.menu_handle, &task->base.menu,
                              FERN_MENU_PAUSE, !task->animate);
     return fern_resize(task, old_size);
   }
 
   if (wuss_colourlist_selected(&task->colours, event))
-    wuss_window_invalidate_visible(task->window);
+    wuss_window_invalidate_visible(task->base.window);
 
   return result_OK;
 }
 
-result_t fern_handle(wuss_window_t      *window,
-                     const wuss_event_t *event,
-                     void               *task_data)
+static result_t fern_handle(wuss_window_t      *window,
+                            const wuss_event_t *event,
+                            void               *task_data)
 {
   fern_task_t *task;
 
@@ -705,19 +706,16 @@ result_t fern_handle(wuss_window_t      *window,
 
   case wuss_EVENT_MOUSE:
     return fern_mouse(task, event->data.mouse.action,
-                      event->data.mouse.button, window);
+                      event->data.mouse.button);
 
   case wuss_EVENT_SCROLL:
-    return fern_scroll(task, window, event->data.scroll.delta);
+    return fern_scroll(task, event->data.scroll.delta);
 
   case wuss_EVENT_KEY:
   {
     result_t rc;
 
-    if (window != task->window)
-      return result_WUSS_KEY_UNCLAIMED;
-
-    if (!task_key_is_plain(task->delegate, &task->menu, event, &rc))
+    if (!task_key_is_plain(task->base.delegate, &task->base.menu, event, &rc))
       return rc;
 
     return fern_key(task, window, event->data.key.code);
@@ -757,21 +755,30 @@ result_t fern_handle(wuss_window_t      *window,
 
   case wuss_EVENT_CLOSE:
     wuss_dialogue_handle_close(task->conf.dialogue, window);
-    if (window == task->window)
-      task->window = NULL;
-    return result_OK;
-
-  case wuss_EVENT_MENU_CLOSED:
-    task->menu_handle = NULL;
     return result_OK;
 
   case wuss_EVENT_QUIT:
-    fern_destroy(task);
+    wuss_dialogue_destroy(task->conf.dialogue);
     return result_OK;
 
   default:
     return result_OK;
   }
+}
+
+result_t fern_app_create(wuss_t *wuss)
+{
+  static const taskapp_desc_t desc =
+  {
+    .name          = "Fern",
+    .purpose       = "Barnsley fern",
+    .instance_size = sizeof(fern_task_t),
+    .init          = (taskapp_init_fn_t) fern_init,
+    .handle        = fern_handle,
+    .save_name     = "fern.png"
+  };
+
+  return taskapp_install(wuss, &desc);
 }
 
 #endif /* WUSS_APP */

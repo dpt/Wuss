@@ -15,18 +15,93 @@
 #include "base/debug.h"
 #include "base/utils.h"
 #include "framebuf/bitmap.h"
+#include "framebuf/colour.h"
 #include "framebuf/pixelfmt.h"
 #include "framebuf/screen.h"
 #include "geom/box.h"
 #include "geom/stack.h"
 #include "utils/array.h"
+#include "utils/rng.h"
+#include "wuss/component/colourpicker.h"
+#include "wuss/gadget/colourset.h"
+#include "wuss/icon-spec.h"
 #include "wuss/icon.h"
+#include "wuss/menu.h"
 #include "wuss/task.h"
+#include "wuss/window.h"
 
-#include "orbing.h"
-#include "../common/snapshot.h"
+#include "../apps.h"
+#include "../common/dithermenu.h"
 #include "../common/taskapp.h"
 #include "../common/common.h"
+
+#define ORBING_NLIGHTS 4
+#define ORBING_NROWS   5 /* control strip slider rows */
+#define ORBING_NCOLOURS 3 /* control strip colour sets */
+
+/* one of the fixed lights: a unit direction from the sphere's centre (x
+ * right, y up, z towards the viewer; negative z is behind the sphere), a
+ * colour, an intensity in percent (100 = the colour as-is) and the size and
+ * sharpness of the highlight it makes */
+typedef struct orbing_light
+{
+  int      on;
+  double   x, y, z;
+  colour_t colour;
+  int      intensity;
+  int      size;      /* 0..100: highlight size */
+  int      sharpness; /* 0..100: highlight edge hardness */
+}
+orbing_light_t;
+
+/* window task: a single sphere, shaded per pixel by up to four coloured lights,
+ * in the spirit of Kai's Power Tools' Spheroid Designer. The sphere fills the
+ * window right of a fixed control strip framed in three groups: Background
+ * (its colour set), Sphere (ambient, glow and its colour set) and the current
+ * light's (its highlight size and sharpness, its level, an On option and its
+ * colour set); the sphere scales with the window. Each lit light shows
+ * as a ring marker (dotted when behind the sphere, filled when current). A
+ * Select click on a marker makes that light current; anywhere else it moves the
+ * current light there (turning it on), and dragging keeps moving it. The arrow
+ * keys move it too, a pixel at a time (eight with Shift). Inside the disc the
+ * light faces the surface under the pointer; the band just outside wraps it
+ * round to the back. Menu > Light (or keys 1-4) picks the current light; O
+ * switches it on or off, as its On option does. Each colour set's button
+ * opens a true-colour picker on its colour; Light colour... (C) opens it on
+ * the current light's. Dithering picks how the preview is blitted to a paletted screen.
+ * Mutate (M) nudges the sliders, the lit lights' directions and the colours'
+ * hues; Randomise (^R) picks every setting afresh, keeping at least one light
+ * on; Reset (R) restores the defaults; Save (F3) opens a Save As dialogue
+ * that writes the sphere alone, transparent outside its edge. */
+typedef struct orbing_task
+{
+  taskapp_instance_t base;
+  wuss_menu_item_t   menu_items[7]; /* per-instance, not a shared static */
+  /* "Light" submenu: one row per light */
+  wuss_menu_item_t   light_items[ORBING_NLIGHTS];
+  wuss_menu_t        light_menu;
+  dithermenu_t       dither;     /* "Display" submenu */
+  screen_dither_t    dithering;  /* how the preview is blitted */
+  int                current;    /* index of the light a drag moves */
+  int                dragging;   /* non-zero while a Select drag is live */
+  orbing_light_t   lights[ORBING_NLIGHTS];
+  colour_t           sphere;     /* surface colour */
+  colour_t           background; /* colour outside the sphere */
+  int                ambient;    /* 0..100 */
+  int                glow;       /* 0..100: rim light in the surface colour */
+  wuss_slider_row_t  rows[ORBING_NROWS];
+  wuss_icon_t       *light_frame; /* captioned with the current light */
+  wuss_icon_t       *on_icon;     /* the current light's On option */
+  wuss_colourset_t  *colour_sets[ORBING_NCOLOURS]; /* sphere, background,
+                                                     * current light */
+  rng_t              rng;        /* for Mutate and Randomise */
+  wuss_colourpicker_t *picker;      /* any 24-bit colour */
+  int                  picker_which; /* ORBING_COLOUR_* it edits */
+  int                  picker_light; /* index of the light it edits */
+  unsigned int        *pixels;       /* preview paint buffer; only ever grows */
+  int                  allocated;    /* elements in pixels */
+}
+orbing_task_t;
 
 /* After Kai's Power Tools 3's Spheroid Designer (MetaTools, 1995): one big
  * sphere lit by up to four coloured lights, with knobs for the highlight's
@@ -61,8 +136,6 @@
 #define ORBING_SHOVE  8    /* px a Shift-arrow moves it */
 
 #define ORBING_DITHER_TILE 64 /* px; the blue-noise map's size */
-
-#define ORBING_SAVE_NAME "orbing.png" /* Save As's initial leafname */
 
 #define ORBING_MUTATE_SLIDER 15   /* max slider nudge, % of its range */
 #define ORBING_MUTATE_LIGHT  0.35 /* max direction nudge, ~sin(20 deg) */
@@ -381,14 +454,14 @@ static void orbing_invalidate_preview(orbing_task_t *task)
 {
   box_t content, pane;
 
-  if (task->window == NULL)
+  if (task->base.window == NULL)
     return;
 
-  wuss_window_get_content_bounds(task->window, &content);
+  wuss_window_get_content_bounds(task->base.window, &content);
   pane = (box_t) BOX_POS_SIZE(ORBING_STRIP, 0,
                               MAX(box_size(&content).w - ORBING_STRIP, 0),
                               box_size(&content).h);
-  wuss_window_invalidate(task->window, &pane);
+  wuss_window_invalidate(task->base.window, &pane);
 }
 
 /* point the light at content-local (px, py) */
@@ -582,7 +655,7 @@ static void orbing_picker_changed(colour_t colour, void *opaque)
 
   task = opaque;
 
-  if (task->window == NULL)
+  if (task->base.window == NULL)
     return; /* closing: the QUIT that frees the picker is on its way */
 
   if (task->picker_which == ORBING_COLOUR_LIGHT)
@@ -607,7 +680,7 @@ static result_t orbing_strip_create(orbing_task_t *task, int height)
   wuss_icon_t     *made[SI__LIMIT];
   int              row, item, icon, which;
 
-  orbing_strip_items(task->wuss, items);
+  orbing_strip_items(task->base.wuss, items);
 
   root = (box_t) BOX_POS_SIZE(0, 0, ORBING_STRIP, height);
   rc = stack_solve(items, NELEMS(items), &root, boxes);
@@ -640,13 +713,13 @@ static result_t orbing_strip_create(orbing_task_t *task, int height)
                        wuss_ICON_FLAGS_JUSTIFY_RIGHT);
   wuss_icon_spec_option(&specs[SI_ON], boxes[SS_ON], "");
 
-  rc = wuss_icon_create_array(task->window, specs, NELEMS(specs), made);
+  rc = wuss_icon_create_array(task->base.window, specs, NELEMS(specs), made);
   if (rc != result_OK)
     return rc;
 
   task->light_frame = made[SI_LIGHT];
   task->on_icon     = made[SI_ON];
-  wuss_icon_set_selected(task->window, task->on_icon,
+  wuss_icon_set_selected(task->base.window, task->on_icon,
                          task->lights[task->current].on);
 
   for (which = 0; which < ORBING_NCOLOURS; which++)
@@ -654,8 +727,8 @@ static result_t orbing_strip_create(orbing_task_t *task, int height)
     /* end the field where the sliders end, the button in the value column */
     line     = boxes[SS_COLOUR + which];
     line.x1  = boxes[SS_ROW + 2].x1 + wuss_STD_GAP;
-    line.x1 += wuss_colourset_button_width(task->wuss, line.y1 - line.y0);
-    rc = wuss_colourset_create(&task->colour_sets[which], task->window,
+    line.x1 += wuss_colourset_button_width(task->base.wuss, line.y1 - line.y0);
+    rc = wuss_colourset_create(&task->colour_sets[which], task->base.window,
                                line, "Colour",
                                boxes[SS_ROW + 1].x1 - boxes[SS_ROW + 1].x0,
                                /* line up with the sliders */
@@ -677,18 +750,15 @@ static result_t orbing_strip_create(orbing_task_t *task, int height)
   return result_OK;
 }
 
-/* defined below, alongside orbing_save */
-static result_t orbing_saveas_save(const char *path, void *opaque);
-
-result_t orbing_create(wuss_t *wuss, orbing_task_t **out)
+static result_t orbing_init(orbing_task_t *task)
 {
-  result_t         rc;
-  orbing_task_t   *task;
-  wuss_task_t     *delegate;
-  wuss_task_desc_t delegate_desc;
-  stack_item_t     items[SS__LIMIT];
-  size2d_t         strip_sz;
-  int              i;
+  result_t     rc;
+  wuss_t      *wuss;
+  stack_item_t items[SS__LIMIT];
+  size2d_t     strip_sz;
+  int          i;
+
+  wuss = task->base.wuss;
 
   /* the strip sets the window's minimum height */
   orbing_strip_items(wuss, items);
@@ -696,31 +766,14 @@ result_t orbing_create(wuss_t *wuss, orbing_task_t **out)
   if (rc != result_OK)
     return rc;
 
-  task = calloc(1, sizeof(*task));
-  if (task == NULL)
-    return result_OOM;
-
-  task->wuss      = wuss;
   task->dithering = screen_DITHER_BLUE_NOISE;
   orbing_defaults(task);
   rng_seed(&task->rng, (uint32_t) rand());
 
-  delegate_desc.handle    = orbing_handle;
-  delegate_desc.task_data = task;
-  delegate_desc.name      = "Orbing";
-  rc = wuss_task_create(wuss, &delegate_desc, &delegate);
-  if (rc != result_OK)
-  {
-    free(task); /* nothing registered yet; nobody else owns it */
-    return rc;
-  }
-  wuss_task_set_autoclose(delegate, 1);
-  task->delegate = delegate;
-
   /* no scrollbars: the sphere is laid out across the visible content, so a
    * resize must redraw all of it and doc is only the growth ceiling. wuss
    * fills the strip's background; the redraw paints the preview pane */
-  rc = wuss_window_create_at(delegate,
+  rc = wuss_window_create_at(task->base.delegate,
                              &task_place,
                              SIZE2D(ORBING_STRIP + 240,
                                     MAX(240, strip_sz.h)),
@@ -732,46 +785,26 @@ result_t orbing_create(wuss_t *wuss, orbing_task_t **out)
                              wuss_BACKDROP_COLOUR(wuss_COLOUR_WINDOW),
                              SIZE2D(1024, 1024),
                              SIZE2D(ORBING_STRIP + 64, strip_sz.h),
-                             &task->window);
+                             &task->base.window);
   if (rc != result_OK)
-  {
-    wuss_task_destroy(delegate); /* unregister; its QUIT frees the task block */
     return rc;
-  }
 
   rc = orbing_strip_create(task, strip_sz.h);
   if (rc != result_OK)
-  {
-    wuss_window_close(task->window); /* its QUIT frees the task block */
     return rc;
-  }
-
-  rc = snapshot_saveas_create(&task->saveas, wuss, ORBING_SAVE_NAME,
-                              orbing_saveas_save, task);
-  if (rc != result_OK)
-  {
-    wuss_window_close(task->window); /* its QUIT frees both */
-    return rc;
-  }
 
   rc = wuss_colourpicker_create(&task->picker, wuss, NULL,
                                 orbing_picker_changed, task);
   if (rc != result_OK)
-  {
-    wuss_window_close(task->window); /* its QUIT frees all three */
     return rc;
-  }
 
   dithermenu_init(&task->dither, task->dithering);
 
   WUSS_MENU_ITEM_MENU(task->menu_items, ORBING_MENU_DISPLAY, "Display",
                       wuss_MENU_ITEM_NONE, &task->dither.display);
 
-  WUSS_MENU_ITEM_SHORTCUT(task->menu_items, ORBING_MENU_SAVE, "Save",
-                          wuss_MENU_ITEM_DASHED, "F3");
-  /* hover opens the Save As dialogue as a submenu; F3 shows it standalone */
-  task->menu_items[ORBING_MENU_SAVE].window =
-    wuss_saveas_window(task->saveas);
+  taskapp_save_row(&task->base, task->menu_items, ORBING_MENU_SAVE,
+                   wuss_MENU_ITEM_DASHED);
 
   for (i = 0; i < ORBING_NLIGHTS; i++)
   {
@@ -802,37 +835,20 @@ result_t orbing_create(wuss_t *wuss, orbing_task_t **out)
   WUSS_MENU_ITEM_SHORTCUT(task->menu_items, ORBING_MENU_RESET, "Reset",
                           wuss_MENU_ITEM_NONE, "R");
 
-  WUSS_MENU_TITLE(task->menu, "Orbing", task->menu_items,
+  WUSS_MENU_TITLE(task->base.menu, "Orbing", task->menu_items,
                   NELEMS(task->menu_items));
-
-  if (out)
-    *out = task;
 
   return result_OK;
 }
 
-result_t orbing_app_create(wuss_t *wuss)
-{
-  static const taskapp_desc_t desc =
-  {
-    "Orbing",
-    "Lit sphere designer",
-    (taskapp_create_fn_t) orbing_create
-  };
-
-  return taskapp_install(wuss, &desc);
-}
-
-void orbing_destroy(orbing_task_t *task)
+static void orbing_quit(orbing_task_t *task)
 {
   int which;
 
   for (which = 0; which < ORBING_NCOLOURS; which++)
     wuss_colourset_destroy(task->colour_sets[which]);
   wuss_colourpicker_destroy(task->picker);
-  wuss_saveas_destroy(task->saveas);
   free(task->pixels);
-  free(task);
 }
 
 /* shade the dirty part of the preview pane into the task's bgra8888 buffer and
@@ -952,16 +968,16 @@ static void orbing_sync_light(orbing_task_t *task)
 {
   int row;
 
-  if (task->window == NULL)
+  if (task->base.window == NULL)
     return;
 
   /* ponytail: an OOM here only leaves the caption or a value label stale */
-  (void) wuss_icon_set_text(task->window, task->light_frame,
+  (void) wuss_icon_set_text(task->base.window, task->light_frame,
                             orbing_light_names[task->current]);
   for (row = ORBING_ROW_SIZE; row < ORBING_NROWS; row++)
-    (void) wuss_slider_row_set(task->window, &task->rows[row],
+    (void) wuss_slider_row_set(task->base.window, &task->rows[row],
                                *orbing_row_field(task, row));
-  wuss_icon_set_selected(task->window, task->on_icon,
+  wuss_icon_set_selected(task->base.window, task->on_icon,
                          task->lights[task->current].on);
   orbing_sync_colours(task);
 }
@@ -970,7 +986,7 @@ static void orbing_sync_light(orbing_task_t *task)
 static void orbing_light_on(orbing_task_t *task)
 {
   task->lights[task->current].on = 1;
-  wuss_icon_set_selected(task->window, task->on_icon, 1);
+  wuss_icon_set_selected(task->base.window, task->on_icon, 1);
 }
 
 /* put every strip control back in step with its field */
@@ -978,12 +994,12 @@ static void orbing_sync_rows(orbing_task_t *task)
 {
   int row;
 
-  if (task->window == NULL)
+  if (task->base.window == NULL)
     return;
 
   /* ponytail: an OOM here only leaves a value label stale */
   for (row = 0; row < ORBING_ROW_SIZE; row++)
-    (void) wuss_slider_row_set(task->window, &task->rows[row],
+    (void) wuss_slider_row_set(task->base.window, &task->rows[row],
                                *orbing_row_field(task, row));
   orbing_sync_light(task);
 }
@@ -1124,10 +1140,10 @@ static result_t orbing_save(orbing_task_t *task, const char *path)
   double         n[3], rgb[3];
   bitmap_t       bm;
 
-  if (task->window == NULL)
+  if (task->base.window == NULL)
     return result_OK;
 
-  wuss_window_get_content_bounds(task->window, &content);
+  wuss_window_get_content_bounds(task->base.window, &content);
   orbing_layout(box_size(&content), &cx, &cy, &r);
   if (r < 1.0)
     return result_OK; /* window too small to show a sphere */
@@ -1209,10 +1225,6 @@ static result_t orbing_mouse(orbing_task_t      *task,
   double cx, cy, r;
   int    hit;
 
-  if (window != task->window)
-    return result_OK; /* the proginfo dialogue has no click behaviour of
-                       * its own */
-
   if (action == wuss_MOUSE_UP)
   {
     task->dragging = 0;
@@ -1224,8 +1236,8 @@ static result_t orbing_mouse(orbing_task_t      *task,
     wuss_menu_tick_exclusive(&task->light_menu, task->current);
     wuss_menu_tick_exclusive(&task->dither.menu, (int) task->dithering);
 
-    return wuss_menu_open_at_pointer(task->delegate, &task->menu,
-                                     &task->menu_handle);
+    return wuss_menu_open_at_pointer(task->base.delegate, &task->base.menu,
+                                     &task->base.menu_handle);
   }
 
   if (action == wuss_MOUSE_DOWN &&
@@ -1276,13 +1288,13 @@ static result_t orbing_key(orbing_task_t    *task,
   if (event->data.key.code == 'O' || event->data.key.code == 'o')
   {
     task->lights[task->current].on = !task->lights[task->current].on;
-    wuss_icon_set_selected(task->window, task->on_icon,
+    wuss_icon_set_selected(task->base.window, task->on_icon,
                            task->lights[task->current].on);
     orbing_invalidate_preview(task);
     return result_OK;
   }
 
-  wuss_window_get_content_bounds(task->window, &content);
+  wuss_window_get_content_bounds(task->base.window, &content);
   orbing_layout(box_size(&content), &cx, &cy, &r);
 
   step = (event->data.key.modifiers & wuss_KEY_MOD_SHIFT) ? ORBING_SHOVE
@@ -1323,7 +1335,7 @@ static result_t orbing_menu_select(orbing_task_t      *task,
 {
   int index;
 
-  if (event->data.menu_select.menu == &task->menu)
+  if (event->data.menu_select.menu == &task->base.menu)
   {
     switch (event->data.menu_select.index)
     {
@@ -1342,9 +1354,6 @@ static result_t orbing_menu_select(orbing_task_t      *task,
       orbing_defaults(task);
       break;
 
-    case ORBING_MENU_SAVE:
-      return wuss_saveas_open(task->saveas);
-
     default:
       return result_OK; /* a pick on a submenu row itself */
     }
@@ -1358,7 +1367,7 @@ static result_t orbing_menu_select(orbing_task_t      *task,
 
   if (event->data.menu_select.menu == &task->dither.menu)
   {
-    task->dithering = dithermenu_select(&task->dither, task->menu_handle,
+    task->dithering = dithermenu_select(&task->dither, task->base.menu_handle,
                                         index);
     orbing_invalidate_preview(task);
     return result_OK;
@@ -1370,7 +1379,8 @@ static result_t orbing_menu_select(orbing_task_t      *task,
   task->current = index;
   orbing_sync_light(task);
 
-  wuss_menu_tick_exclusive_live(task->menu_handle, &task->light_menu, index);
+  wuss_menu_tick_exclusive_live(task->base.menu_handle, &task->light_menu,
+                                index);
 
   orbing_invalidate_preview(task);
 
@@ -1423,9 +1433,9 @@ static result_t orbing_icon(orbing_task_t      *task,
   return result_OK;
 }
 
-result_t orbing_handle(wuss_window_t      *window,
-                       const wuss_event_t *event,
-                       void               *task_data)
+static result_t orbing_handle(wuss_window_t      *window,
+                              const wuss_event_t *event,
+                              void               *task_data)
 {
   orbing_task_t *task;
 
@@ -1445,10 +1455,8 @@ result_t orbing_handle(wuss_window_t      *window,
   {
     result_t rc;
 
-    if (window != task->window)
-      return result_WUSS_KEY_UNCLAIMED; /* not the proginfo dialogue */
-
-    rc = wuss_menu_dispatch_shortcut(task->delegate, &task->menu, event);
+    rc = wuss_menu_dispatch_shortcut(task->base.delegate, &task->base.menu,
+                                     event);
     if (rc != result_WUSS_KEY_UNCLAIMED)
       return rc;
 
@@ -1459,26 +1467,33 @@ result_t orbing_handle(wuss_window_t      *window,
     return orbing_menu_select(task, event);
 
   case wuss_EVENT_ICON:
-    if (window != task->window)
+    if (window != task->base.window)
       return result_OK;
     return orbing_icon(task, window, event);
 
-  case wuss_EVENT_MENU_CLOSED:
-    task->menu_handle = NULL;
-    return result_OK;
-
-  case wuss_EVENT_CLOSE:
-    if (window == task->window)
-      task->window = NULL;
-    return result_OK;
-
   case wuss_EVENT_QUIT:
-    orbing_destroy(task);
+    orbing_quit(task);
     return result_OK;
 
   default:
     return result_OK;
   }
+}
+
+result_t orbing_app_create(wuss_t *wuss)
+{
+  static const taskapp_desc_t desc =
+  {
+    .name          = "Orbing",
+    .purpose       = "Lit sphere designer",
+    .instance_size = sizeof(orbing_task_t),
+    .init          = (taskapp_init_fn_t) orbing_init,
+    .handle        = orbing_handle,
+    .save_name     = "orbing.png",
+    .save          = orbing_saveas_save
+  };
+
+  return taskapp_install(wuss, &desc);
 }
 
 #endif /* WUSS_APP */

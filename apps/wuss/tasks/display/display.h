@@ -9,6 +9,8 @@
 #include "wuss/menu.h"
 #include "wuss/window.h"
 
+#include "../common/taskapp.h"
+
 /* window D's task: a small window, after RISC OS's Display Manager, with
  * string sets for colour depth, resolution and zoom (1x-4x), and options for
  * the CRT effect and Software pointer, showing the current settings. Nothing
@@ -20,9 +22,7 @@
  * settings in force. */
 typedef struct display_task
 {
-  wuss_t             *wuss;
-  wuss_task_t        *delegate;
-  wuss_window_t      *window;
+  taskapp_instance_t  base;
   wuss_stringset_t   *zoom;
   wuss_stringset_t   *colours;
   wuss_stringset_t   *resolution;
@@ -33,21 +33,11 @@ typedef struct display_task
 }
 display_task_t;
 
-wuss_window_fn_t display_handle;
-
-/* create the display-mode window against the given wuss instance. if
- * out is non-NULL, the task block is also returned through it */
-result_t display_create(wuss_t *wuss, display_task_t **out);
-
 /* install the icon bar app that opens display windows on demand */
 result_t display_app_create(wuss_t *wuss);
 
 /* open a display window now; the app must be installed first */
 result_t display_open(wuss_t *wuss);
-
-/* free a task block allocated by display_create; normally called by the
- * window's wuss_EVENT_QUIT handler, not by callers directly */
-void display_destroy(display_task_t *task);
 
 #endif /* WUSS_APP */
 

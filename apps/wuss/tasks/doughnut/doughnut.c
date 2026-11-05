@@ -11,15 +11,70 @@
 #endif
 
 #include "base/utils.h"
+#include "framebuf/colour.h"
 #include "framebuf/palettes.h"
 #include "framebuf/screen.h"
 #include "geom/box.h"
+#include "utils/rng.h"
+#include "wuss/component/colourmenu.h"
+#include "wuss/menu.h"
 #include "wuss/task.h"
+#include "wuss/window.h"
 
-#include "doughnut.h"
+#include "../apps.h"
 #include "../common/taskapp.h"
 #include "../common/common.h"
-#include "../common/snapshot.h"
+
+/* window task: Andy Sloane's "donut.c" torus render (the classic terminal
+ * spinning-doughnut demo), ray-marched per pixel and shaded by
+ * surface-normal brightness, redrawn every idle tick with the two rotation
+ * angles advanced a little. Select or Menu > Pause toggles pause (and Select
+ * takes the input focus); the wheel zooms in/out; an Adjust drag spins the
+ * torus directly, overriding the idle auto-rotation for as long as it's
+ * held. Space also toggles pause; while paused the arrow keys step the
+ * rotation. Menu > Tube picks the tube's thickness; Menu > Major density
+ * and Minor density pick how many points are sampled round the ring and
+ * the tube ([ and ] step the major density, comma and full stop the
+ * minor, minus and plus the tube); Menu > Randomise (^R)
+ * picks every setting afresh; Menu > Reset (R) restores the starting
+ * angles, zoom, tube, densities and colours; Menu > Save opens a Save As
+ * dialogue (drag its icon onto a Filer window, or Save with a full path
+ * already typed) that writes the window's content out. */
+typedef struct doughnut_task
+{
+  taskapp_instance_t base;
+  wuss_menu_item_t   menu_items[8]; /* per-instance, not a shared static */
+  wuss_menu_item_t   tube_items[4]; /* "Tube" submenu: one row per radius */
+  wuss_menu_t        tube_menu;
+  int                tube;    /* index into doughnut_tubes */
+  wuss_menu_item_t   major_items[5]; /* "Major density": ring samples */
+  wuss_menu_t        major_menu;
+  wuss_menu_item_t   minor_items[5]; /* "Minor density": tube samples */
+  wuss_menu_t        minor_menu;
+  int                major, minor; /* indices into doughnut_densities */
+  rng_t              rng;     /* Randomise */
+  wuss_colourlist_t  colours; /* Foreground/Background submenu */
+  colour_t           fg, bg;  /* picked from the shared colourmenu */
+  colour_t           palette[256]; /* shade bitmap's palette: 0 = bg,
+                                    * 1..255 = ramp from black up to fg */
+  double             a, b;    /* rotation angles about the x and z axes */
+  double             zoom;    /* scales k1; wheel steps this, clamped */
+  int                paused;  /* Select or Menu > Pause toggles; idle
+                               * skips advancing a/b, arrow keys step
+                               * them */
+  int                dragging;   /* non-zero while an Adjust drag is live */
+  int                drag_x, drag_y; /* last drag point, content space */
+  double            *zbuf;    /* redraw's z-buffer, kept between redraws */
+  unsigned char     *shade;   /* redraw's grey level per z-buffer cell */
+  size_t             ncells;  /* capacity of zbuf/shade; grown as needed */
+}
+doughnut_task_t;
+
+/* zoom range/step for the wheel: 1.0 is the original framing, larger zooms
+ * in, smaller zooms out */
+#define DOUGHNUT_ZOOM_MIN  0.3
+#define DOUGHNUT_ZOOM_MAX  3.0
+#define DOUGHNUT_ZOOM_STEP 0.1
 
 /* Andy Sloane's "donut.c" (www.a1k0n.net/2011/07/20/donut-math.html):
  * a torus (tube radius R1, ring radius R2) is swept over its two surface
@@ -45,8 +100,6 @@ enum
   DOUGHNUT_MENU_RANDOMISE,
   DOUGHNUT_MENU_RESET
 };
-
-#define DOUGHNUT_SAVE_NAME "doughnut.png" /* Save As's initial leafname */
 
 /* "Tube" submenu rows: tube radius R1, kept below DOUGHNUT_R2 so the hole
  * stays open */
@@ -166,17 +219,7 @@ static void doughnut_palette_build(doughnut_task_t *task)
     task->palette[i] = colour_rgb(r * i / 255, g * i / 255, b * i / 255);
 }
 
-/* wuss_saveas_save_fn_t: opaque is the doughnut_task_t */
-static result_t doughnut_saveas_save(const char *path, void *opaque)
-{
-  doughnut_task_t *task;
-
-  task = opaque;
-
-  return snapshot_save_png(task->window, doughnut_handle, task, path);
-}
-
-/* the starting view, as doughnut_create and Reset restore it */
+/* the starting view, as doughnut_init and Reset restore it */
 static void doughnut_defaults(doughnut_task_t *task)
 {
   task->a     = 1.0;
@@ -203,63 +246,22 @@ static void doughnut_randomise(doughnut_task_t *task)
   doughnut_palette_build(task);
 }
 
-result_t doughnut_create(wuss_t *wuss, doughnut_task_t **out)
+static result_t doughnut_init(doughnut_task_t *task)
 {
-  result_t         rc;
-  doughnut_task_t *task;
-  wuss_task_t     *delegate;
-  wuss_task_desc_t delegate_desc;
-  int              i;
+  wuss_t *wuss;
+  int     i;
 
-  task = calloc(1, sizeof(*task));
-  if (task == NULL)
-    return result_OOM;
-
-  task->wuss = wuss;
+  wuss = task->base.wuss;
   rng_seed(&task->rng, (uint32_t) rand());
   doughnut_defaults(task);
-
-  /* doughnut_redraw paints its own background every frame */
-  delegate_desc.handle    = doughnut_handle;
-  delegate_desc.task_data = task;
-  delegate_desc.name      = "Doughnut";
-  rc = wuss_task_create(wuss, &delegate_desc, &delegate);
-  if (rc != result_OK)
-  {
-    free(task); /* nothing registered yet; nobody else owns it */
-    return rc;
-  }
-  wuss_task_set_autoclose(delegate, 1);
-  task->delegate = delegate;
-
-  rc = task_window_create(delegate,
-                          SIZE2D(200, 200),
-                          "Doughnut",
-                          &task->window);
-  if (rc != result_OK)
-  {
-    wuss_task_destroy(delegate); /* unregister; its QUIT frees the task block */
-    return rc;
-  }
-
-  rc = snapshot_saveas_create(&task->saveas, wuss, DOUGHNUT_SAVE_NAME,
-                              doughnut_saveas_save, task);
-  if (rc != result_OK)
-  {
-    wuss_task_destroy(delegate);
-    return rc;
-  }
 
   wuss_colourlist_init_pair(&task->colours, wuss, &task->fg, &task->bg);
 
   WUSS_MENU_ITEM_SHORTCUT(task->menu_items, DOUGHNUT_MENU_PAUSE, "Pause",
                           wuss_MENU_ITEM_NONE, "SPACE");
 
-  WUSS_MENU_ITEM_SHORTCUT(task->menu_items, DOUGHNUT_MENU_SAVE, "Save",
-                          wuss_MENU_ITEM_NONE, "F3");
-  /* hover opens the Save As dialogue as a submenu; F3 shows it standalone */
-  task->menu_items[DOUGHNUT_MENU_SAVE].window =
-    wuss_saveas_window(task->saveas);
+  taskapp_save_row(&task->base, task->menu_items, DOUGHNUT_MENU_SAVE,
+                   wuss_MENU_ITEM_NONE);
 
   for (i = 0; i < NELEMS(task->tube_items); i++)
     WUSS_MENU_ITEM(task->tube_items, i, doughnut_tubes[i].name,
@@ -301,33 +303,10 @@ result_t doughnut_create(wuss_t *wuss, doughnut_task_t **out)
   WUSS_MENU_ITEM_SHORTCUT(task->menu_items, DOUGHNUT_MENU_RESET, "Reset",
                           wuss_MENU_ITEM_NONE, "R");
 
-  WUSS_MENU_TITLE(task->menu, "Doughnut", task->menu_items,
+  WUSS_MENU_TITLE(task->base.menu, "Doughnut", task->menu_items,
                  NELEMS(task->menu_items));
 
-  if (out)
-    *out = task;
-
   return result_OK;
-}
-
-result_t doughnut_app_create(wuss_t *wuss)
-{
-  static const taskapp_desc_t desc =
-  {
-    "Doughnut",
-    "Spinning ray-marched torus",
-    (taskapp_create_fn_t) doughnut_create
-  };
-
-  return taskapp_install(wuss, &desc);
-}
-
-void doughnut_destroy(doughnut_task_t *task)
-{
-  wuss_saveas_destroy(task->saveas);
-  free(task->zbuf);
-  free(task->shade);
-  free(task);
 }
 
 static result_t doughnut_redraw(const wuss_event_t *event,
@@ -446,10 +425,6 @@ static result_t doughnut_mouse(doughnut_task_t    *task,
                                wuss_button_t       button,
                                wuss_window_t      *window)
 {
-  if (window != task->window)
-    return result_OK; /* the proginfo dialogue has no click behaviour of
-                       * its own */
-
   switch (action)
   {
   case wuss_MOUSE_DOWN:
@@ -458,10 +433,10 @@ static result_t doughnut_mouse(doughnut_task_t    *task,
       wuss_menu_tick_exclusive(&task->tube_menu, task->tube);
       wuss_menu_tick_exclusive(&task->major_menu, task->major);
       wuss_menu_tick_exclusive(&task->minor_menu, task->minor);
-      wuss_menu_tick_item(&task->menu, DOUGHNUT_MENU_PAUSE, task->paused);
+      wuss_menu_tick_item(&task->base.menu, DOUGHNUT_MENU_PAUSE, task->paused);
 
-      return wuss_menu_open_at_pointer(task->delegate, &task->menu,
-                                       &task->menu_handle);
+      return wuss_menu_open_at_pointer(task->base.delegate, &task->base.menu,
+                                       &task->base.menu_handle);
     }
 
     if (button & wuss_BUTTON_SELECT)
@@ -493,24 +468,19 @@ static result_t doughnut_mouse(doughnut_task_t    *task,
   return result_OK;
 }
 
-static result_t doughnut_scroll(doughnut_task_t *task,
-                                wuss_window_t   *window,
-                                int              delta)
+static result_t doughnut_scroll(doughnut_task_t *task, int delta)
 {
-  if (window != task->window)
-    return result_OK;
-
   task->zoom += (delta > 0 ? 1 : -1) * DOUGHNUT_ZOOM_STEP;
   task->zoom  = CLAMP(task->zoom, DOUGHNUT_ZOOM_MIN, DOUGHNUT_ZOOM_MAX);
 
-  wuss_window_invalidate_visible(task->window);
+  wuss_window_invalidate_visible(task->base.window);
 
   return result_OK;
 }
 
 static result_t doughnut_idle(doughnut_task_t *task)
 {
-  if (task->window == NULL)
+  if (task->base.window == NULL)
     return result_OK; /* window closed but the proginfo dialogue -- a second
                        * window on this same autoclose delegate -- is still
                        * open, keeping the task alive */
@@ -521,7 +491,7 @@ static result_t doughnut_idle(doughnut_task_t *task)
   task->a += 0.04;
   task->b += 0.02;
 
-  wuss_window_invalidate_visible(task->window);
+  wuss_window_invalidate_visible(task->base.window);
 
   return result_OK;
 }
@@ -536,8 +506,8 @@ static result_t doughnut_density_set(doughnut_task_t *task,
 {
   *field = CLAMP(index, 0, count - 1);
 
-  wuss_menu_tick_exclusive_live(task->menu_handle, menu, *field);
-  wuss_window_invalidate_visible(task->window);
+  wuss_menu_tick_exclusive_live(task->base.menu_handle, menu, *field);
+  wuss_window_invalidate_visible(task->base.window);
 
   return result_OK;
 }
@@ -584,7 +554,7 @@ static result_t doughnut_key(doughnut_task_t *task, int code)
   default:             return result_WUSS_KEY_UNCLAIMED;
   }
 
-  wuss_window_invalidate_visible(task->window);
+  wuss_window_invalidate_visible(task->base.window);
 
   return result_OK;
 }
@@ -592,15 +562,15 @@ static result_t doughnut_key(doughnut_task_t *task, int code)
 static result_t doughnut_menu_select(doughnut_task_t    *task,
                                      const wuss_event_t *event)
 {
-  if (wuss_menu_select_is(event, &task->menu, DOUGHNUT_MENU_PAUSE))
+  if (wuss_menu_select_is(event, &task->base.menu, DOUGHNUT_MENU_PAUSE))
   {
     task->paused = !task->paused;
-    wuss_menu_tick_item_live(task->menu_handle, &task->menu,
+    wuss_menu_tick_item_live(task->base.menu_handle, &task->base.menu,
                              DOUGHNUT_MENU_PAUSE, task->paused);
     return result_OK;
   }
 
-  if (event->data.menu_select.menu == &task->menu &&
+  if (event->data.menu_select.menu == &task->base.menu &&
       (event->data.menu_select.index == DOUGHNUT_MENU_RANDOMISE ||
        event->data.menu_select.index == DOUGHNUT_MENU_RESET))
   {
@@ -609,19 +579,14 @@ static result_t doughnut_menu_select(doughnut_task_t    *task,
     else
       doughnut_defaults(task);
 
-    wuss_menu_tick_exclusive_live(task->menu_handle, &task->tube_menu,
+    wuss_menu_tick_exclusive_live(task->base.menu_handle, &task->tube_menu,
                                   task->tube);
-    wuss_menu_tick_exclusive_live(task->menu_handle, &task->major_menu,
+    wuss_menu_tick_exclusive_live(task->base.menu_handle, &task->major_menu,
                                   task->major);
-    wuss_menu_tick_exclusive_live(task->menu_handle, &task->minor_menu,
+    wuss_menu_tick_exclusive_live(task->base.menu_handle, &task->minor_menu,
                                   task->minor);
-    wuss_window_invalidate_visible(task->window);
+    wuss_window_invalidate_visible(task->base.window);
     return result_OK;
-  }
-
-  if (wuss_menu_select_is(event, &task->menu, DOUGHNUT_MENU_SAVE))
-  {
-    return wuss_saveas_open(task->saveas);
   }
 
   if (event->data.menu_select.menu == &task->major_menu)
@@ -642,7 +607,7 @@ static result_t doughnut_menu_select(doughnut_task_t    *task,
   if (wuss_colourlist_selected(&task->colours, event))
   {
     doughnut_palette_build(task);
-    wuss_window_invalidate_visible(task->window);
+    wuss_window_invalidate_visible(task->base.window);
   }
 
   return result_OK;
@@ -656,7 +621,7 @@ static result_t doughnut_pre_submenu_open(doughnut_task_t    *task,
   result_t rc;
   int      index;
 
-  if (wuss_colourlist_pre_open(&task->colours, task->wuss, event, &rc))
+  if (wuss_colourlist_pre_open(&task->colours, task->base.wuss, event, &rc))
     return rc;
 
   index = event->data.pre_submenu_open.index;
@@ -665,9 +630,9 @@ static result_t doughnut_pre_submenu_open(doughnut_task_t    *task,
                                     task->menu_items[index].submenu);
 }
 
-result_t doughnut_handle(wuss_window_t      *window,
-                         const wuss_event_t *event,
-                         void               *task_data)
+static result_t doughnut_handle(wuss_window_t      *window,
+                                const wuss_event_t *event,
+                                void               *task_data)
 {
   doughnut_task_t *task;
 
@@ -684,7 +649,7 @@ result_t doughnut_handle(wuss_window_t      *window,
                        event->data.mouse.button, window);
 
   case wuss_EVENT_SCROLL:
-    return doughnut_scroll(task, window, event->data.scroll.delta);
+    return doughnut_scroll(task, event->data.scroll.delta);
 
   case wuss_EVENT_IDLE:
     return doughnut_idle(task);
@@ -693,10 +658,7 @@ result_t doughnut_handle(wuss_window_t      *window,
   {
     result_t rc;
 
-    if (window != task->window)
-      return result_WUSS_KEY_UNCLAIMED; /* not the proginfo dialogue */
-
-    if (!task_key_is_plain(task->delegate, &task->menu, event, &rc))
+    if (!task_key_is_plain(task->base.delegate, &task->base.menu, event, &rc))
       return rc;
 
     return doughnut_key(task, event->data.key.code);
@@ -708,22 +670,30 @@ result_t doughnut_handle(wuss_window_t      *window,
   case wuss_EVENT_MENU_SELECT:
     return doughnut_menu_select(task, event);
 
-  case wuss_EVENT_MENU_CLOSED:
-    task->menu_handle = NULL;
-    return result_OK;
-
-  case wuss_EVENT_CLOSE:
-    if (window == task->window)
-      task->window = NULL;
-    return result_OK;
-
   case wuss_EVENT_QUIT:
-    doughnut_destroy(task);
+    free(task->zbuf);
+    free(task->shade);
     return result_OK;
 
   default:
     return result_OK;
   }
+}
+
+result_t doughnut_app_create(wuss_t *wuss)
+{
+  static const taskapp_desc_t desc =
+  {
+    .name          = "Doughnut",
+    .purpose       = "Spinning ray-marched torus",
+    .instance_size = sizeof(doughnut_task_t),
+    .window_size   = { 200, 200 },
+    .init          = (taskapp_init_fn_t) doughnut_init,
+    .handle        = doughnut_handle,
+    .save_name     = "doughnut.png"
+  };
+
+  return taskapp_install(wuss, &desc);
 }
 
 #endif /* WUSS_APP */

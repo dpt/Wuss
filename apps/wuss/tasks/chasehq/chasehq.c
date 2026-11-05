@@ -15,19 +15,23 @@
 #include "ChaseHQ/ChaseHQ.h"
 #include "ZXSpectrum/Keyboard.h"
 
-#include "chasehq.h"
+#include "../apps.h"
 #include "../common/taskapp.h"
 #include "../common/zxtask.h"
 
-/* The game blocks inside chq_start for its whole life; zxtask runs it on its
- * own thread. */
-struct chasehq_task
+/* A window running the ZX Spectrum Chase H.Q. port (built from
+ * WUSS_CHASEHQ_DIR). Keys are the game's own (K/L steer, A/Z accelerate/brake,
+ * N gear, Space turbo); the arrow keys and '.' drive the emulated Kempston
+ * joystick. Silent. The game blocks inside chq_start for its whole life;
+ * zxtask runs it on its own thread. */
+typedef struct chasehq_task
 {
   zxtask_t      base; /* must be first */
   zxspectrum_t *zx;
   chqstate_t   *game;
   zxkeyset_t    keys; /* under base.lock */
-};
+}
+chasehq_task_t;
 
 /* ----------------------------------------------------------------------- */
 

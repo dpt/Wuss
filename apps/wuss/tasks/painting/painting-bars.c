@@ -187,7 +187,7 @@ static result_t painting_sizebar_build(painting_task_t *pt)
     /* a glyph's ink can overrun its advance, as Density's y does, so pad the
      * label's box to have it all cleared when a tool change deletes it */
     label = painting_settings[s].label;
-    w     = task_text_width(pt->wuss, label) + 2;
+    w     = task_text_width(pt->base.wuss, label) + 2;
 
     wuss_icon_spec_label(&specs[n++],
                          (box_t) BOX_POS_SIZE(x, SB_MARGIN, w, SB_ROW_H),
@@ -209,7 +209,7 @@ static result_t painting_sizebar_build(painting_task_t *pt)
       snprintf(widest, sizeof(widest),
                painting_settings[s].fmt ? painting_settings[s].fmt : "%d",
                painting_settings[s].max);
-      rw = task_text_width(pt->wuss, widest) + 2;
+      rw = task_text_width(pt->base.wuss, widest) + 2;
 
       wuss_icon_spec_slider_row(&specs[n], &specs[n + 1],
                                 (box_t) BOX_POS_SIZE(x, SB_MARGIN,
@@ -269,8 +269,8 @@ result_t painting_toolbar_icons(painting_task_t *pt)
   wuss_icon_t     *icons[painting_TOOL__COUNT];
   int              i, n;
 
-  rc = wuss_task_iconpool_load_resource(pt->delegate,
-                                        wuss_get_resources(pt->wuss));
+  rc = wuss_task_iconpool_load_resource(pt->base.delegate,
+                                        wuss_get_resources(pt->base.wuss));
   if (rc != result_OK)
     return rc;
 
@@ -417,7 +417,7 @@ void painting_set_nozzle(painting_task_t *pt, int nozzle)
   if (pt->nozzle_icon != NULL)
     (void) wuss_icon_set_text(pt->sizebar, pt->nozzle_icon,
                               painting_nozzle_names[pt->nozzle]);
-  wuss_menu_tick_exclusive_live(pt->menu_handle, &pt->nozzle_menu,
+  wuss_menu_tick_exclusive_live(pt->base.menu_handle, &pt->nozzle_menu,
                                 pt->nozzle);
 }
 

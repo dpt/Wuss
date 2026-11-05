@@ -21,6 +21,7 @@
 #include "wuss/wuss.h"
 
 #include "../../theme.h"
+#include "../common/taskapp.h"
 
 /* The sections, each an icon in the root window and a window of its own. */
 enum
@@ -51,10 +52,7 @@ enum
  * from run_wuss, and from the icon bar. */
 typedef struct configuring_task
 {
-  wuss_t             *wuss;     /* for wuss_get_pointer when opening the
-                                 * menu */
-  wuss_task_t        *delegate; /* the task that owns the menu */
-  wuss_window_t      *window;   /* the root: one icon per section */
+  taskapp_instance_t  base;     /* window: the root, one icon per section */
   wuss_gridview_t    *gridview; /* its grid */
   const bitmap_t     *glyphs[CONFIGURING_SECTION__LIMIT]; /* borrowed from
                                                            * the icon pool */
@@ -77,7 +75,7 @@ typedef struct configuring_task
   char                 drag_threshold_px_text[CONFIGURING_FIELD_BUF];
   int                  swatch_x;    /* left edge of every swatch column and
                                      * the grid, document space; set once by
-                                     * configuring_create, read by redraw and
+                                     * configuring_init, read by redraw and
                                      * click hit-testing so the two always
                                      * agree */
   int                  fg_y;
@@ -100,21 +98,11 @@ typedef struct configuring_task
 }
 configuring_task_t;
 
-wuss_window_fn_t configuring_handle;
-
-/* create the startup settings window against the given wuss instance; if out
- * is non-NULL, the task block is also returned through it */
-result_t configuring_create(wuss_t *wuss, configuring_task_t **out);
-
 /* install the icon bar app that opens config windows on demand */
 result_t configuring_app_create(wuss_t *wuss);
 
 /* open a configuring window now; the app must be installed first */
 result_t configuring_open(wuss_t *wuss);
-
-/* free a task block allocated by configuring_create; normally called by the
- * window's wuss_EVENT_QUIT handler, not by callers directly */
-void configuring_destroy(configuring_task_t *task);
 
 #endif /* WUSS_APP */
 

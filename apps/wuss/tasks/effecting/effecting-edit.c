@@ -205,7 +205,7 @@ static result_t edit_blur_create(effecting_edit_t *edit)
   box_t            box;
 
   dlg  = &edit->dlg[EFFECTING_EDIT_BLUR];
-  wuss = edit->ec->wuss;
+  wuss = edit->ec->base.wuss;
 
   label_w = task_text_width(wuss, "Radius");
   value_w = edit_value_width(wuss, "%d", effects_blur_MIN_AMOUNT,
@@ -218,7 +218,7 @@ static result_t edit_blur_create(effecting_edit_t *edit)
   height  = 2 * wuss_STD_INSET + wuss_STD_GLYPH_SIZE + wuss_STD_GAP +
             wuss_STD_SLIDER_HEIGHT;
 
-  rc = wuss_dialogue_create(&dlg->dialogue, edit->ec->delegate,
+  rc = wuss_dialogue_create(&dlg->dialogue, edit->ec->base.delegate,
                             SIZE2D(width, height), "Blur", edit_blur_fillout,
                             dlg);
   if (rc != result_OK)
@@ -316,7 +316,7 @@ static result_t edit_level_create(effecting_edit_t *edit)
   int              label_w, value_w, width, height;
 
   dlg  = &edit->dlg[EFFECTING_EDIT_LEVEL];
-  wuss = edit->ec->wuss;
+  wuss = edit->ec->base.wuss;
 
   label_w = task_text_width(wuss, "Level");
   value_w = edit_value_width(wuss, "%d%%", EFFECTING_LEVEL_MIN,
@@ -325,7 +325,7 @@ static result_t edit_level_create(effecting_edit_t *edit)
             2 * wuss_STD_GAP;
   height  = 2 * wuss_STD_INSET + wuss_STD_SLIDER_HEIGHT;
 
-  rc = wuss_dialogue_create(&dlg->dialogue, edit->ec->delegate,
+  rc = wuss_dialogue_create(&dlg->dialogue, edit->ec->base.delegate,
                             SIZE2D(width, height), "Level",
                             edit_level_fillout, dlg);
   if (rc != result_OK)
@@ -459,7 +459,7 @@ static result_t edit_tone_create(effecting_edit_t *edit)
   box_t                  box;
 
   dlg  = &edit->dlg[EFFECTING_EDIT_TONE];
-  wuss = edit->ec->wuss;
+  wuss = edit->ec->base.wuss;
 
   label_w = 0;
   for (i = 0; i < EDIT_NTONE; i++)
@@ -495,7 +495,7 @@ static result_t edit_tone_create(effecting_edit_t *edit)
   if (rc != result_OK)
     return rc;
 
-  rc = wuss_dialogue_create(&dlg->dialogue, edit->ec->delegate,
+  rc = wuss_dialogue_create(&dlg->dialogue, edit->ec->base.delegate,
                             SIZE2D(width, height), "Tone",
                             edit_tone_fillout, dlg);
   if (rc != result_OK)

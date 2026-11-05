@@ -2,6 +2,7 @@
 
 #ifdef WUSS_APP
 
+#include <stdbool.h>
 #include <stdlib.h>
 
 #include <math.h>
@@ -11,14 +12,63 @@
 #endif
 
 #include "base/utils.h"
+#include "framebuf/colour.h"
 #include "framebuf/palettes.h"
 #include "geom/box.h"
 #include "utils/fxp.h"
+#include "utils/rng.h"
+#include "wuss/component/colourmenu.h"
+#include "wuss/menu.h"
+#include "wuss/window.h"
 
-#include "../common/snapshot.h"
-#include "sofa.h"
+#include "../apps.h"
 #include "../common/taskapp.h"
 #include "../common/common.h"
+
+/* which model is currently on show */
+typedef enum sofa_shape
+{
+  sofa_SHAPE_SOFA,
+  sofa_SHAPE_SHIP,
+  sofa_SHAPE_COBRA,
+  sofa_SHAPE_TETRAHEDRON,
+  sofa_SHAPE_CUBE,
+  sofa_SHAPE_OCTAHEDRON,
+  sofa_SHAPE_ICOSAHEDRON,
+  sofa_SHAPE_DODECAHEDRON,
+  sofa_SHAPE__LIMIT
+}
+sofa_shape_t;
+
+/* a wireframe sofa (seat, backrest, two arms), spaceship or Platonic solid,
+ * spinning about its vertical axis; a Select click or Menu > Pause
+ * pauses/resumes the spin, an Adjust click or Menu > Model changes the
+ * model, Menu > Auto-cycle turns the automatic change of model after a few
+ * turns on or off, Menu > Randomise (^R) picks a model and colours afresh,
+ * Menu > Reset (R) restores the starting view and Menu > Save opens a
+ * Save As dialogue (drag its icon onto a Filer window, or Save with a full
+ * path already typed) that writes the window's content out. Once a click has
+ * given the window the input focus, Space pauses/resumes, Left/Right step the model
+ * back/forward and, while paused, Up/Down step the rotation */
+typedef struct sofa_task
+{
+  taskapp_instance_t  base;
+  wuss_menu_item_t    menu_items[7]; /* per-instance: a shared static would
+                                       * leak one instance's .window pointer
+                                       * into another's menu */
+  wuss_menu_item_t    model_items[sofa_SHAPE__LIMIT]; /* one row per shape */
+  wuss_menu_t         model_menu;
+  wuss_colourlist_t   colours; /* Foreground (line), Background */
+  colour_t       bg, line, dot;
+  double         angle;
+  double         zoom; /* scroll-adjustable */
+  bool           spinning;
+  sofa_shape_t   shape;
+  int            turns; /* completed rotations of the current model */
+  bool           cycling; /* advance the model every few turns */
+  rng_t          rng;     /* Randomise */
+}
+sofa_task_t;
 
 /* MENU click pops this menu; the item table and wuss_menu_t live per-instance
  * in sofa_task_t, not as a file-scope static, so that each window's Info row
@@ -34,8 +84,6 @@ enum
   SOFA_MENU_RANDOMISE,
   SOFA_MENU_RESET
 };
-
-#define SOFA_SAVE_NAME "sofa.png" /* Save As's initial leafname */
 
 /* "Model" submenu rows, in sofa_shape_t order */
 static const char *sofa_shape_names[sofa_SHAPE__LIMIT] =
@@ -388,16 +436,6 @@ static void draw_vertex_dots(screen_t           *scr,
                        colour);
 }
 
-/* wuss_saveas_save_fn_t: opaque is the sofa_task_t */
-static result_t sofa_saveas_save(const char *path, void *opaque)
-{
-  sofa_task_t *sc;
-
-  sc = opaque;
-
-  return snapshot_save_png(sc->window, sofa_handle, sc, path);
-}
-
 /* the starting view, as sofa_create and Reset restore it */
 static void sofa_defaults(sofa_task_t *task)
 {
@@ -422,59 +460,23 @@ static void sofa_randomise(sofa_task_t *task)
   task->dot   = colour_random_contrast(&task->rng, task->bg);
 }
 
-result_t sofa_create(wuss_t *wuss, sofa_task_t **out)
+static result_t sofa_init(sofa_task_t *task)
 {
-  result_t         rc;
-  sofa_task_t     *task;
-  wuss_task_t     *delegate;
-  wuss_task_desc_t delegate_desc;
-  int              i;
+  wuss_t *wuss;
+  int     i;
 
-  task = calloc(1, sizeof(*task));
-  if (task == NULL)
-    return result_OOM;
+  wuss = task->base.wuss;
 
-  task->wuss     = wuss;
   rng_seed(&task->rng, (uint32_t) rand());
   sofa_defaults(task);
-
-  /* sofa_redraw paints its own background every frame */
-  delegate_desc.handle    = sofa_handle;
-  delegate_desc.task_data = task;
-  delegate_desc.name      = "Sofa";
-  rc = wuss_task_create(wuss, &delegate_desc, &delegate);
-  if (rc != result_OK)
-  {
-    free(task); /* nothing registered yet; the spawner will not free it */
-    return rc;
-  }
-  wuss_task_set_autoclose(delegate, 1);
-  task->delegate = delegate;
-
-  rc = task_window_create(delegate, SIZE2D(180, 160), "Sofa", &task->window);
-  if (rc != result_OK)
-  {
-    wuss_task_destroy(delegate); /* unregister; its QUIT frees the task block */
-    return rc;
-  }
-
-  rc = snapshot_saveas_create(&task->saveas, wuss, SOFA_SAVE_NAME,
-                              sofa_saveas_save, task);
-  if (rc != result_OK)
-  {
-    wuss_task_destroy(delegate);
-    return rc;
-  }
 
   wuss_colourlist_init_pair(&task->colours, wuss, &task->line, &task->bg);
 
   WUSS_MENU_ITEM_SHORTCUT(task->menu_items, SOFA_MENU_PAUSE, "Pause",
                           wuss_MENU_ITEM_NONE, "SPACE");
 
-  WUSS_MENU_ITEM_SHORTCUT(task->menu_items, SOFA_MENU_SAVE, "Save",
-                          wuss_MENU_ITEM_NONE, "F3");
-  /* hover opens the Save As dialogue as a submenu; F3 shows it standalone */
-  task->menu_items[SOFA_MENU_SAVE].window = wuss_saveas_window(task->saveas);
+  taskapp_save_row(&task->base, task->menu_items, SOFA_MENU_SAVE,
+                   wuss_MENU_ITEM_NONE);
 
   for (i = 0; i < sofa_SHAPE__LIMIT; i++)
     WUSS_MENU_ITEM(task->model_items, i, sofa_shape_names[i],
@@ -497,31 +499,10 @@ result_t sofa_create(wuss_t *wuss, sofa_task_t **out)
   WUSS_MENU_ITEM_SHORTCUT(task->menu_items, SOFA_MENU_RESET, "Reset",
                           wuss_MENU_ITEM_NONE, "R");
 
-  WUSS_MENU_TITLE(task->menu, "Sofa", task->menu_items,
+  WUSS_MENU_TITLE(task->base.menu, "Sofa", task->menu_items,
                  NELEMS(task->menu_items));
 
-  if (out)
-    *out = task;
-
   return result_OK;
-}
-
-result_t sofa_app_create(wuss_t *wuss)
-{
-  static const taskapp_desc_t desc =
-  {
-    "Sofa",
-    "Rotating wireframe shapes",
-    (taskapp_create_fn_t) sofa_create
-  };
-
-  return taskapp_install(wuss, &desc);
-}
-
-void sofa_destroy(sofa_task_t *task)
-{
-  wuss_saveas_destroy(task->saveas);
-  free(task);
 }
 
 static result_t sofa_redraw(const wuss_event_t *event, void *task_data)
@@ -649,11 +630,11 @@ static result_t sofa_mouse(wuss_window_t *window,
   if (button & wuss_BUTTON_MENU)
   {
     wuss_menu_tick_exclusive(&sc->model_menu, sc->shape);
-    wuss_menu_tick_item(&sc->menu, SOFA_MENU_PAUSE, !sc->spinning);
-    wuss_menu_tick_item(&sc->menu, SOFA_MENU_CYCLE, sc->cycling);
+    wuss_menu_tick_item(&sc->base.menu, SOFA_MENU_PAUSE, !sc->spinning);
+    wuss_menu_tick_item(&sc->base.menu, SOFA_MENU_CYCLE, sc->cycling);
 
-    return wuss_menu_open_at_pointer(sc->delegate, &sc->menu,
-                                     &sc->menu_handle);
+    return wuss_menu_open_at_pointer(sc->base.delegate, &sc->base.menu,
+                                     &sc->base.menu_handle);
   }
 
   if (button & wuss_BUTTON_ADJUST)
@@ -683,7 +664,7 @@ static result_t sofa_key(sofa_task_t *sc, int code)
     if (sc->spinning)
       return result_WUSS_KEY_UNCLAIMED;
     sc->angle += (code == wuss_KEY_UP ? -1 : 1) * SOFA_KEY_STEP;
-    wuss_window_invalidate_visible(sc->window);
+    wuss_window_invalidate_visible(sc->base.window);
     return result_OK;
 
   case wuss_KEY_LEFT:  dir = sofa_SHAPE__LIMIT - 1; break;
@@ -693,7 +674,7 @@ static result_t sofa_key(sofa_task_t *sc, int code)
 
   sc->shape = (sc->shape + dir) % sofa_SHAPE__LIMIT;
   sc->turns = 0;
-  wuss_window_invalidate_visible(sc->window);
+  wuss_window_invalidate_visible(sc->base.window);
 
   return result_OK;
 }
@@ -722,9 +703,9 @@ static result_t sofa_idle(void *task_data)
 
   /* the shared proginfo singleton is a second window on this same
    * (autoclose) delegate while its dialogue is open, so closing the main
-   * window alone doesn't necessarily empty task->windows immediately --
+   * window alone doesn't necessarily empty task->base.windows immediately --
    * guard against the dangling window in the meantime */
-  if (task->window == NULL)
+  if (task->base.window == NULL)
     return result_OK;
 
   if (!task->spinning)
@@ -741,31 +722,31 @@ static result_t sofa_idle(void *task_data)
     }
   }
 
-  wuss_window_invalidate_visible(task->window);
+  wuss_window_invalidate_visible(task->base.window);
 
   return result_OK;
 }
 
 static result_t sofa_menu_select(sofa_task_t *sc, const wuss_event_t *event)
 {
-  if (wuss_menu_select_is(event, &sc->menu, SOFA_MENU_PAUSE))
+  if (wuss_menu_select_is(event, &sc->base.menu, SOFA_MENU_PAUSE))
   {
     sc->spinning = !sc->spinning;
-    wuss_menu_tick_item_live(sc->menu_handle, &sc->menu, SOFA_MENU_PAUSE,
+    wuss_menu_tick_item_live(sc->base.menu_handle, &sc->base.menu, SOFA_MENU_PAUSE,
                              !sc->spinning);
     return result_OK;
   }
 
-  if (wuss_menu_select_is(event, &sc->menu, SOFA_MENU_CYCLE))
+  if (wuss_menu_select_is(event, &sc->base.menu, SOFA_MENU_CYCLE))
   {
     sc->cycling = !sc->cycling;
     sc->turns   = 0; /* a re-enabled cycle gives the model its full turns */
-    wuss_menu_tick_item_live(sc->menu_handle, &sc->menu, SOFA_MENU_CYCLE,
+    wuss_menu_tick_item_live(sc->base.menu_handle, &sc->base.menu, SOFA_MENU_CYCLE,
                              sc->cycling);
     return result_OK;
   }
 
-  if (event->data.menu_select.menu == &sc->menu &&
+  if (event->data.menu_select.menu == &sc->base.menu &&
       (event->data.menu_select.index == SOFA_MENU_RANDOMISE ||
        event->data.menu_select.index == SOFA_MENU_RESET))
   {
@@ -774,18 +755,13 @@ static result_t sofa_menu_select(sofa_task_t *sc, const wuss_event_t *event)
     else
       sofa_defaults(sc);
 
-    wuss_menu_tick_exclusive_live(sc->menu_handle, &sc->model_menu, sc->shape);
-    wuss_menu_tick_item_live(sc->menu_handle, &sc->menu, SOFA_MENU_PAUSE,
+    wuss_menu_tick_exclusive_live(sc->base.menu_handle, &sc->model_menu, sc->shape);
+    wuss_menu_tick_item_live(sc->base.menu_handle, &sc->base.menu, SOFA_MENU_PAUSE,
                              !sc->spinning);
-    wuss_menu_tick_item_live(sc->menu_handle, &sc->menu, SOFA_MENU_CYCLE,
+    wuss_menu_tick_item_live(sc->base.menu_handle, &sc->base.menu, SOFA_MENU_CYCLE,
                              sc->cycling);
-    wuss_window_invalidate_visible(sc->window);
+    wuss_window_invalidate_visible(sc->base.window);
     return result_OK;
-  }
-
-  if (wuss_menu_select_is(event, &sc->menu, SOFA_MENU_SAVE))
-  {
-    return wuss_saveas_open(sc->saveas);
   }
 
   if (event->data.menu_select.menu == &sc->model_menu)
@@ -794,13 +770,13 @@ static result_t sofa_menu_select(sofa_task_t *sc, const wuss_event_t *event)
      * the idle auto-advance moves on */
     sc->shape = (sofa_shape_t) event->data.menu_select.index;
     sc->turns = 0;
-    wuss_menu_tick_exclusive_live(sc->menu_handle, &sc->model_menu, sc->shape);
-    wuss_window_invalidate_visible(sc->window);
+    wuss_menu_tick_exclusive_live(sc->base.menu_handle, &sc->model_menu, sc->shape);
+    wuss_window_invalidate_visible(sc->base.window);
     return result_OK;
   }
 
   if (wuss_colourlist_selected(&sc->colours, event))
-    wuss_window_invalidate_visible(sc->window);
+    wuss_window_invalidate_visible(sc->base.window);
 
   return result_OK;
 }
@@ -813,7 +789,7 @@ static result_t sofa_pre_submenu_open(sofa_task_t        *sc,
   result_t rc;
   int      index;
 
-  if (wuss_colourlist_pre_open(&sc->colours, sc->wuss, event, &rc))
+  if (wuss_colourlist_pre_open(&sc->colours, sc->base.wuss, event, &rc))
     return rc;
 
   index = event->data.pre_submenu_open.index;
@@ -822,9 +798,9 @@ static result_t sofa_pre_submenu_open(sofa_task_t        *sc,
                                     sc->menu_items[index].submenu);
 }
 
-result_t sofa_handle(wuss_window_t      *window,
-                     const wuss_event_t *event,
-                     void               *task_data)
+static result_t sofa_handle(wuss_window_t      *window,
+                            const wuss_event_t *event,
+                            void               *task_data)
 {
   sofa_task_t *sc;
 
@@ -836,9 +812,6 @@ result_t sofa_handle(wuss_window_t      *window,
     return sofa_redraw(event, task_data);
 
   case wuss_EVENT_MOUSE:
-    if (window != sc->window)
-      return result_OK; /* the proginfo dialogue has no click behaviour of
-                         * its own */
     if (event->data.mouse.action != wuss_MOUSE_DOWN)
       return result_OK;
     return sofa_mouse(window, event->data.mouse.button, task_data);
@@ -853,10 +826,7 @@ result_t sofa_handle(wuss_window_t      *window,
   {
     result_t rc;
 
-    if (window != sc->window)
-      return result_WUSS_KEY_UNCLAIMED; /* not the proginfo dialogue */
-
-    if (!task_key_is_plain(sc->delegate, &sc->menu, event, &rc))
+    if (!task_key_is_plain(sc->base.delegate, &sc->base.menu, event, &rc))
       return rc;
 
     return sofa_key(sc, event->data.key.code);
@@ -868,22 +838,25 @@ result_t sofa_handle(wuss_window_t      *window,
   case wuss_EVENT_MENU_SELECT:
     return sofa_menu_select(sc, event);
 
-  case wuss_EVENT_MENU_CLOSED:
-    sc->menu_handle = NULL;
-    return result_OK;
-
-  case wuss_EVENT_CLOSE:
-    if (window == sc->window)
-      sc->window = NULL;
-    return result_OK;
-
-  case wuss_EVENT_QUIT:
-    sofa_destroy(sc);
-    return result_OK;
-
   default:
     return result_OK;
   }
+}
+
+result_t sofa_app_create(wuss_t *wuss)
+{
+  static const taskapp_desc_t desc =
+  {
+    .name          = "Sofa",
+    .purpose       = "Rotating wireframe shapes",
+    .instance_size = sizeof(sofa_task_t),
+    .window_size   = { 180, 160 },
+    .init          = (taskapp_init_fn_t) sofa_init,
+    .handle        = sofa_handle,
+    .save_name     = "sofa.png"
+  };
+
+  return taskapp_install(wuss, &desc);
 }
 
 #endif /* WUSS_APP */

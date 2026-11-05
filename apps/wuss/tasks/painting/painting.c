@@ -18,7 +18,6 @@
 #include "painting-bars.h"
 #include "painting-new.h"
 #include "painting-tools.h"
-#include "../common/snapshot.h"
 #include "../common/taskapp.h"
 #include "../common/common.h"
 
@@ -33,7 +32,7 @@
  * wuss_set_palette may move */
 static void painting_swatches_track(painting_task_t *pt)
 {
-  pt->swatches.colours = wuss_get_palette(pt->wuss, &pt->swatches.ncolours);
+  pt->swatches.colours = wuss_get_palette(pt->base.wuss, &pt->swatches.ncolours);
 }
 
 /* lay out the stage around the canvas, at its smallest, into boxes, noting
@@ -68,10 +67,10 @@ static size2d_t painting_stage_size(painting_task_t *pt)
 /* title the canvas window "LEAF: Painting", starred while edited */
 static void painting_title(painting_task_t *pt)
 {
-  if (pt->window == NULL)
+  if (pt->base.window == NULL)
     return;
 
-  task_set_doc_title(pt->window,
+  task_set_doc_title(pt->base.window,
                      pt->path[0] ? path_leaf(pt->path) : "<Untitled>",
                      "Painting", paintingdoc_is_edited(pt->doc));
 }
@@ -80,7 +79,7 @@ static void painting_title(painting_task_t *pt)
 static void painting_set_path(painting_task_t *pt, const char *path)
 {
   snprintf(pt->path, sizeof(pt->path), "%s", path);
-  wuss_saveas_set_leafname(pt->saveas, path_leaf(pt->path));
+  wuss_saveas_set_leafname(pt->base.saveas, path_leaf(pt->path));
 }
 
 /* wuss_saveas_save_fn_t: opaque is the painting_task_t */
@@ -121,43 +120,27 @@ static result_t painting_load(painting_task_t *pt, const char *path)
 
   size = painting_stage_size(pt);
 
-  rc = wuss_window_resize(pt->window,
+  rc = wuss_window_resize(pt->base.window,
                           SIZE2D(MIN(size.w, PAINTING_VIEW_W),
                                  MIN(size.h, PAINTING_VIEW_H)));
   if (rc != result_OK)
     return rc;
 
-  return wuss_window_set_doc(pt->window, size);
+  return wuss_window_set_doc(pt->base.window, size);
 }
 
-result_t painting_create(wuss_t *wuss, painting_task_t **out)
+/* build the canvas and its windows; on failure the caller reaps the task */
+static result_t painting_build(painting_task_t            *task,
+                               const paintingnew_params_t *params)
 {
-  paintingnew_params_t params;
+  result_t     rc;
+  wuss_task_t *delegate;
+  wuss_place_t place;
+  size2d_t     stage;
+  int          i;
 
-  params.size = SIZE2D(PAINTING_CANVAS_W, PAINTING_CANVAS_H);
-  params.bg   = colour_rgb(0xFF, 0xFF, 0xFF);
-  params.fg   = colour_rgb(0x00, 0x00, 0x00);
+  delegate = task->base.delegate;
 
-  return painting_create_with(wuss, &params, out);
-}
-
-result_t painting_create_with(wuss_t                     *wuss,
-                              const paintingnew_params_t *params,
-                              painting_task_t           **out)
-{
-  result_t         rc;
-  painting_task_t *task;
-  wuss_task_t     *delegate;
-  wuss_task_desc_t delegate_desc;
-  wuss_place_t     place;
-  size2d_t         stage;
-  int              i;
-
-  task = calloc(1, sizeof(*task));
-  if (task == NULL)
-    return result_OOM;
-
-  task->wuss = wuss;
   task->fg   = params->fg;
   task->bg   = params->bg;
   task->tool = painting_TOOL_PENCIL;
@@ -180,10 +163,7 @@ result_t painting_create_with(wuss_t                     *wuss,
 
   rc = paintingdoc_create_filled(params->size, params->bg, &task->doc);
   if (rc != result_OK)
-  {
-    free(task);
     return rc;
-  }
 
   stageconfig_init(&task->stagecfg);
   task->stagecfg.pasteboard_min = 128;
@@ -191,25 +171,13 @@ result_t painting_create_with(wuss_t                     *wuss,
 
   stage = painting_stage_size(task);
 
-  /* painting_redraw draws the stage and the canvas on it over the whole
-   * content area */
-  delegate_desc.handle    = painting_handle;
-  delegate_desc.task_data = task;
-  delegate_desc.name      = "Painting";
-  rc = wuss_task_create(wuss, &delegate_desc, &delegate);
-  if (rc != result_OK)
-  {
-    paintingdoc_destroy(task->doc);
-    free(task); /* nothing registered yet; the spawner will not free it */
-    return rc;
-  }
-  task->delegate = delegate;
-
   /* room for the toolbox on the left and the option bar below, which share
    * the canvas's outline */
   place          = task_place;
   place.extra.x0 = TB_W + 1;
   place.extra.y1 = OB_H + 1;
+  /* painting_redraw draws the stage and the canvas on it over the whole
+   * content area */
   rc = wuss_window_create_at(delegate,
                              &place,
                              SIZE2D(MIN(stage.w, PAINTING_VIEW_W),
@@ -219,17 +187,14 @@ result_t painting_create_with(wuss_t                     *wuss,
                              wuss_NO_BACKDROP,
                              stage,
                              SIZE2D(0, 0),
-                             &task->window);
+                             &task->base.window);
   if (rc != result_OK)
-  {
-    wuss_task_destroy(delegate); /* unregister; its QUIT frees the task block */
     return rc;
-  }
 
   /* toolbars on the canvas's left and bottom edges: they move, stack, hide
    * and close with the canvas, and pass the input focus to it. The toolbox
    * is nothing but icons */
-  place = task_place_after(task->window);
+  place = task_place_after(task->base.window);
   rc = wuss_window_create_at(delegate,
                              &place,
                              SIZE2D(TB_W, TB_H),
@@ -242,7 +207,7 @@ result_t painting_create_with(wuss_t                     *wuss,
   /* toolbars align against the content without its panes, so drop the
    * toolbox to share its top outline with the size bar's bottom edge */
   if (rc == result_OK)
-    rc = wuss_window_attach(task->toolbox, task->window, wuss_EDGE_LEFT,
+    rc = wuss_window_attach(task->toolbox, task->base.window, wuss_EDGE_LEFT,
                             wuss_ALIGN_TOP, SB_H + 1);
   if (rc == result_OK)
     rc = wuss_window_create_at(delegate,
@@ -255,8 +220,8 @@ result_t painting_create_with(wuss_t                     *wuss,
                                SIZE2D(0, 0),
                                &task->optionbar);
   if (rc == result_OK)
-    rc = wuss_window_attach(task->optionbar, task->window, wuss_EDGE_BOTTOM,
-                            wuss_ALIGN_LEFT, 0);
+    rc = wuss_window_attach(task->optionbar, task->base.window,
+                            wuss_EDGE_BOTTOM, wuss_ALIGN_LEFT, 0);
   /* the size bar is a pane across the top of the canvas, which is then
    * resized so that the view keeps its size below it */
   if (rc == result_OK)
@@ -272,23 +237,18 @@ result_t painting_create_with(wuss_t                     *wuss,
                                SIZE2D(0, 0),
                                &task->sizebar);
   if (rc == result_OK)
-    rc = wuss_window_attach_pane(task->sizebar, task->window, wuss_EDGE_TOP);
+    rc = wuss_window_attach_pane(task->sizebar, task->base.window,
+                                 wuss_EDGE_TOP);
   if (rc == result_OK)
-    rc = wuss_window_resize(task->window,
+    rc = wuss_window_resize(task->base.window,
                             SIZE2D(MIN(stage.w, PAINTING_VIEW_W),
                                    MIN(stage.h, PAINTING_VIEW_H)));
   if (rc != result_OK)
-  {
-    wuss_task_destroy(delegate); /* closes the canvas, QUIT frees the block */
     return rc;
-  }
 
   rc = painting_toolbar_icons(task);
   if (rc != result_OK)
-  {
-    wuss_task_destroy(delegate);
     return rc;
-  }
 
   dithermenu_init(&task->dither, task->dithering);
   WUSS_MENU_ITEM_MENU(task->menu_items, PAINTING_MENU_DISPLAY, "Display",
@@ -297,8 +257,8 @@ result_t painting_create_with(wuss_t                     *wuss,
   WUSS_MENU_ITEM_SHORTCUT(task->menu_items, PAINTING_MENU_UNDO, "Undo",
                           wuss_MENU_ITEM_DASHED, "F8");
 
-  WUSS_MENU_ITEM_SHORTCUT(task->menu_items, PAINTING_MENU_SAVE, "Save",
-                          wuss_MENU_ITEM_NONE, "F3"); /* window set below */
+  taskapp_save_row(&task->base, task->menu_items, PAINTING_MENU_SAVE,
+                   wuss_MENU_ITEM_NONE);
 
   WUSS_MENU_ITEM_SHORTCUT(task->sel_items, PAINTING_SEL_ALL, "Select all",
                           wuss_MENU_ITEM_NONE, "^A");
@@ -321,26 +281,10 @@ result_t painting_create_with(wuss_t                     *wuss,
   /* the shortcut, or a click on the row, steps to the next nozzle */
   task->menu_items[PAINTING_MENU_NOZZLE].shortcut = "N";
 
-  WUSS_MENU_TITLE(task->menu, "Painting", task->menu_items,
+  WUSS_MENU_TITLE(task->base.menu, "Painting", task->menu_items,
                   NELEMS(task->menu_items));
 
-  rc = snapshot_saveas_create(&task->saveas, wuss, "painting.png",
-                              painting_saveas_save, task);
-  if (rc != result_OK)
-  {
-    wuss_task_destroy(delegate); /* closes both windows, QUIT frees the block */
-    return rc;
-  }
-  /* hover opens the Save As dialogue as a submenu; F3 shows it standalone */
-  task->menu_items[PAINTING_MENU_SAVE].window = wuss_saveas_window(task->saveas);
   painting_title(task); /* "<Untitled>: Painting" */
-
-  /* both windows up: from here, closing the last one reaps the task and its
-   * wuss_EVENT_QUIT frees task_data */
-  wuss_task_set_autoclose(delegate, 1);
-
-  if (out)
-    *out = task;
 
   return result_OK;
 }
@@ -353,17 +297,62 @@ static struct
 }
 g;
 
+static result_t painting_create(wuss_t *wuss, void **out);
 static result_t painting_new_dialogue(wuss_t *wuss);
+static wuss_window_fn_t painting_handle;
 
 static const taskapp_desc_t painting_desc =
 {
-  "Painting",
-  "Basic painting",
-  (taskapp_create_fn_t) painting_create,
-  (taskapp_data_load_fn_t) painting_load,
-  false,
-  painting_new_dialogue
+  .name          = "Painting",
+  .purpose       = "Basic painting",
+  .create        = painting_create,
+  .data_load     = (taskapp_data_load_fn_t) painting_load,
+  .new_dialogue  = painting_new_dialogue,
+  .instance_size = sizeof(painting_task_t),
+  .handle        = painting_handle,
+  .all_windows   = true, /* the toolbars take clicks too */
+  .save_name     = "painting.png",
+  .save          = painting_saveas_save
 };
+
+/* as painting_create, but with a canvas of the given size and colour */
+static result_t painting_create_with(wuss_t                     *wuss,
+                                     const paintingnew_params_t *params,
+                                     void                      **out)
+{
+  result_t         rc;
+  void            *instance;
+  painting_task_t *task;
+
+  rc = taskapp_instance_create(wuss, &painting_desc, &instance);
+  if (rc != result_OK)
+    return rc;
+
+  task = instance;
+
+  rc = painting_build(task, params);
+  if (rc != result_OK)
+  {
+    wuss_task_destroy(task->base.delegate); /* its QUIT frees the block */
+    return rc;
+  }
+
+  if (out)
+    *out = task;
+
+  return result_OK;
+}
+
+static result_t painting_create(wuss_t *wuss, void **out)
+{
+  paintingnew_params_t params;
+
+  params.size = SIZE2D(PAINTING_CANVAS_W, PAINTING_CANVAS_H);
+  params.bg   = colour_rgb(0xFF, 0xFF, 0xFF);
+  params.fg   = colour_rgb(0x00, 0x00, 0x00);
+
+  return painting_create_with(wuss, &params, out);
+}
 
 /* taskapp_spawn_fn_t: param is the dialogue's paintingnew_params_t */
 static result_t painting_spawn_new(wuss_t *wuss, void *param, void **out)
@@ -398,14 +387,6 @@ static result_t painting_new_dialogue(wuss_t *wuss)
 result_t painting_app_create(wuss_t *wuss)
 {
   return taskapp_install(wuss, &painting_desc);
-}
-
-void painting_destroy(painting_task_t *task)
-{
-  wuss_saveas_destroy(task->saveas);
-  free(task->lasso);
-  paintingdoc_destroy(task->doc);
-  free(task);
 }
 
 /* ----------------------------------------------------------------------- */
@@ -727,9 +708,9 @@ static void painting_menu_shade(painting_task_t *pt)
                                           wuss_MENU_ITEM_DISABLED :
                                           wuss_MENU_ITEM_NONE;
 
-  wuss_menu_disable_item_live(pt->menu_handle, &pt->menu, PAINTING_MENU_UNDO,
-                              no_undo);
-  wuss_menu_disable_item_live(pt->menu_handle, &pt->sel_menu, PAINTING_SEL_NONE,
+  wuss_menu_disable_item_live(pt->base.menu_handle, &pt->base.menu,
+                              PAINTING_MENU_UNDO, no_undo);
+  wuss_menu_disable_item_live(pt->base.menu_handle, &pt->sel_menu, PAINTING_SEL_NONE,
                               no_sel);
 }
 
@@ -824,12 +805,13 @@ static result_t painting_menu_open(painting_task_t *pt)
 
   wuss_menu_tick_exclusive(&pt->nozzle_menu, pt->nozzle);
 
-  return wuss_menu_open_at_pointer(pt->delegate, &pt->menu, &pt->menu_handle);
+  return wuss_menu_open_at_pointer(pt->base.delegate, &pt->base.menu,
+                                   &pt->base.menu_handle);
 }
 
-result_t painting_handle(wuss_window_t      *window,
-                         const wuss_event_t *event,
-                         void               *task_data)
+static result_t painting_handle(wuss_window_t      *window,
+                                const wuss_event_t *event,
+                                void               *task_data)
 {
   painting_task_t *pt;
 
@@ -845,7 +827,7 @@ result_t painting_handle(wuss_window_t      *window,
   case wuss_EVENT_MOUSE:
     if (event->data.mouse.action == wuss_MOUSE_DOWN &&
         (event->data.mouse.button & wuss_BUTTON_MENU))
-      return window == pt->window ? painting_menu_open(pt) : result_OK;
+      return window == pt->base.window ? painting_menu_open(pt) : result_OK;
 
     if (window == pt->optionbar)
       return painting_optionbar_mouse(pt, event);
@@ -860,7 +842,7 @@ result_t painting_handle(wuss_window_t      *window,
   {
     result_t rc;
 
-    if (!task_key_is_plain(pt->delegate, &pt->menu, event, &rc))
+    if (!task_key_is_plain(pt->base.delegate, &pt->base.menu, event, &rc))
       return rc;
 
     return painting_key(pt, event->data.key.code);
@@ -876,9 +858,9 @@ result_t painting_handle(wuss_window_t      *window,
     }
     if (event->data.menu_select.menu == &pt->dither.menu)
     {
-      pt->dithering = dithermenu_select(&pt->dither, pt->menu_handle,
+      pt->dithering = dithermenu_select(&pt->dither, pt->base.menu_handle,
                                         event->data.menu_select.index);
-      wuss_window_invalidate_visible(pt->window);
+      wuss_window_invalidate_visible(pt->base.window);
       return result_OK;
     }
     if (event->data.menu_select.index == PAINTING_MENU_UNDO)
@@ -888,20 +870,17 @@ result_t painting_handle(wuss_window_t      *window,
       painting_set_nozzle(pt, (pt->nozzle + 1) % paintingdoc_NOZZLE__COUNT);
       return result_OK;
     }
-    /* clicking the row, rather than hovering, shows Save As standalone */
-    if (event->data.menu_select.index == PAINTING_MENU_SAVE)
-      return wuss_saveas_open(pt->saveas);
     return result_OK;
 
   case wuss_EVENT_MESSAGE:
-    if (pt->window == NULL || window != pt->window)
+    if (pt->base.window == NULL || window != pt->base.window)
       return result_OK;
-    return taskapp_window_data_load(pt->wuss, pt->delegate, pt,
+    return taskapp_window_data_load(pt->base.wuss, pt->base.delegate, pt,
                                     (taskapp_data_load_fn_t) painting_load,
                                     event->data.message);
 
   case wuss_EVENT_IDLE:
-    if (pt->window == NULL)
+    if (pt->base.window == NULL)
       return result_OK;
 
     /* the spray keeps building while the button is held still */
@@ -925,32 +904,28 @@ result_t painting_handle(wuss_window_t      *window,
     }
     return result_OK;
 
-  case wuss_EVENT_MENU_CLOSED:
-    pt->menu_handle = NULL;
-    return result_OK;
-
   case wuss_EVENT_PALETTE:
     /* wuss_set_palette repaints the whole screen itself */
     painting_swatches_track(pt);
     return result_OK;
 
   case wuss_EVENT_CLOSE_ADJUST:
-    if (window != pt->window)
+    if (window != pt->base.window)
       return result_OK;
-    return task_close_adjust(pt->wuss, pt->delegate, window, pt->path,
-                             event);
+    return task_close_adjust(pt->base.wuss, pt->base.delegate, window,
+                             pt->path, event);
 
   case wuss_EVENT_CLOSE:
     /* the toolbars and pane belong to the canvas, so they close with it */
-    pt->window    = NULL;
-    pt->toolbox   = NULL;
-    pt->optionbar = NULL;
-    pt->sizebar   = NULL;
+    pt->base.window = NULL;
+    pt->toolbox     = NULL;
+    pt->optionbar   = NULL;
+    pt->sizebar     = NULL;
     return result_OK;
 
   case wuss_EVENT_QUIT:
-    /* the task autocloses once its windows go, so free the block here */
-    painting_destroy(pt);
+    free(pt->lasso);
+    paintingdoc_destroy(pt->doc);
     return result_OK;
 
   default:

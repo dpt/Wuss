@@ -15,22 +15,26 @@
 #include "TheGreatEscape/TheGreatEscape.h"
 #include "ZXSpectrum/Keyboard.h"
 
-#include "greatescape.h"
+#include "../apps.h"
 #include "../common/taskapp.h"
 #include "../common/zxtask.h"
 
 /* The game's timings are in T-states of a 48K Spectrum's Z80. */
 #define GREATESCAPE_CLOCK_HZ (3.5e6)
 
-/* The game loops inside tge_menu and tge_main, which only return between
- * frames or on a quit; zxtask runs it on its own thread. */
-struct greatescape_task
+/* A window running the ZX Spectrum The Great Escape recreation (built from
+ * WUSS_GREATESCAPE_DIR). Keys are the game's own, chosen from its menu; the
+ * arrow keys and '.' drive the emulated Kempston joystick. Silent. The game
+ * loops inside tge_menu and tge_main, which only return between frames or on
+ * a quit; zxtask runs it on its own thread. */
+typedef struct greatescape_task
 {
   zxtask_t      base; /* must be first */
   zxspectrum_t *zx;
   tgestate_t   *game;
   zxkeyset_t    keys; /* under base.lock */
-};
+}
+greatescape_task_t;
 
 /* ----------------------------------------------------------------------- */
 

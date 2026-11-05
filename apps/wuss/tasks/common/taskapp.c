@@ -23,6 +23,7 @@
 #include "wuss/window.h"
 
 #include "common.h"
+#include "snapshot.h"
 #include "taskapp.h"
 
 /* Loading a file can take a while: show the hourglass meanwhile. */
@@ -60,6 +61,144 @@ result_t taskapp_window_data_load(wuss_t                *wuss,
     (void) wuss_acknowledge(wuss, delegate, msg);
 
   return result_OK;
+}
+
+static result_t instance_handle(wuss_window_t      *window,
+                                const wuss_event_t *event,
+                                void               *task_data)
+{
+  result_t            rc;
+  taskapp_instance_t *instance;
+
+  instance = task_data;
+
+  if (!instance->desc->all_windows && window != instance->window)
+  {
+    if (event->kind == wuss_EVENT_MOUSE || event->kind == wuss_EVENT_SCROLL)
+      return result_OK;
+    if (event->kind == wuss_EVENT_KEY)
+      return result_WUSS_KEY_UNCLAIMED;
+  }
+
+  if (event->kind == wuss_EVENT_MENU_CLOSED)
+    instance->menu_handle = NULL;
+
+  if (wuss_menu_select_is(event, &instance->menu, instance->save_row))
+    return wuss_saveas_open(instance->saveas);
+
+  rc = instance->desc->handle(window, event, task_data);
+
+  if (event->kind == wuss_EVENT_CLOSE && window == instance->window)
+  {
+    instance->window = NULL;
+  }
+  else if (event->kind == wuss_EVENT_QUIT)
+  {
+    wuss_saveas_destroy(instance->saveas);
+    free(instance);
+  }
+
+  return rc;
+}
+
+/* wuss_saveas_save_fn_t: opaque is the taskapp_instance_t */
+static result_t instance_save(const char *path, void *opaque)
+{
+  taskapp_instance_t *instance;
+
+  instance = opaque;
+
+  return snapshot_save_png(instance->window, instance->desc->handle, instance,
+                           path);
+}
+
+void taskapp_save_row(taskapp_instance_t    *instance,
+                      wuss_menu_item_t      *items,
+                      int                    row,
+                      wuss_menu_item_flags_t flags)
+{
+  WUSS_MENU_ITEM_SHORTCUT(items, row, "Save", flags, "F3");
+  items[row].window = wuss_saveas_window(instance->saveas);
+
+  instance->save_row = row;
+}
+
+result_t taskapp_instance_create(wuss_t               *wuss,
+                                 const taskapp_desc_t *desc,
+                                 void                **out)
+{
+  result_t            rc;
+  taskapp_instance_t *instance;
+  wuss_task_desc_t    task_desc;
+
+  instance = calloc(1, desc->instance_size);
+  if (instance == NULL)
+    return result_OOM;
+
+  instance->wuss = wuss;
+  instance->desc = desc;
+  instance->save_row = -1;
+
+  task_desc.handle    = instance_handle;
+  task_desc.task_data = instance;
+  task_desc.name      = desc->name;
+  rc = wuss_task_create(wuss, &task_desc, &instance->delegate);
+  if (rc != result_OK)
+  {
+    free(instance); /* nothing registered yet, so no wuss_EVENT_QUIT comes */
+    return rc;
+  }
+
+  wuss_task_set_autoclose(instance->delegate, 1);
+
+  if (desc->window_size.w > 0)
+  {
+    rc = task_window_create(instance->delegate, desc->window_size,
+                            desc->window_title != NULL ? desc->window_title
+                                                       : desc->name,
+                            &instance->window);
+    if (rc != result_OK)
+      goto failure;
+  }
+
+  if (desc->save_name != NULL || desc->save != NULL)
+  {
+    wuss_saveas_save_fn_t *save;
+
+    save = desc->save != NULL ? desc->save : instance_save;
+    rc   = snapshot_saveas_create(&instance->saveas, wuss, desc->save_name,
+                                  save, instance);
+    if (rc != result_OK)
+      goto failure;
+  }
+
+  if (desc->init != NULL)
+  {
+    rc = desc->init(instance);
+    if (rc != result_OK)
+      goto failure;
+  }
+
+  if (out)
+    *out = instance;
+
+  return result_OK;
+
+failure:
+  /* its wuss_EVENT_QUIT frees the block */
+  wuss_task_destroy(instance->delegate);
+  return rc;
+}
+
+/* desc->create, or taskapp's own if the task leaves that to it */
+static result_t app_create(wuss_t               *wuss,
+                           const taskapp_desc_t *desc,
+                           void                **out)
+{
+  if (desc->create != NULL)
+    return desc->create(wuss, out);
+
+  return taskapp_instance_create(wuss, desc, out);
 }
 
 void taskapp_glyph_name(const char *name, char leaf[TASKAPP_GLYPH_NAME_MAX])
@@ -184,7 +323,7 @@ static result_t app_create_adapter(wuss_t *wuss, void *param, void **out)
 
   app = param;
 
-  return app->desc->create(wuss, out);
+  return app_create(wuss, app->desc, out);
 }
 
 static result_t app_spawn_instance(app_t *app, void **out)
@@ -513,7 +652,7 @@ void taskapp_reap(void)
 
 result_t taskapp_install(wuss_t *wuss, const taskapp_desc_t *desc)
 {
-  return desc->create(wuss, NULL);
+  return app_create(wuss, desc, NULL);
 }
 
 result_t taskapp_spawn(wuss_t               *wuss,

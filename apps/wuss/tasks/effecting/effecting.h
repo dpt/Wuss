@@ -17,6 +17,7 @@
 #include "wuss/window.h"
 
 #include "../common/dithermenu.h"
+#include "../common/taskapp.h"
 
 #define EFFECTING_MAX_NAME_LEN 64
 #define EFFECTING_LABEL_LEN    32 /* longest list label, with NUL */
@@ -81,10 +82,8 @@ enum
  * writes it as a PNG. Every change re-applies at once. */
 typedef struct effecting_task
 {
-  wuss_window_t       *window;
-  wuss_t              *wuss;
-  wuss_task_t         *delegate;
-  bitmap_t             source;   /* owned base; NULL until DataLoad */
+  taskapp_instance_t   base;
+  bitmap_t             source;  /* owned base; NULL until DataLoad */
   bitmap_t             chain;    /* owned base: source through the stack */
   bitmap_t             result;   /* owned base: chain blended with source */
   int                  show_original;
@@ -110,26 +109,12 @@ typedef struct effecting_task
   dithermenu_t         dither;
   screen_dither_t      dithering; /* method for paletted screens */
   wuss_menu_item_t     menu_items[EFFECTING_MENU__LIMIT];
-  wuss_menu_t          menu;
-  wuss_menu_handle_t   menu_handle; /* the open chain, if any */
-  wuss_saveas_t       *saveas;
   struct effecting_edit *edit;   /* the editing dialogues */
 }
 effecting_task_t;
 
-wuss_window_fn_t effecting_handle;
-
-/* create an empty window against the given wuss instance; it shows an image
- * once one is dropped on it. if out is non-NULL, the task block is also
- * returned through it */
-result_t effecting_create(wuss_t *wuss, effecting_task_t **out);
-
 /* install the icon bar app that opens effects windows on demand */
 result_t effecting_app_create(wuss_t *wuss);
-
-/* free a task block allocated by effecting_create; normally called by the
- * window's wuss_EVENT_QUIT handler, not by callers directly */
-void effecting_destroy(effecting_task_t *task);
 
 #endif /* WUSS_APP */
 

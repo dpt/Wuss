@@ -63,7 +63,7 @@ enum { READING_ALIGN_LEFT = 0, READING_ALIGN_CENTRE, READING_ALIGN_RIGHT };
 
 /* ----------------------------------------------------------------------- */
 
-/* the shared fontmenu singleton, retargeted at task->wuss's bmfonts dir --
+/* the shared fontmenu singleton, retargeted at task->base.wuss's bmfonts dir --
  * cheap to call repeatedly since wuss_fontmenu_menu only rebuilds when the
  * dir or wuss_t actually changes */
 static const wuss_menu_t *reading_fontmenu(reading_task_t *task)
@@ -71,9 +71,9 @@ static const wuss_menu_t *reading_fontmenu(reading_task_t *task)
   const char *resources;
   const char *bmfonts_dir;
 
-  resources   = wuss_get_resources(task->wuss);
+  resources   = wuss_get_resources(task->base.wuss);
   bmfonts_dir = pathf("%s/resources/bmfonts", resources);
-  return wuss_fontmenu_menu(bmfonts_dir, "Font", task->wuss,
+  return wuss_fontmenu_menu(bmfonts_dir, "Font", task->base.wuss,
                             wuss_FONTMENU_FAMILIES);
 }
 
@@ -84,9 +84,9 @@ static void reading_release_fonts(reading_task_t *task)
   if (task->current < 0)
     return;
 
-  bmfontcache_release(wuss_get_font_cache(task->wuss), task->md.font);
+  bmfontcache_release(wuss_get_font_cache(task->base.wuss), task->md.font);
   if (task->md.bold != NULL)
-    bmfontcache_release(wuss_get_font_cache(task->wuss), task->md.bold);
+    bmfontcache_release(wuss_get_font_cache(task->base.wuss), task->md.bold);
 }
 
 /* make family name (font menu row idx) the paragraph's: its Regular face
@@ -104,7 +104,7 @@ static result_t reading_load_family(reading_task_t *task,
   bmfont_t           *font;
   bmfont_t           *bold;
 
-  resources = wuss_get_resources(task->wuss);
+  resources = wuss_get_resources(task->base.wuss);
   rc = bmfontfamily_scan(pathf("%s/resources/bmfonts/%s", resources, name),
                          &family);
   if (rc != result_OK)
@@ -115,7 +115,7 @@ static result_t reading_load_family(reading_task_t *task,
   if (face == NULL)
     face = bmfontfamily_face(family, 0); /* a scanned family has a face */
 
-  cache = wuss_get_font_cache(task->wuss);
+  cache = wuss_get_font_cache(task->base.wuss);
   rc = bmfontcache_acquire(cache, face->path, &font);
   if (rc != result_OK)
   {
@@ -153,7 +153,7 @@ static result_t reading_set_family(reading_task_t *task,
   if (reading_load_family(task, idx, name) != result_OK)
     return result_OK; /* leave the current font in place */
 
-  wuss_window_invalidate_visible(task->window);
+  wuss_window_invalidate_visible(task->base.window);
   return result_OK;
 }
 
@@ -261,15 +261,15 @@ static result_t reading_show(reading_task_t *task, const char *path)
     else
       snprintf(message, sizeof(message), "Cannot read %s", leaf);
     taskapp_glyph_name("Reading", glyph);
-    (void) wuss_error_report(task->wuss, glyph, "Reading", message,
+    (void) wuss_error_report(task->base.wuss, glyph, "Reading", message,
                              wuss_ERROR_BUTTONS_OK, NULL, NULL);
 
     return rc;
   }
 
   snprintf(task->path, sizeof(task->path), "%s", path);
-  task_set_doc_title(task->window, leaf, "Reading", 0);
-  wuss_window_invalidate_visible(task->window);
+  task_set_doc_title(task->base.window, leaf, "Reading", 0);
+  wuss_window_invalidate_visible(task->base.window);
   return result_OK;
 }
 
@@ -281,7 +281,7 @@ static result_t reading_drop(reading_task_t *task, const char *path)
 
   rc = reading_show(task, path);
   if (rc != result_OK)
-    wuss_task_destroy(task->delegate); /* its QUIT frees task */
+    wuss_task_destroy(task->base.delegate); /* its QUIT frees task */
 
   return rc;
 }
@@ -290,7 +290,7 @@ static result_t reading_drop(reading_task_t *task, const char *path)
 static result_t reading_set_fg(reading_task_t *task, wuss_colour_t picked)
 {
   task->fg_index = picked;
-  wuss_window_invalidate_visible(task->window);
+  wuss_window_invalidate_visible(task->base.window);
   return result_OK;
 }
 
@@ -302,7 +302,7 @@ static result_t reading_set_bg(reading_task_t *task, wuss_colour_t picked)
   task->bg_transparent = (picked == wuss_NO_BACKGROUND);
   if (!task->bg_transparent)
     task->bg_index = picked;
-  wuss_window_invalidate_visible(task->window);
+  wuss_window_invalidate_visible(task->base.window);
   return result_OK;
 }
 
@@ -317,8 +317,8 @@ static result_t reading_set_spacing(reading_task_t *task, int idx)
   task->md.spacing.word_spacing   = reading_spacing_presets[idx].word_spacing;
 
   wuss_menu_tick_exclusive(&task->spacing_menu, idx);
-  wuss_menu_tick_exclusive_live(task->menu_handle, &task->spacing_menu, idx);
-  wuss_window_invalidate_visible(task->window);
+  wuss_menu_tick_exclusive_live(task->base.menu_handle, &task->spacing_menu, idx);
+  wuss_window_invalidate_visible(task->base.window);
   return result_OK;
 }
 
@@ -332,15 +332,15 @@ static result_t reading_set_align(reading_task_t *task, int idx)
   task->md.align = (mdtext_align_t) idx;
 
   wuss_menu_tick_exclusive(&task->align_menu, idx);
-  wuss_menu_tick_exclusive_live(task->menu_handle, &task->align_menu, idx);
-  wuss_window_invalidate_visible(task->window);
+  wuss_menu_tick_exclusive_live(task->base.menu_handle, &task->align_menu, idx);
+  wuss_window_invalidate_visible(task->base.window);
   return result_OK;
 }
 
 static result_t reading_open_menu(reading_task_t *task)
 {
-  return wuss_menu_open_at_pointer(task->delegate, &task->top_menu,
-                                   &task->menu_handle);
+  return wuss_menu_open_at_pointer(task->base.delegate, &task->top_menu,
+                                   &task->base.menu_handle);
 }
 
 /* Every submenu leaf fires wuss_EVENT_PRE_SUBMENU_OPEN, not just the
@@ -366,7 +366,7 @@ static result_t reading_pre_submenu_open(reading_task_t     *task,
 
       /* the fontmenu singleton may have been rebuilt (at a new address) by
        * another task since top_items[READING_MENU_FONT].submenu was cached in
-       * reading_create -- re-fetch instead of handing the spawner a stale
+       * reading_init -- re-fetch instead of handing the spawner a stale
        * pointer, and before ticking, as a rebuild would drop the tick */
       fontmenu = reading_fontmenu(task);
       wuss_fontmenu_set_ticked(task->current);
@@ -392,17 +392,17 @@ static result_t reading_pre_submenu_open(reading_task_t     *task,
   wuss_colourmenu_set_ticked(*task->colourmenu_target);
 
   return wuss_menu_open_submenu_now(handle, index,
-                                    wuss_colourmenu_menu(task->wuss));
+                                    wuss_colourmenu_menu(task->base.wuss));
 }
 
 /* ----------------------------------------------------------------------- */
 
-result_t reading_create(wuss_t *wuss, reading_task_t **out)
+/* create an empty Reading window; it shows text once a file is dropped on it.
+ * the font picker loads bmfonts from
+ * wuss_get_resources(wuss)/resources/bmfonts/<family>/<style>.png */
+static result_t reading_init(reading_task_t *task)
 {
-  result_t           rc;
-  reading_task_t    *task;
-  wuss_task_t       *delegate;
-  wuss_task_desc_t   delegate_desc;
+  wuss_t            *wuss;
   const wuss_menu_t *menu;
   const char        *sysname;
   char               family[128];
@@ -410,11 +410,8 @@ result_t reading_create(wuss_t *wuss, reading_task_t **out)
   int                i;
   size2d_t           sz;
 
-  task = calloc(1, sizeof(*task));
-  if (task == NULL)
-    return result_OOM;
+  wuss = task->base.wuss;
 
-  task->wuss        = wuss;
   task->md.font     = wuss_get_font(wuss);
   task->md.leading  = LEADING;
   task->current     = -1; /* until the system font's row is found below */
@@ -431,10 +428,7 @@ result_t reading_create(wuss_t *wuss, reading_task_t **out)
    * from) */
   menu = reading_fontmenu(task);
   if (menu == NULL)
-  {
-    free(task); /* nothing registered yet; the spawner will not free it */
     return result_OOM;
-  }
 
   /* start in the system font's family ("Family Style"), if the picker lists
    * it; else stay on the system font itself with no row ticked */
@@ -449,13 +443,9 @@ result_t reading_create(wuss_t *wuss, reading_task_t **out)
   }
 
   if (wuss_colourmenu_menu(wuss) == NULL)
-  {
-    reading_release_fonts(task);
-    free(task);
     return result_OOM;
-  }
 
-  task->spacing_items[0].text    = "Normal";
+  task->spacing_items[0].text   = "Normal";
   task->spacing_items[0].flags   = wuss_MENU_ITEM_TICKED;
   task->spacing_items[0].submenu = NULL;
   task->spacing_items[0].window  = NULL;
@@ -522,40 +512,16 @@ result_t reading_create(wuss_t *wuss, reading_task_t **out)
   WUSS_MENU_TITLE(task->top_menu, "Reading", task->top_items,
                  NELEMS(task->top_items));
 
-  delegate_desc.handle    = reading_handle;
-  delegate_desc.task_data = task;
-  delegate_desc.name      = "Reading";
-  rc = wuss_task_create(wuss, &delegate_desc, &delegate);
-  if (rc != result_OK)
-  {
-    reading_release_fonts(task);
-    mdtext_free(&task->md);
-    free(task); /* nothing registered yet; the spawner will not free it */
-    return rc;
-  }
-  wuss_task_set_autoclose(delegate, 1);
-  task->delegate = delegate;
-
-  sz                = SIZE2D(220, 220);
-  rc = wuss_window_create_at(delegate,
-                             &task_place,
-                             sz,
-                             "Reading",
-                             (wuss_WINDOW_DEFAULT & ~wuss_WINDOW_HSCROLL) | wuss_WINDOW_NO_RESIZE_BLIT, /* paragraph reflows across the whole window, so a resize must redraw all of it, not just the newly (un)covered edge */
-                             wuss_BACKDROP_COLOUR(wuss_COLOUR_WINDOW),
-                             SIZE2D(sz.w, 220 * 4),
-                             SIZE2D(0, 0),
-                             &task->window);
-  if (rc != result_OK)
-  {
-    wuss_task_destroy(delegate); /* unregister; its QUIT frees the task block */
-    return rc;
-  }
-
-  if (out)
-    *out = task;
-
-  return result_OK;
+  sz = SIZE2D(220, 220);
+  return wuss_window_create_at(task->base.delegate,
+                               &task_place,
+                               sz,
+                               "Reading",
+                               (wuss_WINDOW_DEFAULT & ~wuss_WINDOW_HSCROLL) | wuss_WINDOW_NO_RESIZE_BLIT, /* paragraph reflows across the whole window, so a resize must redraw all of it, not just the newly (un)covered edge */
+                               wuss_BACKDROP_COLOUR(wuss_COLOUR_WINDOW),
+                               SIZE2D(sz.w, 220 * 4),
+                               SIZE2D(0, 0),
+                               &task->base.window);
 }
 
 static const unsigned short reading_opens[] =
@@ -563,14 +529,18 @@ static const unsigned short reading_opens[] =
   filetype_RISCOS_TEXT, filetype_RISCOS_MARKDOWN, 0
 };
 
+static wuss_window_fn_t reading_handle;
+
 static const taskapp_desc_t reading_desc =
 {
-  .name      = "Reading",
-  .purpose   = "Read Markdown and text files",
-  .create    = (taskapp_create_fn_t) reading_create,
-  .data_load = (taskapp_data_load_fn_t) reading_drop,
-  .drop_only = true,
-  .opens     = reading_opens
+  .name          = "Reading",
+  .purpose       = "Read Markdown and text files",
+  .data_load     = (taskapp_data_load_fn_t) reading_drop,
+  .drop_only     = true,
+  .opens         = reading_opens,
+  .instance_size = sizeof(reading_task_t),
+  .init          = (taskapp_init_fn_t) reading_init,
+  .handle        = reading_handle
 };
 
 result_t reading_app_create(wuss_t *wuss)
@@ -580,10 +550,10 @@ result_t reading_app_create(wuss_t *wuss)
 
 static result_t reading__spawn_show(wuss_t *wuss, void *param, void **out)
 {
-  result_t        rc;
-  reading_task_t *task;
+  result_t rc;
+  void    *task;
 
-  rc = reading_create(wuss, &task);
+  rc = taskapp_instance_create(wuss, &reading_desc, &task);
   if (rc != result_OK)
     return rc;
 
@@ -596,18 +566,11 @@ result_t reading_open_file(wuss_t *wuss, const char *path)
   void *task;
   char  copy[512];
 
-  /* reading_create calls pathf, so path may be pathf's shared buffer */
+  /* reading_init calls pathf, so path may be pathf's shared buffer */
   snprintf(copy, sizeof(copy), "%s", path);
 
   return taskapp_spawn(wuss, &reading_desc, reading__spawn_show, copy,
                        &task);
-}
-
-void reading_destroy(reading_task_t *task)
-{
-  reading_release_fonts(task);
-  mdtext_free(&task->md);
-  free(task);
 }
 
 static result_t reading_redraw(const wuss_event_t *event, void *task_data)
@@ -625,7 +588,7 @@ static result_t reading_redraw(const wuss_event_t *event, void *task_data)
 
   bounds = event->data.redraw.bounds;
 
-  palette = wuss_get_palette(tcx->wuss, NULL);
+  palette = wuss_get_palette(tcx->base.wuss, NULL);
   fg      = palette[tcx->fg_index];
   bg      = tcx->bg_transparent ? colour_rgba(0, 0, 0, 0) : palette[tcx->bg_index];
 
@@ -655,17 +618,17 @@ static result_t reading_idle(void *task_data)
 
   /* the proginfo dialogue is a second window on this same (autoclose)
    * delegate, so the main window may already be gone */
-  if (tcx->window == NULL || tcx->md.text == NULL)
+  if (tcx->base.window == NULL || tcx->md.text == NULL)
     return result_OK;
 
-  wuss_window_get_content_bounds(tcx->window, &bounds);
+  wuss_window_get_content_bounds(tcx->base.window, &bounds);
   rc = mdtext_layout(&tcx->md, bounds.x1 - bounds.x0 - 2 * READING_INSET);
   if (rc != result_OK)
     return rc;
 
   /* a window cannot be dragged wider than its document, so make the
    * document as wide as the screen allows; the text reflows to fit */
-  wuss_window_get_max_content(tcx->window, &doc);
+  wuss_window_get_max_content(tcx->base.window, &doc);
   doc.h = mdtext_nlines(&tcx->md) * mdtext_line_height(&tcx->md) +
           2 * READING_INSET;
 
@@ -673,7 +636,7 @@ static result_t reading_idle(void *task_data)
     return result_OK;
   tcx->doc_h = doc.h;
 
-  return wuss_window_set_doc(tcx->window, doc);
+  return wuss_window_set_doc(tcx->base.window, doc);
 }
 
 /* A DataLoad on the reading window: show the file it names. */
@@ -681,17 +644,17 @@ static result_t reading_message(reading_task_t     *tcx,
                                 wuss_window_t      *window,
                                 const wuss_event_t *event)
 {
-  if (tcx->window == NULL || window != tcx->window)
+  if (tcx->base.window == NULL || window != tcx->base.window)
     return result_OK;
 
-  return taskapp_window_data_load(tcx->wuss, tcx->delegate, tcx,
+  return taskapp_window_data_load(tcx->base.wuss, tcx->base.delegate, tcx,
                                   (taskapp_data_load_fn_t) reading_show,
                                   event->data.message);
 }
 
-result_t reading_handle(wuss_window_t      *window,
-                        const wuss_event_t *event,
-                        void               *task_data)
+static result_t reading_handle(wuss_window_t      *window,
+                               const wuss_event_t *event,
+                               void               *task_data)
 {
   reading_task_t *tcx;
 
@@ -703,9 +666,6 @@ result_t reading_handle(wuss_window_t      *window,
     return reading_redraw(event, task_data);
 
   case wuss_EVENT_MOUSE:
-    if (window != tcx->window)
-      return result_OK; /* the proginfo dialogue has no click behaviour of
-                         * its own */
     if (event->data.mouse.action == wuss_MOUSE_DOWN &&
         (event->data.mouse.button & wuss_BUTTON_MENU))
       return reading_open_menu(tcx);
@@ -727,7 +687,7 @@ result_t reading_handle(wuss_window_t      *window,
          * in place (a no-op once a SELECT pick has closed it). Use the
          * event's own menu, not a fresh reading_fontmenu(): that can rebuild
          * the singleton under the open chain. */
-        wuss_menu_tick_exclusive_live(tcx->menu_handle,
+        wuss_menu_tick_exclusive_live(tcx->base.menu_handle,
                                       event->data.menu_select.menu,
                                       tcx->current);
         return rc;
@@ -753,23 +713,15 @@ result_t reading_handle(wuss_window_t      *window,
   case wuss_EVENT_PRE_SUBMENU_OPEN:
     return reading_pre_submenu_open(tcx, event);
 
-  case wuss_EVENT_MENU_CLOSED:
-    tcx->menu_handle = NULL;
-    return result_OK;
-
   case wuss_EVENT_CLOSE_ADJUST:
-    if (window != tcx->window)
+    if (window != tcx->base.window)
       return result_OK;
-    return task_close_adjust(tcx->wuss, tcx->delegate, window, tcx->path,
-                             event);
-
-  case wuss_EVENT_CLOSE:
-    if (window == tcx->window)
-      tcx->window = NULL;
-    return result_OK;
+    return task_close_adjust(tcx->base.wuss, tcx->base.delegate, window,
+                             tcx->path, event);
 
   case wuss_EVENT_QUIT:
-    reading_destroy(tcx);
+    reading_release_fonts(tcx);
+    mdtext_free(&tcx->md);
     return result_OK;
 
   case wuss_EVENT_IDLE:

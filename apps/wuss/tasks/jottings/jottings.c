@@ -24,8 +24,13 @@
 #include "wuss/message.h"
 #include "wuss/window.h"
 
-#include "jottings.h"
+#include "../apps.h"
 #include "../common/taskapp.h"
+
+/* Jottings: notes are Markdown, kept in the per-user "Notes" directory once
+ * pinned to the backdrop. Start it before other apps that open ".md" files so
+ * it claims the notes in its own directory first. See
+ * docs/windowing/backdrop.md. */
 
 #define JOTTING_INSET     4
 #define JOTTING_TITLE_MAX 40
