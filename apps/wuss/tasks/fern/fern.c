@@ -3,9 +3,7 @@
 #ifdef WUSS_APP
 
 #include <stddef.h>
-#include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 
 #ifdef FORTIFY
 #include "fortify/fortify.h"
@@ -15,17 +13,15 @@
 #include "framebuf/colour.h"
 #include "geom/box.h"
 #include "geom/size.h"
-#include "geom/stack.h"
 #include "utils/rng.h"
 #include "wuss/component/colourmenu.h"
 #include "wuss/component/dialogue.h"
-#include "wuss/icon-spec.h"
-#include "wuss/icon.h"
 #include "wuss/menu.h"
 #include "wuss/task.h"
 #include "wuss/window.h"
 
 #include "../apps.h"
+#include "../common/confdlg.h"
 #include "../common/taskapp.h"
 #include "../common/common.h"
 
@@ -55,25 +51,6 @@ fern_config_t;
 #define FERN_SIZE_MAX  512
 #define FERN_SIZE_STEP 64
 
-enum
-{
-  FERN_ROW_SIZE = 0,
-  FERN_ROW_POINTS,
-  FERN_ROW_CURL,
-
-  FERN_NROWS
-};
-
-typedef struct fern_conf
-{
-  wuss_dialogue_t  *dialogue;
-  wuss_slider_row_t rows[FERN_NROWS];
-  wuss_icon_t      *deflt;
-  wuss_icon_t      *cancel;
-  wuss_icon_t      *apply;
-}
-fern_conf_t;
-
 /* zoom range/step for the wheel: 1.0 fits the window, larger zooms in about
  * the centre */
 #define FERN_ZOOM_MIN  0.3
@@ -86,7 +63,7 @@ typedef struct fern_task
   fern_config_t      config;
   colour_t           bg, fg;
   unsigned long      seed;        /* RNG state; Select/Adjust step it */
-  fern_conf_t        conf;
+  confdlg_t          conf;
   wuss_colourlist_t  colours; /* per-instance, see saturn.c */
   wuss_menu_item_t   menu_items[6];
   int             animate;     /* Menu > Pause, inverted: re-seed on idle */
@@ -113,47 +90,29 @@ enum
   FERN_MENU_RESET
 };
 
-enum
-{
-  FERN_ICON_LABEL1 = 0, FERN_ICON_SLIDER1, FERN_ICON_VALUE1,
-  FERN_ICON_LABEL2,     FERN_ICON_SLIDER2, FERN_ICON_VALUE2,
-  FERN_ICON_LABEL3,     FERN_ICON_SLIDER3, FERN_ICON_VALUE3,
-  FERN_ICON_DEFAULT,
-  FERN_ICON_CANCEL,
-  FERN_ICON_APPLY,
+static const fern_config_t g_fern_default_config = FERN_CONFIG_DEFAULT;
 
-  FERN_NICONS
+/* Size stays first: confdlg's applied callback gets its old value */
+static const confdlg_row_t g_fern_rows[] =
+{
+  { "Size",   FERN_SIZE_MIN, FERN_SIZE_MAX, FERN_SIZE_STEP, offsetof(fern_config_t, size) },
+  { "Points", 100, 100000, 0, offsetof(fern_config_t, points) },
+  { "Curl",   -300, 300, 0, offsetof(fern_config_t, curl) },
 };
 
-typedef struct fern_rowdesc
-{
-  const char *label;
-  int         min, max, step;
-  size_t      config_offset;
-}
-fern_rowdesc_t;
+static result_t fern_resize(fern_task_t *task, int old_size);
 
-static const fern_rowdesc_t g_fern_rows[FERN_NROWS] =
+static const confdlg_desc_t g_fern_conf =
 {
-  [FERN_ROW_SIZE]   = { "Size",   FERN_SIZE_MIN, FERN_SIZE_MAX, FERN_SIZE_STEP, offsetof(fern_config_t, size) },
-  [FERN_ROW_POINTS] = { "Points", 100, 100000, 0, offsetof(fern_config_t, points) },
-  [FERN_ROW_CURL]   = { "Curl",   -300, 300, 0, offsetof(fern_config_t, curl) },
+  g_fern_rows, NELEMS(g_fern_rows),
+  &g_fern_default_config, sizeof(g_fern_default_config),
+  (confdlg_applied_fn_t) fern_resize
 };
-
-static int *fern_field(fern_task_t *task, int row)
-{
-  return (int *) ((char *) &task->config + g_fern_rows[row].config_offset);
-}
-
-static result_t fern_conf_dialogue_create(fern_task_t *task);
-static result_t fern_conf_fillout(void *opaque);
 
 /* the starting fern, as fern_init and Reset restore it */
 static void fern_defaults(fern_task_t *task)
 {
-  static const fern_config_t default_config = FERN_CONFIG_DEFAULT;
-
-  task->config  = default_config;
+  task->config  = g_fern_default_config;
   task->bg      = colour_rgb(0x00, 0x00, 0x00);
   task->fg      = colour_rgb(0x40, 0xE0, 0x40);
   task->seed    = 1;
@@ -201,7 +160,7 @@ static result_t fern_init(fern_task_t *task)
   if (rc != result_OK)
     return rc;
 
-  rc = fern_conf_dialogue_create(task);
+  rc = confdlg_create(&task->conf, &task->base, &g_fern_conf, &task->config);
   if (rc != result_OK)
     return rc;
 
@@ -360,188 +319,6 @@ static result_t fern_pre_submenu_open(fern_task_t        *task,
                                     task->menu_items[index].submenu);
 }
 
-/* ----- configuration dialogue ----- */
-
-enum
-{
-  ST_ROOT,
-
-  ST_ROW1, ST_LABL1, ST_SLDR1, ST_VAL1,
-  ST_ROW2, ST_LABL2, ST_SLDR2, ST_VAL2,
-  ST_ROW3, ST_LABL3, ST_SLDR3, ST_VAL3,
-
-  ST_BTNS,
-  ST_BSPC,
-  ST_BBOX,
-  ST_DFLT,
-  ST_CNCL,
-  ST_APLY,
-
-  FERN_STACK__LIMIT
-};
-
-#define ST_G_LABEL      1 /* size groups, see stack_item_t::group */
-#define ST_G_VALUE      2
-#define ST_SLIDER_MIN_W (64)
-
-static const stack_item_t g_fern_conf_stack[FERN_STACK__LIMIT] =
-{
-  [ST_ROOT]  = { .kind = stack_KIND_VBOX, .parent = -1,
-                 .gap = wuss_STD_GAP, .pad = wuss_STD_INSETS },
-
-  [ST_ROW1]  = STACK_HBOX(ST_ROOT, wuss_STD_SLIDER_HEIGHT, wuss_STD_GAP, stack_ALIGN_START),
-  [ST_LABL1] = STACK_LEAF_GROUP(ST_ROW1, 0, 16, stack_ALIGN_CENTRE, ST_G_LABEL),
-  [ST_SLDR1] = STACK_LEAF_EX(ST_ROW1, 0, wuss_STD_SLIDER_HEIGHT, stack_ALIGN_CENTRE, 1, ST_SLIDER_MIN_W, 0),
-  [ST_VAL1]  = STACK_LEAF_GROUP(ST_ROW1, 0, 16, stack_ALIGN_CENTRE, ST_G_VALUE),
-
-  [ST_ROW2]  = STACK_HBOX(ST_ROOT, wuss_STD_SLIDER_HEIGHT, wuss_STD_GAP, stack_ALIGN_START),
-  [ST_LABL2] = STACK_LEAF_GROUP(ST_ROW2, 0, 16, stack_ALIGN_CENTRE, ST_G_LABEL),
-  [ST_SLDR2] = STACK_LEAF_EX(ST_ROW2, 0, wuss_STD_SLIDER_HEIGHT, stack_ALIGN_CENTRE, 1, ST_SLIDER_MIN_W, 0),
-  [ST_VAL2]  = STACK_LEAF_GROUP(ST_ROW2, 0, 16, stack_ALIGN_CENTRE, ST_G_VALUE),
-
-  [ST_ROW3]  = STACK_HBOX(ST_ROOT, wuss_STD_SLIDER_HEIGHT, wuss_STD_GAP, stack_ALIGN_START),
-  [ST_LABL3] = STACK_LEAF_GROUP(ST_ROW3, 0, 16, stack_ALIGN_CENTRE, ST_G_LABEL),
-  [ST_SLDR3] = STACK_LEAF_EX(ST_ROW3, 0, wuss_STD_SLIDER_HEIGHT, stack_ALIGN_CENTRE, 1, ST_SLIDER_MIN_W, 0),
-  [ST_VAL3]  = STACK_LEAF_GROUP(ST_ROW3, 0, 16, stack_ALIGN_CENTRE, ST_G_VALUE),
-
-  [ST_BTNS]  = STACK_HBOX(ST_ROOT, wuss_STD_SECONDARY_BUTTON_HEIGHT, wuss_STD_GAP, stack_ALIGN_START),
-  [ST_BSPC]  = STACK_SPACER_GROUP(ST_BTNS, 0, ST_G_LABEL),
-  [ST_BBOX]  = { .kind = stack_KIND_HBOX, .parent = ST_BTNS,
-                 .gap = wuss_STD_GAP, .flex = 1 },
-  [ST_DFLT]  = STACK_LEAF_EX(ST_BBOX, 0, wuss_STD_SECONDARY_BUTTON_HEIGHT, stack_ALIGN_CENTRE, 1, 0, 0),
-  [ST_CNCL]  = STACK_LEAF_EX(ST_BBOX, 0, wuss_STD_SECONDARY_BUTTON_HEIGHT, stack_ALIGN_CENTRE, 1, 0, 0),
-  [ST_APLY]  = STACK_LEAF_EX(ST_BBOX, 0, wuss_STD_SECONDARY_BUTTON_HEIGHT, stack_ALIGN_CENTRE, 1, 0, 0),
-};
-
-static result_t fern_conf_cancel(void *opaque, wuss_button_t button);
-static result_t fern_conf_apply_action(void *opaque, wuss_button_t button);
-static result_t fern_conf_default_action(void *opaque, wuss_button_t button);
-
-static result_t fern_conf_dialogue_create(fern_task_t *task)
-{
-  static const int label_box[FERN_NROWS]   = { ST_LABL1, ST_LABL2, ST_LABL3 };
-  static const int slider_box[FERN_NROWS]  = { ST_SLDR1, ST_SLDR2, ST_SLDR3 };
-  static const int value_box[FERN_NROWS]   = { ST_VAL1, ST_VAL2, ST_VAL3 };
-  static const int label_icon[FERN_NROWS]  = { FERN_ICON_LABEL1, FERN_ICON_LABEL2, FERN_ICON_LABEL3 };
-  static const int slider_icon[FERN_NROWS] = { FERN_ICON_SLIDER1, FERN_ICON_SLIDER2, FERN_ICON_SLIDER3 };
-  static const int value_icon[FERN_NROWS]  = { FERN_ICON_VALUE1, FERN_ICON_VALUE2, FERN_ICON_VALUE3 };
-
-  result_t               rc;
-  wuss_icon_spec_t       specs[FERN_NICONS];
-  wuss_icon_t           *made[FERN_NICONS];
-  stack_item_t           items[FERN_STACK__LIMIT];
-  box_t                  boxes[FERN_STACK__LIMIT];
-  box_t                  root;
-  char                   value_bufs[FERN_NROWS][WUSS_SLIDER_ROW_BUF];
-  int                    value, row;
-  size2d_t               min_sz;
-  wuss_dialogue_action_t actions[3];
-
-  memcpy(items, g_fern_conf_stack, sizeof(items));
-  for (row = 0; row < FERN_NROWS; row++)
-  {
-    const fern_rowdesc_t *desc = &g_fern_rows[row];
-    char                  widest[WUSS_SLIDER_ROW_BUF];
-
-    items[label_box[row]].axis_size = task_text_width(task->base.wuss, desc->label);
-    snprintf(widest, sizeof(widest), "%d", desc->max);
-    items[value_box[row]].axis_size = task_text_width(task->base.wuss, widest);
-    snprintf(widest, sizeof(widest), "%d", desc->min);
-    items[value_box[row]].axis_size = MAX(items[value_box[row]].axis_size,
-                                          task_text_width(task->base.wuss, widest));
-  }
-
-  items[ST_DFLT].min = task_button_width(task->base.wuss, "Default",
-                                         wuss_STD_SECONDARY_BUTTON_BORDER);
-  items[ST_CNCL].min = items[ST_DFLT].min;
-  items[ST_APLY].min = items[ST_DFLT].min;
-
-  rc = stack_smallest(items, NELEMS(items), &min_sz);
-  if (rc != result_OK)
-    return rc;
-
-  rc = wuss_dialogue_create(&task->conf.dialogue, task->base.delegate, min_sz,
-                            "Configuration", fern_conf_fillout, task);
-  if (rc != result_OK)
-    return rc;
-
-  wuss_dialogue_set_focusable(task->conf.dialogue, 0); /* no writables */
-
-  root = (box_t) BOX_POS_SIZE(0, 0, min_sz.w, min_sz.h);
-  rc = stack_solve(items, NELEMS(items), &root, boxes);
-  if (rc != result_OK)
-    goto exit;
-
-  for (row = 0; row < FERN_NROWS; row++)
-  {
-    const fern_rowdesc_t *desc = &g_fern_rows[row];
-
-    value = *fern_field(task, row);
-
-    wuss_icon_spec_label(&specs[label_icon[row]], boxes[label_box[row]],
-                         desc->label, wuss_ICON_FLAGS_JUSTIFY_RIGHT);
-    wuss_icon_spec_slider_row(&specs[slider_icon[row]], &specs[value_icon[row]],
-                              boxes[slider_box[row]], boxes[value_box[row]],
-                              wuss_SLIDER_HORIZONTAL,
-                              desc->min, desc->max, value, NULL, desc->step,
-                              value_bufs[row], sizeof(value_bufs[row]));
-  }
-
-  wuss_icon_spec_action(&specs[FERN_ICON_DEFAULT], boxes[ST_DFLT], "Default", 0);
-  wuss_icon_spec_action(&specs[FERN_ICON_CANCEL], boxes[ST_CNCL], "Cancel", 0);
-  wuss_icon_spec_action(&specs[FERN_ICON_APPLY], boxes[ST_APLY], "Apply", 0);
-
-  rc = wuss_icon_create_array(wuss_dialogue_window(task->conf.dialogue),
-                              specs, FERN_NICONS, made);
-  if (rc != result_OK)
-    goto exit;
-
-  for (row = 0; row < FERN_NROWS; row++)
-    wuss_slider_row_bind(&task->conf.rows[row], made[slider_icon[row]],
-                         made[value_icon[row]], NULL,
-                         g_fern_rows[row].min, g_fern_rows[row].max,
-                         g_fern_rows[row].step);
-  task->conf.deflt  = made[FERN_ICON_DEFAULT];
-  task->conf.cancel = made[FERN_ICON_CANCEL];
-  task->conf.apply  = made[FERN_ICON_APPLY];
-
-  actions[0].icon = task->conf.deflt;
-  actions[0].fn   = fern_conf_default_action;
-  actions[1].icon = task->conf.cancel;
-  actions[1].fn   = fern_conf_cancel;
-  actions[2].icon = task->conf.apply;
-  actions[2].fn   = fern_conf_apply_action;
-
-  rc = wuss_dialogue_set_actions(task->conf.dialogue, actions,
-                                 NELEMS(actions));
-  if (rc != result_OK)
-    goto exit;
-
-  return result_OK;
-
-exit:
-  wuss_dialogue_destroy(task->conf.dialogue);
-  task->conf.dialogue = NULL;
-  return rc;
-}
-
-/* resync the sliders to task->config; called on every reveal and by Cancel */
-static result_t fern_conf_fillout(void *opaque)
-{
-  result_t     rc;
-  fern_task_t *task;
-  int          row;
-
-  task = opaque;
-
-  rc = result_OK;
-  for (row = 0; row < FERN_NROWS; row++)
-    rc = wuss_slider_row_set(wuss_dialogue_window(task->conf.dialogue),
-                             &task->conf.rows[row], *fern_field(task, row));
-
-  return rc;
-}
-
 /* resize the window if config.size has moved off old_size, then redraw */
 static result_t fern_resize(fern_task_t *task, int old_size)
 {
@@ -563,92 +340,6 @@ static result_t fern_resize(fern_task_t *task, int old_size)
   }
 
   wuss_window_invalidate_visible(task->base.window);
-
-  return result_OK;
-}
-
-/* sliders to task->config, then resize and redraw the window */
-static result_t fern_conf_apply(fern_task_t *task)
-{
-  int row, old_size;
-
-  old_size = task->config.size;
-  for (row = 0; row < FERN_NROWS; row++)
-    *fern_field(task, row) = wuss_icon_get_value(task->conf.rows[row].slider);
-
-  return fern_resize(task, old_size);
-}
-
-/* Select dismisses the menu chain; Adjust resets the sliders instead */
-static result_t fern_conf_cancel(void *opaque, wuss_button_t button)
-{
-  fern_task_t *task;
-
-  task = opaque;
-
-  if (button & wuss_BUTTON_SELECT)
-  {
-    wuss_menu_close(task->base.menu_handle);
-    task->base.menu_handle = NULL;
-  }
-  else if (button & wuss_BUTTON_ADJUST)
-  {
-    return fern_conf_fillout(task);
-  }
-
-  return result_OK;
-}
-
-/* Select applies and dismisses; Adjust applies and leaves the dialogue open */
-static result_t fern_conf_apply_action(void *opaque, wuss_button_t button)
-{
-  fern_task_t *task;
-
-  task = opaque;
-
-  if (button & wuss_BUTTON_SELECT)
-  {
-    wuss_menu_close(task->base.menu_handle);
-    task->base.menu_handle = NULL;
-  }
-  else if (!(button & wuss_BUTTON_ADJUST))
-  {
-    return result_OK;
-  }
-
-  return fern_conf_apply(task);
-}
-
-static result_t fern_conf_default_action(void *opaque, wuss_button_t button)
-{
-  static const fern_config_t default_config = FERN_CONFIG_DEFAULT;
-
-  result_t     rc;
-  fern_task_t *task;
-
-  task = opaque;
-
-  task->config = default_config;
-  rc = fern_conf_fillout(task);
-  if (rc != result_OK)
-    return rc;
-
-  return fern_conf_apply_action(task, button);
-}
-
-static result_t fern_conf_dialogue_icon(fern_task_t        *task,
-                                        const wuss_event_t *event)
-{
-  result_t rc;
-  int      row;
-
-  for (row = 0; row < FERN_NROWS; row++)
-    if (wuss_slider_row_event(wuss_dialogue_window(task->conf.dialogue),
-                              &task->conf.rows[row], event, NULL))
-      return result_OK;
-
-  if (wuss_dialogue_handle_icon(task->conf.dialogue, event, &rc))
-    return rc;
 
   return result_OK;
 }
@@ -722,27 +413,10 @@ static result_t fern_handle(wuss_window_t      *window,
   }
 
   case wuss_EVENT_ICON:
-    if (window == wuss_dialogue_window(task->conf.dialogue))
-      return fern_conf_dialogue_icon(task, event);
-    return result_OK;
-
   case wuss_EVENT_PRE_SHOW:
-  {
-    result_t rc;
-
-    if (window == wuss_dialogue_window(task->conf.dialogue))
-    {
-      rc = wuss_dialogue_handle_pre_show(task->conf.dialogue);
-      if (rc != result_OK)
-        return rc;
-    }
-
-    if (event->data.pre_show.handle == NULL)
-      return result_OK;
-
-    return wuss_menu_open_window_now(event->data.pre_show.handle,
-                                     event->data.pre_show.index);
-  }
+  case wuss_EVENT_CLOSE:
+  case wuss_EVENT_QUIT:
+    return confdlg_event(&task->conf, window, event);
 
   case wuss_EVENT_PRE_SUBMENU_OPEN:
     return fern_pre_submenu_open(task, event);
@@ -752,14 +426,6 @@ static result_t fern_handle(wuss_window_t      *window,
 
   case wuss_EVENT_IDLE:
     return fern_idle(task);
-
-  case wuss_EVENT_CLOSE:
-    wuss_dialogue_handle_close(task->conf.dialogue, window);
-    return result_OK;
-
-  case wuss_EVENT_QUIT:
-    wuss_dialogue_destroy(task->conf.dialogue);
-    return result_OK;
 
   default:
     return result_OK;

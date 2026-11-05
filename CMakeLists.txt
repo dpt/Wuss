@@ -543,6 +543,8 @@ if(BUILD_APPS)
         apps/wuss/tasks/resizing/resizing.c
         apps/wuss/tasks/tagging/tagging.c
         apps/wuss/tasks/tiling/tiling.c
+        apps/wuss/tasks/common/confdlg.c
+        apps/wuss/tasks/common/confdlg.h
         apps/wuss/tasks/common/taskapp.c
         apps/wuss/tasks/common/taskapp.h
         apps/wuss/tasks/common/zxtask.c)
