@@ -5,8 +5,25 @@
 #include "impl.h"
 
 #ifdef WUSS_FURNITURE
+/* Snap one axis of a visible box starting at "v" of length "len" to whichever
+ * screen or safe area edge it is within WUSS_SNAP_PX of. */
+static int snap_axis(int v, int len, int scr, int inset_lo, int inset_hi)
+{
+  if (abs(v) < WUSS_SNAP_PX)
+    return 0;
+  if (abs(v - inset_lo) < WUSS_SNAP_PX)
+    return inset_lo;
+  if (abs(v + len - scr) < WUSS_SNAP_PX)
+    return scr - len;
+  if (abs(v + len - (scr - inset_hi)) < WUSS_SNAP_PX)
+    return scr - inset_hi - len;
+
+  return v;
+}
+
 /* Snap a move-drag's content top-left "p" so that the window's visible box
- * sits flush against any screen edge it comes within WUSS_SNAP_PX of. */
+ * sits flush against any screen or safe area edge it comes within
+ * WUSS_SNAP_PX of. */
 static point_t snap_to_screen(const wuss_window_t *win, point_t p)
 {
   box_t    content;
@@ -20,17 +37,10 @@ static point_t snap_to_screen(const wuss_window_t *win, point_t p)
   size   = box_size(&win->visible);
   scr    = win->wuss->scr->size;
 
-  v.x = p.x - off.x;
-  v.y = p.y - off.y;
-
-  if (abs(v.x) < WUSS_SNAP_PX)
-    v.x = 0;
-  else if (abs(v.x + size.w - scr.w) < WUSS_SNAP_PX)
-    v.x = scr.w - size.w;
-  if (abs(v.y) < WUSS_SNAP_PX)
-    v.y = 0;
-  else if (abs(v.y + size.h - scr.h) < WUSS_SNAP_PX)
-    v.y = scr.h - size.h;
+  v.x = snap_axis(p.x - off.x, size.w, scr.w,
+                  WUSS_SAFE_INSET, WUSS_SAFE_INSET);
+  v.y = snap_axis(p.y - off.y, size.h, scr.h,
+                  WUSS_SAFE_INSET, WUSS_SAFE_INSET_BOTTOM);
 
   return POINT(v.x + off.x, v.y + off.y);
 }

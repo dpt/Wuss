@@ -29,6 +29,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Changed
 
 - Dithering: Palette > Computed's Optimal row is now called Octree.
+- Dragged windows snap to the safe area's edges as well as the screen's.
 - Gridview: a selected label is drawn in a capsule instead of a box made
   by padding the text with a space either side.
 - Menus and the colour menu allocate fewer blocks: a menu level keeps its

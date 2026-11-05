@@ -356,8 +356,8 @@ result_t wuss_placement_test(const char *resources)
     reap_test_tasks();
   }
 
-  printf("test: a dragged window snaps flush to a screen edge it comes "
-         "within WUSS_SNAP_PX of\n");
+  printf("test: a dragged window snaps flush to a screen or safe area edge it "
+         "comes within WUSS_SNAP_PX of\n");
 
   {
     static test_task_t tc_sn;
@@ -398,6 +398,16 @@ result_t wuss_placement_test(const char *resources)
     wuss_mouse_move(wuss, POINT(grab.x + scr.w - start.x1 - 2, grab.y + scr.h - start.y1 - 2), NULL);
     wuss_window_get_visible_bounds(win_sn, &visible);
     if (visible.x1 != scr.w || visible.y1 != scr.h) goto Failure;
+
+    /* within range of the safe area's top-left corner: snaps to both edges */
+    wuss_mouse_move(wuss, POINT(grab.x - start.x0 + WUSS_SAFE_INSET + 2, grab.y - start.y0 + WUSS_SAFE_INSET - 2), NULL);
+    wuss_window_get_visible_bounds(win_sn, &visible);
+    if (visible.x0 != WUSS_SAFE_INSET || visible.y0 != WUSS_SAFE_INSET) goto Failure;
+
+    /* within range of the safe area's bottom-right corner: snaps to both edges */
+    wuss_mouse_move(wuss, POINT(grab.x + scr.w - WUSS_SAFE_INSET - start.x1 + 2, grab.y + scr.h - WUSS_SAFE_INSET_BOTTOM - start.y1 - 2), NULL);
+    wuss_window_get_visible_bounds(win_sn, &visible);
+    if (visible.x1 != scr.w - WUSS_SAFE_INSET || visible.y1 != scr.h - WUSS_SAFE_INSET_BOTTOM) goto Failure;
 
     wuss_mouse_click(wuss, grab, wuss_BUTTON_SELECT, wuss_MOUSE_UP, NULL);
     wuss_window_close(win_sn);
