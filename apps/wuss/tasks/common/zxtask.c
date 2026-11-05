@@ -14,12 +14,22 @@
 
 #include "base/debug.h"
 #include "base/utils.h"
+#include "framebuf/bitmap.h"
 #include "framebuf/colour.h"
+#include "framebuf/pixelfmt.h"
 #include "framebuf/screen.h"
 #include "geom/box.h"
+#include "wuss/menu.h"
+#include "wuss/task.h"
+
+#include "ZXSpectrum/Keyboard.h"
 
 #include "common.h"
 #include "zxtask.h"
+
+/* areas drawn between idles kept apart before folding together: a frame's
+ * HUD digits and playfield fit */
+#define ZXTASK_MAX_DAMAGE (8)
 
 /* The Spectrum's screen, and the border drawn around it, in pixels. */
 #define ZXTASK_SCREEN_WIDTH  (256)
@@ -65,7 +75,57 @@ enum
   ZXTASK_SPEED_MENU_SLOWER
 };
 
+struct zxtask
+{
+  const zxtask_ops_t  *ops;
+  zxspectrum_t        *zx;
+  void                *game;
+  wuss_task_t         *delegate;
+  wuss_window_t       *window;
+  wuss_menu_item_t     menu_items[3];
+  wuss_menu_t          menu;
+  wuss_menu_item_t     speed_items[5];
+  wuss_menu_t          speed_menu;
+  char                 speed_title[16]; /* "Speed 100%" */
+  wuss_menu_handle_t   menu_handle; /* live only between open and close */
+  colour_t             palette[16]; /* the screen's colours, mono aware */
+  unsigned char       *pixels;   /* p4 doubled screen, when zoomed */
+  int                  mono;     /* simulate a black and white TV */
+  int                  zoom;     /* pixel scale, 1 or 2 */
+  pthread_t            thread;
+  int                  thread_started;
+  pthread_mutex_t      lock;     /* guards keys, kempston, border, damage,
+                                  * quit, paused and speed */
+  pthread_cond_t       wake;     /* signalled on unpause and quit */
+  zxkeyset_t           keys;
+  unsigned int         kempston; /* port 0x1F bits: 000FUDLR */
+  int                  border;   /* ZX colour 0..7 */
+  box_t                damage[ZXTASK_MAX_DAMAGE]; /* unzoomed window
+                                  * areas drawn since the last idle */
+  int                  ndamage;
+  int                  quit;
+  int                  paused;
+  int                  speed;    /* percent of real time */
+  int                  caps;     /* Shift is down as CAPS SHIFT */
+  double               deadline; /* game thread only: pacing deadline,
+                                  * seconds */
+  int                  deadline_valid;
+
+  /* profiling counters, logged by zxtask_destroy */
+  double               started;  /* when the game thread started */
+  double               awoke;    /* game thread: when sleep last returned */
+  double               busy;     /* game thread: seconds outside sleep */
+  long                 sleeps;   /* game thread: zxtask_sleep calls */
+  long                 lags;     /* game thread: backlogs dropped */
+  long                 draws;    /* under lock: zxtask_draw calls, several
+                                  * per game frame */
+  long                 redraws;  /* main thread: redraw events */
+  double               redrawn;  /* main thread: seconds redrawing */
+};
+
 static wuss_window_fn_t zxtask_handle;
+
+static void zxtask_destroy(zxtask_t *task);
 
 /* ----------------------------------------------------------------------- */
 
@@ -109,16 +169,15 @@ static void *zxtask_thread(void *opaque)
 
   task = opaque;
 
-  task->ops->run(task);
+  task->ops->run(task->game, task);
 
   return NULL;
 }
 
 /* ----------------------------------------------------------------------- */
 
-void zxtask_init(zxtask_t *task, const zxtask_ops_t *ops)
+static void zxtask_init(zxtask_t *task, const zxtask_ops_t *ops)
 {
-
   task->ops = ops;
 
   pthread_mutex_init(&task->lock, NULL);
@@ -151,7 +210,9 @@ void zxtask_init(zxtask_t *task, const zxtask_ops_t *ops)
                   NELEMS(task->menu_items));
 }
 
-result_t zxtask_start(zxtask_t *task, wuss_t *wuss)
+/* open the window and start the game thread. On failure the task block is
+ * freed */
+static result_t zxtask_start(zxtask_t *task, wuss_t *wuss)
 {
   result_t         rc;
   wuss_task_t     *delegate;
@@ -212,7 +273,7 @@ static void zxtask_report(const zxtask_t *task)
             task->redraws ? 1e3 * task->redrawn / task->redraws : 0.0);
 }
 
-void zxtask_destroy(zxtask_t *task)
+static void zxtask_destroy(zxtask_t *task)
 {
   if (task->thread_started)
   {
@@ -221,12 +282,14 @@ void zxtask_destroy(zxtask_t *task)
     pthread_cond_broadcast(&task->wake);
     pthread_mutex_unlock(&task->lock);
     if (task->ops->stop)
-      task->ops->stop(task);
+      task->ops->stop(task->game);
     pthread_join(task->thread, NULL);
     zxtask_report(task);
   }
 
-  task->ops->destroy(task);
+  if (task->game)
+    task->ops->destroy(task->game);
+  zxspectrum_destroy(task->zx);
   pthread_cond_destroy(&task->wake);
   pthread_mutex_destroy(&task->lock);
   free(task->pixels);
@@ -235,9 +298,16 @@ void zxtask_destroy(zxtask_t *task)
 
 /* ----------------------------------------------------------------------- */
 
-void zxtask_drawn(zxtask_t *task, const box_t *dirty)
+/* Game-thread callbacks, for zxconfig_t. */
+
+/* the game drew in dirty, a ZX box (bottom-left origin, pixels), or the
+ * whole screen when NULL: repaint it on the next idle */
+static void zxtask_draw(const zxbox_t *dirty, void *opaque)
 {
-  box_t box;
+  zxtask_t *task;
+  box_t     box;
+
+  task = opaque;
 
   /* flip to top-left origin, clamped to the screen, then offset into the
    * border */
@@ -263,8 +333,17 @@ void zxtask_drawn(zxtask_t *task, const box_t *dirty)
   pthread_mutex_unlock(&task->lock);
 }
 
-void zxtask_set_border(zxtask_t *task, int colour)
+static void zxtask_stamp(void *opaque)
 {
+  NOT_USED(opaque);
+}
+
+static void zxtask_border(int colour, void *opaque)
+{
+  zxtask_t *task;
+
+  task = opaque;
+
   pthread_mutex_lock(&task->lock);
   /* games may set the border every frame; repaint only on a change */
   if (task->border != colour)
@@ -290,13 +369,36 @@ int zxtask_quitting(zxtask_t *task)
   return quit;
 }
 
-int zxtask_sleep(zxtask_t *task, int duration)
+static int zxtask_in(uint16_t port, void *opaque)
 {
-  int    quit;
-  int    speed;
-  double now;
-  double delay;
+  zxtask_t *task;
+  int       bits;
+
+  task = opaque;
+
+  pthread_mutex_lock(&task->lock);
+  if (port == port_KEMPSTON_JOYSTICK)
+    bits = (int) task->kempston;
+  else
+    bits = zxkeyset_for_port(port, &task->keys);
+  pthread_mutex_unlock(&task->lock);
+
+  return bits;
+}
+
+/* sleep for duration T-states, scaled by the speed, against a running
+ * deadline; blocks while paused. returns non-zero once the task is
+ * quitting */
+static int zxtask_sleep(int duration, void *opaque)
+{
+  zxtask_t *task;
+  int       quit;
+  int       speed;
+  double    now;
+  double    delay;
   struct timespec ts;
+
+  task = opaque;
 
   now = zxtask_now();
   if (task->awoke > 0.0)
@@ -384,12 +486,13 @@ static result_t zxtask_redraw(zxtask_t *task, const wuss_event_t *event)
 {
   static const unsigned int level = 0xCD; /* the border has no BRIGHT */
 
-  result_t     rc;
-  const box_t *bounds;
-  int          x, y;
-  int          border;
-  bitmap_t     bm;
-  int          i;
+  result_t          rc;
+  const box_t      *bounds;
+  int               x, y;
+  int               border;
+  const zx_frame_t *frame;
+  bitmap_t          bm;
+  int               i;
 
   bounds = event->data.redraw.bounds;
   x      = bounds->x0 - event->data.redraw.scroll.x;
@@ -407,10 +510,13 @@ static result_t zxtask_redraw(zxtask_t *task, const wuss_event_t *event)
   x += ZXTASK_BORDER * task->zoom;
   y += ZXTASK_BORDER * task->zoom;
 
-  rc = task->ops->claim_screen(task, &bm);
+  /* the claimed screen is 256x192 p4, index BRIGHT * 8 + ZX colour */
+  frame = zxspectrum_claim_screen(task->zx);
+  rc = bitmap_init(&bm, SIZE2D(frame->width, frame->height),
+                   pixelfmt_p4, frame->stride, NULL, frame->pixels);
   if (rc != result_OK)
   {
-    task->ops->release_screen(task);
+    zxspectrum_release_screen(task->zx);
     return rc;
   }
 
@@ -423,12 +529,12 @@ static result_t zxtask_redraw(zxtask_t *task, const wuss_event_t *event)
   if (task->zoom == 1)
   {
     rc = screen_copy_bitmap(event->data.redraw.scr, x, y, &bm);
-    task->ops->release_screen(task);
+    zxspectrum_release_screen(task->zx);
     return rc;
   }
 
   zxtask_convert(task, &bm);
-  task->ops->release_screen(task);
+  zxspectrum_release_screen(task->zx);
   rc = bitmap_init(&bm,
                    SIZE2D(ZXTASK_SCREEN_WIDTH * task->zoom,
                           ZXTASK_SCREEN_HEIGHT * task->zoom),
@@ -592,6 +698,16 @@ static result_t zxtask_select(zxtask_t *task, const wuss_event_t *event)
   return result_OK;
 }
 
+/* Press (down) or release ASCII key c on the Spectrum keyboard. Call with
+ * the task locked. */
+static void zxtask_press(zxtask_t *task, int c, int down)
+{
+  if (down)
+    zxkeyset_setchar(&task->keys, c);
+  else
+    zxkeyset_clearchar(&task->keys, c);
+}
+
 /* Shift is CAPS SHIFT, as on the macOS front end. wuss sends no event for
  * a modifier alone, so it follows the modifiers of each key event. */
 static void zxtask_set_caps(zxtask_t *task, wuss_key_modifiers_t modifiers)
@@ -604,7 +720,7 @@ static void zxtask_set_caps(zxtask_t *task, wuss_key_modifiers_t modifiers)
 
   task->caps = caps;
   pthread_mutex_lock(&task->lock);
-  task->ops->key(task, '\\', caps); /* '\' is the ports' CAPS SHIFT */
+  zxtask_press(task, '\\', caps); /* '\' is the ports' CAPS SHIFT */
   pthread_mutex_unlock(&task->lock);
 }
 
@@ -630,7 +746,7 @@ static int zxtask_set_key(zxtask_t *task, int code, int down)
 
   pthread_mutex_lock(&task->lock);
   if (bit == 0)
-    task->ops->key(task, code, down);
+    zxtask_press(task, code, down);
   else if (down)
     task->kempston |= bit;
   else
@@ -701,7 +817,7 @@ static result_t zxtask_handle(wuss_window_t      *window,
   case wuss_EVENT_LOSE_FOCUS:
     /* releases go to the new focus, so drop everything held now */
     pthread_mutex_lock(&task->lock);
-    task->ops->key(task, 0, 0);
+    zxkeyset_clear(&task->keys);
     task->kempston = 0;
     pthread_mutex_unlock(&task->lock);
     task->caps = 0;
@@ -733,6 +849,55 @@ static result_t zxtask_handle(wuss_window_t      *window,
   default:
     return result_OK;
   }
+}
+
+/* ----------------------------------------------------------------------- */
+
+result_t zxtask_create(wuss_t *wuss, const zxtask_ops_t *ops, void **out)
+{
+  result_t   rc;
+  zxtask_t  *task;
+  zxconfig_t config;
+
+  task = calloc(1, sizeof(*task));
+  if (task == NULL)
+    return result_OOM;
+
+  zxtask_init(task, ops);
+
+  memset(&config, 0, sizeof(config));
+  config.width        = SCREEN_WIDTH / 8;
+  config.height       = SCREEN_HEIGHT / 8;
+  config.opaque       = task;
+  config.draw         = zxtask_draw;
+  config.stamp        = zxtask_stamp;
+  config.sleep        = zxtask_sleep;
+  config.key          = zxtask_in;
+  config.border       = zxtask_border;
+  config.pixel_format = ZX_PIXEL_INDEXED4;
+
+  task->zx = zxspectrum_create(&config);
+  if (task->zx == NULL)
+  {
+    zxtask_destroy(task);
+    return result_OOM;
+  }
+
+  task->game = ops->create(task->zx);
+  if (task->game == NULL)
+  {
+    zxtask_destroy(task);
+    return result_OOM;
+  }
+
+  rc = zxtask_start(task, wuss);
+  if (rc != result_OK)
+    return rc;
+
+  if (out)
+    *out = task;
+
+  return result_OK;
 }
 
 #endif /* WUSS_APP && (WUSS_CHASEHQ || WUSS_GREATESCAPE) */
