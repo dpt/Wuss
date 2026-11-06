@@ -76,7 +76,12 @@ static const char *const resizing_method_names[bitmap_resample__LIMIT] =
   "Nearest",
   "Bilinear",
   "Box",
+  "B-spline",
+  "Gaussian",
+  "Hermite",
+  "Mitchell",
   "Catmull-Rom",
+  "Lanczos2",
   "Lanczos3"
 };
 
