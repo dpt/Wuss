@@ -29,12 +29,19 @@
 #define TASKMANAGER_NAMES   (TASKMANAGER_HEADING + 1) /* first task name */
 #define TASKMANAGER_INDENT  8 /* px, of a child task's name per level */
 
+/* The figures counted here, in row order. */
+enum
+{
+  TASKMANAGER_APPS,
+  TASKMANAGER_TASKS,
+  TASKMANAGER_WINDOWS,
+  TASKMANAGER_VISIBLE,
+  TASKMANAGER_NCOUNTS
+};
+
 typedef struct taskmanager_stats
 {
-  int           apps;
-  int           tasks;
-  int           windows;
-  int           visible;
+  int           counts[TASKMANAGER_NCOUNTS];
   alloc_stats_t alloc;
 }
 taskmanager_stats_t;
@@ -49,17 +56,31 @@ static struct
   int                 value_width;
   int                 row_height;
   taskmanager_stats_t shown;  /* the statistics last drawn */
+  int                 low[TASKMANAGER_NCOUNTS];
+  int                 high[TASKMANAGER_NCOUNTS];
 }
 tm;
 
+/* ponytail: the lowest and highest counts are sampled once a frame, so miss a
+ * window opened and closed within one */
 static void taskmanager_get_stats(taskmanager_stats_t *stats)
 {
+  int i;
+
   memset(stats, 0, sizeof(*stats)); /* it gets memcmp'd, padding included */
 
-  stats->apps  = wuss_iconbar_icon_count(tm.wuss); /* each app has one icon */
-  stats->tasks = wuss_task_count(tm.wuss);
-  wuss_window_count(tm.wuss, &stats->windows, &stats->visible);
+  /* each app has one icon */
+  stats->counts[TASKMANAGER_APPS]  = wuss_iconbar_icon_count(tm.wuss);
+  stats->counts[TASKMANAGER_TASKS] = wuss_task_count(tm.wuss);
+  wuss_window_count(tm.wuss, &stats->counts[TASKMANAGER_WINDOWS],
+                    &stats->counts[TASKMANAGER_VISIBLE]);
   alloc_counting_get_stats(&stats->alloc);
+
+  for (i = 0; i < TASKMANAGER_NCOUNTS; i++)
+  {
+    tm.low[i]  = MIN(tm.low[i], stats->counts[i]);
+    tm.high[i] = MAX(tm.high[i], stats->counts[i]);
+  }
 }
 
 static int taskmanager_text_width(const char *text)
@@ -201,7 +222,7 @@ static result_t taskmanager_redraw(const wuss_event_t *event)
   };
   static const int ncolumns[TASKMANAGER_ROWS - 1] =
   {
-    1, 1, 1, 1, 3, 3, 1, 1, 1
+    3, 3, 3, 3, 3, 3, 1, 1, 1
   };
 
   result_t rc;
@@ -215,10 +236,12 @@ static result_t taskmanager_redraw(const wuss_event_t *event)
 
   taskmanager_get_stats(&tm.shown);
 
-  values[0][0] = (size_t) tm.shown.apps;
-  values[1][0] = (size_t) tm.shown.tasks;
-  values[2][0] = (size_t) tm.shown.windows;
-  values[3][0] = (size_t) tm.shown.visible;
+  for (row = 0; row < TASKMANAGER_NCOUNTS; row++)
+  {
+    values[row][0] = (size_t) tm.shown.counts[row];
+    values[row][1] = (size_t) tm.low[row];
+    values[row][2] = (size_t) tm.high[row];
+  }
   values[4][0] = tm.shown.alloc.bytes;
   values[4][1] = tm.shown.alloc.bytes_low;
   values[4][2] = tm.shown.alloc.bytes_high;
@@ -286,12 +309,13 @@ static result_t taskmanager_handle(wuss_window_t      *window,
     return taskmanager_redraw(event);
 
   case wuss_EVENT_IDLE:
+    taskmanager_get_stats(&stats); /* even when closed: it tracks the counts */
     if (tm.window != NULL)
     {
-      taskmanager_get_stats(&stats);
-      if (stats.tasks != tm.shown.tasks)
+      if (stats.counts[TASKMANAGER_TASKS] != tm.shown.counts[TASKMANAGER_TASKS])
       {
-        rc = wuss_window_set_doc(tm.window, taskmanager_doc_size(stats.tasks));
+        rc = wuss_window_set_doc(tm.window,
+                                 taskmanager_doc_size(stats.counts[TASKMANAGER_TASKS]));
         if (rc != result_OK)
           return rc;
       }
@@ -341,9 +365,17 @@ result_t taskmanager_create(wuss_t *wuss)
     logf_warning("taskmanager: icon 'file_app' unavailable");
   rc = wuss_iconbar_icon_create(wuss, wtask, &spec, &icon);
   if (rc != result_OK)
+  {
     wuss_task_destroy(wtask);
+    return rc;
+  }
 
-  return rc;
+  /* start the lowest and highest counts from the current ones */
+  taskmanager_get_stats(&tm.shown);
+  memcpy(tm.low, tm.shown.counts, sizeof(tm.low));
+  memcpy(tm.high, tm.shown.counts, sizeof(tm.high));
+
+  return result_OK;
 }
 
 #endif /* WUSS_ICONBAR */
