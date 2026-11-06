@@ -76,7 +76,8 @@ static const char *const resizing_method_names[bitmap_resample__LIMIT] =
   "Nearest",
   "Bilinear",
   "Box",
-  "Catmull-Rom"
+  "Catmull-Rom",
+  "Lanczos3"
 };
 
 static const int resizing_scales[RESIZING_NSCALES] =
@@ -201,7 +202,7 @@ static result_t resizing_init(resizing_task_t *task)
 {
   int i;
 
-  task->method    = bitmap_resample_BILINEAR;
+  task->method    = bitmap_resample_LANCZOS3;
   task->scale     = 3; /* 100% */
   task->linear    = 1;
   task->dithering = screen_DITHER_BLUE_NOISE;
