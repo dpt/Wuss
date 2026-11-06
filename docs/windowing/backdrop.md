@@ -55,12 +55,14 @@ Pinboard menu. It follows [the menu standard](menu-standard.md).
 
 ```
 Pinboard
+  Display       >  Dithering > Nearest / Bayer / Blue noise
   Backdrop      >  Colour   >  (shared colourmenu)
                    Pattern  >  (pattern list)
                    Image    >  None / Centre / Tile / Scale
                    ---
                    Clear
   Selection     >  Open
+                   Reveal
                    Remove
   ---
   Select all
@@ -68,26 +70,31 @@ Pinboard
   Tidy
 ```
 
-- `Selection` is greyed when nothing is selected. A MENU press over an
-  unselected icon selects that icon only for the life of the menu, as the
-  Filing task does.
+- `Dithering` sets how the backdrop image is drawn on paletted and 16bpp
+  screens.
+- `Selection` and `Clear selection` are greyed when nothing is selected. A
+  MENU press over an unselected icon selects that icon only for the life of
+  the menu, as the Filing task does.
+- `Selection > Reveal` opens a Filer window on the directory holding each
+  selected icon's file or directory.
+- `Select all` and `Tidy` are greyed when there are no pinned icons.
 - `Tidy` snaps every pinned icon to the grid, packed from the top left.
 
 ### Changing the backdrop
 
 - `Colour` and `Pattern` build a new `wuss_backdrop_t` and call
   `wuss_set_backdrop`. Other tasks are not notified.
-- `Image > Centre` uses `wuss_backdrop_t::image`. `Tile` and `Scale` are
-  more than the paint offers, so the Pinboard draws them itself in its
-  window's redraw. The backdrop window then has a fill of
-  `wuss_NO_BACKGROUND` behind the image.
+- `Image > Centre`, `Tile` and `Scale` are more than the paint offers, as
+  `wuss_backdrop_t::image` is not dithered. So the Pinboard draws all three
+  in its window's redraw, over the paint's fill.
 - To set the image, select a pinned PNG and pick `Image > Centre`, `Tile` or
   `Scale`, or drop a PNG on the backdrop with SHIFT held. A plain drop pins
   the file (see below). `Image > None` removes the image. Those three rows
   are shaded while there is no image and no PNG pin is selected.
 - The menu rows are updated in place after each pick, so an ADJUST pick
   that leaves the menu open shows the new state at once.
-- `Clear` returns colour, pattern and image to the theme's backdrop.
+- `Clear` returns colour, pattern and image to the theme's backdrop. It is
+  greyed while no image is shown.
 
 ### Selection and dragging
 

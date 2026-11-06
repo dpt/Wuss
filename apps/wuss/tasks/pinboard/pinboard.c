@@ -26,6 +26,7 @@
 
 #include "../apps.h"
 #include "../common/common.h"
+#include "../common/dithermenu.h"
 #include "../tasks.h"
 
 #define PINBOARD_CELL_W 96
@@ -36,6 +37,8 @@
 /* ponytail: the icon bar's height, hard-coded so pins stay clear of it; ask
  * wuss for it if the bar ever changes size */
 #define PINBOARD_ICONBAR 68
+
+#define PINBOARD_ELLIPSIS "..."
 
 typedef struct pin
 {
@@ -68,12 +71,14 @@ enum
 enum
 {
   PINBOARD_SEL_OPEN,
+  PINBOARD_SEL_REVEAL,
   PINBOARD_SEL_REMOVE,
   PINBOARD_SEL__LIMIT
 };
 
 enum
 {
+  PINBOARD_MENU_DISPLAY,
   PINBOARD_MENU_BACKDROP,
   PINBOARD_MENU_SELECTION,
   PINBOARD_MENU_SELECT_ALL,
@@ -124,9 +129,11 @@ typedef struct pinboard
   bitmap_t           image;
   bitmap_t          *scaled; /* image at screen size, made on demand */
   int                image_mode;
+  screen_dither_t    dithering; /* how the image is drawn on paletted screens */
 
   wuss_colour_t      label_fg;
   wuss_colour_t      label_bg;
+  wuss_colour_t      label_accent; /* a selected label's text */
   int                threshold;
 
   const bitmap_t    *glyph_file;
@@ -135,6 +142,7 @@ typedef struct pinboard
   const bitmap_t    *glyph_text;
   const bitmap_t    *glyph_markdown;
 
+  dithermenu_t       dither; /* "Display" submenu */
   wuss_menu_item_t   pattern_items[NELEMS(pinboard_patterns)];
   wuss_menu_t        pattern_menu;
   wuss_menu_item_t   image_items[PINBOARD_IMAGE__LIMIT];
@@ -406,6 +414,19 @@ static void pinboard_open_selection(pinboard_t *pb)
       pinboard_open(pb, i);
 }
 
+/* open a Filer window on the directory holding each selected pin. A root pin
+ * has no such directory, so is skipped. */
+static void pinboard_reveal_selection(pinboard_t *pb)
+{
+  int  i;
+  char dir[DPTLIB_MAXPATH];
+
+  for (i = 0; i < pb->npins; i++)
+    if (pb->pins[i].selected && path_parent(pb->pins[i].path, dir, sizeof(dir)))
+      (void) wuss_send(pb->wuss, pb->task, NULL, wuss_MESSAGE_FILER_OPEN_DIR,
+                       dir, strlen(dir) + 1, 0);
+}
+
 /* ----------------------------------------------------------------------- */
 
 static void pinboard_drop_scaled(pinboard_t *pb)
@@ -418,8 +439,8 @@ static void pinboard_drop_scaled(pinboard_t *pb)
   pb->scaled = NULL;
 }
 
-/* hand wuss the backdrop paint. A centred image is wuss's to draw; Tile
- * and Scale are drawn by pinboard_redraw over the fill. */
+/* hand wuss the backdrop paint. wuss's own centred image is not dithered, so
+ * pinboard_redraw draws the image in every mode, over the fill. */
 static void pinboard_apply(pinboard_t *pb)
 {
   wuss_backdrop_t backdrop;
@@ -427,8 +448,7 @@ static void pinboard_apply(pinboard_t *pb)
   pinboard_drop_scaled(pb);
 
   backdrop       = pb->backdrop;
-  backdrop.image = (pb->have_image && pb->image_mode == PINBOARD_IMAGE_CENTRE)
-                 ? &pb->image : NULL;
+  backdrop.image = NULL;
   (void) wuss_set_backdrop(pb->wuss, &backdrop);
   wuss_window_invalidate_visible(pb->window);
 }
@@ -452,9 +472,6 @@ static result_t pinboard_set_image(pinboard_t *pb, const char *path)
   if (rc != result_OK)
     return rc;
 
-  /* wuss stops drawing the old image before it is freed */
-  pb->image_mode = PINBOARD_IMAGE_NONE;
-  pinboard_apply(pb);
   pinboard_drop_image(pb);
 
   pb->image      = image;
@@ -481,8 +498,10 @@ static const bitmap_t *pinboard_glyph(const pinboard_t *pb, const pin_t *pin)
   return pb->glyph_file;
 }
 
-/* the glyph centred at the top of the cell, the leafname in a capsule below,
- * inverted when selected; all clipped to the cell */
+/* the glyph centred at the top of the cell, the leafname below it in a
+ * lozenge drawn as a Grid view's selected label is, always present so that it
+ * reads against the backdrop; a name too wide for the cell ends in an
+ * ellipsis. All clipped to the cell. */
 static void pinboard_draw_pin(pinboard_t  *pb,
                               screen_t    *scr,
                               const pin_t *pin)
@@ -491,11 +510,11 @@ static void pinboard_draw_pin(pinboard_t  *pb,
   const bitmap_t *glyph;
   bmfont_t       *font;
   const colour_t *palette;
-  const char     *leaf;
-  int             height, ascent, len, capsule_w, x, y;
-  bmfont_width_t  w;
   colour_t        fg, bg;
-  point_t         pos;
+  const char     *leaf;
+  int             len, height, ascent, end_w, avail, truncated, capsule_w, x, y;
+  bmfont_width_t  w, ellipsis_w;
+  point_t         pos, end;
 
   cell = pinboard_pin_box(pin);
   if (box_intersection(&scr->clip, &cell, &clip))
@@ -513,23 +532,42 @@ static void pinboard_draw_pin(pinboard_t  *pb,
   if (font != NULL)
   {
     palette = wuss_get_palette(pb->wuss, NULL);
-    fg      = palette[pin->selected ? pb->label_bg : pb->label_fg];
+    fg      = palette[pin->selected ? pb->label_accent : pb->label_fg];
     bg      = palette[pin->selected ? pb->label_fg : pb->label_bg];
 
     leaf = path_leaf(pin->path);
     len  = (int) strlen(leaf);
     bmfont_get_info(font, NULL, &height, &ascent, NULL);
-    bmfont_measure(font, leaf, len, NULL, INT_MAX, NULL, &w);
+    end_w = height / 2;
+    avail = PINBOARD_CELL_W - 2 * PINBOARD_PAD - 2 * end_w;
 
-    capsule_w = MIN((int) w + height, PINBOARD_CELL_W);
+    (void) wuss_text_measure(pb->wuss, 0, leaf, len, INT_MAX, NULL, &w);
+    truncated = (int) w > avail;
+    if (truncated)
+    {
+      (void) wuss_text_measure(pb->wuss, 0, PINBOARD_ELLIPSIS,
+                               (int) strlen(PINBOARD_ELLIPSIS), INT_MAX, NULL,
+                               &ellipsis_w);
+      (void) wuss_text_measure(pb->wuss, 0, leaf, len,
+                               (bmfont_width_t) MAX(avail - (int) ellipsis_w,
+                                                    0),
+                               &len, &w);
+      w += ellipsis_w;
+    }
+
+    capsule_w = (int) w + 2 * end_w;
     x         = cell.x0 + (PINBOARD_CELL_W - capsule_w) / 2;
     y         = cell.y1 - PINBOARD_PAD - height;
-    screen_fill_rounded_rect(scr, x, y, SIZE2D(capsule_w, height), height / 2,
-                             bg);
+    screen_fill_rounded_rect(scr, x - 2, y - 2,
+                             SIZE2D(capsule_w + 4, height + 4), end_w - 1, bg);
 
-    pos.x = MAX(x + height / 2, cell.x0);
+    pos.x = x + end_w;
     pos.y = y + ascent;
-    bmfont_draw(font, scr, leaf, len, fg, bg, NULL, &pos, NULL);
+    (void) wuss_text_draw(pb->wuss, 0, scr, leaf, len, fg, bg, &pos, &end);
+    if (truncated)
+      (void) wuss_text_draw(pb->wuss, 0, scr, PINBOARD_ELLIPSIS,
+                            (int) strlen(PINBOARD_ELLIPSIS), fg, bg, &end,
+                            NULL);
   }
 
   scr->clip = saved;
@@ -542,20 +580,28 @@ static void pinboard_redraw(pinboard_t *pb, const wuss_event_t *event)
   int             i;
   const colour_t *palette;
 
-  scr = event->data.redraw.scr;
+  scr    = event->data.redraw.scr;
+  screen = wuss_get_screen_size(pb->wuss);
+
+  if (pb->have_image && pb->image_mode == PINBOARD_IMAGE_CENTRE)
+    (void) screen_copy_bitmap_dithered(scr,
+                                       (screen.w - pb->image.size.w) / 2,
+                                       (screen.h - pb->image.size.h) / 2,
+                                       &pb->image, pb->dithering);
 
   if (pb->have_image && pb->image_mode == PINBOARD_IMAGE_TILE)
-    (void) screen_copy_bitmap_tiled(scr, event->data.redraw.content,
-                                    &pb->image, POINT(0, 0));
+    (void) screen_copy_bitmap_tiled_dithered(scr, event->data.redraw.content,
+                                             &pb->image, POINT(0, 0),
+                                             pb->dithering);
 
   if (pb->have_image && pb->image_mode == PINBOARD_IMAGE_SCALE)
   {
-    screen = wuss_get_screen_size(pb->wuss);
     if (pb->scaled == NULL)
       (void) bitmap_resize(&pb->image, screen, bitmap_resample_BILINEAR, 0,
                            &pb->scaled);
     if (pb->scaled != NULL)
-      (void) screen_copy_bitmap(scr, 0, 0, pb->scaled);
+      (void) screen_copy_bitmap_dithered(scr, 0, 0, pb->scaled,
+                                         pb->dithering);
   }
 
   for (i = 0; i < pb->npins; i++)
@@ -679,6 +725,16 @@ static void pinboard_menu_flag(wuss_menu_item_t      *item,
     item->flags &= (wuss_menu_item_flags_t) ~flag;
 }
 
+static void pinboard_menu_shade(pinboard_t       *pb,
+                                wuss_menu_item_t *items,
+                                wuss_menu_t      *menu,
+                                int               index,
+                                int               set)
+{
+  pinboard_menu_flag(&items[index], wuss_MENU_ITEM_DISABLED, set);
+  wuss_menu_disable_item_live(pb->menu_handle, menu, index, set);
+}
+
 /* shade and tick the rows to match the Pinboard, in the descriptions for the
  * next open and in place on any level now open, as an ADJUST pick leaves
  * the menu open */
@@ -686,16 +742,21 @@ static void pinboard_menu_update(pinboard_t *pb)
 {
   int i, set, no_image;
 
+  set = pb->npins == 0;
+  pinboard_menu_shade(pb, pb->menu_items, &pb->menu,
+                      PINBOARD_MENU_SELECT_ALL, set);
+  pinboard_menu_shade(pb, pb->menu_items, &pb->menu, PINBOARD_MENU_TIDY, set);
+
   set = pinboard_nselected(pb) == 0;
-  pinboard_menu_flag(&pb->menu_items[PINBOARD_MENU_SELECTION],
-                     wuss_MENU_ITEM_DISABLED, set);
-  wuss_menu_disable_item_live(pb->menu_handle, &pb->menu,
-                              PINBOARD_MENU_SELECTION, set);
+  pinboard_menu_shade(pb, pb->menu_items, &pb->menu,
+                      PINBOARD_MENU_SELECTION, set);
+  pinboard_menu_shade(pb, pb->menu_items, &pb->menu,
+                      PINBOARD_MENU_CLEAR_SELECTION, set);
   for (i = 0; i < PINBOARD_SEL__LIMIT; i++)
-  {
-    pinboard_menu_flag(&pb->sel_items[i], wuss_MENU_ITEM_DISABLED, set);
-    wuss_menu_disable_item_live(pb->menu_handle, &pb->sel_menu, i, set);
-  }
+    pinboard_menu_shade(pb, pb->sel_items, &pb->sel_menu, i, set);
+
+  pinboard_menu_shade(pb, pb->bd_items, &pb->bd_menu, PINBOARD_BD_CLEAR,
+                      pb->image_mode == PINBOARD_IMAGE_NONE);
 
   for (i = 0; i < (int) NELEMS(pinboard_patterns); i++)
   {
@@ -711,9 +772,8 @@ static void pinboard_menu_update(pinboard_t *pb)
     pinboard_menu_flag(&pb->image_items[i], wuss_MENU_ITEM_TICKED, set);
     wuss_menu_tick_item_live(pb->menu_handle, &pb->image_menu, i, set);
 
-    set = i != PINBOARD_IMAGE_NONE && no_image;
-    pinboard_menu_flag(&pb->image_items[i], wuss_MENU_ITEM_DISABLED, set);
-    wuss_menu_disable_item_live(pb->menu_handle, &pb->image_menu, i, set);
+    pinboard_menu_shade(pb, pb->image_items, &pb->image_menu, i,
+                        i != PINBOARD_IMAGE_NONE && no_image);
   }
 }
 
@@ -742,6 +802,13 @@ static result_t pinboard_menu_select(pinboard_t         *pb,
       pb->backdrop.fill.colour = colour;
       pinboard_apply(pb);
     }
+    return result_OK;
+  }
+
+  if (menu == &pb->dither.menu)
+  {
+    pb->dithering = dithermenu_select(&pb->dither, pb->menu_handle, index);
+    wuss_window_invalidate_visible(pb->window);
     return result_OK;
   }
 
@@ -783,6 +850,12 @@ static result_t pinboard_menu_select(pinboard_t         *pb,
   if (wuss_menu_select_is(event, &pb->sel_menu, PINBOARD_SEL_OPEN))
   {
     pinboard_open_selection(pb);
+    return result_OK;
+  }
+
+  if (wuss_menu_select_is(event, &pb->sel_menu, PINBOARD_SEL_REVEAL))
+  {
+    pinboard_reveal_selection(pb);
     return result_OK;
   }
 
@@ -1051,11 +1124,17 @@ static void pinboard_menus(pinboard_t *pb)
 
   WUSS_MENU_ITEM(pb->sel_items, PINBOARD_SEL_OPEN, "Open",
                  wuss_MENU_ITEM_NONE);
+  WUSS_MENU_ITEM(pb->sel_items, PINBOARD_SEL_REVEAL, "Reveal",
+                 wuss_MENU_ITEM_NONE);
   WUSS_MENU_ITEM(pb->sel_items, PINBOARD_SEL_REMOVE, "Remove",
                  wuss_MENU_ITEM_NONE);
   WUSS_MENU_TITLE(pb->sel_menu, "Selection", pb->sel_items,
                   NELEMS(pb->sel_items));
 
+  dithermenu_init(&pb->dither, pb->dithering);
+
+  WUSS_MENU_ITEM_MENU(pb->menu_items, PINBOARD_MENU_DISPLAY, "Display",
+                      wuss_MENU_ITEM_NONE, &pb->dither.display);
   WUSS_MENU_ITEM_MENU(pb->menu_items, PINBOARD_MENU_BACKDROP, "Backdrop",
                       wuss_MENU_ITEM_NONE, &pb->bd_menu);
   WUSS_MENU_ITEM_MENU(pb->menu_items, PINBOARD_MENU_SELECTION, "Selection",
@@ -1087,15 +1166,17 @@ result_t pinboard_app_create(wuss_t *wuss)
 
   wuss_get_config(wuss, &config);
 
-  pb->wuss      = wuss;
-  pb->press     = -1;
-  pb->drag      = -1;
-  pb->initial   = config.backdrop;
-  pb->backdrop  = config.backdrop;
-  pb->label_fg  = config.button.fg;
-  pb->label_bg  = config.body.window;
-  pb->threshold = config.mouse.drag_threshold_px > 0
-                ? config.mouse.drag_threshold_px : 4;
+  pb->wuss         = wuss;
+  pb->press        = -1;
+  pb->drag         = -1;
+  pb->initial      = config.backdrop;
+  pb->backdrop     = config.backdrop;
+  pb->label_fg     = config.button.fg;
+  pb->label_bg     = config.body.window;
+  pb->label_accent = config.accent.colour;
+  pb->threshold    = config.mouse.drag_threshold_px > 0
+                   ? config.mouse.drag_threshold_px : 4;
+  pb->dithering    = screen_DITHER_BLUE_NOISE;
 
   pinboard_menus(pb);
 
