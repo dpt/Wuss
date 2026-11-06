@@ -283,6 +283,105 @@ result_t wuss_iconbar_test(const char *resources)
         goto Failure;
     }
 
+    /* a covered bar pops to front when the pointer is held at the bottom of
+     * the screen and drops back when the pointer leaves it */
+    {
+      wuss_window_t *bar;
+      wuss_window_t *cover;
+      wuss_window_t *dialogue;
+      box_t          cover_box;
+
+      printf("test: icon bar pops to front\n");
+
+      bar = wuss->iconbar.window;
+
+      cover_box.x0 = 0;
+      cover_box.y0 = 100;
+      cover_box.x1 = 200;
+      cover_box.y1 = 200;
+      rc = wuss_window_create(owner, &cover_box, "Cover",
+                              wuss_WINDOW_NO_TITLEBAR, wuss_NO_BACKDROP,
+                              box_size(&cover_box), SIZE2D(0, 0), &cover);
+      if (rc != result_OK)
+        goto Failure;
+
+      /* an uncovered part of the screen, or a short dwell: no pop */
+      wuss->pointer = POINT(100, 200 - 1 - WUSS_ICONBAR_POP_ZONE);
+      wuss_set_time(wuss, 1000);
+      (void) wuss_idle(wuss);
+      wuss_set_time(wuss, 1000 + WUSS_ICONBAR_POP_DELAY_MS);
+      (void) wuss_idle(wuss);
+      if (bar->stack != wuss_STACK_BACK)
+        goto Failure;
+
+      wuss->pointer = POINT(100, 199);
+      (void) wuss_idle(wuss);
+      wuss_set_time(wuss, 1000 + 2 * WUSS_ICONBAR_POP_DELAY_MS - 1);
+      (void) wuss_idle(wuss);
+      if (bar->stack != wuss_STACK_BACK)
+        goto Failure;
+
+      /* a press owns the pointer: the dwell restarts after it */
+      wuss->capture = cover;
+      (void) wuss_idle(wuss);
+      wuss->capture = NULL;
+      wuss_set_time(wuss, 1000 + 3 * WUSS_ICONBAR_POP_DELAY_MS);
+      (void) wuss_idle(wuss);
+      if (bar->stack != wuss_STACK_BACK)
+        goto Failure;
+
+      /* a top stack window under the pointer, such as a menu, would stay in
+       * front of the popped bar: no pop, or it would flicker */
+      rc = wuss_window_create(owner, &cover_box, "Dialogue",
+                              wuss_WINDOW_NO_TITLEBAR | wuss_WINDOW_STACK_TOP,
+                              wuss_NO_BACKDROP, box_size(&cover_box),
+                              SIZE2D(0, 0), &dialogue);
+      if (rc != result_OK)
+        goto Failure;
+      wuss_set_time(wuss, 1000 + 4 * WUSS_ICONBAR_POP_DELAY_MS);
+      (void) wuss_idle(wuss);
+      if (bar->stack != wuss_STACK_BACK)
+        goto Failure;
+      wuss_set_time(wuss, 1000 + 5 * WUSS_ICONBAR_POP_DELAY_MS);
+      (void) wuss_idle(wuss);
+      if (bar->stack != wuss_STACK_BACK)
+        goto Failure;
+      wuss_window_close(dialogue);
+
+      /* a full dwell pops it: over regular windows, behind the top stack */
+      cover_box.y1 = 150;
+      rc = wuss_window_create(owner, &cover_box, "Dialogue",
+                              wuss_WINDOW_NO_TITLEBAR | wuss_WINDOW_STACK_TOP,
+                              wuss_NO_BACKDROP, box_size(&cover_box),
+                              SIZE2D(0, 0), &dialogue);
+      if (rc != result_OK)
+        goto Failure;
+      wuss_set_time(wuss, 3000);
+      (void) wuss_idle(wuss);
+      wuss_set_time(wuss, 3000 + WUSS_ICONBAR_POP_DELAY_MS);
+      (void) wuss_idle(wuss);
+      if (bar->stack != wuss_STACK_TOP ||
+          wuss__z_first(wuss) != dialogue ||
+          wuss__window_at(wuss, wuss->pointer) != bar)
+        goto Failure;
+      wuss_window_close(dialogue);
+
+      /* stays up while the pointer is over it, and survives hiding */
+      (void) wuss_idle(wuss);
+      (void) wuss_task_set_hidden(wuss, bar->task, 1);
+      if (bar->stack != wuss_STACK_TOP || (bar->flags & wuss_WINDOW_HIDDEN))
+        goto Failure;
+
+      wuss->pointer = POINT(100, 50);
+      (void) wuss_idle(wuss);
+      if (bar->stack != wuss_STACK_BACK ||
+          wuss__window_at(wuss, POINT(100, 199)) != cover)
+        goto Failure;
+
+      wuss_window_close(cover);
+      wuss_set_time(wuss, 0);
+    }
+
     /* a real z-order member can be moved/resized like any other window --
      * except this one is pinned, so both must refuse */
     wuss_window_move(wuss->iconbar.window, POINT(5, 5));

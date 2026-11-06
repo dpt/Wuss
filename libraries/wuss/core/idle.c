@@ -21,6 +21,7 @@ result_t wuss_idle(wuss_t *wuss)
 
 #ifdef WUSS_ICONBAR
   wuss__iconbar_scroll_tick(wuss);
+  wuss__iconbar_pop_tick(wuss);
 #endif
 
   if (wuss->drag.window != NULL)

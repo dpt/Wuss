@@ -152,6 +152,75 @@ void wuss__iconbar_scroll_tick(wuss_t *wuss)
     wuss__invalidate_clipped(wuss->iconbar.window, &bar);
 }
 
+/* A press in progress owns the pointer: popping up over a window being moved,
+ * resized or having its slider dragged would get in the way. A core drag may
+ * pop the bar, as its icons are drop targets. */
+static int iconbar_pointer_busy(const wuss_t *wuss)
+{
+  if (wuss->capture != NULL)
+    return 1;
+#ifdef WUSS_FURNITURE
+  if (wuss->furniture.dragging != NULL)
+    return 1;
+#endif
+#ifdef WUSS_ICONS
+  if (wuss->pressed.icon != NULL)
+    return 1;
+#endif
+
+  return 0;
+}
+
+void wuss__iconbar_pop_tick(wuss_t *wuss)
+{
+  wuss_window_t *bar;
+  wuss_window_t *under;
+
+  bar = wuss->iconbar.window;
+  if (bar == NULL)
+    return;
+
+  under = wuss__window_at(wuss, wuss->pointer);
+
+  if (bar->stack != wuss_STACK_BACK)
+  {
+    if (under != bar)
+    {
+      wuss_window_set_stack(bar, wuss_STACK_BACK);
+      (void) wuss_mouse_move(wuss, wuss->pointer, NULL); /* settle hover */
+    }
+    return;
+  }
+
+  /* A top stack window under the pointer, such as a menu, stays in front of
+   * the popped bar, so popping would only drop it straight back. */
+  if (under == bar || iconbar_pointer_busy(wuss) ||
+      wuss->pointer.y < wuss->scr->size.h - WUSS_ICONBAR_POP_ZONE ||
+      (under != NULL && under->stack == wuss_STACK_TOP))
+  {
+    wuss->iconbar.pop_armed = 0;
+    return;
+  }
+
+  if (!wuss->iconbar.pop_armed)
+  {
+    wuss->iconbar.pop_armed = 1;
+    wuss->iconbar.pop_since = wuss->now_ms;
+    return;
+  }
+
+  if (wuss->now_ms - wuss->iconbar.pop_since < WUSS_ICONBAR_POP_DELAY_MS)
+    return;
+
+  wuss->iconbar.pop_armed = 0;
+
+  /* the back of the top stack: in front of every regular window, still behind
+   * menus and error dialogues */
+  wuss_window_set_stack(bar, wuss_STACK_TOP);
+  wuss_window_restack(bar, wuss_ZORDER_BACK);
+  (void) wuss_mouse_move(wuss, wuss->pointer, NULL); /* settle hover */
+}
+
 void wuss__iconbar_icon_box(const wuss_t *wuss, int index, box_t *out)
 {
   box_t                      slot;

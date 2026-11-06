@@ -455,6 +455,10 @@ struct wuss
     /* Horizontal scroll offset in pixels; non-zero only while the icons
      * overflow the bar. */
     int                   scroll;
+    /* Non-zero while the pointer dwells at the bottom of the screen over a
+     * covered bar; pop_since is now_ms when the dwell began. */
+    int                   pop_armed;
+    unsigned int          pop_since;
   }
   iconbar;
 #endif

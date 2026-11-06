@@ -127,6 +127,8 @@ result_t wuss_create(screen_t               *scr,
   w->iconbar.cap      = 0;
   w->iconbar.pressed   = NULL;
   w->iconbar.scroll    = 0;
+  w->iconbar.pop_armed = 0;
+  w->iconbar.pop_since = 0;
 #endif
 
   w->msg.queue          = NULL;

@@ -24,6 +24,12 @@ static result_t task_windows_set_hidden(wuss_task_t *task, int hidden)
     if (window->stack == wuss_STACK_BACK)
       continue;
 
+#ifdef WUSS_ICONBAR
+    /* the bar leaves the back stack while popped to front */
+    if (window == window->wuss->iconbar.window)
+      continue;
+#endif
+
     if (hidden)
     {
       if (window->flags & wuss_WINDOW_HIDDEN)
