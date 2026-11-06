@@ -1421,6 +1421,23 @@ result_t wuss_drag_start_object(wuss_t              *wuss,
                                 void                *opaque);
 
 /**
+ * Start a grab: a core drag that draws nothing and scrolls \p window
+ * instead, so that the content under the pointer follows it. Call it from
+ * the handler of the wuss_MOUSE_DOWN pressed on the content. Scrolling stays
+ * within the document extent and an axis the window has no scrollbar for
+ * stays put. Pointer bounds are set to stop the pointer where the scrolling
+ * stops; a task may replace them with wuss_set_pointer_bounds. Otherwise as
+ * wuss_drag_start, except that Escape also restores the scroll offset the
+ * grab started from. wuss_EVENT_SCROLL is not delivered.
+ *
+ * \param[in] wuss   Window manager.
+ * \param[in] window As wuss_drag_start.
+ * \return \ref result_OK on success, \ref result_BAD_ARG if window is NULL
+ *         or has no task handle.
+ */
+result_t wuss_drag_start_grab(wuss_t *wuss, wuss_window_t *window);
+
+/**
  * Whether a core drag session (see wuss_drag_start) is currently active.
  *
  * \param[in] wuss Window manager.

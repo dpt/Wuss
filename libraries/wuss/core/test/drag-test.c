@@ -535,6 +535,148 @@ result_t wuss_drag_test(const char *resources)
   if (wuss_is_capturing(wuss) || wuss_is_dragging(wuss))
     goto Failure;
 
+  printf("test: a grab scrolls the window with the pointer, within the "
+         "document, draws nothing and hands back the capture; Escape restores "
+         "the scroll offset\n");
+
+  {
+    wuss_window_t *win_e, *win_f;
+    point_t        scroll;
+    box_t          content, bounds;
+
+    rc = wuss_drag_start_grab(wuss, NULL);
+    if (rc != result_BAD_ARG)
+      goto Failure;
+
+    rc = wuss_window_create(delegate_a, &box_a, "E", wuss_WINDOW_DEFAULT,
+                            wuss_NO_BACKDROP, SIZE2D(400, 400), SIZE2D(0, 0),
+                            &win_e);
+    if (rc != result_OK)
+      goto Failure;
+    wuss_window_set_scroll(win_e, POINT(20, 20));
+
+    rc = wuss_mouse_click(wuss, POINT(50, 50), wuss_BUTTON_SELECT,
+                          wuss_MOUSE_DOWN, &hit);
+    if (rc != result_OK || hit != win_e)
+      goto Failure;
+
+    rc = wuss_drag_start_grab(wuss, win_e);
+    if (rc != result_OK)
+      goto Failure;
+    if (wuss_is_capturing(wuss) || !wuss_is_dragging(wuss))
+      goto Failure;
+
+    rc = wuss_mouse_move(wuss, POINT(40, 45), NULL);
+    if (rc != result_OK)
+      goto Failure;
+    wuss_window_get_scroll(win_e, &scroll);
+    if (scroll.x != 30 || scroll.y != 25)
+      goto Failure;
+
+    /* past the document's start: it stops there, then catches the pointer up */
+    rc = wuss_mouse_move(wuss, POINT(90, 90), NULL);
+    if (rc != result_OK)
+      goto Failure;
+    wuss_window_get_scroll(win_e, &scroll);
+    if (scroll.x != 0 || scroll.y != 0)
+      goto Failure;
+
+    rc = wuss_mouse_move(wuss, POINT(60, 60), NULL);
+    if (rc != result_OK)
+      goto Failure;
+    wuss_window_get_scroll(win_e, &scroll);
+    if (scroll.x != 10 || scroll.y != 10)
+      goto Failure;
+
+    /* the empty box paints nothing */
+    rc = wuss_idle(wuss);
+    if (rc != result_OK)
+      goto Failure;
+    rc = wuss_redraw_dirty(wuss);
+    if (rc != result_OK)
+      goto Failure;
+
+    /* the pointer can go only as far as the scroll can, from the press */
+    wuss_window_get_content_bounds(win_e, &content);
+    if (!wuss_get_pointer_bounds(wuss, &bounds) ||
+        bounds.x0 != 70 - (400 - (content.x1 - content.x0)) ||
+        bounds.y0 != 70 - (400 - (content.y1 - content.y0)) ||
+        bounds.x1 != 71 || bounds.y1 != 71)
+      goto Failure;
+
+    tc_a.drag_end_count = 0;
+    rc = wuss_mouse_click(wuss, POINT(60, 60), wuss_BUTTON_SELECT,
+                          wuss_MOUSE_UP, NULL);
+    if (rc != result_OK || wuss_is_dragging(wuss))
+      goto Failure;
+    wuss_window_get_scroll(win_e, &scroll);
+    if (scroll.x != 10 || scroll.y != 10)
+      goto Failure;
+    if (tc_a.drag_end_count != 1 || tc_a.last_drag_end_cancelled)
+      goto Failure;
+
+    /* an ordinary drag after a grab must not scroll */
+    rc = wuss_drag_start(wuss, win_e, SIZE2D(8, 8), POINT(4, 4));
+    if (rc != result_OK)
+      goto Failure;
+    rc = wuss_mouse_move(wuss, POINT(30, 30), NULL);
+    if (rc != result_OK)
+      goto Failure;
+    wuss_window_get_scroll(win_e, &scroll);
+    if (scroll.x != 10 || scroll.y != 10)
+      goto Failure;
+    rc = wuss_key(wuss, wuss_KEY_ESCAPE, wuss_KEY_MOD_NONE, NULL);
+    if (rc != result_OK)
+      goto Failure;
+    wuss_window_get_scroll(win_e, &scroll);
+    if (scroll.x != 10 || scroll.y != 10)
+      goto Failure;
+
+    rc = wuss_drag_start_grab(wuss, win_e);
+    if (rc != result_OK)
+      goto Failure;
+    rc = wuss_mouse_move(wuss, POINT(20, 25), NULL);
+    if (rc != result_OK)
+      goto Failure;
+    wuss_window_get_scroll(win_e, &scroll);
+    if (scroll.x != 20 || scroll.y != 15)
+      goto Failure;
+    rc = wuss_key(wuss, wuss_KEY_ESCAPE, wuss_KEY_MOD_NONE, NULL);
+    if (rc != result_OK || wuss_is_dragging(wuss))
+      goto Failure;
+    wuss_window_get_scroll(win_e, &scroll);
+    if (scroll.x != 10 || scroll.y != 10)
+      goto Failure;
+    if (!tc_a.last_drag_end_cancelled)
+      goto Failure;
+
+    /* an axis with no scrollbar holds the pointer still */
+    rc = wuss_window_create(delegate_a, &box_a, "F", wuss_WINDOW_VSCROLL,
+                            wuss_NO_BACKDROP, SIZE2D(400, 400), SIZE2D(0, 0),
+                            &win_f);
+    if (rc != result_OK)
+      goto Failure;
+    rc = wuss_drag_start_grab(wuss, win_f);
+    if (rc != result_OK)
+      goto Failure;
+    if (!wuss_get_pointer_bounds(wuss, &bounds) ||
+        bounds.x0 != wuss->pointer.x || bounds.x1 != wuss->pointer.x + 1 ||
+        bounds.y0 >= wuss->pointer.y || bounds.y1 != wuss->pointer.y + 1)
+      goto Failure;
+    rc = wuss_key(wuss, wuss_KEY_ESCAPE, wuss_KEY_MOD_NONE, NULL);
+    if (rc != result_OK)
+      goto Failure;
+    wuss_window_close(win_f);
+
+    /* closing the window abandons the grab */
+    rc = wuss_drag_start_grab(wuss, win_e);
+    if (rc != result_OK)
+      goto Failure;
+    wuss_window_close(win_e);
+    if (wuss_is_dragging(wuss))
+      goto Failure;
+  }
+
   printf("test: closing the capturing window ends the capture\n");
 
   rc = wuss_mouse_click(wuss, POINT(50, 50), wuss_BUTTON_SELECT,

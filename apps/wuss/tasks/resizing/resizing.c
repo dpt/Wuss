@@ -326,7 +326,7 @@ static result_t resizing_handle(wuss_window_t      *window,
     if (event->data.mouse.button & wuss_BUTTON_MENU)
       return resizing_menu_open(rt);
 
-    return result_OK;
+    return wuss_drag_start_grab(rt->base.wuss, rt->base.window);
 
   case wuss_EVENT_MENU_SELECT:
     return resizing_menu_select(rt, event);

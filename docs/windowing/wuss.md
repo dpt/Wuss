@@ -213,6 +213,10 @@ The bitmap and `opaque` are borrowed until the drag ends. A solid image repaints
 
 When `wuss_config_t::mouse.outline_drags` is set (the Configuring task's "Solid drags" option, unticked), solid drags show ants of the same size instead. A DRAGGABLE icon drags its image and a gridview drags the item's glyph. Each falls back to ants when there is no image.
 
+### Grabbing
+
+`wuss_drag_start_grab(wuss, window)` starts a core drag that draws nothing and scrolls `window` instead, keeping the content under the pointer as it moves. Call it from the handler of a content `wuss_MOUSE_DOWN`. The offset is measured from where the grab started, so content stopped by the end of the document catches the pointer up on the way back. It stays within the document extent and an axis with no scrollbar stays put, as for `wuss_window_scroll_by`. The grab also sets pointer bounds (see `wuss_set_pointer_bounds`) that stop the pointer where the content stops, so a host that applies them holds the pointer still once there is nothing further to drag. A release ends the grab with `wuss_EVENT_DRAG_END`. Escape does too, after restoring the starting offset. Resizing and Viewing use it for their document areas.
+
 ## Scrolling
 
 Each window carries a scroll offset, `(0, 0)` by default: the point in the task's virtual content space that appears at the content area's top-left. `wuss_window_set_scroll(window, x, y)` moves it (invalidating the content area so the next redraw picks it up); `wuss_window_get_scroll` reads it back. `wuss_scroll` applies this offset itself as Wuss's default scroll action, clamped to `doc` (set at window creation), before also delivering `wuss_EVENT_SCROLL` to the task if it has a handle:

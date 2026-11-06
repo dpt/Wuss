@@ -35,8 +35,9 @@
  * pixels are skipped and everything else is drawn at full strength). The
  * window starts empty; a wuss_MESSAGE_DATA_LOAD sent to it, whose payload is
  * the path of a PNG, shows that image; a file that will not load is not
- * acknowledged. Menu's "Tile" repeats the image edge to edge over a
- * screen-sized window instead; SELECT drag then moves the tile origin. */
+ * acknowledged. Dragging the image grabs it, scrolling the window. Menu's
+ * "Tile" repeats the image edge to edge over a screen-sized window instead;
+ * SELECT drag then moves the tile origin. */
 typedef struct viewing_task
 {
   taskapp_instance_t base;
@@ -473,7 +474,8 @@ static result_t viewing_open_menu(viewing_task_t *ic)
                                    &ic->base.menu_handle);
 }
 
-/* MENU opens the menu; while tiled, SELECT drag moves the tile origin */
+/* MENU opens the menu; a drag grabs the image, except that while tiled SELECT
+ * drag moves the tile origin */
 static result_t viewing_mouse(viewing_task_t *ic, const wuss_event_t *event)
 {
   point_t point;
@@ -489,7 +491,10 @@ static result_t viewing_mouse(viewing_task_t *ic, const wuss_event_t *event)
     if (event->data.mouse.button & wuss_BUTTON_MENU)
       return viewing_open_menu(ic);
 
-    if ((event->data.mouse.button & wuss_BUTTON_SELECT) && ic->tile)
+    if (!ic->tile)
+      return wuss_drag_start_grab(ic->base.wuss, ic->base.window);
+
+    if (event->data.mouse.button & wuss_BUTTON_SELECT)
     {
       ic->dragging = 1;
       ic->grab     = point;

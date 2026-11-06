@@ -8,6 +8,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- `wuss_drag_start_grab` starts a grab: a core drag that scrolls the window so
+  its content follows the pointer. Resizing and Viewing grab when their
+  document area is dragged.
+
 ## [0.24.0] - 2026-11-05
 
 ### Added

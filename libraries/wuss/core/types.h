@@ -491,6 +491,12 @@ struct wuss
      * as "opaque". */
     wuss_drag_draw_fn_t *draw;
     void                *opaque;
+    /* Set by wuss_drag_start_grab: moves scroll the window instead. The box
+     * stays empty, so nothing is painted or invalidated for it. */
+    int                  grab;
+    /* Pointer and window scroll offset as the grab started. */
+    point_t              grab_pointer;
+    point_t              grab_scroll;
   }
   drag;
 };
