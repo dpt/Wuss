@@ -647,8 +647,9 @@ static void gridview_draw_cell(wuss_gridview_t    *gv,
     label_x   = screen_box.x0 + (gv->cell.w - capsule_w) / 2;
     label_y   = screen_box.y1 - gv->pad_y - height;
     if (wuss_gridview_is_selected(gv, index))
-      screen_fill_rounded_rect(&clipped, label_x, label_y,
-                               SIZE2D(capsule_w, height), end_w, bg);
+      screen_fill_rounded_rect(&clipped, label_x - 2, label_y - 2,
+                               SIZE2D(capsule_w + 4, height + 4), end_w -1,
+                               bg);
 
     pos.x = label_x + end_w;
     pos.y = label_y + ascent;
