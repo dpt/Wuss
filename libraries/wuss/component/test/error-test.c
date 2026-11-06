@@ -86,7 +86,7 @@ static wuss_window_t *error_test_window(wuss_t *wuss)
   return hit;
 }
 
-/* Select-click the button labelled text */
+/* SELECT-click the button labelled text */
 static result_t error_test_click(wuss_t        *wuss,
                                  wuss_window_t *win,
                                  const char    *text)

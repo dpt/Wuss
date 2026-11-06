@@ -43,7 +43,7 @@
  * shortlist. Each stamp is blitted 1:1; its four slots index the current
  * greebling_palettes[] row.
  *
- * Select reseeds the pattern; Adjust steps the base palette, which Menu >
+ * SELECT reseeds the pattern; ADJUST steps the base palette, which Menu >
  * Palette also picks directly; Menu > Random palettes toggles per-prefab
  * random palettes; Menu > Size sets the grid (and window) to a preset size;
  * Menu > Save opens a Save As dialogue (drag its icon onto a Filer
@@ -328,7 +328,7 @@ static result_t greebling_redraw(const wuss_event_t *event,
   return result_OK;
 }
 
-/* Select: advance to a fresh pattern (new seed, regenerate the grid). */
+/* SELECT: advance to a fresh pattern (new seed, regenerate the grid). */
 static result_t greebling_select(greebling_task_t *task,
                                  wuss_window_t    *window)
 {
@@ -348,7 +348,7 @@ static result_t greebling_select(greebling_task_t *task,
 /* Flip per-prefab random palettes and regenerate from the same seed so it is a
  * straight A/B of the pattern. The shared menu struct's tick is not touched
  * here: a fresh open re-syncs it from task state, and an ADJUST pick reticks
- * the open chain in place (see greebling_menu_select). Shared by the Adjust
+ * the open chain in place (see greebling_menu_select). Shared by the ADJUST
  * click and the menu row. */
 static result_t greebling_toggle_randpal(greebling_task_t *task,
                                          wuss_window_t    *window)
@@ -362,7 +362,7 @@ static result_t greebling_toggle_randpal(greebling_task_t *task,
 
 /* Switch the base palette on the current pattern. Regenerate so filler
  * cells (and prefab cells, when random palettes are off) pick up the new row;
- * the seed is unchanged so the layout is identical. Shared by the Adjust
+ * the seed is unchanged so the layout is identical. Shared by the ADJUST
  * click and the Palette submenu. */
 static result_t greebling_set_palette(greebling_task_t *task, int index)
 {
@@ -413,13 +413,13 @@ static result_t greebling_randomise(greebling_task_t *task)
   return result_OK;
 }
 
-/* Adjust: step to the next base palette. */
+/* ADJUST: step to the next base palette. */
 static result_t greebling_adjust(greebling_task_t *task)
 {
   return greebling_set_palette(task, (task->palette + 1) % GREEBLING_NPALETTE);
 }
 
-/* Space reseeds, as Select does; Left/Right step the base palette back and
+/* Space reseeds, as SELECT does; Left/Right step the base palette back and
  * forward. Anything else is passed back unclaimed. */
 static result_t greebling_key(greebling_task_t *task,
                               wuss_window_t    *window,

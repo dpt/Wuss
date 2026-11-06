@@ -90,10 +90,10 @@ typedef struct wuss_message wuss_message_t;
 
 
 /**
- * Mouse buttons, RISC OS-style: Select is the primary action, Adjust the
- * secondary action, Menu pops up a menu.
+ * Mouse buttons, RISC OS-style: SELECT is the primary action, ADJUST the
+ * secondary action, MENU pops up a menu.
  *
- * These are flags, OR'd together, so that chords (e.g. Select and Adjust
+ * These are flags, OR'd together, so that chords (e.g. SELECT and ADJUST
  * pressed together) can be reported. The bit values match the RISC OS button
  * order. Test them with '&' rather than comparing for equality, or a chord
  * will match no button at all.
@@ -355,7 +355,7 @@ typedef enum wuss_window_flags
   wuss_WINDOW_NO_REDRAW      = 1 << 10,
 
   /**
-   * The window can take the input focus: a Select or Adjust press on its
+   * The window can take the input focus: a SELECT or ADJUST press on its
    * content gives it focus, as does wuss_set_focus. The focused window
    * receives wuss_EVENT_KEY and has its titlebar drawn in the focus tint.
    * Not part of wuss_WINDOW_DEFAULT.
@@ -1152,9 +1152,9 @@ void wuss_clear_touched(wuss_t *wuss);
 /**
  * Deliver a mouse-down or mouse-up event (action must be wuss_MOUSE_DOWN or
  * wuss_MOUSE_UP). Hit-tests the topmost window at (x,y). On a down, a
- * titlebar click brings the window to front if button is Select (Adjust and
- * Menu leave the z-order unchanged) and starts a drag; on an up, an
- * in-progress drag is ended instead of hit-testing (an Adjust click with no
+ * titlebar click brings the window to front if button is SELECT (ADJUST and
+ * MENU leave the z-order unchanged) and starts a drag; on an up, an
+ * in-progress drag is ended instead of hit-testing (an ADJUST click with no
  * move in between sends the window to the back rather than dragging it). A
  * click on the window's content never changes the z-order and is delivered
  * to the task in window-local content coordinates.
@@ -1430,7 +1430,7 @@ result_t wuss_drag_start_object(wuss_t              *wuss,
 int wuss_is_dragging(const wuss_t *wuss);
 
 /**
- * Whether a window holds the mouse capture. A Select or Adjust press on a
+ * Whether a window holds the mouse capture. A SELECT or ADJUST press on a
  * window's plain content (not on an icon or furniture) captures the mouse:
  * that window then receives every \ref wuss_EVENT_MOUSE, with points that
  * may lie outside its content box, until the button is released. Its task

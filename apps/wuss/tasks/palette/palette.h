@@ -28,7 +28,7 @@
  * party (framebuffer bitmap, physical palette) reacts to the resulting
  * wuss_EVENT_PALETTE and reads the array back with wuss_get_palette.
  *
- * In either window Select on a swatch selects it; Menu > Edit colour... (or a
+ * In either window SELECT on a swatch selects it; Menu > Edit colour... (or a
  * double-click) opens that window's own colour picker on it, each change
  * installing the edited palette live: the desktop palette via
  * wuss_set_palette, the Screen's via tasks_set_screen_palette. A later Load,

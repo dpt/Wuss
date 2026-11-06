@@ -211,7 +211,7 @@ A core drag (see `wuss_drag_start`) takes over the pointer until a release or Es
 
 The bitmap and `opaque` are borrowed until the drag ends. A solid image repaints its old and new boxes once a frame, and only when it has moved. Windows underneath repaint through the normal dirty path; there is no save-under.
 
-When `wuss_config_t::mouse.outline_drags` is set (the Configure task's "Solid drags" option, unticked), solid drags show ants of the same size instead. A DRAGGABLE icon drags its image and a gridview drags the item's glyph. Each falls back to ants when there is no image.
+When `wuss_config_t::mouse.outline_drags` is set (the Configuring task's "Solid drags" option, unticked), solid drags show ants of the same size instead. A DRAGGABLE icon drags its image and a gridview drags the item's glyph. Each falls back to ants when there is no image.
 
 ## Scrolling
 
@@ -321,7 +321,7 @@ Built with the `WUSS_COMPONENTS` CMake option, `libraries/wuss/component/` holds
 
 ### Program-information dialogue
 
-`wuss_proginfo` is the RISC OS "Info" / Toolbox ProgInfo dialogue in miniature: a small fixed window of Name / Purpose / Author / Version rows a task fills in once, then typically hangs off its Menu-button pop-up.
+`wuss_proginfo` is the RISC OS "Info" / Toolbox ProgInfo dialogue in miniature: a small fixed window of Name / Purpose / Author / Version rows a task fills in once, then typically hangs off its MENU-button pop-up.
 
 ```C
 typedef struct wuss_proginfo_desc
@@ -368,10 +368,10 @@ On RISC OS, `io/dirlist` still takes a file's type from its extension rather tha
 
 Terms as this document and the API use them. Several are RISC OS conventions, which Wuss follows.
 
-- **Adjust** — the secondary mouse button, `wuss_BUTTON_ADJUST`. Conventionally the variant of an action: Adjust on the back button brings a window to front rather than sending it back, and Adjust on a scroll arrow steps against the direction the arrow points.
+- **ADJUST** — the secondary mouse button, `wuss_BUTTON_ADJUST`. Conventionally the variant of an action: ADJUST on the back button brings a window to front rather than sending it back, and ADJUST on a scroll arrow steps against the direction the arrow points.
 - **Backdrop** — the desktop background colour painted behind all windows, set by `config->backdrop` at `wuss_create` time. `wuss_NO_BACKGROUND` leaves the area behind windows untouched, making it the caller's to repaint.
-- **Button flags** — `wuss_button_t` values are flags (Select 4, Menu 2, Adjust 1), OR'd together so a chord can be reported. Test a reported button with `&`, never for equality.
-- **Chord** — two or more mouse buttons held together, e.g. Select+Adjust. Wuss's own furniture handling resolves an ambiguous chord in Select's favour.
+- **Button flags** — `wuss_button_t` values are flags (SELECT 4, MENU 2, ADJUST 1), OR'd together so a chord can be reported. Test a reported button with `&`, never for equality.
+- **Chord** — two or more mouse buttons held together, e.g. SELECT+ADJUST. Wuss's own furniture handling resolves an ambiguous chord in SELECT's favour.
 - **Content area** — the part of a window belonging to its task. Its bounds are exactly what was passed to `wuss_window_create`, furniture being added outside it, less any room its panes take; read back with `wuss_window_get_content_bounds`.
 - **Dirty region** — the accumulated set of screen-space boxes needing repaint, coalesced as they accumulate. `wuss_redraw_dirty` repaints and clears it.
 - **Font slot** — one of up to `wuss_MAX_FONTS` `wuss_font_desc_t` entries passed to `wuss_create` and owned by the `libraries/wuss/font/` module. Slot 0 is the system font, slot 1 the bold weight, slot 2 (`WUSS_SYMBOL_FONT`) an optional glyph font for menu decoration. Read back with `wuss_get_font` / `wuss_get_font_n`. See "Fonts".
@@ -382,12 +382,12 @@ Terms as this document and the API use them. Several are RISC OS conventions, wh
 - **Handle callback** — a task's single `wuss_event_fn_t`, receiving every event kind and dispatching on `event->kind`. A window whose task has no handle receives no events at all.
 - **Icon** — a rectangular UI element Wuss draws and hit-tests inside a window's content area: a static `wuss_ICON_TYPE_LABEL`, or a clickable bevelled `wuss_ICON_TYPE_ACTION`. Created with `wuss_icon_create` and owned by its window. Its bounding box is in virtual content space, so it scrolls with the content; its screen position is `content-top-left - scroll + bbox`. See "Icons".
 - **Invalidate** — mark a region dirty for the next `wuss_redraw_dirty`. Window management does this for its own changes; a task must do it for its own content changes.
-- **Menu** — the middle mouse button, `wuss_BUTTON_MENU`. Routed like any other button; Wuss provides no menu widget of its own.
+- **MENU** — the middle mouse button, `wuss_BUTTON_MENU`. Routed like any other button; a task responds by opening a pop-up menu with `wuss_menu_open` (`wuss/menu.h`).
 - **Outline** — the 1px border drawn around a window, suppressed by `wuss_WINDOW_NO_OUTLINE`.
 - **Pane** — a toolbar attached inside a parent window with `wuss_window_attach_pane`, along one edge of its content area, which shrinks to make room. See "Panes".
 - **Sausage** — the draggable thumb within a scrollbar well, sized in proportion to how much of the document extent the content area shows.
 - **Screen space** — coordinates in the underlying `screen_t`, origin at its top-left. Visible and content bounds are in screen space.
-- **Select** — the primary mouse button, `wuss_BUTTON_SELECT`. Performs the plain action, and raises a window when used on its titlebar.
+- **SELECT** — the primary mouse button, `wuss_BUTTON_SELECT`. Performs the plain action, and raises a window when used on its titlebar.
 - **Task** — the client of a window: an event callback plus an opaque `task_data` pointer, held in a `wuss_task_t`. Wuss owns the window; the task owns what's drawn inside it.
 - **Titlebar** — the strip above the content area carrying the window's label and its buttons, and the drag handle for moving the window. Suppressed by `wuss_WINDOW_NO_TITLEBAR`.
 - **Toolbar** — a window attached to an edge of a parent window with `wuss_window_attach`. It moves, stacks, hides and closes with its parent. See "Toolbars".
@@ -396,8 +396,4 @@ Terms as this document and the API use them. Several are RISC OS conventions, wh
 - **Visible bounds** — a window's whole on-screen footprint, content plus furniture; `wuss_window_get_visible_bounds`.
 - **Well** — the track a scrollbar's sausage slides along, between the two arrow buttons.
 - **Window-local coordinates** — coordinates relative to the content area's top-left. `wuss_window_invalidate` takes its box in virtual content space, i.e. with the scroll offset already added.
-- **Z-order** — the front-to-back stacking order of windows, kept as three stacks: `wuss_STACK_TOP` (error dialogues, menus), `wuss_STACK_MIDDLE` (regular windows, the default) and `wuss_STACK_BACK` (the icon bar). Every window in an earlier stack is in front of every window in a later one. A window joins a stack at creation (`wuss_WINDOW_STACK_TOP` / `wuss_WINDOW_STACK_BACK`) or moves with `wuss_window_set_stack`. `wuss_window_restack`, or a Select click on a titlebar, only reorders a window within its own stack; content clicks never change it.
-
-## Limitations
-
-- No menus: `wuss_BUTTON_MENU` is defined and routed like any other button, but Wuss has no built-in menu widget.
+- **Z-order** — the front-to-back stacking order of windows, kept as three stacks: `wuss_STACK_TOP` (error dialogues, menus), `wuss_STACK_MIDDLE` (regular windows, the default) and `wuss_STACK_BACK` (the icon bar). Every window in an earlier stack is in front of every window in a later one. A window joins a stack at creation (`wuss_WINDOW_STACK_TOP` / `wuss_WINDOW_STACK_BACK`) or moves with `wuss_window_set_stack`. `wuss_window_restack`, or a SELECT click on a titlebar, only reorders a window within its own stack; content clicks never change it.

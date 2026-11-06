@@ -451,7 +451,7 @@ box_t painting_band_commit(painting_task_t *pt)
   colour = painting_stroke_colour(pt);
   painting_band_ends(pt, &a, &b);
 
-  /* Select runs from fg to bg, Adjust the other way */
+  /* SELECT runs from fg to bg, ADJUST the other way */
   if (pt->tool == painting_TOOL_GRADIENT)
     return pt->held == wuss_BUTTON_ADJUST ?
            paintingdoc_gradient(pt->doc, a, b, pt->bg, pt->fg) :
@@ -472,8 +472,8 @@ box_t painting_band_commit(painting_task_t *pt)
   return paintingdoc_stroke(pt->doc, a, b, pt->size, colour);
 }
 
-/* place the lifted selection under p: a Select drag moves it, leaving bg
- * behind, and an Adjust drag copies it */
+/* place the lifted selection under p: a SELECT drag moves it, leaving bg
+ * behind, and an ADJUST drag copies it */
 box_t painting_place(painting_task_t *pt, point_t p)
 {
   return paintingdoc_place(pt->doc, p.x - pt->anchor.x, p.y - pt->anchor.y,

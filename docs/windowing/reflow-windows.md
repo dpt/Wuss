@@ -211,8 +211,8 @@ the visible rows.
   its maximum.
 
 **Features outside the layout.** `filerwin` also has rubber-band selection
-with auto-scroll, Select and Adjust selection semantics, a Menu-click callback
-and Adjust-close. The wuss Filer has none of these yet.
+with auto-scroll, SELECT and ADJUST selection semantics, a MENU-click callback
+and ADJUST-close. The wuss Filer has none of these yet.
 
 ## Core and gadget API
 
@@ -230,7 +230,7 @@ and Adjust-close. The wuss Filer has none of these yet.
 
 ## Open points
 
-- Filer has no rubber-band selection, Menu-click callback or Adjust-close.
+- Filer has no rubber-band selection, MENU-click callback or ADJUST-close.
 
 ## Test checklist for a reflowable window
 

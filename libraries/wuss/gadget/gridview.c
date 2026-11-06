@@ -775,8 +775,8 @@ int wuss_gridview_handle_event(wuss_gridview_t    *gv,
 
     if (index < 0)
     {
-      /* a press on the background starts a rubber band; Select clears the
-       * selection first, Adjust adds to it */
+      /* a press on the background starts a rubber band; SELECT clears the
+       * selection first, ADJUST adds to it */
       if (!gv->selectable)
         return 0;
       if (event->data.mouse.button & wuss_BUTTON_SELECT)
@@ -805,7 +805,7 @@ int wuss_gridview_handle_event(wuss_gridview_t    *gv,
     else if ((event->data.mouse.button & wuss_BUTTON_SELECT) &&
              !bitvec_get(gv->selected, (bitvec_index_t) index))
     {
-      /* a Select on an item already selected changes nothing, so the whole
+      /* a SELECT on an item already selected changes nothing, so the whole
        * selection can still be dragged */
       gridview_clear_selected(gv);
       (void) bitvec_set(gv->selected, (bitvec_index_t) index);

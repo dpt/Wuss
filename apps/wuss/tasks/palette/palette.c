@@ -384,7 +384,7 @@ static result_t palette_edit(palette_task_t *pc)
   return wuss_colourpicker_open(pc->picker, palette[pc->cell]);
 }
 
-/* Select on a swatch selects it, and a double-click edits it */
+/* SELECT on a swatch selects it, and a double-click edits it */
 static result_t palette_swatch_click(palette_task_t     *pc,
                                      const wuss_event_t *event)
 {

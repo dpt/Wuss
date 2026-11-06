@@ -297,8 +297,8 @@ result_t wuss_furniture_test(const char *resources)
     wuss_window_close(win_sr);
   }
 
-  printf("test: Select-dragging a sausage scrolls its own axis; "
-         "Adjust-dragging scrolls both\n");
+  printf("test: SELECT-dragging a sausage scrolls its own axis; "
+         "ADJUST-dragging scrolls both\n");
 
   {
     static test_task_t tc_sd;

@@ -24,8 +24,8 @@
  * This component does not know about menus: a dialogue shown as a
  * wuss_menu_item_t::window leaf is dismissed by the task's own action
  * callback calling wuss_menu_close, exactly as it already must decide
- * whether a Select or Adjust click on Cancel/Apply/OK dismisses at all (the
- * RISC OS convention: Select dismisses, Adjust applies/resets and leaves the
+ * whether a SELECT or ADJUST click on Cancel/Apply/OK dismisses at all (the
+ * RISC OS convention: SELECT dismisses, ADJUST applies/resets and leaves the
  * dialogue open). A standalone dialogue dismisses itself with
  * wuss_dialogue_hide.
  *
@@ -69,8 +69,8 @@ typedef result_t (wuss_dialogue_fillout_fn_t)(void *opaque);
  *
  * \param[in] opaque As passed to wuss_dialogue_create.
  * \param[in] button Button(s) released, as wuss_event_t::data::icon::button.
- *                   Test with '&': RISC OS convention is Select dismisses,
- *                   Adjust applies/resets without dismissing.
+ *                   Test with '&': RISC OS convention is SELECT dismisses,
+ *                   ADJUST applies/resets without dismissing.
  * \return \ref result_OK, or an appropriate result code; propagated back
  *         through wuss_dialogue_handle_icon to the task's own handler.
  */
@@ -227,7 +227,7 @@ int wuss_dialogue_handle_icon(wuss_dialogue_t    *dialogue,
  * Handle a wuss_EVENT_KEY from the task's own handler: RETURN activates the
  * dialogue's default action, the registered icon flagged
  * wuss_ICON_FLAGS_DEFAULT, and ESCAPE activates its cancel action (see
- * wuss_dialogue_set_cancel), each as a Select click on the icon would. Any
+ * wuss_dialogue_set_cancel), each as a SELECT click on the icon would. Any
  * other key, or a missing default or cancel action, is left alone.
  *
  * \param[in]  dialogue   Handle.

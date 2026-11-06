@@ -31,8 +31,8 @@
 
 #define FIREWORKS_NSTYLES 4
 
-/* window task: the Explosion particle engine. Select bursts a random mix of
- * styles at the click; Adjust bursts flecks. The pointer trails particles
+/* window task: the Explosion particle engine. SELECT bursts a random mix of
+ * styles at the click; ADJUST bursts flecks. The pointer trails particles
  * while over the content. Menu > Add > Emitter adds a smoke emitter, at a
  * chosen intensity, where the menu was opened; Menu > Add > Attractor and
  * Menu > Add > Repeller open a shared Strength dialogue (a 1..100 slider,
@@ -631,7 +631,7 @@ exit:
 /* Dialogue fillout callback: reset the slider and its echo label to
  * FIREWORKS_STRENGTH_DEFAULT. Called by wuss_dialogue_handle_pre_show on
  * every reveal, and directly by fireworks_strength_cancel to reset the
- * dialogue on an Adjust-Cancel click. */
+ * dialogue on an ADJUST-Cancel click. */
 static result_t fireworks_strength_fillout(void *opaque)
 {
   result_t          rc;
@@ -649,8 +649,8 @@ static result_t fireworks_strength_fillout(void *opaque)
 }
 
 /* Adds the attractor/repeller at the slider's current value, scaled to a
- * force strength and negated for an attractor, shared by a Select and an
- * Adjust click on Apply. */
+ * force strength and negated for an attractor, shared by a SELECT and an
+ * ADJUST click on Apply. */
 static void fireworks_strength_apply(fireworks_task_t *task)
 {
   float strength;
@@ -665,8 +665,8 @@ static void fireworks_strength_apply(fireworks_task_t *task)
 }
 
 /* Dialogue action callback for Cancel, split by button per the RISC OS
- * "Adjust doesn't dismiss" convention: Select dismisses the menu chain;
- * Adjust resets the dialogue to the default strength instead. */
+ * "ADJUST doesn't dismiss" convention: SELECT dismisses the menu chain;
+ * ADJUST resets the dialogue to the default strength instead. */
 static result_t fireworks_strength_cancel(void *opaque, wuss_button_t button)
 {
   fireworks_task_t *task;
@@ -684,7 +684,7 @@ static result_t fireworks_strength_cancel(void *opaque, wuss_button_t button)
   return result_OK;
 }
 
-/* Dialogue action callback for Apply: Select applies and dismisses; Adjust
+/* Dialogue action callback for Apply: SELECT applies and dismisses; ADJUST
  * applies but leaves the dialogue open. */
 static result_t fireworks_strength_apply_action(void         *opaque,
                                                 wuss_button_t button)

@@ -113,8 +113,8 @@ typedef enum wuss_icon_type
   /** An editable single-line text field: the bounding box filled with bg
    *  inside a 1px fg outline, the text left-aligned in fg. Its buffer is
    *  owned by the icon and holds up to spec.u.writable.size - 1 bytes,
-   *  seeded from text; read it back with wuss_icon_get_text. A Select or
-   *  Adjust click on a focusable window's writable places the caret (see
+   *  seeded from text; read it back with wuss_icon_get_text. A SELECT or
+   *  ADJUST click on a focusable window's writable places the caret (see
    *  wuss_icon_set_caret) at the nearest character. While it holds the
    *  caret, wuss_key edits the buffer -- printable Latin-1, Backspace,
    *  Delete, Left, Right, Home and End, Shift+Left / Shift+Right by words,
@@ -129,7 +129,7 @@ typedef enum wuss_icon_type
    *  but the user cannot edit. Build with wuss_icon_spec_display. */
   wuss_ICON_TYPE_DISPLAY,
   /** Drawn as wuss_ICON_TYPE_BITMAP (spec.u.bitmap). Once the pointer clears
-   *  wuss_config_t::mouse.drag_threshold_px from a Select/Adjust press, starts a
+   *  wuss_config_t::mouse.drag_threshold_px from a SELECT/ADJUST press, starts a
    *  core drag of the icon's image (see wuss_drag_start_bitmap), or with no
    *  image an ants box the size of its bounding box (see wuss_drag_start),
    *  hotspot at the press point; a click with no such movement behaves like

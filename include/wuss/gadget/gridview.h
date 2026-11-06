@@ -23,9 +23,9 @@
  * Hit-testing is arithmetic -- gaps between cells miss -- so no per-cell
  * icon exists to click.
  *
- * Selection follows RISC OS rules: Select on an unselected item selects only
- * it, and on a selected item changes nothing; Adjust toggles the item.
- * Select on empty space clears the selection and Adjust there keeps it;
+ * Selection follows RISC OS rules: SELECT on an unselected item selects only
+ * it, and on a selected item changes nothing; ADJUST toggles the item.
+ * SELECT on empty space clears the selection and ADJUST there keeps it;
  * either then drags out a rubber band (see \ref rubberband.h) that selects
  * every item it touches once released; held outside the visible content, the
  * band scrolls the window on each wuss_EVENT_IDLE the task forwards. A
@@ -36,7 +36,7 @@
  * beside the last one clicked or selected, scrolling it into view; with none
  * yet, the first selected item, else item 0. Down into a short last row
  * lands on the last item. Return activates the item last clicked or moved
- * to, if selected, or else the first selected item, as a Select double-click
+ * to, if selected, or else the first selected item, as a SELECT double-click
  * on it would; with nothing selected it is declined.
  *
  * Built only when WUSS_GADGETS is defined.
@@ -122,7 +122,7 @@ typedef void (wuss_gridview_draw_fn_t)(wuss_gridview_t    *gridview,
                                        void               *opaque);
 
 /**
- * Drag callback: the user pressed Select or Adjust on item \p index and
+ * Drag callback: the user pressed SELECT or ADJUST on item \p index and
  * moved the pointer past the drag threshold.
  *
  * \param[in] gridview The grid view.

@@ -80,7 +80,7 @@ static result_t mouse_click(wuss_t             *wuss,
   if (wuss__furniture_click(win, p, button, action, &rc))
     return rc;
 
-  /* A Select/Adjust press on a focusable window's content takes the input
+  /* A SELECT/ADJUST press on a focusable window's content takes the input
    * focus, before the press itself is delivered. Menu never moves it. A
    * toolbar that can't take the focus passes it to its parent. */
   if (action == wuss_MOUSE_DOWN && (button & WUSS_BUTTON_CLICK))

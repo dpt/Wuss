@@ -36,9 +36,9 @@ typedef struct ball
 ball_t;
 
 /* window A's task: balls that bounce off the content box's edges, so the
- * redraw loop has something moving to repaint every frame. Select grabs the
+ * redraw loop has something moving to repaint every frame. SELECT grabs the
  * ball under the pointer, which follows the pointer until release and is
- * then thrown with the pointer's last movement; an Adjust click removes the
+ * then thrown with the pointer's last movement; an ADJUST click removes the
  * most recently added ball; Menu > Add ball adds one at the centre of the
  * view; Menu > Clear removes all but the first; Menu > Gravity pulls them
  * downward; Menu > Damping makes wall bounces lose speed. Once a click has
@@ -57,7 +57,7 @@ typedef struct ball_task
   wuss_colourlist_t   colours; /* Menu > Colours, its one row Background */
   ball_t              balls[BALL_MAX];
   int                 nballs;
-  int                 grabbed; /* index of the ball held by Select, or -1 */
+  int                 grabbed; /* index of the ball held by SELECT, or -1 */
   rng_t               rng;     /* new balls' radii and colours */
 }
 ball_task_t;

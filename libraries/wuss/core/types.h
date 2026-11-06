@@ -370,7 +370,7 @@ struct wuss
   wuss_window_t              *pointer_window;
   /* Window holding the input focus, NULL if none; see wuss_set_focus. */
   wuss_window_t              *focus;
-  /* Window that took a Select/Adjust DOWN on its plain content (no icon hit);
+  /* Window that took a SELECT/ADJUST DOWN on its plain content (no icon hit);
    * it receives every mouse event, wherever the pointer goes, until the
    * matching MOUSE_UP. NULL when none. See capture.c. */
   wuss_window_t              *capture;

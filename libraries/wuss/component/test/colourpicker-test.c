@@ -248,7 +248,7 @@ result_t colourpicker_test(const char *resources)
       wuss_colourpicker_get_colour(picker).primary != orange.primary)
     goto Failure;
 
-  printf("test: wuss_colourpicker Adjust-Cancel restores and stays open\n");
+  printf("test: wuss_colourpicker ADJUST-Cancel restores and stays open\n");
   rc = cp_test_click(wuss, win, "Cancel", wuss_BUTTON_ADJUST);
   if (rc != result_OK)
     goto Failure;
@@ -260,7 +260,7 @@ result_t colourpicker_test(const char *resources)
   if (strcmp(wuss_icon_get_text(hex), "#123456") != 0)
     goto Failure;
 
-  printf("test: wuss_colourpicker Adjust-OK keeps the colour as old\n");
+  printf("test: wuss_colourpicker ADJUST-OK keeps the colour as old\n");
   rc = cp_test_type_hex(wuss, win, hex, "ff8800");
   if (rc != result_OK)
     goto Failure;
@@ -275,7 +275,7 @@ result_t colourpicker_test(const char *resources)
   if (wuss_colourpicker_get_colour(picker).primary != orange.primary)
     goto Failure; /* cancel goes back to the colour OK kept */
 
-  printf("test: wuss_colourpicker Select-OK closes\n");
+  printf("test: wuss_colourpicker SELECT-OK closes\n");
   rc = cp_test_click(wuss, win, "OK", wuss_BUTTON_SELECT);
   if (rc != result_OK)
     goto Failure;
@@ -289,7 +289,7 @@ result_t colourpicker_test(const char *resources)
   if (cp_test_icon(win, "Black") == NULL)
     goto Failure;
 
-  printf("test: wuss_colourpicker Select-Cancel restores and closes\n");
+  printf("test: wuss_colourpicker SELECT-Cancel restores and closes\n");
   rc = cp_test_type_hex(wuss, win, hex, "#000");
   if (rc != result_OK)
     goto Failure;

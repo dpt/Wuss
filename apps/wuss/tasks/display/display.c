@@ -407,7 +407,7 @@ static result_t display_handle(wuss_window_t      *window,
       if (rc != result_OK || (event->data.icon.button & wuss_BUTTON_ADJUST))
         return rc;
 
-      /* Select closes, as on RISC OS; with autoclose this frees dc, so it
+      /* SELECT closes, as on RISC OS; with autoclose this frees dc, so it
        * must not be touched afterwards */
       return wuss_window_try_close(dc->base.window);
     }

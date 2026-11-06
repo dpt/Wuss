@@ -56,7 +56,7 @@ static void confdlg_dismiss(confdlg_t *conf)
   conf->instance->menu_handle = NULL;
 }
 
-/* Select dismisses the menu chain; Adjust resets the sliders instead */
+/* SELECT dismisses the menu chain; ADJUST resets the sliders instead */
 static result_t confdlg_cancel(void *opaque, wuss_button_t button)
 {
   confdlg_t *conf;
@@ -71,7 +71,7 @@ static result_t confdlg_cancel(void *opaque, wuss_button_t button)
   return result_OK;
 }
 
-/* Select applies and dismisses; Adjust applies and leaves the dialogue open.
+/* SELECT applies and dismisses; ADJUST applies and leaves the dialogue open.
  * old is the value rows[0] held before the change. */
 static result_t confdlg_commit(confdlg_t    *conf,
                                wuss_button_t button,

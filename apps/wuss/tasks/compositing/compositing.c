@@ -28,7 +28,7 @@
 /* window's task: the two composite demo images blended under a cycling
  * Porter-Duff rule, over an alpha checkerboard. The source image's alpha is
  * ramped up and back down across each rule's turn, so every operator is seen
- * across its full range. Select steps to the next rule and Adjust to the
+ * across its full range. SELECT steps to the next rule and ADJUST to the
  * previous one; Menu > Rule jumps straight to any one; Menu > Swap images
  * exchanges source and destination; Menu > Save opens a Save As dialogue
  * (drag its icon onto a Filer window, or Save with a full path already
@@ -351,7 +351,7 @@ static result_t compositing_scroll(wuss_window_t *window,
   return result_OK;
 }
 
-/* Left/Right step to the previous/next rule, as Adjust and Select clicks
+/* Left/Right step to the previous/next rule, as ADJUST and SELECT clicks
  * do. Anything else is passed back unclaimed. */
 static result_t compositing_key(compositing_task_t *pd,
                                 wuss_window_t      *window,

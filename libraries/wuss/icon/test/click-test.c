@@ -189,7 +189,7 @@ result_t wuss_click_test(const char *resources)
   if (wuss__icon_pressed(button) || wuss->pressed.icon != NULL)
     FAIL("release state");
 
-  printf("test: Menu over an icon is a plain mouse event\n");
+  printf("test: MENU over an icon is a plain mouse event\n");
 
   memset(&log, 0, sizeof(log));
   down(wuss, p, wuss_BUTTON_MENU);
@@ -221,14 +221,14 @@ result_t wuss_click_test(const char *resources)
   if (wuss_icon_get_selected(option))
     FAIL("unpressed option latched");
 
-  printf("test: options toggle on Select or Adjust\n");
+  printf("test: options toggle on SELECT or ADJUST\n");
 
   click(wuss, window, option, wuss_BUTTON_SELECT);
   if (!wuss_icon_get_selected(option)) FAIL("option on");
   click(wuss, window, option, wuss_BUTTON_ADJUST);
   if (wuss_icon_get_selected(option)) FAIL("option off");
 
-  printf("test: radios: Select selects, Adjust toggles only a lone one\n");
+  printf("test: radios: SELECT selects, ADJUST toggles only a lone one\n");
 
   click(wuss, window, lone, wuss_BUTTON_SELECT);
   click(wuss, window, lone, wuss_BUTTON_SELECT);

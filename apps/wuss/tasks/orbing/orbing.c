@@ -61,7 +61,7 @@ orbing_light_t;
  * the current light's (its highlight size and sharpness, its level, an On
  * option and its colour set); the sphere scales with the window. Each lit
  * light shows as a ring marker (dotted when behind the sphere, filled when current). A
- * Select click on a marker makes that light current; anywhere else it moves the
+ * SELECT click on a marker makes that light current; anywhere else it moves the
  * current light there (turning it on), and dragging keeps moving it. The arrow
  * keys move it too, a pixel at a time (eight with Shift). Inside the disc the
  * light faces the surface under the pointer; the band just outside wraps it
@@ -84,7 +84,7 @@ typedef struct orbing_task
   dithermenu_t       dither;     /* "Display" submenu */
   screen_dither_t    dithering;  /* how the preview is blitted */
   int                current;    /* index of the light a drag moves */
-  int                dragging;   /* non-zero while a Select drag is live */
+  int                dragging;   /* non-zero while a SELECT drag is live */
   orbing_light_t   lights[ORBING_NLIGHTS];
   colour_t           sphere;     /* surface colour */
   colour_t           background; /* colour outside the sphere */

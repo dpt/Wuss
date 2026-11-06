@@ -34,7 +34,7 @@
  * Elite (Ian Bell and David Braben, Acornsoft, 1984). A cryptic BBC BASIC
  * one-liner stipples it out of three rejection-sampled point clouds - a
  * ring of dots, a sheared streak across it and a filled disc for the
- * planet body. Select re-seeds the RNG for a fresh sketch and Adjust
+ * planet body. SELECT re-seeds the RNG for a fresh sketch and ADJUST
  * steps back to the previous one; Menu > Pause, unticked, re-seeds every
  * null event so it churns; Menu > Randomise (^R) picks a fresh seed and
  * colours; Menu > Reset (R) restores the starting configuration, colours and seed;
@@ -73,7 +73,7 @@ typedef struct saturn_task
 {
   taskapp_instance_t base;
   colour_t           bg, fg;
-  unsigned long      seed;     /* RNG state; Select/Adjust step it */
+  unsigned long      seed;     /* RNG state; SELECT/ADJUST step it */
   saturn_config_t    config;
   confdlg_t          conf;
   wuss_colourlist_t  colours; /* per-instance: Foreground/Background rows */
@@ -119,7 +119,7 @@ saturn_task_t;
 
 /* BBC BASIC RND(n>0) returns an integer 1..n. utils/rng's LCG stands in for
  * it (its high bits, which is where an LCG's usable randomness sits) so a
- * Select click can re-seed for a fresh sketch. Every draw in a redraw shares
+ * SELECT click can re-seed for a fresh sketch. Every draw in a redraw shares
  * n, so the seed fixes n too and keeps its reciprocal, letting div_recip take
  * the remainder without a division per sample. */
 static struct
@@ -400,8 +400,8 @@ static result_t saturn_mouse(saturn_task_t      *task,
                                      &task->base.menu_handle);
   }
 
-  /* the seed step is invertible, so Adjust walks back through the
-   * sketches Select has shown */
+  /* the seed step is invertible, so ADJUST walks back through the
+   * sketches SELECT has shown */
   if (button & wuss_BUTTON_SELECT)
   {
     task->seed += SATURN_SEED_STEP; /* fresh sketch */
@@ -416,7 +416,7 @@ static result_t saturn_mouse(saturn_task_t      *task,
   return result_OK;
 }
 
-/* Left/Right step back/forward through the sketches, as Adjust/Select
+/* Left/Right step back/forward through the sketches, as ADJUST/SELECT
  * clicks do. Anything else is passed back unclaimed. */
 static result_t saturn_key(saturn_task_t *task,
                            wuss_window_t *window,

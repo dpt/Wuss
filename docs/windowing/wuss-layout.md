@@ -72,7 +72,7 @@ Derived from the dialogues of the tasks in `apps/wuss/tasks/`
 ## Cancel button
 
 - ESCAPE activates the dialogue's Cancel button (`wuss_dialogue_handle_key`),
-  as a Select click on it would. Name the button with
+  as a SELECT click on it would. Name the button with
   `wuss_dialogue_set_cancel` after registering the actions.
 - Like RETURN, it is a key event, so it reaches only a focusable dialogue.
   A dialogue with no writable icons is not focusable and so is cancelled

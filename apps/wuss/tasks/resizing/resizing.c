@@ -39,7 +39,7 @@ enum
 };
 
 /* window's task: a PNG dropped on its icon or window (DataLoad) resampled by
- * bitmap_resize to the chosen scale. Menu picks the method and scale, and
+ * bitmap_resize to the chosen scale. MENU picks the method and scale, and
  * every change resamples at once. Save writes the resized result as a
  * PNG. */
 typedef struct resizing_task

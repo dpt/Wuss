@@ -925,7 +925,7 @@ ColourPairOK: ;
     ev.data.menu_select.button = wuss_BUTTON_SELECT;
     if (wuss_colourset_handle_event(cs, &ev, &csrc)) goto ColourSetFail;
 
-    /* a Select click on the button opens the colour menu */
+    /* a SELECT click on the button opens the colour menu */
     ev.kind              = wuss_EVENT_ICON;
     ev.data.icon.icon    = button;
     ev.data.icon.action  = wuss_MOUSE_UP;
@@ -935,7 +935,7 @@ ColourPairOK: ;
       goto ColourSetFail;
     if (wuss__menu_chain(cswuss) == NULL) goto ColourSetFail;
 
-    /* an Adjust pick of another colour refills the field and fires the
+    /* an ADJUST pick of another colour refills the field and fires the
      * callback, keeping the menu open */
     ev.kind                    = wuss_EVENT_MENU_SELECT;
     ev.data.menu_select.menu   = wuss_menu_handle_menu(wuss__menu_chain(cswuss));
@@ -969,7 +969,7 @@ ColourPairOK: ;
         (*fpx & 0xFFFFFF) != 0 || calls != 2)
       goto ColourSetFail;
 
-    /* a Select pick: wuss closes the chain and delivers MENU_CLOSED (picked)
+    /* a SELECT pick: wuss closes the chain and delivers MENU_CLOSED (picked)
      * before MENU_SELECT, which is still the gadget's */
     wuss_menu_close(wuss__menu_chain(cswuss));
     ev.kind                    = wuss_EVENT_MENU_CLOSED;

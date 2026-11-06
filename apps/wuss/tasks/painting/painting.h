@@ -70,14 +70,14 @@ typedef enum painting_tool
   painting_TOOL_SELECT, /* rubber-band a rectangular selection */
   painting_TOOL_LASSO,  /* drag out a freeform selection */
   painting_TOOL_WAND,   /* select the similar colour around a click */
-  painting_TOOL_PICK,   /* take the fg (Select) or bg (Adjust) from the canvas */
-  painting_TOOL_MOVE,   /* drag the selection's pixels: Select moves them,
-                         * leaving bg behind, and Adjust copies them */
+  painting_TOOL_PICK,   /* take the fg (SELECT) or bg (ADJUST) from the canvas */
+  painting_TOOL_MOVE,   /* drag the selection's pixels: SELECT moves them,
+                         * leaving bg behind, and ADJUST copies them */
   painting_TOOL__COUNT
 }
 painting_tool_t;
 
-/* the Menu click menu's rows */
+/* the MENU click menu's rows */
 enum
 {
   PAINTING_MENU_DISPLAY,   /* submenu: dithermenu_t's Display */
@@ -99,8 +99,8 @@ enum
 
 /* a 640x480 white canvas in a scrollable window, with a toolbox of tools on
  * its left edge, an option bar of colours on its bottom edge and a size bar
- * pane holding the current tool's settings across its top. Select paints
- * with the foreground colour and Adjust with the background colour; clicking
+ * pane holding the current tool's settings across its top. SELECT paints
+ * with the foreground colour and ADJUST with the background colour; clicking
  * an option bar swatch sets either. The canvas has alpha: a checkerboard
  * shows through its transparent pixels, which the eraser makes. Closing the
  * canvas window closes the toolbars and pane too */

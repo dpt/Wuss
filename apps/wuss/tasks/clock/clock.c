@@ -31,8 +31,8 @@
 
 /* a round-faced analogue clock: a tick-marked bezel with 1..12 numerals and
  * hour, minute and second hands read from the system clock and advanced on
- * every idle tick. A Select click, or Menu > Seconds, shows or hides the
- * seconds. An Adjust click, or Menu > Digital, swaps the face for an
+ * every idle tick. A SELECT click, or Menu > Seconds, shows or hides the
+ * seconds. An ADJUST click, or Menu > Digital, swaps the face for an
  * HH:MM:SS readout (and back); Menu > 12-hour shows that readout as
  * 12-hour time with AM/PM; Menu > Save opens a Save As dialogue (drag
  * its icon onto a Filer window, or Save with a full path already typed)
@@ -310,7 +310,7 @@ static result_t clock_menu_select(clock_task_t       *cc,
 }
 
 /* The "Digital" row swaps between the analogue face and a text readout;
- * the "Seconds" row shows or hides the seconds, as a Select click does; the
+ * the "Seconds" row shows or hides the seconds, as a SELECT click does; the
  * "12-hour" row switches the readout between 24-hour and 12-hour AM/PM. An
  * ADJUST pick keeps the menu open, so retick the live row. */
 static result_t clock_toggle(clock_task_t *cc, const wuss_event_t *event)

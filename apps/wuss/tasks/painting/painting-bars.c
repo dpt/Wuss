@@ -367,7 +367,7 @@ result_t painting_optionbar_redraw(painting_task_t    *pt,
   return result_OK;
 }
 
-/* Select sets the foreground colour from the swatch under the pointer, Adjust
+/* SELECT sets the foreground colour from the swatch under the pointer, ADJUST
  * the background colour */
 result_t painting_optionbar_mouse(painting_task_t    *pt,
                                   const wuss_event_t *event)
@@ -449,7 +449,7 @@ result_t painting_toolbar_icon(painting_task_t    *pt,
 
   icon = event->data.icon.icon;
 
-  /* Select steps to the next nozzle, Adjust back to the previous one */
+  /* SELECT steps to the next nozzle, ADJUST back to the previous one */
   if (icon != NULL && icon == pt->nozzle_icon)
   {
     painting_set_nozzle(pt, (pt->nozzle +

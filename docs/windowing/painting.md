@@ -21,16 +21,16 @@ bar opens the same dialogue.
   value out of range is clamped when you click Create.
 - **Background** is white, black or grey. The pen starts in a colour that
   shows on it.
-- **Create** opens two windows: the canvas and a toolbox. Adjust-click Create
+- **Create** opens two windows: the canvas and a toolbox. ADJUST-click Create
   keeps the dialogue open, so you can open several canvases in a row.
   **Cancel** closes the dialogue.
 
 Closing the canvas closes the toolbox and ends that instance. Each Create
 makes an instance of its own.
 
-- **Select** paints with the foreground colour, **Adjust** with the
+- **SELECT** paints with the foreground colour, **ADJUST** with the
   background colour. Clicking a swatch in the toolbox sets the foreground
-  (Select) or the background (Adjust).
+  (SELECT) or the background (ADJUST).
 - Tools: brush, wobbly brush, eraser (wipes to transparent), line, rect,
   filled rect, flood fill, spray, select (rectangle), lasso, magic wand and
   colour picker. Press `B` `K` `E` `L` `R` `X` `F` `P` `S` `O` `W` or `I` to
@@ -42,8 +42,8 @@ makes an instance of its own.
 - The wobbly brush draws an inked line whose two edges wander in and out
   on their own, swelling slowly and jittering finely, in the manner of
   Ellis Nadler's drawings. Each stroke wobbles differently.
-- The colour picker takes the foreground (Select) or the background
-  (Adjust) colour from the canvas pixel clicked.
+- The colour picker takes the foreground (SELECT) or the background
+  (ADJUST) colour from the canvas pixel clicked.
 - Spray scatters dots in a disc round the pointer. Dots build up while the
   button is held still.
 - Select and lasso make a selection, shown with marching ants. The new

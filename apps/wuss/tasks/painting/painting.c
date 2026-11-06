@@ -489,7 +489,7 @@ static result_t painting_redraw(painting_task_t    *pt,
   return rc;
 }
 
-/* a MOVE always reports the Select button, hovering or not, so a stroke in
+/* a MOVE always reports the SELECT button, hovering or not, so a stroke in
  * progress is tracked in pt->held instead */
 static result_t painting_mouse(painting_task_t    *pt,
                                const wuss_event_t *event)

@@ -165,7 +165,7 @@ int wuss_stringset_handle_event(wuss_stringset_t   *ss,
         rc = ss->changed(ss, index, ss->opaque);
     }
 
-    /* an Adjust pick leaves the menu open: move its tick too */
+    /* an ADJUST pick leaves the menu open: move its tick too */
     if (wuss_menu_should_keep_open(event))
       wuss_menu_tick_exclusive_live(ss->handle, &ss->menu, ss->index);
     else

@@ -74,7 +74,7 @@ enum
 
 /* window's task: a PNG dropped on its icon or window (DataLoad) is run
  * through a stack of framebuf/effects functions, top to bottom, and the
- * outcome blended with the original by Level (-100% to 200%). Select toggles
+ * outcome blended with the original by Level (-100% to 200%). SELECT toggles
  * between the result and the original. The stack is shown in a second
  * window: pick an element, drag it to reorder it. Menu adds, edits and
  * deletes elements, sets the level and the dithering used on paletted

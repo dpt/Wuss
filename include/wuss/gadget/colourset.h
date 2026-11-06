@@ -16,7 +16,7 @@
  * but the field's image belongs to the gadget: free the gadget after the
  * window closes, or at least once the window will not be redrawn.
  *
- * A Select or Adjust click on the button opens the colour menu beside it,
+ * A SELECT or ADJUST click on the button opens the colour menu beside it,
  * retitled to the gadget's title, its None row hidden and the current colour
  * ticked. The task forwards its wuss_EVENT_ICON, wuss_EVENT_MENU_SELECT,
  * wuss_EVENT_MENU_CLOSED and wuss_EVENT_PALETTE events to \ref
@@ -123,7 +123,7 @@ void wuss_colourset_destroy(wuss_colourset_t *doomed);
 /**
  * Offer an event from the task's own handler: a wuss_EVENT_ICON on the
  * gadget's button, or a wuss_EVENT_MENU_SELECT from the colour menu while
- * the gadget opened it. An Adjust pick keeps the menu open with the tick
+ * the gadget opened it. An ADJUST pick keeps the menu open with the tick
  * moved. A wuss_EVENT_MENU_CLOSED must be offered too, so the gadget drops
  * its handle on the freed chain, and a wuss_EVENT_PALETTE, so the field
  * follows the new palette; both are noted but never consumed.

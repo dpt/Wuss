@@ -257,7 +257,7 @@ result_t wuss_gadget_test(const char *resources)
     ev.kind = wuss_EVENT_IDLE;
     if (wuss_stringset_handle_event(ss, &ev, &ssrc)) goto StringSetFail;
 
-    /* a Select click on the arrow opens the gadget's menu */
+    /* a SELECT click on the arrow opens the gadget's menu */
     ev.kind              = wuss_EVENT_ICON;
     ev.data.icon.icon    = arrow;
     ev.data.icon.action  = wuss_MOUSE_UP;
@@ -289,7 +289,7 @@ result_t wuss_gadget_test(const char *resources)
     wuss_stringset_destroy(ss);
     if (wuss__menu_chain(sswuss) != NULL) goto StringSetFail;
 
-    /* once the chain is freed behind the gadget -- after a Select pick, or
+    /* once the chain is freed behind the gadget -- after a SELECT pick, or
      * a wuss-initiated close reported by MENU_CLOSED -- destroying it must
      * not touch the dead handle (ASan catches it) */
     for (i = 0; i < 2; i++)
@@ -315,7 +315,7 @@ result_t wuss_gadget_test(const char *resources)
         ev.data.menu_select.index  = 1;
         ev.data.menu_select.button = wuss_BUTTON_SELECT;
         if (!wuss_stringset_handle_event(ss, &ev, &ssrc)) goto StringSetFail;
-        wuss_menu_close(wuss__menu_chain(sswuss)); /* as wuss does after Select */
+        wuss_menu_close(wuss__menu_chain(sswuss)); /* as wuss does after SELECT */
       }
       else
       {
@@ -481,7 +481,7 @@ StringSetOK: ;
     ev.data.redraw.scroll  = POINT(0, 0);
     if (!wuss_gridview_handle_event(gv, &ev)) goto GridViewFail;
 
-    /* a Select DOWN on item 0 (top-left of the grid) selects only it */
+    /* a SELECT DOWN on item 0 (top-left of the grid) selects only it */
     ev.kind              = wuss_EVENT_MOUSE;
     ev.data.mouse.action = wuss_MOUSE_DOWN;
     ev.data.mouse.point  = POINT(2, 2);
@@ -490,18 +490,18 @@ StringSetOK: ;
     if (!wuss_gridview_is_selected(gv, 0)) goto GridViewFail;
     if (wuss_gridview_is_selected(gv, 1)) goto GridViewFail;
 
-    /* Adjust on item 1 toggles it on without clearing item 0 */
+    /* ADJUST on item 1 toggles it on without clearing item 0 */
     ev.data.mouse.point  = POINT(2, 2 + cell_h);
     ev.data.mouse.button = wuss_BUTTON_ADJUST;
     if (!wuss_gridview_handle_event(gv, &ev)) goto GridViewFail;
     if (!wuss_gridview_is_selected(gv, 0)) goto GridViewFail;
     if (!wuss_gridview_is_selected(gv, 1)) goto GridViewFail;
 
-    /* Adjust again toggles item 1 back off */
+    /* ADJUST again toggles item 1 back off */
     if (!wuss_gridview_handle_event(gv, &ev)) goto GridViewFail;
     if (wuss_gridview_is_selected(gv, 1)) goto GridViewFail;
 
-    /* Select on item 1, then a double-click on it activates it */
+    /* SELECT on item 1, then a double-click on it activates it */
     ev.data.mouse.button = wuss_BUTTON_SELECT;
     if (!wuss_gridview_handle_event(gv, &ev)) goto GridViewFail;
     if (wuss_gridview_is_selected(gv, 0)) goto GridViewFail;
@@ -519,7 +519,7 @@ StringSetOK: ;
     if (wuss_gridview_hit_test(gv, POINT(2, 2 + cell_h * (int) NELEMS(gridview_test_labels))) != -1)
       goto GridViewFail;
 
-    /* Select on an already-selected item changes nothing: the rest of the
+    /* SELECT on an already-selected item changes nothing: the rest of the
      * selection stays */
     ev.data.mouse.button = wuss_BUTTON_SELECT;
     if (!wuss_gridview_handle_event(gv, &ev)) goto GridViewFail;
@@ -531,7 +531,7 @@ StringSetOK: ;
     if (!wuss_gridview_is_selected(gv, 0) ||
         !wuss_gridview_is_selected(gv, 1)) goto GridViewFail;
 
-    /* Adjust on empty space starts a band and leaves the selection alone;
+    /* ADJUST on empty space starts a band and leaves the selection alone;
      * released there, it touches no item */
     ev.data.mouse.point  = POINT(2, 2 + cell_h * (int) NELEMS(gridview_test_labels));
     ev.data.mouse.button = wuss_BUTTON_ADJUST;
@@ -542,7 +542,7 @@ StringSetOK: ;
         !wuss_gridview_is_selected(gv, 0) ||
         !wuss_gridview_is_selected(gv, 1)) goto GridViewFail;
 
-    /* Select on empty space clears the selection */
+    /* SELECT on empty space clears the selection */
     ev.data.mouse.action = wuss_MOUSE_DOWN;
     ev.data.mouse.button = wuss_BUTTON_SELECT;
     if (!wuss_gridview_handle_event(gv, &ev)) goto GridViewFail;
@@ -837,7 +837,7 @@ StringSetOK: ;
       wuss_window_close(glyph_win);
     }
 
-    /* the gridview's band autoscrolls on IDLE, vertically only: an Adjust
+    /* the gridview's band autoscrolls on IDLE, vertically only: an ADJUST
      * press below the rows, dragged below and right of the content, scrolls
      * down but never right; once released, IDLE scrolls no more */
     {

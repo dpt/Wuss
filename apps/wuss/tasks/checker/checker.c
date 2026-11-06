@@ -34,7 +34,7 @@ checker_pattern_t;
 
 /* fills the whole content area with a two-tone pattern, black and white
  * until Menu > Colours recolours it (Menu > Swap colours exchanges the
- * two); the pattern cycles forward on a Select click and back on Adjust, or
+ * two); the pattern cycles forward on a SELECT click and back on ADJUST, or
  * is picked from Menu > Pattern; Menu > Save opens a Save As dialogue
  * (drag its icon onto a Filer window, or Save with a full path already
  * typed) that writes the window out; Menu > Randomise (^R) picks a pattern,
@@ -244,7 +244,7 @@ static result_t checker_scroll(int delta, void *task_data)
   return result_OK;
 }
 
-/* Left/Right step the pattern back/forward, as Adjust and Select clicks do;
+/* Left/Right step the pattern back/forward, as ADJUST and SELECT clicks do;
  * Up/Down widen/narrow its bands, as the wheel does. Anything else is passed
  * back unclaimed. */
 static result_t checker_key(checker_task_t *cc, int code)

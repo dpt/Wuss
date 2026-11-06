@@ -36,7 +36,7 @@
  * window starts empty; a wuss_MESSAGE_DATA_LOAD sent to it, whose payload is
  * the path of a PNG, shows that image; a file that will not load is not
  * acknowledged. Menu's "Tile" repeats the image edge to edge over a
- * screen-sized window instead; Select drag then moves the tile origin. */
+ * screen-sized window instead; SELECT drag then moves the tile origin. */
 typedef struct viewing_task
 {
   taskapp_instance_t base;
@@ -63,7 +63,7 @@ typedef struct viewing_task
                              * place of the stage or band */
   point_t        origin;    /* window-local position of one tile's top-left */
   point_t        grab;      /* pointer position at the last drag event */
-  int            dragging;  /* Select held: pointer moves drag the origin */
+  int            dragging;  /* SELECT held: pointer moves drag the origin */
 }
 viewing_task_t;
 
@@ -473,7 +473,7 @@ static result_t viewing_open_menu(viewing_task_t *ic)
                                    &ic->base.menu_handle);
 }
 
-/* Menu opens the menu; while tiled, Select drag moves the tile origin */
+/* MENU opens the menu; while tiled, SELECT drag moves the tile origin */
 static result_t viewing_mouse(viewing_task_t *ic, const wuss_event_t *event)
 {
   point_t point;

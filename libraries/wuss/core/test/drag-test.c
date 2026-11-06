@@ -475,7 +475,7 @@ result_t wuss_drag_test(const char *resources)
     wuss_icon_delete(win_a, draggable);
   }
 
-  printf("test: a Select press on plain content captures the mouse -- moves "
+  printf("test: a SELECT press on plain content captures the mouse -- moves "
         "and the release go to that window even over another window, and the "
         "release ends the capture\n");
 

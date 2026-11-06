@@ -74,7 +74,7 @@ typedef struct gradient_task
   int                  dither_index;
   int                  brightness;     /* 0..512, 256 is unchanged */
   int                  saturation;     /* 0..512, 256 is unchanged */
-  int                  dragging;       /* non-zero while an Adjust drag is live */
+  int                  dragging;       /* non-zero while an ADJUST drag is live */
   int                  dragged;        /* non-zero once that drag has moved */
   int                  drag_x, drag_y; /* last drag point, content space */
 }

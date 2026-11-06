@@ -124,11 +124,11 @@ enum
 };
 
 /* window's task: a PNG dropped on its icon or window (DataLoad) reduced by
- * dither_bitmap, optionally to a computed palette. A Select click toggles
- * between the dithered result and the original; Menu picks the options, and
+ * dither_bitmap, optionally to a computed palette. A SELECT click toggles
+ * between the dithered result and the original; MENU picks the options, and
  * every change re-dithers at once; Colours and Strength are slider
  * dialogues. Show palette opens a second window of swatches for the palette
- * the last dither targeted: Select selects one and a double-click edits it in
+ * the last dither targeted: SELECT selects one and a double-click edits it in
  * a colour picker, re-dithering live. An edit lasts until something builds a
  * fresh palette. Save writes the dithered result as a PNG. */
 typedef struct dithering_task
@@ -922,7 +922,7 @@ static void dithering_picker_changed(colour_t colour, void *opaque)
   wuss_window_invalidate_visible(dt->palette_window);
 }
 
-/* Select on a swatch selects it, and a double-click edits it */
+/* SELECT on a swatch selects it, and a double-click edits it */
 static result_t dithering_swatch_click(dithering_task_t   *dt,
                                        const wuss_event_t *event)
 {
