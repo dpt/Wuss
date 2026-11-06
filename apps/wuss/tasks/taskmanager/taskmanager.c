@@ -27,6 +27,7 @@
 #define TASKMANAGER_HEADING (TASKMANAGER_ROWS + 1) /* row of the task names'
                                                     * heading, after a gap */
 #define TASKMANAGER_NAMES   (TASKMANAGER_HEADING + 1) /* first task name */
+#define TASKMANAGER_INDENT  8 /* px, of a child task's name per level */
 
 typedef struct taskmanager_stats
 {
@@ -119,12 +120,13 @@ static result_t taskmanager_open(void)
 }
 
 /* Draw 'text' in a row, in font 'slot': left aligned in the labels at column
- * 0, otherwise right aligned in that column of figures, which are measured in
- * the regular font. */
+ * 0, 'indent' pixels in, otherwise right aligned in that column of figures,
+ * which are measured in the regular font. */
 static result_t taskmanager_cell(const wuss_event_t *event,
                                  int                 slot,
                                  int                 row,
                                  int                 column,
+                                 int                 indent,
                                  const char         *text)
 {
   const box_t *bounds;
@@ -138,7 +140,7 @@ static result_t taskmanager_cell(const wuss_event_t *event,
 
   bmfont_get_info(font, NULL, &height, &ascent, NULL);
 
-  x = bounds->x0 + TASKMANAGER_MARGIN;
+  x = bounds->x0 + TASKMANAGER_MARGIN + indent;
   if (column > 0)
     x += tm.label_width + column * (TASKMANAGER_GAP + tm.value_width) -
          taskmanager_text_width(text);
@@ -149,6 +151,41 @@ static result_t taskmanager_cell(const wuss_event_t *event,
   return wuss_text_draw(tm.wuss, slot, event->data.redraw.scr, text,
                         (int) strlen(text), colour_rgb(0x00, 0x00, 0x00),
                         colour_rgba(0, 0, 0, 0), &pos, NULL);
+}
+
+/* Draw from row '*row' the names of the children of 'parent', or of the tasks
+ * with no parent if NULL, each followed by its own children. */
+static result_t taskmanager_names(const wuss_event_t *event,
+                                  const wuss_task_t  *parent,
+                                  int                 indent,
+                                  int                *row)
+{
+  result_t           rc;
+  const wuss_task_t *task;
+  const wuss_task_t *root;
+  const char        *name;
+
+  /* ponytail: rescans the tasks per level, fine for the few tasks there are */
+  for (task = wuss_task_next(tm.wuss, NULL);
+       task != NULL;
+       task = wuss_task_next(tm.wuss, task))
+  {
+    root = wuss_task_get_root(task);
+    if ((root == task ? NULL : root) != parent)
+      continue;
+
+    name = wuss_task_get_name(task);
+    rc   = taskmanager_cell(event, 0, (*row)++, 0, indent,
+                            name ? name : "(unnamed)");
+    if (rc != result_OK)
+      return rc;
+
+    rc = taskmanager_names(event, task, indent + TASKMANAGER_INDENT, row);
+    if (rc != result_OK)
+      return rc;
+  }
+
+  return result_OK;
 }
 
 static result_t taskmanager_redraw(const wuss_event_t *event)
@@ -167,13 +204,11 @@ static result_t taskmanager_redraw(const wuss_event_t *event)
     1, 1, 1, 1, 3, 3, 1, 1, 1
   };
 
-  result_t           rc;
-  size_t             values[TASKMANAGER_ROWS - 1][TASKMANAGER_COLUMNS];
-  int                row;
-  int                column;
-  char               text[numfmt_GROUPED_MAX];
-  const wuss_task_t *task;
-  const char        *name;
+  result_t rc;
+  size_t   values[TASKMANAGER_ROWS - 1][TASKMANAGER_COLUMNS];
+  int      row;
+  int      column;
+  char     text[numfmt_GROUPED_MAX];
 
   if (wuss_get_font(tm.wuss) == NULL)
     return result_OK;
@@ -196,21 +231,21 @@ static result_t taskmanager_redraw(const wuss_event_t *event)
 
   for (column = 0; column < TASKMANAGER_COLUMNS; column++)
   {
-    rc = taskmanager_cell(event, 0, 0, column + 1, headings[column]);
+    rc = taskmanager_cell(event, 0, 0, column + 1, 0, headings[column]);
     if (rc != result_OK)
       return rc;
   }
 
   for (row = 0; row < TASKMANAGER_ROWS - 1; row++)
   {
-    rc = taskmanager_cell(event, 0, row + 1, 0, labels[row]);
+    rc = taskmanager_cell(event, 0, row + 1, 0, 0, labels[row]);
     if (rc != result_OK)
       return rc;
 
     for (column = 0; column < ncolumns[row]; column++)
     {
       numfmt_grouped(values[row][column], text);
-      rc = taskmanager_cell(event, 0, row + 1, column + 1, text);
+      rc = taskmanager_cell(event, 0, row + 1, column + 1, 0, text);
       if (rc != result_OK)
         return rc;
     }
@@ -218,22 +253,13 @@ static result_t taskmanager_redraw(const wuss_event_t *event)
 
   /* slot 1 is the bold weight, when one was supplied */
   rc = taskmanager_cell(event, (wuss_get_font_n(tm.wuss, 1) != NULL) ? 1 : 0,
-                        TASKMANAGER_HEADING, 0, "Task names");
+                        TASKMANAGER_HEADING, 0, 0, "Task names");
   if (rc != result_OK)
     return rc;
 
   row = TASKMANAGER_NAMES;
-  for (task = wuss_task_next(tm.wuss, NULL);
-       task != NULL;
-       task = wuss_task_next(tm.wuss, task))
-  {
-    name = wuss_task_get_name(task);
-    rc   = taskmanager_cell(event, 0, row++, 0, name ? name : "(unnamed)");
-    if (rc != result_OK)
-      return rc;
-  }
 
-  return result_OK;
+  return taskmanager_names(event, NULL, 0, &row);
 }
 
 static result_t taskmanager_handle(wuss_window_t      *window,
