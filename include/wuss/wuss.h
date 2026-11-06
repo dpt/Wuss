@@ -990,8 +990,7 @@ result_t wuss_set_font(wuss_t                 *wuss,
  * \param[in]  index         Font slot, 0..\ref wuss_MAX_FONTS - 1.
  * \param[in]  text          Text to measure.
  * \param[in]  len           Number of characters to consider.
- * \param[in]  target_width  Width to split within, or \ref
- *                           bmfont_width_UNLIMITED for none.
+ * \param[in]  target_width  Width to split within, or INT_MAX for none.
  * \param[out] split_point   Character count that fits within \p
  *                           target_width, or NULL if not wanted.
  * \param[out] actual_width  Width of the (possibly split) text, or NULL if
