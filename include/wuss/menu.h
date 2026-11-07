@@ -284,6 +284,13 @@ result_t wuss_menu_open_window(wuss_task_t        *task,
  *  after this call: a handle kept past either must not be passed back. */
 void wuss_menu_close(wuss_menu_handle_t handle);
 
+/** Close a menu chain on its owner's behalf, as a window leaf of another
+ *  task does once the user is done with it. As wuss_menu_close, but the
+ *  task that opened the chain first gets wuss_EVENT_MENU_CLOSED (picked
+ *  zero), as when wuss closes it, so that it drops its handle. Safe to pass
+ *  NULL. */
+void wuss_menu_dismiss(wuss_menu_handle_t handle);
+
 /** Non-zero while \p handle refers to a currently open chain; zero for
  *  NULL. Like every call taking a handle, it must not be passed one dropped
  *  on wuss_EVENT_MENU_CLOSED. */

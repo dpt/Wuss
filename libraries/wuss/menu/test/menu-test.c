@@ -1011,6 +1011,20 @@ ScFail:
       if (wuss__menu_chain(mwuss) != NULL)          goto MoveCheckFail;
       if (mta.menu_closed_count != 2)         goto MoveCheckFail;
       if (mta.menu_handle != NULL)            goto MoveCheckFail;
+
+      /* wuss_menu_dismiss, as a leaf owned by another task closes the
+       * chain: the owner is told too. Regression: the Scale view leaf used
+       * wuss_menu_close, leaving the owner's handle dangling */
+      wuss_mouse_click(mwuss, POINT(20, 20), wuss_BUTTON_MENU,
+                       wuss_MOUSE_DOWN, NULL);
+      wuss_mouse_click(mwuss, POINT(20, 20), wuss_BUTTON_MENU,
+                       wuss_MOUSE_UP, NULL);
+      if (mta.menu_handle == NULL)            goto MoveCheckFail;
+
+      wuss_menu_dismiss(mta.menu_handle);
+      if (wuss__menu_chain(mwuss) != NULL)          goto MoveCheckFail;
+      if (mta.menu_closed_count != 3)         goto MoveCheckFail;
+      if (mta.menu_handle != NULL)            goto MoveCheckFail;
     }
 
     rc = result_OK;

@@ -163,10 +163,13 @@ result_t wuss_scaleview_set_percent(wuss_scaleview_t *sv, int percent)
 }
 
 /* close whichever chain shows the dialogue: its own, or the one it is a leaf
- * of */
+ * of, telling that chain's owner so it drops its handle */
 static void sv_dismiss(wuss_scaleview_t *sv)
 {
-  wuss_menu_close(sv->menu_handle ? sv->menu_handle : sv->leaf_handle);
+  if (sv->menu_handle != NULL)
+    wuss_menu_close(sv->menu_handle);
+  else
+    wuss_menu_dismiss(sv->leaf_handle);
   sv->menu_handle = NULL;
   sv->leaf_handle = NULL;
 }

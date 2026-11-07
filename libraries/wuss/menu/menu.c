@@ -508,6 +508,23 @@ void wuss_menu_close(wuss_menu_handle_t handle)
   wuss__menu_close_from(root);
 }
 
+void wuss_menu_dismiss(wuss_menu_handle_t handle)
+{
+  struct wuss__menu *root;
+
+  if (handle == NULL)
+    return;
+
+  root = handle;
+  while (root->parent != NULL)
+    root = root->parent;
+
+  if (root->wuss->menu->chain != root)
+    return; /* stale handle */
+
+  wuss__menu_abandon(root->wuss);
+}
+
 int wuss_menu_is_open(wuss_menu_handle_t handle)
 {
   struct wuss__menu *root;
