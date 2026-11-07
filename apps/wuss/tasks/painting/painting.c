@@ -139,6 +139,8 @@ static result_t painting_load(painting_task_t *pt, const char *path)
   return painting_fit(pt);
 }
 
+static wuss_scaleview_choice_fn_t painting_scaleview_choice;
+
 /* build the canvas and its windows; on failure the caller reaps the task */
 static result_t painting_build(painting_task_t            *task,
                                const paintingnew_params_t *params)
@@ -261,7 +263,13 @@ static result_t painting_build(painting_task_t            *task,
   if (rc != result_OK)
     return rc;
 
+  rc = wuss_scaleview_create(&task->scaleview, task->base.wuss,
+                             painting_scaleview_choice, task);
+  if (rc != result_OK)
+    return rc;
+
   dithermenu_init(&task->dither, task->dithering);
+  dithermenu_add_scale(&task->dither, wuss_scaleview_window(task->scaleview));
   WUSS_MENU_ITEM_MENU(task->menu_items, PAINTING_MENU_DISPLAY, "Display",
                       wuss_MENU_ITEM_NONE, &task->dither.display);
 
@@ -783,8 +791,23 @@ static result_t painting_undo(painting_task_t *pt)
   return result_OK;
 }
 
-/* Step the zoom by step levels, or to 1:1 if step is 0. A stroke in
- * progress is abandoned, as its points are in the old zoom's canvas. */
+#define PAINTING_ZOOM_MAX 8
+
+/* Set the zoom. A stroke in progress is abandoned, as its points are in the
+ * old zoom's canvas. */
+static result_t painting_set_zoom(painting_task_t *pt, int zoom)
+{
+  zoom = CLAMP(zoom, 1, PAINTING_ZOOM_MAX);
+  if (zoom == pt->zoom)
+    return result_OK;
+
+  pt->held = 0;
+  pt->zoom = zoom;
+  wuss_window_invalidate_visible(pt->base.window);
+  return painting_fit(pt);
+}
+
+/* Step the zoom by step levels, or to 1:1 if step is 0 */
 static result_t painting_zoom(painting_task_t *pt, int step)
 {
   static const int zooms[] = { 1, 2, 3, 4, 6, 8 };
@@ -793,14 +816,80 @@ static result_t painting_zoom(painting_task_t *pt, int step)
 
   for (i = 0; i < (int) NELEMS(zooms) - 1 && zooms[i] < pt->zoom; i++)
     ;
+  if (step > 0 && zooms[i] > pt->zoom)
+    i--; /* between levels, as the Scale view leaves it */
   i = step ? CLAMP(i + step, 0, (int) NELEMS(zooms) - 1) : 0;
-  if (zooms[i] == pt->zoom)
-    return result_OK;
 
-  pt->held = 0;
-  pt->zoom = zooms[i];
-  wuss_window_invalidate_visible(pt->base.window);
-  return painting_fit(pt);
+  return painting_set_zoom(pt, zooms[i]);
+}
+
+/* The greatest zoom at which the stage fits avail, or 1 */
+static int painting_fit_zoom(painting_task_t *pt, size2d_t avail)
+{
+  int      keep;
+  int      zoom;
+  size2d_t size;
+
+  keep = pt->zoom;
+  for (zoom = PAINTING_ZOOM_MAX; zoom > 1; zoom--)
+  {
+    pt->zoom = zoom;
+    size     = painting_stage_size(pt);
+    if (size.w <= avail.w && size.h <= avail.h)
+      break;
+  }
+  pt->zoom = keep;
+  (void) painting_stage_size(pt); /* put pt->page back */
+
+  return zoom;
+}
+
+/* The "Scale view" dialogue's choice. The canvas zooms by whole steps only,
+ * so a pointer lands on one canvas pixel: a percentage rounds to the nearest
+ * one, and below 150% is 1:1. */
+static void painting_scaleview_choice(wuss_scaleview_choice_t choice,
+                                      int                     percent,
+                                      void                   *opaque)
+{
+  painting_task_t *pt;
+  size2d_t         avail;
+  box_t            visible;
+  box_t            content;
+  int              zoom;
+
+  pt = opaque;
+  if (pt->base.window == NULL)
+    return;
+
+  if (choice == wuss_SCALEVIEW_FIT_SCREEN)
+  {
+    /* a resize stops at the screen's edge, so start from its top left, then
+     * open the window to the stage and place it for its new size */
+    wuss_window_get_visible_bounds(pt->base.window, &visible);
+    wuss_window_get_content_bounds(pt->base.window, &content);
+    wuss_window_move(pt->base.window, POINT(content.x0 - visible.x0,
+                                            content.y0 - visible.y0));
+    wuss_window_get_max_content(pt->base.window, &avail);
+    if (painting_set_zoom(pt, painting_fit_zoom(pt, avail)) != result_OK)
+      return;
+    if (wuss_window_resize(pt->base.window,
+                           painting_stage_size(pt)) == result_OK)
+      (void) wuss_window_place(pt->base.window, &task_place);
+    return;
+  }
+
+  if (choice == wuss_SCALEVIEW_FIT_WINDOW)
+  {
+    wuss_window_get_content_bounds(pt->base.window, &content);
+    avail = SIZE2D(content.x1 - content.x0, content.y1 - content.y0);
+    zoom  = painting_fit_zoom(pt, avail);
+  }
+  else
+  {
+    zoom = (percent + 50) / 100;
+  }
+
+  (void) painting_set_zoom(pt, zoom);
 }
 
 /* B, H, E, L, R, X, C, D, N, M, F, G, P, S, O, W and I pick the matching
@@ -894,7 +983,13 @@ static result_t painting_selection_op(painting_task_t *pt, int op)
  * selected */
 static result_t painting_menu_open(painting_task_t *pt)
 {
+  result_t rc;
+
   painting_menu_shade(pt);
+
+  rc = wuss_scaleview_set_percent(pt->scaleview, pt->zoom * 100);
+  if (rc != result_OK)
+    return rc;
 
   wuss_menu_tick_exclusive(&pt->nozzle_menu, pt->nozzle);
 
@@ -1030,6 +1125,7 @@ static result_t painting_handle(wuss_window_t      *window,
     return result_OK;
 
   case wuss_EVENT_QUIT:
+    wuss_scaleview_destroy(pt->scaleview);
     free(pt->lasso);
     paintingdoc_destroy(pt->doc);
     return result_OK;

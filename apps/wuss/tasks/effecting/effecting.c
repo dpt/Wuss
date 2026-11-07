@@ -471,6 +471,36 @@ static result_t effecting_open_list(effecting_task_t *ec)
   return wuss_window_place(ec->list_window, &place); /* for its fitted size */
 }
 
+/* Fit the image window to the image at the current scale, first opening it if
+ * it is not open yet. */
+static result_t effecting_fit(effecting_task_t *ec)
+{
+  return task_window_fit(ec->base.delegate, &ec->base.window, "Effecting",
+                         wuss_WINDOW_DEFAULT | wuss_WINDOW_FOCUSABLE,
+                         wuss_NO_BACKDROP, /* the image covers it all */
+                         dithermenu_scaled_size(ec->source.size, ec->scale),
+                         SIZE2D(32, 32));
+}
+
+/* The "Scale view" dialogue's choice */
+static void effecting_scaleview_choice(wuss_scaleview_choice_t choice,
+                                       int                     percent,
+                                       void                   *opaque)
+{
+  effecting_task_t *ec;
+
+  ec = opaque;
+
+  if (ec->base.window == NULL)
+    return;
+
+  ec->scale = dithermenu_scale_percent(ec->base.window, choice, percent,
+                                       ec->source.size);
+  wuss_window_invalidate_visible(ec->base.window);
+  if (effecting_fit(ec) == result_OK && choice == wuss_SCALEVIEW_FIT_SCREEN)
+    (void) wuss_window_place(ec->base.window, &dithermenu_fit_place);
+}
+
 /* Load the PNG or JPEG at path and re-apply, resizing the window to fit. The
  * image and list windows open with the first image, sized and placed for it.
  * A load failure keeps the current image and is returned. */
@@ -501,10 +531,7 @@ static result_t effecting_show(effecting_task_t *ec, const char *path)
     return rc;
 
   opening = ec->base.window == NULL;
-  rc = task_window_fit(ec->base.delegate, &ec->base.window, "Effecting",
-                       wuss_WINDOW_DEFAULT | wuss_WINDOW_FOCUSABLE,
-                       wuss_NO_BACKDROP, /* the image covers it all */
-                       ec->source.size, SIZE2D(32, 32));
+  rc = effecting_fit(ec);
   if (rc != result_OK)
     return rc;
 
@@ -530,6 +557,7 @@ static void effecting_build_menus(effecting_task_t *task)
                   NELEMS(task->add_items));
 
   dithermenu_init(&task->dither, task->dithering);
+  dithermenu_add_scale(&task->dither, wuss_scaleview_window(task->scaleview));
 
   WUSS_MENU_ITEM_MENU(task->menu_items, EFFECTING_MENU_DISPLAY, "Display",
                       wuss_MENU_ITEM_BORROWED_SUBMENU, &task->dither.display);
@@ -575,6 +603,7 @@ static result_t effecting_init(effecting_task_t *task)
   task->level      = 100;
   task->drag_index = -1;
   task->dithering  = screen_DITHER_BLUE_NOISE;
+  task->scale      = 100;
 
   rc = wuss_task_iconpool_load_resource(delegate, wuss_get_resources(wuss));
   if (rc != result_OK)
@@ -584,6 +613,11 @@ static result_t effecting_init(effecting_task_t *task)
     task->glyphs[i] = wuss_task_iconpool_find(delegate, g_glyph_names[i]);
 
   rc = effecting_edit_create(task, &task->edit);
+  if (rc != result_OK)
+    return rc;
+
+  rc = wuss_scaleview_create(&task->scaleview, wuss,
+                             effecting_scaleview_choice, task);
   if (rc != result_OK)
     return rc;
 
@@ -601,6 +635,7 @@ static void effecting_quit(effecting_task_t *task)
   free(task->elements);
 
   wuss_gridview_destroy(task->list);
+  wuss_scaleview_destroy(task->scaleview);
   effecting_edit_destroy(task->edit);
   free(task->source.base);
   free(task->chain.base);
@@ -625,11 +660,10 @@ static result_t effecting_redraw(const wuss_event_t *event, void *task_data)
 
   bm = ec->show_original ? &ec->source : &ec->result;
 
-  return screen_copy_bitmap_dithered(scr,
-                                     bounds->x0 - event->data.redraw.scroll.x,
-                                     bounds->y0 - event->data.redraw.scroll.y,
-                                     bm,
-                                     ec->dithering);
+  return dithermenu_draw(scr,
+                         bounds->x0 - event->data.redraw.scroll.x,
+                         bounds->y0 - event->data.redraw.scroll.y,
+                         bm, ec->scale, ec->dithering);
 }
 
 static void effecting_menu_enable(effecting_task_t *ec, int row, int enabled)
@@ -691,7 +725,13 @@ static void effecting_menu_update(effecting_task_t *ec)
 
 static result_t effecting_open_menu(effecting_task_t *ec)
 {
+  result_t rc;
+
   effecting_menu_update(ec);
+
+  rc = wuss_scaleview_set_percent(ec->scaleview, ec->scale);
+  if (rc != result_OK)
+    return rc;
 
   return wuss_menu_open_at_pointer(ec->base.delegate, &ec->base.menu, &ec->base.menu_handle);
 }

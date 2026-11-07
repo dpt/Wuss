@@ -67,8 +67,8 @@ typedef struct viewing_task
   point_t        grab;      /* pointer position at the last drag event */
   int            dragging;  /* SELECT held: pointer moves drag the origin */
   int            scale;     /* percent; tiling ignores it */
-  wuss_scaleview_t *scaleview; /* owned: "Scale view" dialogue, made on first
-                                * use, freed at QUIT */
+  wuss_scaleview_t *scaleview; /* owned: "Scale view" dialogue, a leaf of
+                                * the "Display" submenu; freed at QUIT */
 }
 viewing_task_t;
 
@@ -88,7 +88,6 @@ enum
 {
   VIEWING_MENU_DISPLAY,
   VIEWING_MENU_COLOURS,
-  VIEWING_MENU_SCALE,
   VIEWING_MENU_STAGE,
   VIEWING_MENU_TILE,
   VIEWING_MENU_RESET_ORIGIN
@@ -146,6 +145,8 @@ static result_t viewing_fit(viewing_task_t *ic)
                          viewing_size(ic), SIZE2D(32, 32));
 }
 
+static wuss_scaleview_choice_fn_t viewing_scaleview_choice;
+
 static result_t viewing_init(viewing_task_t *task)
 {
   static const char *const colour_names[4] =
@@ -153,6 +154,7 @@ static result_t viewing_init(viewing_task_t *task)
     "Pasteboard", "Paper", "Shadow", "Border"
   };
 
+  result_t  rc;
   colour_t *colour_fields[4];
 
   /* No autoclose: QUIT is delivered at wuss_destroy instead. Closing the
@@ -177,7 +179,13 @@ static result_t viewing_init(viewing_task_t *task)
   wuss_colourlist_init(&task->colours, task->base.wuss, 4, colour_fields,
                        colour_names);
 
+  rc = wuss_scaleview_create(&task->scaleview, task->base.wuss,
+                             viewing_scaleview_choice, task);
+  if (rc != result_OK)
+    return rc;
+
   dithermenu_init(&task->dither, task->dithering);
+  dithermenu_add_scale(&task->dither, wuss_scaleview_window(task->scaleview));
 
   return result_OK;
 }
@@ -463,7 +471,7 @@ static void viewing_scaleview_choice(wuss_scaleview_choice_t choice,
                                             content.y0 - visible.y0));
     wuss_window_get_max_content(ic->base.window, &avail);
     if (viewing_zoom(ic, viewing_fit_percent(ic, avail)) == result_OK)
-      (void) wuss_window_place(ic->base.window, &task_place);
+      (void) wuss_window_place(ic->base.window, &dithermenu_fit_place);
     return;
   }
   else if (choice == wuss_SCALEVIEW_FIT_WINDOW)
@@ -474,22 +482,6 @@ static void viewing_scaleview_choice(wuss_scaleview_choice_t choice,
   }
 
   (void) viewing_zoom(ic, percent);
-}
-
-/* Show the "Scale view" dialogue, making it on first use */
-static result_t viewing_open_scaleview(viewing_task_t *ic)
-{
-  result_t rc;
-
-  if (ic->scaleview == NULL)
-  {
-    rc = wuss_scaleview_create(&ic->scaleview, ic->base.wuss,
-                               viewing_scaleview_choice, ic);
-    if (rc != result_OK)
-      return rc;
-  }
-
-  return wuss_scaleview_open(ic->scaleview, ic->scale);
 }
 
 /* Arrows, Page Up/Down and Home/End scroll the image; Space shows the next
@@ -585,11 +577,17 @@ static result_t viewing_open_menu(viewing_task_t *ic)
   int          i;
 
   rc = wuss_menu_create_from_desc(&m,
-         "Viewing, Display, Colours, ~Scale view..., !~Stage, !Tile, "
-         "~Reset origin",
-         ic->tile, ic->stage, ic->tile, ic->tile, !ic->tile);
+         "Viewing, Display, Colours, !~Stage, !Tile, ~Reset origin",
+         ic->stage, ic->tile, ic->tile, !ic->tile);
   if (rc != result_OK)
     return rc;
+
+  rc = wuss_scaleview_set_percent(ic->scaleview, ic->scale);
+  if (rc != result_OK)
+  {
+    wuss_menu_destroy(m);
+    return rc;
+  }
 
   /* '>' would deep-copy a submenu, so its picks would not match ours: point
    * "Display" and "Colours" at per-instance submenus built at create time,
@@ -671,12 +669,17 @@ static result_t viewing_toggle_tile(viewing_task_t    *ic,
 
   wuss_menu_tick_item_live(ic->base.menu_handle, menu, VIEWING_MENU_TILE,
                            ic->tile);
-  wuss_menu_disable_item_live(ic->base.menu_handle, menu, VIEWING_MENU_SCALE,
-                              ic->tile);
   wuss_menu_disable_item_live(ic->base.menu_handle, menu, VIEWING_MENU_STAGE,
                               ic->tile);
   wuss_menu_disable_item_live(ic->base.menu_handle, menu,
                               VIEWING_MENU_RESET_ORIGIN, !ic->tile);
+
+  /* "Display"'s "Scale view": its submenu is not open alongside this one, so
+   * shading the row it is built from is enough */
+  if (ic->tile)
+    ic->dither.display_items[DITHERMENU_SCALE].flags |= wuss_MENU_ITEM_DISABLED;
+  else
+    ic->dither.display_items[DITHERMENU_SCALE].flags &= ~wuss_MENU_ITEM_DISABLED;
 
   /* a resize stops at the screen's edge, so start from its top left */
   if (ic->tile)
@@ -727,8 +730,6 @@ static result_t viewing_handle(wuss_window_t      *window,
       wuss_menu_tick_item_live(ic->base.menu_handle, menu, index, ic->stage);
       return viewing_fit(ic);
     }
-    if (menu == ic->menu && index == VIEWING_MENU_SCALE)
-      return viewing_open_scaleview(ic);
     if (menu == ic->menu && index == VIEWING_MENU_TILE)
       return viewing_toggle_tile(ic, menu);
     if (menu == ic->menu && index == VIEWING_MENU_RESET_ORIGIN)

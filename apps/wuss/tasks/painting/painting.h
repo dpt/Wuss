@@ -13,6 +13,7 @@
 #include "wuss/icon-spec.h"
 #include "wuss/menu.h"
 #include "wuss/component/saveas.h"
+#include "wuss/component/scaleview.h"
 #include "wuss/gadget/swatches.h"
 #include "wuss/task.h"
 #include "wuss/window.h"
@@ -185,6 +186,7 @@ typedef struct painting_task
   wuss_menu_item_t   nozzle_items[paintingdoc_NOZZLE__COUNT];
   wuss_menu_t        nozzle_menu;
   dithermenu_t       dither;
+  wuss_scaleview_t  *scaleview; /* owned: "Display"'s "Scale view" leaf */
   screen_dither_t    dithering; /* how the canvas is blitted */
   char               row_text[painting_SETTING__COUNT][WUSS_SLIDER_ROW_BUF];
   wuss_swatches_t    swatches;  /* the desktop palette, as a colour grid */

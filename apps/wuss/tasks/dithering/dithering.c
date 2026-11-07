@@ -159,6 +159,9 @@ typedef struct dithering_task
   int                serpentine;
   int                linear;   /* dither in linear light */
   screen_dither_t    dithering; /* how the image is blitted to the screen */
+  int                scale;    /* percent the image is shown at */
+  wuss_scaleview_t  *scaleview; /* owned: "Display"'s "Scale view" leaf;
+                                 * freed at QUIT */
 
   char               path[DPTLIB_MAXPATH]; /* file shown; "" until the
                                 * first DataLoad */
@@ -475,6 +478,17 @@ static void dithering_saveas_name(dithering_task_t *dt)
   wuss_saveas_set_leafname(dt->base.saveas, leafname);
 }
 
+/* Fit the window to the image at the current scale. The window opens with
+ * the first image, sized and placed for it. */
+static result_t dithering_fit(dithering_task_t *dt)
+{
+  return task_window_fit(dt->base.delegate, &dt->base.window, "Dithering",
+                         wuss_WINDOW_DEFAULT | wuss_WINDOW_FOCUSABLE,
+                         wuss_NO_BACKDROP, /* the image covers it all */
+                         dithermenu_scaled_size(dt->source.size, dt->scale),
+                         SIZE2D(0, 0));
+}
+
 /* Load the PNG or JPEG at path and dither it, resizing the window to fit. A
  * load failure keeps the current image and is returned. */
 static result_t dithering_show(dithering_task_t *dt, const char *path)
@@ -498,11 +512,7 @@ static result_t dithering_show(dithering_task_t *dt, const char *path)
   strcpy(dt->name, name);
   dithering_saveas_name(dt);
 
-  /* the window opens with the first image, sized and placed for it */
-  rc = task_window_fit(dt->base.delegate, &dt->base.window, "Dithering",
-                       wuss_WINDOW_DEFAULT | wuss_WINDOW_FOCUSABLE,
-                       wuss_NO_BACKDROP, /* the image covers it all */
-                       dt->source.size, SIZE2D(0, 0));
+  rc = dithering_fit(dt);
   if (rc != result_OK)
     return rc;
 
@@ -733,6 +743,25 @@ static int dithering_fixed_row(const dithering_task_t *dt)
   return group < 0 ? -1 : DITHERING_FIXED_FIRST_GROUP + group;
 }
 
+/* The "Scale view" dialogue's choice */
+static void dithering_scaleview_choice(wuss_scaleview_choice_t choice,
+                                       int                     percent,
+                                       void                   *opaque)
+{
+  dithering_task_t *dt;
+
+  dt = opaque;
+
+  if (dt->base.window == NULL)
+    return;
+
+  dt->scale = dithermenu_scale_percent(dt->base.window, choice, percent,
+                                       dt->source.size);
+  wuss_window_invalidate_visible(dt->base.window);
+  if (dithering_fit(dt) == result_OK && choice == wuss_SCALEVIEW_FIT_SCREEN)
+    (void) wuss_window_place(dt->base.window, &dithermenu_fit_place);
+}
+
 /* The window opens with the first image. */
 static result_t dithering_init(dithering_task_t *task)
 {
@@ -749,6 +778,12 @@ static result_t dithering_init(dithering_task_t *task)
   /* the dither already targets a palette: a second, ordered one on the way
    * to the screen would only muddy it */
   task->dithering  = screen_DITHER_NEAREST;
+  task->scale      = 100;
+
+  rc = wuss_scaleview_create(&task->scaleview, task->base.wuss,
+                             dithering_scaleview_choice, task);
+  if (rc != result_OK)
+    return rc;
 
   namelist_scan(pathf("%s/resources/wuss-tasks/palettes",
                       wuss_get_resources(task->base.wuss)),
@@ -812,6 +847,7 @@ static result_t dithering_init(dithering_task_t *task)
                   DITHERING_PALETTE_ROW__LIMIT);
 
   dithermenu_init(&task->dither, task->dithering);
+  dithermenu_add_scale(&task->dither, wuss_scaleview_window(task->scaleview));
   WUSS_MENU_ITEM_MENU(task->menu_items, DITHERING_MENU_DISPLAY, "Display",
                       wuss_MENU_ITEM_NONE, &task->dither.display);
   taskapp_save_row(&task->base, task->menu_items, DITHERING_MENU_SAVE,
@@ -1018,8 +1054,8 @@ static result_t dithering_redraw(dithering_task_t   *dt,
 
   x  = bounds->x0 - event->data.redraw.scroll.x;
   y  = bounds->y0 - event->data.redraw.scroll.y;
-  rc = screen_copy_bitmap_dithered(event->data.redraw.scr, x, y, bm,
-                                   dt->dithering);
+  rc = dithermenu_draw(event->data.redraw.scr, x, y, bm, dt->scale,
+                       dt->dithering);
   if (rc != result_OK)
     return rc;
 
@@ -1112,9 +1148,14 @@ static void dithering_menu_refresh(dithering_task_t *dt)
 
 static result_t dithering_menu_open(dithering_task_t *dt)
 {
+  result_t     rc;
   unsigned int ticks;
 
   dithering_menu_refresh(dt);
+
+  rc = wuss_scaleview_set_percent(dt->scaleview, dt->scale);
+  if (rc != result_OK)
+    return rc;
 
   ticks = 0;
   if (dt->palette_window != NULL)
@@ -1411,6 +1452,7 @@ static result_t dithering_handle(wuss_window_t      *window,
     return result_OK;
 
   case wuss_EVENT_QUIT:
+    wuss_scaleview_destroy(dt->scaleview);
     wuss_colourpicker_destroy(dt->picker);
     wuss_dialogue_destroy(dt->colours_dialogue);
     wuss_dialogue_destroy(dt->strength_dialogue);

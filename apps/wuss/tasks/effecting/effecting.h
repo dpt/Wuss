@@ -108,6 +108,9 @@ typedef struct effecting_task
   wuss_menu_t          add_menu;
   dithermenu_t         dither;
   screen_dither_t      dithering; /* method for paletted screens */
+  int                  scale;    /* percent the image is shown at */
+  wuss_scaleview_t    *scaleview; /* owned: "Display"'s "Scale view" leaf;
+                                   * freed at QUIT */
   wuss_menu_item_t     menu_items[EFFECTING_MENU__LIMIT];
   struct effecting_edit *edit;   /* the editing dialogues */
 }
