@@ -20,6 +20,7 @@
 #include "io/dirlist.h"
 #include "io/path.h"
 #include "wuss/component/colourmenu.h"
+#include "wuss/component/scaleview.h"
 #include "wuss/menu.h"
 #include "wuss/menu-desc.h"
 #include "wuss/message.h"
@@ -65,20 +66,17 @@ typedef struct viewing_task
   point_t        origin;    /* window-local position of one tile's top-left */
   point_t        grab;      /* pointer position at the last drag event */
   int            dragging;  /* SELECT held: pointer moves drag the origin */
-  int            zoom;      /* index into viewing_zooms; tiling ignores it */
+  int            scale;     /* percent; tiling ignores it */
+  wuss_scaleview_t *scaleview; /* owned: "Scale view" dialogue, made on first
+                                * use, freed at QUIT */
 }
 viewing_task_t;
 
-/* Zoom steps, smallest first, as screen_scale_t's xmul, ymul, xdiv, ydiv */
-static const screen_scale_t viewing_zooms[] =
+/* Percentages + and - step through, smallest first */
+static const int viewing_zooms[] =
 {
-  { 1, 1, 4, 4 }, { 1, 1, 3, 3 }, { 1, 1, 2, 2 }, { 2, 2, 3, 3 },
-  { 1, 1, 1, 1 },
-  { 3, 3, 2, 2 }, { 2, 2, 1, 1 }, { 3, 3, 1, 1 }, { 4, 4, 1, 1 },
-  { 6, 6, 1, 1 }, { 8, 8, 1, 1 }
+  25, 33, 50, 67, 100, 150, 200, 300, 400, 600, 800
 };
-
-#define VIEWING_ZOOM_ACTUAL 4 /* viewing_zooms index of 1:1 */
 
 #define VIEWING_BORDERSZ 8 /* solid band drawn around the image */
 #define VIEWING_MARGINSZ VIEWING_BORDERSZ
@@ -90,21 +88,20 @@ enum
 {
   VIEWING_MENU_DISPLAY,
   VIEWING_MENU_COLOURS,
+  VIEWING_MENU_SCALE,
   VIEWING_MENU_STAGE,
   VIEWING_MENU_TILE,
   VIEWING_MENU_RESET_ORIGIN
 };
 
-/* The image's size on screen at the current zoom, rounded up as
+/* The image's size on screen at the current scale, rounded up as
  * screen_copy_bitmap_scaled rounds its extent */
 static size2d_t viewing_scaled_size(const viewing_task_t *ic)
 {
-  const screen_scale_t *scale;
-  size2d_t              sz;
+  size2d_t sz;
 
-  scale = &viewing_zooms[ic->zoom];
-  sz.w  = DIVIDE_ROUNDING_UP(ic->bitmap.size.w * scale->xmul, scale->xdiv);
-  sz.h  = DIVIDE_ROUNDING_UP(ic->bitmap.size.h * scale->ymul, scale->ydiv);
+  sz.w = DIVIDE_ROUNDING_UP(ic->bitmap.size.w * ic->scale, 100);
+  sz.h = DIVIDE_ROUNDING_UP(ic->bitmap.size.h * ic->scale, 100);
 
   return sz;
 }
@@ -166,7 +163,7 @@ static result_t viewing_init(viewing_task_t *task)
   task->bitmap.size = SIZE2D(VIEWING_EMPTYSZ, VIEWING_EMPTYSZ); /* no pixels */
   task->dithering   = screen_DITHER_BLUE_NOISE;
   task->stage       = 1;
-  task->zoom        = VIEWING_ZOOM_ACTUAL;
+  task->scale       = 100;
   stageconfig_init(&task->stagecfg);
 
   task->colour_pasteboard = colour_rgb(192, 192, 192); /* light grey */
@@ -192,8 +189,9 @@ static void viewing_draw_image(viewing_task_t *ic,
                                int             x,
                                int             y)
 {
-  size2d_t sz;
-  box_t    box;
+  size2d_t       sz;
+  box_t          box;
+  screen_scale_t scale;
 
   if (ic->bitmap.base == NULL)
     return;
@@ -204,8 +202,10 @@ static void viewing_draw_image(viewing_task_t *ic,
   if (ic->alpha)
     task_draw_checks(scr, &box, POINT(x, y));
 
-  screen_copy_bitmap_scaled_dithered(scr, &box, &ic->bitmap,
-                                     &viewing_zooms[ic->zoom], ic->dithering);
+  scale.xmul = scale.ymul = ic->scale;
+  scale.xdiv = scale.ydiv = 100;
+  screen_copy_bitmap_scaled_dithered(scr, &box, &ic->bitmap, &scale,
+                                     ic->dithering);
 }
 
 /* Draw the stage behind the image, centred in the window. The stage lays out
@@ -393,16 +393,103 @@ static result_t viewing_page(viewing_task_t *ic, int step)
   return result_OK;
 }
 
-/* Step the zoom to index, refitting the window. Tiling stays 1:1. */
-static result_t viewing_zoom(viewing_task_t *ic, int index)
+/* Set the scale to percent, refitting the window. Tiling stays 1:1. */
+static result_t viewing_zoom(viewing_task_t *ic, int percent)
 {
-  index = CLAMP(index, 0, (int) NELEMS(viewing_zooms) - 1);
-  if (ic->tile || index == ic->zoom)
+  percent = CLAMP(percent, wuss_SCALEVIEW_MIN, wuss_SCALEVIEW_MAX);
+  if (ic->tile || percent == ic->scale)
     return result_OK;
 
-  ic->zoom = index;
+  ic->scale = percent;
   wuss_window_invalidate_visible(ic->base.window);
   return viewing_fit(ic);
+}
+
+/* The next of viewing_zooms beyond the current scale in direction step (+1
+ * or -1), or the current scale if there is none */
+static int viewing_zoom_step(const viewing_task_t *ic, int step)
+{
+  int n;
+  int i;
+
+  n = (int) NELEMS(viewing_zooms);
+  for (i = 0; i < n; i++)
+  {
+    if (step > 0 && viewing_zooms[i] > ic->scale)
+      return viewing_zooms[i];
+    if (step < 0 && viewing_zooms[n - 1 - i] < ic->scale)
+      return viewing_zooms[n - 1 - i];
+  }
+
+  return ic->scale;
+}
+
+/* The scale at which the window's furniture and the image fit avail */
+static int viewing_fit_percent(const viewing_task_t *ic, size2d_t avail)
+{
+  size2d_t win;
+  size2d_t img;
+
+  win = viewing_size(ic);
+  img = viewing_scaled_size(ic);
+
+  /* ponytail: assumes the stage's margins do not change with scale */
+  avail.w -= win.w - img.w;
+  avail.h -= win.h - img.h;
+
+  return MIN(avail.w * 100 / ic->bitmap.size.w,
+             avail.h * 100 / ic->bitmap.size.h);
+}
+
+/* The "Scale view" dialogue's choice */
+static void viewing_scaleview_choice(wuss_scaleview_choice_t choice,
+                                     int                     percent,
+                                     void                   *opaque)
+{
+  viewing_task_t *ic;
+  size2d_t        avail;
+  box_t           visible;
+  box_t           content;
+
+  ic = opaque;
+
+  if (choice == wuss_SCALEVIEW_FIT_SCREEN)
+  {
+    /* a resize stops at the screen's edge, so start from its top left, as
+     * tiling does, then place the window for its new size */
+    wuss_window_get_visible_bounds(ic->base.window, &visible);
+    wuss_window_get_content_bounds(ic->base.window, &content);
+    wuss_window_move(ic->base.window, POINT(content.x0 - visible.x0,
+                                            content.y0 - visible.y0));
+    wuss_window_get_max_content(ic->base.window, &avail);
+    if (viewing_zoom(ic, viewing_fit_percent(ic, avail)) == result_OK)
+      (void) wuss_window_place(ic->base.window, &task_place);
+    return;
+  }
+  else if (choice == wuss_SCALEVIEW_FIT_WINDOW)
+  {
+    wuss_window_get_content_bounds(ic->base.window, &content);
+    avail   = SIZE2D(content.x1 - content.x0, content.y1 - content.y0);
+    percent = viewing_fit_percent(ic, avail);
+  }
+
+  (void) viewing_zoom(ic, percent);
+}
+
+/* Show the "Scale view" dialogue, making it on first use */
+static result_t viewing_open_scaleview(viewing_task_t *ic)
+{
+  result_t rc;
+
+  if (ic->scaleview == NULL)
+  {
+    rc = wuss_scaleview_create(&ic->scaleview, ic->base.wuss,
+                               viewing_scaleview_choice, ic);
+    if (rc != result_OK)
+      return rc;
+  }
+
+  return wuss_scaleview_open(ic->scaleview, ic->scale);
 }
 
 /* Arrows, Page Up/Down and Home/End scroll the image; Space shows the next
@@ -427,13 +514,13 @@ static result_t viewing_key(viewing_task_t *ic, const wuss_event_t *event)
 
   case '=':
   case '+':
-    return viewing_zoom(ic, ic->zoom + 1);
+    return viewing_zoom(ic, viewing_zoom_step(ic, 1));
 
   case '-':
-    return viewing_zoom(ic, ic->zoom - 1);
+    return viewing_zoom(ic, viewing_zoom_step(ic, -1));
 
   case '1':
-    return viewing_zoom(ic, VIEWING_ZOOM_ACTUAL);
+    return viewing_zoom(ic, 100);
 
   case wuss_KEY_UP:
     wuss_window_scroll_by(ic->base.window, POINT(0, -VIEWING_SCROLL_STEP));
@@ -498,8 +585,9 @@ static result_t viewing_open_menu(viewing_task_t *ic)
   int          i;
 
   rc = wuss_menu_create_from_desc(&m,
-         "Viewing, Display, Colours, !~Stage, !Tile, ~Reset origin",
-         ic->stage, ic->tile, ic->tile, !ic->tile);
+         "Viewing, Display, Colours, ~Scale view..., !~Stage, !Tile, "
+         "~Reset origin",
+         ic->tile, ic->stage, ic->tile, ic->tile, !ic->tile);
   if (rc != result_OK)
     return rc;
 
@@ -583,6 +671,8 @@ static result_t viewing_toggle_tile(viewing_task_t    *ic,
 
   wuss_menu_tick_item_live(ic->base.menu_handle, menu, VIEWING_MENU_TILE,
                            ic->tile);
+  wuss_menu_disable_item_live(ic->base.menu_handle, menu, VIEWING_MENU_SCALE,
+                              ic->tile);
   wuss_menu_disable_item_live(ic->base.menu_handle, menu, VIEWING_MENU_STAGE,
                               ic->tile);
   wuss_menu_disable_item_live(ic->base.menu_handle, menu,
@@ -637,6 +727,8 @@ static result_t viewing_handle(wuss_window_t      *window,
       wuss_menu_tick_item_live(ic->base.menu_handle, menu, index, ic->stage);
       return viewing_fit(ic);
     }
+    if (menu == ic->menu && index == VIEWING_MENU_SCALE)
+      return viewing_open_scaleview(ic);
     if (menu == ic->menu && index == VIEWING_MENU_TILE)
       return viewing_toggle_tile(ic, menu);
     if (menu == ic->menu && index == VIEWING_MENU_RESET_ORIGIN)
@@ -673,6 +765,7 @@ static result_t viewing_handle(wuss_window_t      *window,
 
   case wuss_EVENT_QUIT:
     wuss_menu_destroy(ic->menu);
+    wuss_scaleview_destroy(ic->scaleview);
     free(ic->bitmap.base);
     return result_OK;
 
