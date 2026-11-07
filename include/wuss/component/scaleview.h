@@ -21,6 +21,12 @@
  * wuss_scaleview_choice_fn_t. Cancel, ESCAPE and the dialogue being closed
  * some other way report nothing.
  *
+ * Alternatively hang wuss_scaleview_window as a wuss_menu_item_t::window
+ * leaf flagged wuss_MENU_ITEM_PRE_OPEN, so that it opens as a submenu. The
+ * dialogue answers the leaf's wuss_EVENT_PRE_SHOW itself and closes the
+ * whole chain once the user chooses. Call wuss_scaleview_set_percent before
+ * opening the menu so the field shows the view's scale.
+ *
  * Built only when WUSS_COMPONENTS is defined.
  */
 
@@ -108,6 +114,23 @@ void wuss_scaleview_destroy(wuss_scaleview_t *doomed);
  *         code, in which case the dialogue is not shown.
  */
 result_t wuss_scaleview_open(wuss_scaleview_t *sv, int percent);
+
+/**
+ * Put \p percent, clamped, in the field.
+ *
+ * \param[in] sv      Handle.
+ * \param[in] percent The view's current scale.
+ * \return \ref result_OK, or a wuss_icon_set_text code.
+ */
+result_t wuss_scaleview_set_percent(wuss_scaleview_t *sv, int percent);
+
+/**
+ * The dialogue's window, to hang as a menu leaf. See above.
+ *
+ * \param[in] sv Handle.
+ * \return The window; owned by the dialogue.
+ */
+wuss_window_t *wuss_scaleview_window(const wuss_scaleview_t *sv);
 
 #ifdef __cplusplus
 }

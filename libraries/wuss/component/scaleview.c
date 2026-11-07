@@ -132,7 +132,11 @@ struct wuss_scaleview
   wuss_scaleview_choice_fn_t *fn;
   void                       *opaque;
   wuss_menu_handle_t          menu_handle; /* live only while shown */
-  wuss_icon_t                *icons[SV_ICON__COUNT];
+  wuss_menu_handle_t          leaf_handle; /* level showing the leaf; live
+                                            * only while shown, and wuss
+                                            * tells the menu's task, not us,
+                                            * when it closes */
+  wuss_icon_t               *icons[SV_ICON__COUNT];
   int                         nicons;      /* live entries in icons */
 };
 
@@ -147,7 +151,7 @@ static int sv_get_percent(const wuss_scaleview_t *sv)
   return (int) CLAMP(percent, wuss_SCALEVIEW_MIN, wuss_SCALEVIEW_MAX);
 }
 
-static result_t sv_set_percent(wuss_scaleview_t *sv, int percent)
+result_t wuss_scaleview_set_percent(wuss_scaleview_t *sv, int percent)
 {
   char text[SV_FIELD_SIZE];
 
@@ -158,15 +162,22 @@ static result_t sv_set_percent(wuss_scaleview_t *sv, int percent)
                             sv->icons[SV_ICON_FIELD], text);
 }
 
+/* close whichever chain shows the dialogue: its own, or the one it is a leaf
+ * of */
+static void sv_dismiss(wuss_scaleview_t *sv)
+{
+  wuss_menu_close(sv->menu_handle ? sv->menu_handle : sv->leaf_handle);
+  sv->menu_handle = NULL;
+  sv->leaf_handle = NULL;
+}
+
 /* dismiss the dialogue and report the choice. The callback comes last: it
  * may destroy or reopen the dialogue */
 static result_t sv_choose(wuss_scaleview_t       *sv,
                           wuss_scaleview_choice_t choice,
                           int                     percent)
 {
-  wuss_menu_close(sv->menu_handle);
-  sv->menu_handle = NULL;
-
+  sv_dismiss(sv);
   sv->fn(choice, percent, sv->opaque);
 
   return result_OK;
@@ -174,13 +185,9 @@ static result_t sv_choose(wuss_scaleview_t       *sv,
 
 static result_t sv_action_cancel(void *opaque, wuss_button_t button)
 {
-  wuss_scaleview_t *sv;
-
   NOT_USED(button);
 
-  sv = opaque;
-  wuss_menu_close(sv->menu_handle);
-  sv->menu_handle = NULL;
+  sv_dismiss(opaque);
 
   return result_OK;
 }
@@ -380,7 +387,7 @@ static int sv_handle_field_icon(wuss_scaleview_t   *sv,
                                            : -wuss_SCALEVIEW_STEP;
     if (event->data.icon.button & wuss_BUTTON_ADJUST)
       step = -step;
-    *rc = sv_set_percent(sv, sv_get_percent(sv) + step);
+    *rc = wuss_scaleview_set_percent(sv, sv_get_percent(sv) + step);
     return 1;
   }
 
@@ -388,7 +395,7 @@ static int sv_handle_field_icon(wuss_scaleview_t   *sv,
   {
     if (icon == sv->icons[SV_ICON_P25 + i])
     {
-      *rc = sv_set_percent(sv, sv_presets[i].percent);
+      *rc = wuss_scaleview_set_percent(sv, sv_presets[i].percent);
       return 1;
     }
   }
@@ -429,6 +436,18 @@ static result_t sv_task_handle(wuss_window_t      *window,
 
   case wuss_EVENT_MENU_CLOSED:
     sv->menu_handle = NULL; /* wuss closed the chain under us */
+    return result_OK;
+
+  case wuss_EVENT_PRE_SHOW:
+    if (event->data.pre_show.handle == NULL)
+      return result_OK; /* shown by wuss_scaleview_open */
+    sv->leaf_handle = event->data.pre_show.handle;
+    rc = wuss_menu_open_window_now(event->data.pre_show.handle,
+                                   event->data.pre_show.index);
+    if (rc != result_OK)
+      return rc;
+    (void) wuss_icon_set_caret(wuss_dialogue_window(sv->dialogue),
+                               sv->icons[SV_ICON_FIELD], -1);
     return result_OK;
 
   case wuss_EVENT_RELAYOUT:
@@ -476,6 +495,7 @@ result_t wuss_scaleview_create(wuss_scaleview_t          **out,
   sv->fn          = fn;
   sv->opaque      = opaque;
   sv->menu_handle = NULL;
+  sv->leaf_handle = NULL;
   sv->nicons      = 0;
 
   rc = sv_solve(wuss, &size, boxes);
@@ -530,9 +550,11 @@ result_t wuss_scaleview_open(wuss_scaleview_t *sv, int percent)
   box_t          content;
   point_t        at;
 
-  rc = sv_set_percent(sv, percent);
+  rc = wuss_scaleview_set_percent(sv, percent);
   if (rc != result_OK)
     return rc;
+
+  sv->leaf_handle = NULL;
 
   win = wuss_dialogue_window(sv->dialogue);
   wuss_window_get_content_bounds(win, &content);
@@ -550,4 +572,9 @@ result_t wuss_scaleview_open(wuss_scaleview_t *sv, int percent)
   (void) wuss_icon_set_caret(win, sv->icons[SV_ICON_FIELD], -1);
 
   return result_OK;
+}
+
+wuss_window_t *wuss_scaleview_window(const wuss_scaleview_t *sv)
+{
+  return wuss_dialogue_window(sv->dialogue);
 }
