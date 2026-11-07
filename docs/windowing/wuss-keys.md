@@ -13,7 +13,7 @@ Survey of every key the wuss demo (`apps/wuss`) and its libraries react to, spli
    4. the focused window's task, as `wuss_EVENT_KEY`.
 4. A task that does not want the key returns `result_WUSS_KEY_UNCLAIMED`. `main.c` then passes the key to `tasks_launcher_key`, which handles the zoom keys and tries the Wuss menu's shortcut labels.
 
-A task's menu shortcuts only fire while one of its windows has the focus (`wuss_menu_dispatch_shortcut`). Labels match as follows: `^X` needs Ctrl; a bare label forbids Ctrl; Alt never matches; Shift is required by a `WUSS_MENU_SHIFT` prefix and forbidden for SPACE and F1..F12.
+A task's menu shortcuts only fire while one of its windows has the focus (`wuss_menu_dispatch_shortcut`). Labels match as follows: `^X` needs Ctrl; a bare label forbids Ctrl; Alt never matches; Shift is required by a `WUSS_MENU_SHIFT` prefix and forbidden for SPACE, DEL and F1..F12.
 
 ## System keys
 
@@ -112,6 +112,7 @@ Menu shortcuts (fire when the task has the focus):
 | C M           | Light colour, Mutate | orbing                                                                                                                                                           |
 | F8            | Undo            | painting                                                                                                                                                              |
 | Ctrl-A Z I    | Select all, Clear selection, Invert | painting                                                                                                                                          |
+| F Delete      | Fill, Clear selection (foreground, background) | painting                                                                                                                               |
 | N             | Next nozzle     | painting                                                                                                                                                              |
 | R             | Restart         | sudoku                                                                                                                                                                |
 | F2 F3         | List, Cloud     | tagging                                                                                                                                                               |
@@ -124,7 +125,7 @@ Menu shortcuts (fire when the task has the focus):
 | Ctrl-] Ctrl-[ | Faster, Slower  | zxtask                                                                                                                                                                |
 | Ctrl-M        | Monochromatic   | zxtask                                                                                                                                                                |
 
-Two labels never fire. System F7 (next window) runs ahead of Tagging's F7 (Sort by count). Painting's N (next nozzle) runs ahead of its direct N (Path tool).
+Two labels never fire. System F7 (next window) runs ahead of Tagging's F7 (Sort by count). Painting's N (next nozzle) runs ahead of its direct N (Path tool). Painting's F fills the selection while there is one; with nothing selected the row is shaded and F picks the Fill tool.
 
 Direct keys:
 

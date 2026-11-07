@@ -566,11 +566,11 @@ void wuss_menu_set_title_live(wuss_menu_handle_t handle,
  * be open. Call it from a wuss_EVENT_KEY handler so the menu table, not a
  * hand-written switch, decides what each key does.
  *
- * A label is a single character (matched ignoring case), "SPACE", "UP",
- * "DOWN", "LEFT", "RIGHT" or "F1".."F12", optionally prefixed with '^' to
- * require Ctrl then WUSS_MENU_SHIFT to require Shift. Without '^' Ctrl must
- * be up. Without WUSS_MENU_SHIFT Shift must be up for every named key but is
- * ignored for a single character. Alt never matches.
+ * A label is a single character (matched ignoring case), "SPACE", "DEL",
+ * "UP", "DOWN", "LEFT", "RIGHT" or "F1".."F12", optionally prefixed with '^'
+ * to require Ctrl then WUSS_MENU_SHIFT to require Shift. Without '^' Ctrl
+ * must be up. Without WUSS_MENU_SHIFT Shift must be up for every named key
+ * but is ignored for a single character. Alt never matches.
  *
  * \param[in] task Task to receive the wuss_EVENT_MENU_SELECT.
  * \param[in] menu Menu whose rows' shortcuts are searched.

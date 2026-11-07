@@ -64,8 +64,11 @@ makes an instance of its own.
   matches only, and each step above adds 8 to the tolerance. Shift and Alt
   add and take away, as for select and lasso.
 - Menu > Selection has Select all, Clear selection and Invert. `Esc` also
-  clears the selection. Clear selection and Undo are shaded when they do not apply, and update
-  while the menu stays open.
+  clears the selection. Menu > Edit has Fill (`F`), which paints the selected
+  pixels with the foreground colour, and Clear (`Delete`), which paints them
+  with the background colour, each as one undo step. Clear selection, Fill, Clear and Undo are shaded when they do
+  not apply, and update while the menu stays open. With nothing selected `F`
+  picks the Fill tool instead.
 - Line and rect show a rubber band while the button is down. They draw into
   the canvas when it is released.
 - `F8` or Menu > Undo steps back. There are 20 levels and no redo.

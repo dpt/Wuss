@@ -260,6 +260,15 @@ static result_t painting_build(painting_task_t            *task,
   taskapp_save_row(&task->base, task->menu_items, PAINTING_MENU_SAVE,
                    wuss_MENU_ITEM_NONE);
 
+  WUSS_MENU_ITEM_SHORTCUT(task->edit_items, PAINTING_EDIT_FILL, "Fill",
+                          wuss_MENU_ITEM_NONE, "F");
+  WUSS_MENU_ITEM_SHORTCUT(task->edit_items, PAINTING_EDIT_CLEAR, "Clear",
+                          wuss_MENU_ITEM_NONE, "DEL");
+  WUSS_MENU_TITLE(task->edit_menu, "Edit", task->edit_items,
+                  NELEMS(task->edit_items));
+  WUSS_MENU_ITEM_MENU(task->menu_items, PAINTING_MENU_EDIT, "Edit",
+                      wuss_MENU_ITEM_NONE, &task->edit_menu);
+
   WUSS_MENU_ITEM_SHORTCUT(task->sel_items, PAINTING_SEL_ALL, "Select all",
                           wuss_MENU_ITEM_NONE, "^A");
   WUSS_MENU_ITEM_SHORTCUT(task->sel_items, PAINTING_SEL_NONE,
@@ -695,8 +704,9 @@ static result_t painting_mouse(painting_task_t    *pt,
   return result_OK;
 }
 
-/* shade Undo when there is nothing to undo and Clear selection when nothing is
- * selected, also on the menu if it is open (an ADJUST pick keeps it open) */
+/* shade Undo when there is nothing to undo and Clear selection, Fill and Clear
+ * when nothing is selected, also on the menu if it is open (an ADJUST pick keeps it
+ * open). A shaded Fill lets its F shortcut through to pick the Fill tool */
 static void painting_menu_shade(painting_task_t *pt)
 {
   int no_undo, no_sel;
@@ -710,11 +720,21 @@ static void painting_menu_shade(painting_task_t *pt)
   pt->sel_items[PAINTING_SEL_NONE].flags   = no_sel ?
                                           wuss_MENU_ITEM_DISABLED :
                                           wuss_MENU_ITEM_NONE;
+  pt->edit_items[PAINTING_EDIT_FILL].flags  = no_sel ?
+                                          wuss_MENU_ITEM_DISABLED :
+                                          wuss_MENU_ITEM_NONE;
+  pt->edit_items[PAINTING_EDIT_CLEAR].flags = no_sel ?
+                                          wuss_MENU_ITEM_DISABLED :
+                                          wuss_MENU_ITEM_NONE;
 
   wuss_menu_disable_item_live(pt->base.menu_handle, &pt->base.menu,
                               PAINTING_MENU_UNDO, no_undo);
   wuss_menu_disable_item_live(pt->base.menu_handle, &pt->sel_menu, PAINTING_SEL_NONE,
                               no_sel);
+  wuss_menu_disable_item_live(pt->base.menu_handle, &pt->edit_menu,
+                              PAINTING_EDIT_FILL, no_sel);
+  wuss_menu_disable_item_live(pt->base.menu_handle, &pt->edit_menu,
+                              PAINTING_EDIT_CLEAR, no_sel);
 }
 
 static result_t painting_undo(painting_task_t *pt)
@@ -772,6 +792,21 @@ static result_t painting_key(painting_task_t *pt, int code)
   }
 
   return painting_set_tool(pt, tool);
+}
+
+/* paint the whole selection with colour, as one undo step */
+static void painting_selection_fill(painting_task_t *pt, colour_t colour)
+{
+  box_t box;
+
+  if (!paintingdoc_has_selection(pt->doc))
+    return;
+
+  box = paintingdoc_selection_bounds(pt->doc);
+  box = paintingdoc_rect(pt->doc, POINT(box.x0, box.y0),
+                         POINT(box.x1 - 1, box.y1 - 1), 1, 1, colour);
+  painting_invalidate_box(pt, &box);
+  painting_title(pt);
 }
 
 /* apply a Selection menu row, redrawing where the selection was and is */
@@ -850,6 +885,7 @@ static result_t painting_handle(wuss_window_t      *window,
   {
     result_t rc;
 
+    painting_menu_shade(pt); /* the selection tools leave the shading stale */
     if (!task_key_is_plain(pt->base.delegate, &pt->base.menu, event, &rc))
       return rc;
 
@@ -857,6 +893,13 @@ static result_t painting_handle(wuss_window_t      *window,
   }
 
   case wuss_EVENT_MENU_SELECT:
+    if (event->data.menu_select.menu == &pt->edit_menu)
+    {
+      painting_selection_fill(pt, event->data.menu_select.index ==
+                                  PAINTING_EDIT_FILL ? pt->fg : pt->bg);
+      painting_menu_shade(pt);
+      return result_OK;
+    }
     if (event->data.menu_select.menu == &pt->sel_menu)
       return painting_selection_op(pt, event->data.menu_select.index);
     if (event->data.menu_select.menu == &pt->nozzle_menu)

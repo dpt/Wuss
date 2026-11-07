@@ -833,6 +833,8 @@ PwFail:
         { "^" WUSS_MENU_SHIFT "UP",
                    wuss_KEY_UP,     wuss_KEY_MOD_CTRL,  wuss_MENU_ITEM_NONE,     0 },
         { "LEFT",  wuss_KEY_RIGHT,  wuss_KEY_MOD_NONE,  wuss_MENU_ITEM_NONE,     0 },
+        { "DEL",   wuss_KEY_DELETE, wuss_KEY_MOD_NONE,  wuss_MENU_ITEM_NONE,     1 },
+        { "DEL",   wuss_KEY_DELETE, wuss_KEY_MOD_SHIFT, wuss_MENU_ITEM_NONE,     0 },
       };
 
       result_t     drc;

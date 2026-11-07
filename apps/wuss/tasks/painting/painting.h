@@ -93,9 +93,18 @@ enum
   PAINTING_MENU_DISPLAY,   /* submenu: dithermenu_t's Display */
   PAINTING_MENU_UNDO,
   PAINTING_MENU_SAVE,
+  PAINTING_MENU_EDIT,      /* submenu: PAINTING_EDIT_* */
   PAINTING_MENU_SELECTION, /* submenu: PAINTING_SEL_* */
   PAINTING_MENU_NOZZLE,    /* submenu: one row per paintingdoc_nozzle_t */
   PAINTING_MENU__COUNT
+};
+
+/* the Edit submenu's rows */
+enum
+{
+  PAINTING_EDIT_FILL,  /* fill the selection with the foreground colour */
+  PAINTING_EDIT_CLEAR, /* fill the selection with the background colour */
+  PAINTING_EDIT__COUNT
 };
 
 /* the Selection submenu's rows */
@@ -168,6 +177,8 @@ typedef struct painting_task
   wuss_slider_row_t  rows[painting_SETTING__COUNT]; /* live only for the
                                  * slider settings the current tool shows */
   wuss_menu_item_t   menu_items[PAINTING_MENU__COUNT];
+  wuss_menu_item_t   edit_items[PAINTING_EDIT__COUNT];
+  wuss_menu_t        edit_menu;
   wuss_menu_item_t   sel_items[PAINTING_SEL__COUNT];
   wuss_menu_t        sel_menu;
   wuss_menu_item_t   nozzle_items[paintingdoc_NOZZLE__COUNT];
