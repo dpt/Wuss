@@ -59,6 +59,7 @@ painting_settings[painting_SETTING__COUNT] =
   [painting_SETTING_SIZE]      = { "Size", PAINTING_SIZE_MIN, PAINTING_SIZE_MAX,
                                    NULL },
   [painting_SETTING_NOZZLE]    = { "Nozzle", 0, 0, NULL },
+  [painting_SETTING_DRY]       = { "Dry", 0, 100, "%d%%" },
   [painting_SETTING_DENSITY]   = { "Density", 1, 20, "%d%%" },
   [painting_SETTING_RATE]      = { "Rate", 20, 100, "%d%%" },
   [painting_SETTING_EDGE]      = { "Wobble", 0, 200, "%d%%" },
@@ -76,7 +77,7 @@ static const unsigned int painting_tool_settings[painting_TOOL__COUNT] =
 {
   [painting_TOOL_PENCIL]     = SETTING(STABILISE),
   [painting_TOOL_PAINTBRUSH] = SETTING(SIZE) | SETTING(NOZZLE) |
-                               SETTING(STABILISE),
+                               SETTING(DRY) | SETTING(STABILISE),
   [painting_TOOL_WOBBLE]     = SETTING(SIZE) | SETTING(EDGE) |
                                SETTING(WANDER) | SETTING(STABILISE),
   [painting_TOOL_ERASER]     = SETTING(SIZE) | SETTING(STABILISE),
@@ -142,6 +143,7 @@ static int *painting_setting_value(painting_task_t *pt, painting_setting_t s)
 {
   switch (s)
   {
+  case painting_SETTING_DRY:       return &pt->dry;
   case painting_SETTING_DENSITY:   return &pt->density;
   case painting_SETTING_RATE:      return &pt->rate;
   case painting_SETTING_EDGE:      return &pt->edge;
@@ -150,6 +152,27 @@ static int *painting_setting_value(painting_task_t *pt, painting_setting_t s)
   case painting_SETTING_STABILISE: return &pt->stabilise;
   default:                         return &pt->size;
   }
+}
+
+/* the pot gauge's images, indexed by level: empty to full */
+static const char *painting_pot_names[PAINTING_POT_LEVELS] =
+{
+  "pot-00", "pot-01", "pot-02", "pot-03", "pot-04", "pot-05",
+  "pot-06", "pot-07", "pot-08", "pot-09", "pot-10"
+};
+
+/* the paintbrush pot's level, 0 (dry) to PAINTING_POT_LEVELS - 1 (full),
+ * rounded up so only a dry pot shows empty. full until a stroke starts, and
+ * always if it never runs dry */
+static int painting_pot_level(const painting_task_t *pt)
+{
+  if (pt->pot.load <= 0)
+    return PAINTING_POT_LEVELS - 1;
+  if (pt->pot.left <= 0)
+    return 0;
+
+  return (pt->pot.left * (PAINTING_POT_LEVELS - 1) + pt->pot.load - 1) /
+         pt->pot.load;
 }
 
 /* replace the size bar's icons with the current tool's settings, or a note
@@ -169,6 +192,8 @@ static result_t painting_sizebar_build(painting_task_t *pt)
   int              rw;
   int              row_h;
   int              nozzle_w;
+  int              pot_at;
+  int              level;
   wuss_icon_t     *icons[PAINTING_SIZEBAR_ICONS];
 
   row_h    = SB_ROW_H(pt->base.wuss);
@@ -180,11 +205,13 @@ static result_t painting_sizebar_build(painting_task_t *pt)
     wuss_icon_delete(pt->sizebar, pt->sizebar_icons[i]);
   pt->nsizebar_icons = 0;
   pt->nozzle_icon    = NULL;
+  pt->pot_icons[0]   = NULL;
 
   settings = painting_tool_settings[pt->tool];
   memset(specs, 0, sizeof(specs));
-  x = SB_MARGIN;
-  n = 0;
+  x      = SB_MARGIN;
+  n      = 0;
+  pot_at = -1;
 
   for (s = 0; s < painting_SETTING__COUNT; s++)
   {
@@ -234,6 +261,26 @@ static result_t painting_sizebar_build(painting_task_t *pt)
       n += 2;
       x += SB_SLIDER_W + 2 + rw;
     }
+
+    if (s == painting_SETTING_DRY)
+    {
+      /* the pot gauge after the readout: every level's image in one box,
+       * all but the current level hidden */
+      pot_at  = n;
+      level   = painting_pot_level(pt);
+      control = (box_t) BOX_POS_SIZE(x + SB_LABEL_GAP,
+                                     SB_MARGIN + (row_h - SB_POT) / 2,
+                                     SB_POT, SB_POT);
+      for (i = 0; i < PAINTING_POT_LEVELS; i++)
+      {
+        specs[n].bbox            = control;
+        specs[n].type            = wuss_ICON_TYPE_BITMAP;
+        specs[n].flags           = i == level ? 0 : wuss_ICON_FLAGS_HIDDEN;
+        specs[n++].u.bitmap.name = painting_pot_names[i];
+      }
+      pt->pot_shown = level;
+      x += SB_LABEL_GAP + SB_POT;
+    }
     x += SB_SETTING_GAP;
   }
 
@@ -250,6 +297,10 @@ static result_t painting_sizebar_build(painting_task_t *pt)
   for (i = 0; i < n; i++)
     pt->sizebar_icons[i] = icons[i];
   pt->nsizebar_icons = n;
+
+  if (pot_at >= 0)
+    for (i = 0; i < PAINTING_POT_LEVELS; i++)
+      pt->pot_icons[i] = icons[pot_at + i];
 
   for (s = 0; s < painting_SETTING__COUNT; s++)
   {
@@ -426,6 +477,19 @@ void painting_set_nozzle(painting_task_t *pt, int nozzle)
                               painting_nozzle_names[pt->nozzle]);
   wuss_menu_tick_exclusive_live(pt->base.menu_handle, &pt->nozzle_menu,
                                 pt->nozzle);
+}
+
+void painting_pot_gauge(painting_task_t *pt)
+{
+  int level;
+
+  level = painting_pot_level(pt);
+  if (pt->pot_icons[0] == NULL || level == pt->pot_shown)
+    return;
+
+  wuss_icon_set_hidden(pt->sizebar, pt->pot_icons[level], 0);
+  wuss_icon_set_hidden(pt->sizebar, pt->pot_icons[pt->pot_shown], 1);
+  pt->pot_shown = level;
 }
 
 result_t painting_toolbar_icon(painting_task_t    *pt,

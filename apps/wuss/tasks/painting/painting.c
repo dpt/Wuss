@@ -583,6 +583,9 @@ static result_t painting_mouse(painting_task_t    *pt,
       }
       pt->wobble.seed = rng_xorshift32(&pt->rng); /* a fresh wobble */
       pt->wobble.step = 0;
+      pt->pot.seed    = rng_xorshift32(&pt->rng); /* a refilled pot */
+      pt->pot.load    = pt->dry ? PAINTING_POT_STAMPS / pt->dry : 0;
+      pt->pot.left    = pt->pot.load;
       dirty = painting_stroke_segment(pt, p, p);
       break;
 

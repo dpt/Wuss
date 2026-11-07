@@ -648,6 +648,44 @@ result_t paintingdoc_test(const char *resources)
 
   paintingdoc_destroy(doc);
 
+  printf("test: a brush runs dry: solid while over half full, then thinning, "
+         "then nothing\n");
+
+  CHECK(paintingdoc_create(SIZE2D(100, 9), &doc) == result_OK);
+  {
+    paintingdoc_pot_t pot;
+    int               painted;
+
+    pot.seed = 1;
+    pot.load = 40;
+    pot.left = pot.load;
+
+    /* two segments, so the shared stamp at x = 10 is paid for once */
+    paintingdoc_brush(doc, POINT(0, 4), POINT(10, 4),
+                      paintingdoc_NOZZLE_SQUARE, 5, black(), &pot);
+    paintingdoc_brush(doc, POINT(10, 4), POINT(99, 4),
+                      paintingdoc_NOZZLE_SQUARE, 5, black(), &pot);
+    CHECK(pot.left == 0);
+
+    for (x = 0; x <= 19; x++) /* stamps 0..19, the solid half */
+      CHECK(px(doc, x, 2) == BLACK && px(doc, x, 6) == BLACK);
+
+    painted = 0;
+    for (x = 25; x <= 35; x++)
+      for (y = 2; y <= 6; y++)
+        painted += px(doc, x, y) == BLACK;
+    CHECK(painted > 0 && painted < 11 * 5); /* speckled */
+
+    for (x = 43; x < 100; x++) /* past the last stamp's reach */
+      CHECK(px(doc, x, 4) == WHITE);
+
+    /* no pot paints the whole way */
+    paintingdoc_brush(doc, POINT(0, 4), POINT(99, 4),
+                      paintingdoc_NOZZLE_SQUARE, 5, black(), NULL);
+    CHECK(px(doc, 99, 4) == BLACK);
+  }
+  paintingdoc_destroy(doc);
+
   printf("paintingdoc: all tests passed\n");
 
   return result_TEST_PASSED;

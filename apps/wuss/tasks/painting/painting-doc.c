@@ -527,16 +527,40 @@ box_t paintingdoc_brush(paintingdoc_t       *doc,
                         point_t              b,
                         paintingdoc_nozzle_t nozzle,
                         int                  size,
-                        colour_t             colour)
+                        colour_t             colour,
+                        paintingdoc_pot_t   *pot)
 {
-  box_t dirty;
-  int   r, n, i, dx, dy, cx, cy, x, y;
+  box_t    dirty;
+  int      r, n;
+  uint32_t per_left;
+  int      i;
+  uint32_t cover;
+  int      cx, cy, dx, dy, x, y;
 
   r = MAX(size, 1) / 2;
   n = MAX(abs(b.x - a.x), abs(b.y - a.y));
 
+  /* 2^24 / load, so a stamp's cover, left * 2^17 / load, needs no divide;
+   * 0 if the paint never runs out */
+  per_left = (pot != NULL && pot->load > 0) ? (1u << 24) / (uint32_t) pot->load
+                                            : 0;
+
   for (i = 0; i <= n; i++)
   {
+    /* the share of the nozzle's pixels this stamp paints, out of 65536.
+     * the first stamp of a later segment repeats the last one's end, so is
+     * free */
+    cover = 65536;
+    if (per_left != 0)
+    {
+      if (pot->left <= 0)
+        break;
+      if (pot->left * 2 < pot->load)
+        cover = ((uint32_t) pot->left * per_left) >> 7;
+      if (i > 0 || n == 0)
+        pot->left--;
+    }
+
     cx = n ? a.x + (b.x - a.x) * i / n : a.x;
     cy = n ? a.y + (b.y - a.y) * i / n : a.y;
 
@@ -552,8 +576,13 @@ box_t paintingdoc_brush(paintingdoc_t       *doc,
         if (x < 0 || x >= doc->bm.size.w)
           continue;
 
-        if (nozzle_hits(nozzle, r, dx, dy))
-          screen_set_pixel(&doc->scr, x, y, colour);
+        if (!nozzle_hits(nozzle, r, dx, dy))
+          continue;
+        if (cover < 65536 &&
+            (rng_hash32(pot->seed, y * doc->bm.size.w + x) & 0xFFFFu) >= cover)
+          continue;
+
+        screen_set_pixel(&doc->scr, x, y, colour);
       }
     }
   }

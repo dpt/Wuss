@@ -42,6 +42,14 @@ makes an instance of its own.
 - The wobbly brush draws an inked line whose two edges wander in and out
   on their own, swelling slowly and jittering finely, in the manner of
   Ellis Nadler's drawings. Each stroke wobbles differently.
+- The paintbrush's **Dry** slider makes each stroke run out of paint. At 0%
+  (the default) it never does. Above that, the stroke stays solid for the
+  first half of its paint, then misses more and more pixels, like a dry
+  brush, until it paints nothing. Higher settings run dry sooner: at 100% a
+  stroke lasts about 40 pixels. Each new stroke starts with a full brush.
+  The paint pot after the slider drains as a stroke uses its paint, shows
+  empty once the stroke has run dry and fills again when the next stroke
+  starts.
 - The colour picker takes the foreground (SELECT) or the background
   (ADJUST) colour from the canvas pixel clicked.
 - Spray scatters dots in a disc round the pointer. Dots build up while the

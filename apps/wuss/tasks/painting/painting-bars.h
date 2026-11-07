@@ -48,6 +48,7 @@
 #define SB_LABEL_GAP   4   /* between a setting's label and its control */
 #define SB_SETTING_GAP 10  /* between settings */
 #define SB_SLIDER_W    58
+#define SB_POT         16  /* the pot gauge's images */
 #define SB_W           580 /* wide enough for the widest tool's settings */
 #define SB_H(wuss)     (SB_MARGIN + SB_ROW_H(wuss) + SB_MARGIN)
 
@@ -68,6 +69,9 @@ result_t painting_set_tool(painting_task_t *pt, painting_tool_t tool);
 
 /* pick the paintbrush's nozzle, keeping the size bar and menu in step */
 void painting_set_nozzle(painting_task_t *pt, int nozzle);
+
+/* show on the pot gauge how full the paintbrush's pot is */
+void painting_pot_gauge(painting_task_t *pt);
 
 /* a wuss_EVENT_ICON on the toolbox or size bar */
 result_t painting_toolbar_icon(painting_task_t    *pt,

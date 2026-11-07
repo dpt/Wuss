@@ -14,6 +14,7 @@
 #include "utils/rng.h"
 
 #include "painting.h"
+#include "painting-bars.h"
 #include "painting-tools.h"
 
 /* the spray's radius in pixels per unit of the size slider */
@@ -202,9 +203,15 @@ box_t painting_stroke_segment(painting_task_t *pt,
                                      point_t          a,
                                      point_t          b)
 {
+  box_t dirty;
+
   if (pt->tool == painting_TOOL_PAINTBRUSH)
-    return paintingdoc_brush(pt->doc, a, b, pt->nozzle, pt->size,
-                             painting_stroke_colour(pt));
+  {
+    dirty = paintingdoc_brush(pt->doc, a, b, pt->nozzle, pt->size,
+                              painting_stroke_colour(pt), &pt->pot);
+    painting_pot_gauge(pt);
+    return dirty;
+  }
   if (pt->tool == painting_TOOL_WOBBLE)
     return paintingdoc_wobble(pt->doc, a, b, pt->size, pt->edge, pt->wander,
                               painting_stroke_colour(pt), &pt->wobble);

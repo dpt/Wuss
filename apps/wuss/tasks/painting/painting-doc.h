@@ -107,15 +107,28 @@ typedef enum paintingdoc_nozzle
 }
 paintingdoc_nozzle_t;
 
+/* the paint a brush stroke has to draw on, carried from one segment to the
+ * next. it holds load stamps' worth. past half full the stroke runs dry: it
+ * misses more pixels as the paint runs out, and an empty pot paints nothing.
+ * which pixels it misses is fixed by seed, so overlapping stamps agree */
+typedef struct paintingdoc_pot
+{
+  uint32_t seed; /* picks the pixels a drying stroke misses */
+  int      load; /* stamps a full pot paints; 0 never runs dry */
+  int      left; /* stamps left in the pot */
+}
+paintingdoc_pot_t;
+
 /* stamp the nozzle, size pixels across, at every pixel step from a to b
- * (a == b stamps once). the caller takes the checkpoint, as for
- * paintingdoc_stroke */
+ * (a == b stamps once), drawing on pot, or endless paint if pot is NULL.
+ * the caller takes the checkpoint, as for paintingdoc_stroke */
 box_t paintingdoc_brush(paintingdoc_t       *doc,
                         point_t              a,
                         point_t              b,
                         paintingdoc_nozzle_t nozzle,
                         int                  size,
-                        colour_t             colour);
+                        colour_t             colour,
+                        paintingdoc_pot_t   *pot);
 
 /* a wobbly stroke's progress, carried from one segment to the next so the
  * wobble runs on unbroken. set seed to any value (a fresh one per stroke for

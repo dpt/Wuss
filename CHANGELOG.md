@@ -15,6 +15,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   document area is dragged.
 - Task Manager: lowest and highest counts of apps, tasks, windows and visible
   windows.
+- Painting: a Dry setting for the paintbrush. Each stroke starts with a full
+  brush, stays solid for half its paint, then speckles out like a dry brush.
+  0% (the default) never runs dry. A paint pot beside the slider drains as
+  the stroke goes.
 
 ## [0.24.0] - 2026-11-05
 
