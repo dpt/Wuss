@@ -72,7 +72,7 @@ enum
   EFFECTING_MENU__LIMIT
 };
 
-/* window's task: a PNG dropped on its icon or window (DataLoad) is run
+/* window's task: a PNG or JPEG dropped on its icon or window (DataLoad) is run
  * through a stack of framebuf/effects functions, top to bottom, and the
  * outcome blended with the original by Level (-100% to 200%). SELECT toggles
  * between the result and the original. The stack is shown in a second

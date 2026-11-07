@@ -38,7 +38,8 @@ enum
   RESIZING_MENU__LIMIT
 };
 
-/* window's task: a PNG dropped on its icon or window (DataLoad) resampled by
+/* window's task: a PNG or JPEG dropped on its icon or window (DataLoad)
+ * resampled by
  * bitmap_resize to the chosen scale. MENU picks the method and scale, and
  * every change resamples at once. Save writes the resized result as a
  * PNG. */
@@ -168,18 +169,18 @@ static void resizing_saveas_name(resizing_task_t *rt)
   wuss_saveas_set_leafname(rt->base.saveas, leafname);
 }
 
-/* Load the PNG at path and resize it. A load failure keeps the current
- * image and is returned. */
+/* Load the PNG or JPEG at path and resize it. A load failure keeps the
+ * current image and is returned. */
 static result_t resizing_show(resizing_task_t *rt, const char *path)
 {
   result_t rc;
   bitmap_t next;
   char     name[RESIZING_MAX_NAME_LEN];
 
-  if (!path_leaf_strip_ext(path_leaf(path), ".png", name, sizeof(name)))
+  if (!task_image_name(path, name, sizeof(name)))
     return result_BAD_ARG;
 
-  rc = bitmap_load_png_deep(&next, path, pixelfmt_rgbx8888);
+  rc = bitmap_load_deep(&next, path, pixelfmt_rgbx8888);
   if (rc != result_OK)
   {
     logf_warning("resizing: cannot load \"%s\" (rc=0x%X)", path, rc);

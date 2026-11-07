@@ -101,9 +101,9 @@ static result_t painting_saveas_save(const char *path, void *opaque)
   return result_OK;
 }
 
-/* load the PNG at path as the canvas, shrinking the window to the image's
- * stage if that is smaller than the usual view. A failure keeps the current
- * canvas */
+/* load the PNG or JPEG at path as the canvas, shrinking the window to the
+ * image's stage if that is smaller than the usual view. A failure keeps the
+ * current canvas */
 static result_t painting_load(painting_task_t *pt, const char *path)
 {
   result_t rc;
@@ -111,7 +111,7 @@ static result_t painting_load(painting_task_t *pt, const char *path)
 
   pt->held = 0; /* abandon any stroke in progress */
 
-  rc = paintingdoc_load_png(pt->doc, path);
+  rc = paintingdoc_load(pt->doc, path);
   if (rc != result_OK)
     return rc;
 

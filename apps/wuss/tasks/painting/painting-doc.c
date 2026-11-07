@@ -117,21 +117,21 @@ void paintingdoc_destroy(paintingdoc_t *doc)
   free(doc);
 }
 
-/* free the pixels and palette of a bitmap that bitmap_load_png made */
+/* free the pixels and palette of a bitmap that bitmap_load made */
 static void bitmap_discard(bitmap_t *bm)
 {
   free(bm->base);
   free(bm->palette);
 }
 
-result_t paintingdoc_load_png(paintingdoc_t *doc, const char *path)
+result_t paintingdoc_load(paintingdoc_t *doc, const char *path)
 {
   result_t rc;
   bitmap_t src;
   bitmap_t next;
   screen_t scr;
 
-  rc = bitmap_load_png(&src, path);
+  rc = bitmap_load(&src, path);
   if (rc != result_OK)
     return rc;
 

@@ -137,11 +137,7 @@ typedef struct pinboard
   wuss_colour_t      label_accent; /* a selected label's text */
   int                threshold;
 
-  const bitmap_t    *glyph_file;
   const bitmap_t    *glyph_dir;
-  const bitmap_t    *glyph_png;
-  const bitmap_t    *glyph_text;
-  const bitmap_t    *glyph_markdown;
 
   dithermenu_t       dither; /* "Display" submenu */
   wuss_menu_item_t   pattern_items[NELEMS(pinboard_patterns)];
@@ -469,7 +465,7 @@ static result_t pinboard_set_image(pinboard_t *pb, const char *path)
   result_t rc;
   bitmap_t image;
 
-  rc = bitmap_load_png_deep(&image, path, pixelfmt_rgbx8888);
+  rc = bitmap_load_deep(&image, path, pixelfmt_rgbx8888);
   if (rc != result_OK)
     return rc;
 
@@ -489,14 +485,8 @@ static const bitmap_t *pinboard_glyph(const pinboard_t *pb, const pin_t *pin)
 {
   if (pin->is_dir)
     return pb->glyph_dir;
-  if (pin->type.riscos == filetype_RISCOS_PNG)
-    return pb->glyph_png;
-  if (pin->type.riscos == filetype_RISCOS_TEXT)
-    return pb->glyph_text;
-  if (pin->type.riscos == filetype_RISCOS_MARKDOWN)
-    return pb->glyph_markdown;
 
-  return pb->glyph_file;
+  return task_file_glyph(pb->task, pin->type.riscos);
 }
 
 /* the glyph centred at the top of the cell, the leafname below it in a
@@ -702,15 +692,15 @@ static void pinboard_drag_end(pinboard_t *pb, const wuss_event_t *event)
 
 /* ----------------------------------------------------------------------- */
 
-/* the first selected PNG pin, which Image > Centre, Tile and Scale take as
- * the backdrop image, or -1 */
-static int pinboard_selected_png(const pinboard_t *pb)
+/* the first selected PNG or JPEG pin, which Image > Centre, Tile and Scale
+ * take as the backdrop image, or -1 */
+static int pinboard_selected_image(const pinboard_t *pb)
 {
   int i;
 
   for (i = 0; i < pb->npins; i++)
     if (pb->pins[i].selected && !pb->pins[i].is_dir &&
-        pb->pins[i].type.riscos == filetype_RISCOS_PNG)
+        task_is_image_type(pb->pins[i].type.riscos))
       return i;
 
   return -1;
@@ -766,7 +756,7 @@ static void pinboard_menu_update(pinboard_t *pb)
     wuss_menu_tick_item_live(pb->menu_handle, &pb->pattern_menu, i, set);
   }
 
-  no_image = !pb->have_image && pinboard_selected_png(pb) < 0;
+  no_image = !pb->have_image && pinboard_selected_image(pb) < 0;
   for (i = 0; i < PINBOARD_IMAGE__LIMIT; i++)
   {
     set = i == pb->image_mode;
@@ -789,7 +779,7 @@ static result_t pinboard_menu_select(pinboard_t         *pb,
 {
   result_t           rc;
   const wuss_menu_t *menu;
-  int                index, ok, png;
+  int                index, ok, pin;
   wuss_colour_t      colour;
 
   menu  = event->data.menu_select.menu;
@@ -824,11 +814,12 @@ static result_t pinboard_menu_select(pinboard_t         *pb,
 
   if (menu == &pb->image_menu)
   {
-    /* a selected PNG pin replaces the image; a drop with SHIFT sets one too */
-    png = pinboard_selected_png(pb);
-    if (index != PINBOARD_IMAGE_NONE && png >= 0)
+    /* a selected image pin replaces the image; a drop with SHIFT sets one
+     * too */
+    pin = pinboard_selected_image(pb);
+    if (index != PINBOARD_IMAGE_NONE && pin >= 0)
     {
-      rc = pinboard_set_image(pb, pb->pins[png].path);
+      rc = pinboard_set_image(pb, pb->pins[pin].path);
       if (rc != result_OK)
         return rc;
     }
@@ -996,7 +987,7 @@ static result_t pinboard_message(pinboard_t         *pb,
   {
     /* SHIFT and drop: an image becomes the backdrop instead of a pin */
     dot = strrchr(path_leaf(path), '.');
-    if (dot == NULL || filetype_from_ext(dot).riscos != filetype_RISCOS_PNG ||
+    if (dot == NULL || !task_is_image_type(filetype_from_ext(dot).riscos) ||
         pinboard_set_image(pb, path) != result_OK)
       return result_OK;
     return wuss_acknowledge(pb->wuss, pb->task, msg);
@@ -1191,11 +1182,7 @@ result_t pinboard_app_create(wuss_t *wuss)
     return rc;
   }
 
-  pb->glyph_file     = wuss_task_iconpool_find(pb->task, "file_unk");
-  pb->glyph_dir      = wuss_task_iconpool_find(pb->task, "file_dir");
-  pb->glyph_png      = wuss_task_iconpool_find(pb->task, "file_b60");
-  pb->glyph_text     = wuss_task_iconpool_find(pb->task, "file_fff");
-  pb->glyph_markdown = wuss_task_iconpool_find(pb->task, "file_1d0");
+  pb->glyph_dir = wuss_task_iconpool_find(pb->task, "file_dir");
 
   /* wuss sizes the backdrop window to the screen; the box is ignored */
   box = (box_t) BOX_POS_SIZE(0, 0, 1, 1);

@@ -30,11 +30,11 @@
 #include "../common/taskapp.h"
 #include "../common/common.h"
 
-/* window's task: a loaded PNG, alpha-tested against the window
+/* window's task: a loaded PNG or JPEG, alpha-tested against the window
  * background (this test screen is paletted, so fully-transparent source
  * pixels are skipped and everything else is drawn at full strength). The
  * window starts empty; a wuss_MESSAGE_DATA_LOAD sent to it, whose payload is
- * the path of a PNG, shows that image; a file that will not load is not
+ * the path of an image, shows that image; a file that will not load is not
  * acknowledged. Dragging the image grabs it, scrolling the window. Menu's
  * "Tile" repeats the image edge to edge over a screen-sized window instead;
  * SELECT drag then moves the tile origin. */
@@ -280,14 +280,14 @@ static result_t viewing_redraw(const wuss_event_t *event, void *task_data)
   return result_OK;
 }
 
-/* Load the PNG at path and show it, resizing the window to fit. On failure
+/* Load the PNG or JPEG at path and show it, resizing the window to fit. On failure
  * the current image stays and the error is returned. */
 static result_t viewing_show(viewing_task_t *ic, const char *path)
 {
   result_t rc;
   bitmap_t next;
 
-  rc = bitmap_load_png_deep(&next, path, pixelfmt_rgbx8888);
+  rc = bitmap_load_deep(&next, path, pixelfmt_rgbx8888);
   if (rc != result_OK)
   {
     logf_warning("viewing: cannot load \"%s\" (rc=0x%X)", path, rc);
@@ -307,7 +307,7 @@ static result_t viewing_show(viewing_task_t *ic, const char *path)
   return result_OK;
 }
 
-/* Show the PNG 'step' places (+1 or -1) from the current one in its
+/* Show the PNG or JPEG 'step' places (+1 or -1) from the current one in its
  * directory, in leafname order and wrapping at either end. Files that fail
  * to load are skipped. */
 static result_t viewing_page(viewing_task_t *ic, int step)
@@ -344,7 +344,7 @@ static result_t viewing_page(viewing_task_t *ic, int step)
     if (idx == cur)
       break; /* back round to the current file */
     entry = dirlist_get(list, idx);
-    if (entry->is_dir || entry->type.riscos != filetype_RISCOS_PNG)
+    if (entry->is_dir || !task_is_image_type(entry->type.riscos))
       continue;
     if (dirlen + strlen(entry->leaf) >= sizeof(next))
       continue;
@@ -628,11 +628,14 @@ static result_t viewing_handle(wuss_window_t      *window,
 
 result_t viewing_app_create(wuss_t *wuss)
 {
-  static const unsigned short opens[] = { filetype_RISCOS_PNG, 0 };
+  static const unsigned short opens[] =
+  {
+    filetype_RISCOS_PNG, filetype_RISCOS_JPEG, 0
+  };
   static const taskapp_desc_t desc =
   {
     .name          = "Viewing",
-    .purpose       = "View PNG images",
+    .purpose       = "View PNG and JPEG images",
     .data_load     = (taskapp_data_load_fn_t) viewing_show,
     .drop_only     = true,
     .opens         = opens,

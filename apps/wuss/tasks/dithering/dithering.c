@@ -123,8 +123,8 @@ enum
   DITHERING_MENU__LIMIT
 };
 
-/* window's task: a PNG dropped on its icon or window (DataLoad) reduced by
- * dither_bitmap, optionally to a computed palette. A SELECT click toggles
+/* window's task: a PNG or JPEG dropped on its icon or window (DataLoad)
+ * reduced by dither_bitmap, optionally to a computed palette. A SELECT click toggles
  * between the dithered result and the original; MENU picks the options, and
  * every change re-dithers at once; Colours and Strength are slider
  * dialogues. Show palette opens a second window of swatches for the palette
@@ -475,18 +475,18 @@ static void dithering_saveas_name(dithering_task_t *dt)
   wuss_saveas_set_leafname(dt->base.saveas, leafname);
 }
 
-/* Load the PNG at path and dither it, resizing the window to fit. A load
- * failure keeps the current image and is returned. */
+/* Load the PNG or JPEG at path and dither it, resizing the window to fit. A
+ * load failure keeps the current image and is returned. */
 static result_t dithering_show(dithering_task_t *dt, const char *path)
 {
   result_t rc;
   bitmap_t next;
   char     name[DITHERING_MAX_NAME_LEN];
 
-  if (!path_leaf_strip_ext(path_leaf(path), ".png", name, sizeof(name)))
+  if (!task_image_name(path, name, sizeof(name)))
     return result_BAD_ARG;
 
-  rc = bitmap_load_png_deep(&next, path, pixelfmt_rgbx8888);
+  rc = bitmap_load_deep(&next, path, pixelfmt_rgbx8888);
   if (rc != result_OK)
   {
     logf_warning("dithering: cannot load \"%s\" (rc=0x%X)", path, rc);

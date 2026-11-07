@@ -22,7 +22,7 @@ Build directories are per-config; there is **no** plain `build/` — never invok
 - `build-sdl/`   — Release, ASan on, tests and apps on (`BUILD_APPS=ON`). Needed for the interactive `wuss` app (target `wuss`) and anything under `apps/wuss/tasks/`.
 - `build-wuss-min/` — Release, tests with `WUSS_FURNITURE=OFF`. Checks the subsystem options still build when trimmed. If missing, configure with `cmake -B build-wuss-min -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTS=YES -DWUSS_FURNITURE=OFF -DFETCHCONTENT_SOURCE_DIR_DPTLIB=../DPTLib`.
 - RISC OS: GCCSDK cross build via `cmake/riscos.cmake`; no build dir is kept. Leave alone unless working on RISC OS.
-- `build-emscripten/` — WebAssembly build of the demo. If missing, configure with `emcmake cmake -B build-emscripten -G Ninja -DBUILD_APPS=ON -DBUILD_TESTS=OFF`, build with `cmake --build build-emscripten --target wuss`, then serve the dir and open `wuss.html` (e.g. `python3 -m http.server -d build-emscripten`). Uses Emscripten's bundled SDL3 and libpng ports (`-sUSE_SDL=3`, `-sUSE_LIBPNG=1`); the browser owns the main loop via `emscripten_set_main_loop_arg`; `resources/` is baked into `wuss.data` and mounted at MEMFS `/resources`. `.github/workflows/pages.yml` publishes this build.
+- `build-emscripten/` — WebAssembly build of the demo. If missing, configure with `emcmake cmake -B build-emscripten -G Ninja -DBUILD_APPS=ON -DBUILD_TESTS=OFF`, build with `cmake --build build-emscripten --target wuss`, then serve the dir and open `wuss.html` (e.g. `python3 -m http.server -d build-emscripten`). Uses Emscripten's bundled SDL3, libpng and libjpeg ports (`-sUSE_SDL=3`, `-sUSE_LIBPNG=1`, `-sUSE_LIBJPEG=1`); the browser owns the main loop via `emscripten_set_main_loop_arg`; `resources/` is baked into `wuss.data` and mounted at MEMFS `/resources`. `.github/workflows/pages.yml` publishes this build.
 
 CMake options: `BUILD_TESTS`, `BUILD_APPS` (the `wuss` demo; needs `WUSS_FURNITURE` and `WUSS_COMPONENTS`, and SDL3 off RISC OS), `USE_ASAN` (ASan + UBSan; DPTLib reads the same cache variable). Subsystems, all default ON: `WUSS_FURNITURE`, `WUSS_ICONBAR`, `WUSS_ICONS`, `WUSS_MENUS` (implies icons), `WUSS_GADGETS` (implies menus), `WUSS_COMPONENTS` (implies gadgets). DPTLib's own options (`USE_FORTIFY`, `DPTLIB_IMAGES_READ_ONLY`) pass through. `BUILD_APPS` turns on DPTLib's `DPTLIB_CRT` off RISC OS, with `DPTLIB_CRT_VULKAN` off, as Wuss cannot recreate its window to reclaim a swapchain on Linux. It also turns on `DPTLIB_ALLOC_COUNT` unless `USE_FORTIFY` is set: `malloc`, `calloc`, `realloc`, `free` and `strdup` then become macros for the counting allocator in all code linking DPTLib, so such blocks must not cross to or from uninstrumented code (libc, SDL, the fetched game libraries). DPTLib's tests are never built from here: its test block is guarded by `PROJECT_IS_TOP_LEVEL`.
 
@@ -37,7 +37,7 @@ cmake --build build-asan --target WussTest
 cmake --build build-sdl --target wuss    # interactive app
 ```
 
-The library target is `WussLib` (so it does not clash, case-insensitively, with the `wuss` executable). Requires libpng through DPTLib.
+The library target is `WussLib` (so it does not clash, case-insensitively, with the `wuss` executable). Requires libpng and libjpeg through DPTLib.
 
 ## Testing
 
@@ -78,7 +78,7 @@ Painting demo: `SDL_VIDEODRIVER=dummy build-sdl/wuss --tasks Painting --script F
 
 **Docs.** `docs/windowing/` (start at `wuss.md`), `docs/adr/` for decisions, `CONTEXT.md` for the domain glossary.
 
-**RISC OS.** `TARGET_RISCOS` (set by the toolchain file) makes DPTLib fetch and build zlib and libpng from source, links OSLib from `$GCCSDK_INSTALL_ENV` and applies `riscos_set_flags()`. The demo uses `apps/wuss/frontend-riscos.c` instead of SDL.
+**RISC OS.** `TARGET_RISCOS` (set by the toolchain file) makes DPTLib fetch and build zlib, libpng and libjpeg-turbo from source, links OSLib from `$GCCSDK_INSTALL_ENV` and applies `riscos_set_flags()`. The demo uses `apps/wuss/frontend-riscos.c` instead of SDL.
 
 ## Code style
 

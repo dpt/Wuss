@@ -121,13 +121,9 @@ struct filing_task
   int                    nwindows; /* slots used so far; a closed window's
                                     * slot stays, window NULL, for reuse */
 
-  const bitmap_t        *glyph_file; /* borrowed from the icon pool */
-  const bitmap_t        *glyph_directory;
+  const bitmap_t        *glyph_directory; /* borrowed from the icon pool */
   const bitmap_t        *glyph_directory_open; /* for a directory with a
                                                 * window open on it */
-  const bitmap_t        *glyph_png;
-  const bitmap_t        *glyph_text;
-  const bitmap_t        *glyph_markdown;
 
   char                   drag_path[DPTLIB_MAXPATH]; /* file being dragged,
                                        * or "" */

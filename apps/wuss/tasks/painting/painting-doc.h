@@ -38,11 +38,11 @@ result_t paintingdoc_create_filled(size2d_t        size,
 /* free a canvas and its undo history. doc may be NULL */
 void paintingdoc_destroy(paintingdoc_t *doc);
 
-/* replace the canvas with the PNG at path, resized to match it, keeping any
- * transparency it has. discards the undo history, as it could not be applied
- * to a canvas of another size. on any failure the canvas and its history are
- * left as they were */
-result_t paintingdoc_load_png(paintingdoc_t *doc, const char *path);
+/* replace the canvas with the PNG or JPEG at path, resized to match it,
+ * keeping any transparency it has. discards the undo history, as it could
+ * not be applied to a canvas of another size. on any failure the canvas and
+ * its history are left as they were */
+result_t paintingdoc_load(paintingdoc_t *doc, const char *path);
 
 /* non-zero if the canvas has changed (drawn on or undone) since it was
  * created, loaded or last marked saved */
@@ -220,7 +220,7 @@ int paintingdoc_pick(const paintingdoc_t *doc, point_t p, colour_t *colour);
  * rect or fill leaves the rest of the canvas as it was. there is at most one;
  * making a new one replaces it, adds to it or takes from it, as the
  * paintingdoc_selop_t passed says. it is not part of the undo history.
- * loading a PNG drops it */
+ * loading an image drops it */
 
 /* how a newly made area meets the selection already there */
 typedef enum paintingdoc_selop
@@ -275,7 +275,7 @@ box_t paintingdoc_selection_bounds(const paintingdoc_t *doc);
 const box_t *paintingdoc_selection_outline(const paintingdoc_t *doc, int *n);
 
 /* moving the selection: lift its pixels, place them as often as the drag
- * needs, then drop them. a new selection or a loaded PNG also drops them */
+ * needs, then drop them. a new selection or a loaded image also drops them */
 
 /* lift the selected pixels to move them, taking a checkpoint first. fails
  * with result_BAD_ARG if there is no selection, or result_OOM */

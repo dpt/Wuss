@@ -574,6 +574,7 @@ static const struct
 g_run_types[] =
 {
   { filetype_RISCOS_PNG,      "Viewing" },
+  { filetype_RISCOS_JPEG,     "Viewing" },
   { filetype_RISCOS_TEXT,     "Reading" },
   { filetype_RISCOS_MARKDOWN, "Reading" }
 };

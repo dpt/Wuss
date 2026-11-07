@@ -15,6 +15,7 @@
 #include "geom/box.h"
 #include "geom/point.h"
 #include "geom/size.h"
+#include "io/filetype.h"
 #include "io/path.h"
 #include "wuss/menu.h"
 #include "wuss/message.h"
@@ -179,6 +180,50 @@ static inline int task_text_width(const wuss_t *wuss, const char *text)
                           INT_MAX, NULL, &width);
 
   return width;
+}
+
+/* glyph for a file of RISC OS type riscos: "file_" plus the type in lower
+ * case hex (0xC85 finds "file_c85"), else the generic "file_unk". Looked up
+ * through task's pools; NULL if neither is there */
+static inline const bitmap_t *task_file_glyph(const wuss_task_t *task,
+                                              unsigned int       riscos)
+{
+  char            name[16];
+  const bitmap_t *bm;
+
+  snprintf(name, sizeof(name), "file_%03x", riscos);
+  bm = wuss_task_iconpool_find(task, name);
+  if (bm == NULL)
+    bm = wuss_task_iconpool_find(task, "file_unk");
+
+  return bm;
+}
+
+/* nonzero if bitmap_load reads files of RISC OS type riscos */
+static inline int task_is_image_type(unsigned int riscos)
+{
+  return riscos == filetype_RISCOS_PNG || riscos == filetype_RISCOS_JPEG;
+}
+
+/* the leafname of the image at path less its ".png", ".jpg" or ".jpeg"
+ * extension (all lower or all upper case), into name (capacity cap). zero if
+ * it has none of them or does not fit */
+static inline int task_image_name(const char *path, char *name, size_t cap)
+{
+  static const char *exts[] =
+  {
+    ".png", ".jpg", ".jpeg", ".PNG", ".JPG", ".JPEG"
+  };
+
+  const char *leaf;
+  size_t      i;
+
+  leaf = path_leaf(path);
+  for (i = 0; i < sizeof(exts) / sizeof(exts[0]); i++)
+    if (path_leaf_strip_ext(leaf, exts[i], name, cap))
+      return 1;
+
+  return 0;
 }
 
 /* smallest width of a button labelled text inside a border of the given

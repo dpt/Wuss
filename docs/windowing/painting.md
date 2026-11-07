@@ -94,8 +94,8 @@ Undo keeps RLE-compressed copies of the whole canvas. A stroke takes one
 
 ## Loading
 
-`paintingdoc_load_png` replaces the canvas and resizes it to the image. Undo is
-dropped, as a saved step cannot apply to a canvas of another size. An image
+`paintingdoc_load` replaces the canvas with a PNG or JPEG and resizes it to
+the image. Undo is dropped, as a saved step cannot apply to a canvas of another size. An image
 with an alpha channel is composited over white. A paletted image is converted
 to `bgrx8888`, which loses any palette transparency. On failure the canvas is
 left as it was.

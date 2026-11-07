@@ -471,9 +471,9 @@ static result_t effecting_open_list(effecting_task_t *ec)
   return wuss_window_place(ec->list_window, &place); /* for its fitted size */
 }
 
-/* Load the PNG at path and re-apply, resizing the window to fit. The image
- * and list windows open with the first image, sized and placed for it. A
- * load failure keeps the current image and is returned. */
+/* Load the PNG or JPEG at path and re-apply, resizing the window to fit. The
+ * image and list windows open with the first image, sized and placed for it.
+ * A load failure keeps the current image and is returned. */
 static result_t effecting_show(effecting_task_t *ec, const char *path)
 {
   result_t rc;
@@ -481,10 +481,10 @@ static result_t effecting_show(effecting_task_t *ec, const char *path)
   char     name[EFFECTING_MAX_NAME_LEN];
   int      opening;
 
-  if (!path_leaf_strip_ext(path_leaf(path), ".png", name, sizeof(name)))
+  if (!task_image_name(path, name, sizeof(name)))
     return result_BAD_ARG;
 
-  rc = bitmap_load_png_deep(&next, path, pixelfmt_rgbx8888);
+  rc = bitmap_load_deep(&next, path, pixelfmt_rgbx8888);
   if (rc != result_OK)
   {
     logf_warning("effecting: cannot load \"%s\" (rc=0x%X)", path, rc);
@@ -919,7 +919,7 @@ result_t effecting_app_create(wuss_t *wuss)
   static const taskapp_desc_t desc =
   {
     .name          = "Effecting",
-    .purpose       = "Apply effects to PNGs",
+    .purpose       = "Apply effects to images",
     .data_load     = (taskapp_data_load_fn_t) effecting_show,
     .drop_only     = true,
     .instance_size = sizeof(effecting_task_t),

@@ -198,16 +198,7 @@ static const bitmap_t *filing_glyph_for(const filing_window_t *fw,
   if (entry->is_dir)
     return task->glyph_directory;
 
-  if (entry->type.riscos == filetype_RISCOS_PNG)
-    return task->glyph_png;
-
-  if (entry->type.riscos == filetype_RISCOS_TEXT)
-    return task->glyph_text;
-
-  if (entry->type.riscos == filetype_RISCOS_MARKDOWN)
-    return task->glyph_markdown;
-
-  return task->glyph_file;
+  return task_file_glyph(task->delegate, entry->type.riscos);
 }
 
 static void filing_item(int index, void *opaque, wuss_gridview_item_t *out)
@@ -577,12 +568,8 @@ result_t filing_create(wuss_t *wuss, filing_task_t **out)
     return rc;
   }
 
-  task->glyph_file           = filing_find_glyph(task->delegate, "file_unk");
   task->glyph_directory      = filing_find_glyph(task->delegate, "file_dir");
   task->glyph_directory_open = filing_find_glyph(task->delegate, "file_diro");
-  task->glyph_png            = filing_find_glyph(task->delegate, "file_b60");
-  task->glyph_text           = filing_find_glyph(task->delegate, "file_fff");
-  task->glyph_markdown       = filing_find_glyph(task->delegate, "file_1d0");
 
   memset(&spec, 0, sizeof(spec));
   spec.text     = "Filing";

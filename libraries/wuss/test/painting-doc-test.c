@@ -145,7 +145,7 @@ result_t paintingdoc_test(const char *resources)
   paintingdoc_destroy(doc);
 
   CHECK(paintingdoc_create(SIZE2D(2, 2), &doc) == result_OK);
-  CHECK(paintingdoc_load_png(doc, path) == result_OK);
+  CHECK(paintingdoc_load(doc, path) == result_OK);
   remove(path);
   CHECK(paintingdoc_bitmap(doc)->size.w == 8);
   CHECK(px(doc, 0, 0) == CLEAR);
@@ -503,7 +503,7 @@ result_t paintingdoc_test(const char *resources)
   snprintf(path, sizeof(path), "%s/resources/wuss-tasks/images/bob-lady.png",
            resources);
   CHECK(paintingdoc_checkpoint(doc) == result_OK);
-  CHECK(paintingdoc_load_png(doc, path) == result_OK);
+  CHECK(paintingdoc_load(doc, path) == result_OK);
   CHECK(paintingdoc_bitmap(doc)->size.w == 64);
   CHECK(paintingdoc_bitmap(doc)->size.h == 64);
   CHECK(!paintingdoc_can_undo(doc));
@@ -517,7 +517,7 @@ result_t paintingdoc_test(const char *resources)
 
   snprintf(path, sizeof(path), "%s/resources/wuss-tasks/images/smred.png",
            resources);
-  CHECK(paintingdoc_load_png(doc, path) == result_OK);
+  CHECK(paintingdoc_load(doc, path) == result_OK);
   CHECK(paintingdoc_bitmap(doc)->size.w == 512);
   CHECK(paintingdoc_bitmap(doc)->size.h == 512);
 
@@ -526,7 +526,7 @@ result_t paintingdoc_test(const char *resources)
   paintingdoc_stroke(doc, POINT(5, 5), POINT(5, 5), 1, red());
   snprintf(path, sizeof(path),
            "%s/resources/wuss-tasks/images/no-such-file.png", resources);
-  CHECK(paintingdoc_load_png(doc, path) != result_OK);
+  CHECK(paintingdoc_load(doc, path) != result_OK);
   CHECK(paintingdoc_bitmap(doc)->size.w == 512);
   CHECK(px(doc, 5, 5) == RED);
 
@@ -539,7 +539,7 @@ result_t paintingdoc_test(const char *resources)
   paintingdoc_destroy(doc);
 
   CHECK(paintingdoc_create(SIZE2D(8, 8), &doc) == result_OK);
-  CHECK(paintingdoc_load_png(doc, path) == result_OK);
+  CHECK(paintingdoc_load(doc, path) == result_OK);
   remove(path);
   CHECK(paintingdoc_bitmap(doc)->size.w == 512);
   CHECK(px(doc, 5, 5) == RED);
