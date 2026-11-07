@@ -500,7 +500,7 @@ result_t paintingdoc_test(const char *resources)
   printf("test: loading a paletted or an RGB PNG resizes the canvas, drops "
          "the undo history and keeps the picture\n");
 
-  snprintf(path, sizeof(path), "%s/resources/wuss-tasks/images/bob-lady.png",
+  snprintf(path, sizeof(path), "%s/resources/test/wuss/painting/bob-lady.png",
            resources);
   CHECK(paintingdoc_checkpoint(doc) == result_OK);
   CHECK(paintingdoc_load(doc, path) == result_OK);
@@ -515,7 +515,7 @@ result_t paintingdoc_test(const char *resources)
       n += px(doc, x, y) != WHITE;
   CHECK(n > 100);
 
-  snprintf(path, sizeof(path), "%s/resources/wuss-tasks/images/smred.png",
+  snprintf(path, sizeof(path), "%s/resources/test/wuss/painting/rgb512.png",
            resources);
   CHECK(paintingdoc_load(doc, path) == result_OK);
   CHECK(paintingdoc_bitmap(doc)->size.w == 512);
@@ -525,7 +525,7 @@ result_t paintingdoc_test(const char *resources)
 
   paintingdoc_stroke(doc, POINT(5, 5), POINT(5, 5), 1, red());
   snprintf(path, sizeof(path),
-           "%s/resources/wuss-tasks/images/no-such-file.png", resources);
+           "%s/resources/test/wuss/painting/no-such-file.png", resources);
   CHECK(paintingdoc_load(doc, path) != result_OK);
   CHECK(paintingdoc_bitmap(doc)->size.w == 512);
   CHECK(px(doc, 5, 5) == RED);
