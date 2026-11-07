@@ -65,8 +65,20 @@ typedef struct viewing_task
   point_t        origin;    /* window-local position of one tile's top-left */
   point_t        grab;      /* pointer position at the last drag event */
   int            dragging;  /* SELECT held: pointer moves drag the origin */
+  int            zoom;      /* index into viewing_zooms; tiling ignores it */
 }
 viewing_task_t;
+
+/* Zoom steps, smallest first, as screen_scale_t's xmul, ymul, xdiv, ydiv */
+static const screen_scale_t viewing_zooms[] =
+{
+  { 1, 1, 4, 4 }, { 1, 1, 3, 3 }, { 1, 1, 2, 2 }, { 2, 2, 3, 3 },
+  { 1, 1, 1, 1 },
+  { 3, 3, 2, 2 }, { 2, 2, 1, 1 }, { 3, 3, 1, 1 }, { 4, 4, 1, 1 },
+  { 6, 6, 1, 1 }, { 8, 8, 1, 1 }
+};
+
+#define VIEWING_ZOOM_ACTUAL 4 /* viewing_zooms index of 1:1 */
 
 #define VIEWING_BORDERSZ 8 /* solid band drawn around the image */
 #define VIEWING_MARGINSZ VIEWING_BORDERSZ
@@ -83,6 +95,20 @@ enum
   VIEWING_MENU_RESET_ORIGIN
 };
 
+/* The image's size on screen at the current zoom, rounded up as
+ * screen_copy_bitmap_scaled rounds its extent */
+static size2d_t viewing_scaled_size(const viewing_task_t *ic)
+{
+  const screen_scale_t *scale;
+  size2d_t              sz;
+
+  scale = &viewing_zooms[ic->zoom];
+  sz.w  = DIVIDE_ROUNDING_UP(ic->bitmap.size.w * scale->xmul, scale->xdiv);
+  sz.h  = DIVIDE_ROUNDING_UP(ic->bitmap.size.h * scale->ymul, scale->ydiv);
+
+  return sz;
+}
+
 /* The window size that shows the image: tiled, the screen; with the stage,
  * the smallest one that fits it; without, the image in its band. */
 static size2d_t viewing_size(const viewing_task_t *ic)
@@ -90,6 +116,7 @@ static size2d_t viewing_size(const viewing_task_t *ic)
   stagebox_t boxes[stage_MAX_BOXES];
   size_t     nboxes;
   size2d_t   sz;
+  size2d_t   img;
 
   if (ic->tile)
   {
@@ -97,16 +124,17 @@ static size2d_t viewing_size(const viewing_task_t *ic)
     return sz;
   }
 
+  img = viewing_scaled_size(ic);
+
   if (ic->stage)
   {
-    stage_generate(&ic->stagecfg, 0, 0,
-                   ic->bitmap.size.w, ic->bitmap.size.h,
+    stage_generate(&ic->stagecfg, 0, 0, img.w, img.h,
                    &sz.w, &sz.h, boxes, &nboxes);
     return sz;
   }
 
-  sz.w = ic->bitmap.size.w + VIEWING_MARGINSZ * 2;
-  sz.h = ic->bitmap.size.h + VIEWING_MARGINSZ * 2;
+  sz.w = img.w + VIEWING_MARGINSZ * 2;
+  sz.h = img.h + VIEWING_MARGINSZ * 2;
 
   return sz;
 }
@@ -138,6 +166,7 @@ static result_t viewing_init(viewing_task_t *task)
   task->bitmap.size = SIZE2D(VIEWING_EMPTYSZ, VIEWING_EMPTYSZ); /* no pixels */
   task->dithering   = screen_DITHER_BLUE_NOISE;
   task->stage       = 1;
+  task->zoom        = VIEWING_ZOOM_ACTUAL;
   stageconfig_init(&task->stagecfg);
 
   task->colour_pasteboard = colour_rgb(192, 192, 192); /* light grey */
@@ -156,24 +185,27 @@ static result_t viewing_init(viewing_task_t *task)
   return result_OK;
 }
 
-/* Draw the image at (x, y), over checks if it has transparent pixels */
+/* Draw the image, zoomed, at (x, y), over checks if it has transparent
+ * pixels */
 static void viewing_draw_image(viewing_task_t *ic,
                                screen_t       *scr,
                                int             x,
                                int             y)
 {
-  box_t box;
+  size2d_t sz;
+  box_t    box;
 
   if (ic->bitmap.base == NULL)
     return;
 
-  if (ic->alpha)
-  {
-    box = (box_t) BOX_POS_SIZE(x, y, ic->bitmap.size.w, ic->bitmap.size.h);
-    task_draw_checks(scr, &box, POINT(x, y));
-  }
+  sz  = viewing_scaled_size(ic);
+  box = (box_t) BOX_POS_SIZE(x, y, sz.w, sz.h);
 
-  screen_copy_bitmap_dithered(scr, x, y, &ic->bitmap, ic->dithering);
+  if (ic->alpha)
+    task_draw_checks(scr, &box, POINT(x, y));
+
+  screen_copy_bitmap_scaled_dithered(scr, &box, &ic->bitmap,
+                                     &viewing_zooms[ic->zoom], ic->dithering);
 }
 
 /* Draw the stage behind the image, centred in the window. The stage lays out
@@ -184,6 +216,7 @@ static void viewing_redraw_stage(viewing_task_t *ic,
                                  int             ox,
                                  int             oy)
 {
+  size2d_t   img;
   stagebox_t boxes[stage_MAX_BOXES];
   size_t     nboxes;
   size_t     i;
@@ -191,10 +224,10 @@ static void viewing_redraw_stage(viewing_task_t *ic,
   box_t      b;
   colour_t   colour;
 
+  img = viewing_scaled_size(ic);
   stage_generate(&ic->stagecfg,
                  bounds->x1 - bounds->x0, bounds->y1 - bounds->y0,
-                 ic->bitmap.size.w, ic->bitmap.size.h,
-                 &w, &h, boxes, &nboxes);
+                 img.w, img.h, &w, &h, boxes, &nboxes);
 
   for (i = 0; i < nboxes; i++)
   {
@@ -238,6 +271,7 @@ static result_t viewing_redraw(const wuss_event_t *event, void *task_data)
   int             bx0, bx1, by1;
   box_t           band[4];
   point_t         origin;
+  size2d_t        img;
 
   ic = task_data;
 
@@ -262,17 +296,18 @@ static result_t viewing_redraw(const wuss_event_t *event, void *task_data)
     return result_OK;
   }
 
+  img    = viewing_scaled_size(ic);
   bx     = bounds->x0 - sx + VIEWING_MARGINSZ;
   by     = bounds->y0 - sy + VIEWING_MARGINSZ;
   bx0    = bx - VIEWING_BORDERSZ;
-  bx1    = bx + ic->bitmap.size.w + VIEWING_BORDERSZ;
-  by1    = by + ic->bitmap.size.h;
+  bx1    = bx + img.w + VIEWING_BORDERSZ;
+  by1    = by + img.h;
 
   /* solid 8px band around the image */
   band[0] = (box_t) { bx0, by - VIEWING_BORDERSZ, bx1, by };    /* top */
   band[1] = (box_t) { bx0, by1, bx1, by1 + VIEWING_BORDERSZ };  /* bottom */
   band[2] = (box_t) { bx0, by, bx, by1 };                     /* left */
-  band[3] = (box_t) { bx + ic->bitmap.size.w, by, bx1, by1 }; /* right */
+  band[3] = (box_t) { bx + img.w, by, bx1, by1 };             /* right */
   screen_fill_rects(scr, band, 4, ic->colour_paper);
 
   viewing_draw_image(ic, scr, bx, by);
@@ -358,8 +393,21 @@ static result_t viewing_page(viewing_task_t *ic, int step)
   return result_OK;
 }
 
+/* Step the zoom to index, refitting the window. Tiling stays 1:1. */
+static result_t viewing_zoom(viewing_task_t *ic, int index)
+{
+  index = CLAMP(index, 0, (int) NELEMS(viewing_zooms) - 1);
+  if (ic->tile || index == ic->zoom)
+    return result_OK;
+
+  ic->zoom = index;
+  wuss_window_invalidate_visible(ic->base.window);
+  return viewing_fit(ic);
+}
+
 /* Arrows, Page Up/Down and Home/End scroll the image; Space shows the next
- * image in the directory and Shift-Space the previous one */
+ * image in the directory and Shift-Space the previous one; + and - zoom and
+ * 1 returns to actual size */
 static result_t viewing_key(viewing_task_t *ic, const wuss_event_t *event)
 {
   box_t content;
@@ -376,6 +424,16 @@ static result_t viewing_key(viewing_task_t *ic, const wuss_event_t *event)
   case ' ':
     return viewing_page(ic,
              (event->data.key.modifiers & wuss_KEY_MOD_SHIFT) ? -1 : 1);
+
+  case '=':
+  case '+':
+    return viewing_zoom(ic, ic->zoom + 1);
+
+  case '-':
+    return viewing_zoom(ic, ic->zoom - 1);
+
+  case '1':
+    return viewing_zoom(ic, VIEWING_ZOOM_ACTUAL);
 
   case wuss_KEY_UP:
     wuss_window_scroll_by(ic->base.window, POINT(0, -VIEWING_SCROLL_STEP));

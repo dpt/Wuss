@@ -170,6 +170,8 @@ Direct keys:
 | sudoku                              | 1-9                 | Enter digit                                             |
 | sudoku                              | 0 Space Backspace Delete | Clear cell                                         |
 | viewing                             | Space / Shift-Space | Next / previous image                                   |
+| viewing                             | `+` `=` / `-`       | Zoom in / out (not while tiled)                         |
+| viewing                             | `1`                 | Actual size                                             |
 | viewing                             | Arrows              | Scroll                                                  |
 | viewing                             | Page Up / Page Down | Scroll by page                                          |
 | viewing                             | Home / End          | Top left / bottom                                       |
