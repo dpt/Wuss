@@ -132,6 +132,7 @@ if(WUSS_COMPONENTS)
     list(APPEND PUBLIC_HEADERS include/wuss/component/dialogue.h)
     list(APPEND PUBLIC_HEADERS include/wuss/component/saveas.h)
     list(APPEND PUBLIC_HEADERS include/wuss/component/dcs.h)
+    list(APPEND PUBLIC_HEADERS include/wuss/component/scaleview.h)
     list(APPEND PUBLIC_HEADERS include/wuss/component/error.h)
     list(APPEND PUBLIC_HEADERS include/wuss/component/colourpicker.h)
     list(APPEND PUBLIC_HEADERS include/wuss/gadget/colourset.h)
@@ -324,6 +325,7 @@ set(WUSS_COMPONENT_SOURCES
     libraries/wuss/component/dialogue.c
     libraries/wuss/component/saveas.c
     libraries/wuss/component/dcs.c
+    libraries/wuss/component/scaleview.c
     libraries/wuss/component/error.c
     libraries/wuss/component/colourpicker.c
     libraries/wuss/gadget/colourset.c) # a gadget, but built on colourmenu
@@ -423,6 +425,7 @@ if(BUILD_TESTS)
         libraries/wuss/gadget/test/gadget-test.c
         libraries/wuss/component/test/component-test.c
         libraries/wuss/component/test/dcs-test.c
+        libraries/wuss/component/test/scaleview-test.c
         libraries/wuss/component/test/error-test.c
         libraries/wuss/component/test/colourpicker-test.c
         libraries/wuss/core/test/pointer-test.c

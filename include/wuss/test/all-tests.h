@@ -43,6 +43,7 @@ extern testfn_t gridview_bench_test,
                 wuss_gadget_test,
                 wuss_component_test,
                 dcs_test,
+                scaleview_test,
                 error_test,
                 colourpicker_test,
                 wuss_test;
