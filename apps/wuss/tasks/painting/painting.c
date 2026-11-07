@@ -46,7 +46,8 @@ static size2d_t painting_stage(painting_task_t *pt,
   size2d_t        sz;
 
   bm = paintingdoc_bitmap(pt->doc);
-  stage_generate(&pt->stagecfg, 0, 0, bm->size.w, bm->size.h,
+  stage_generate(&pt->stagecfg, 0, 0,
+                 bm->size.w * pt->zoom, bm->size.h * pt->zoom,
                  &sz.w, &sz.h, boxes, nboxes);
   pt->page = POINT(boxes[0].box.x0, sz.h - boxes[0].box.y1); /* content */
 
@@ -60,6 +61,24 @@ static size2d_t painting_stage_size(painting_task_t *pt)
   size_t     nboxes;
 
   return painting_stage(pt, boxes, &nboxes);
+}
+
+/* size the canvas window's document to the stage, shrinking the window to
+ * it if that is smaller than the usual view */
+static result_t painting_fit(painting_task_t *pt)
+{
+  result_t rc;
+  size2d_t size;
+
+  size = painting_stage_size(pt);
+
+  rc = wuss_window_resize(pt->base.window,
+                          SIZE2D(MIN(size.w, PAINTING_VIEW_W),
+                                 MIN(size.h, PAINTING_VIEW_H)));
+  if (rc != result_OK)
+    return rc;
+
+  return wuss_window_set_doc(pt->base.window, size);
 }
 
 /* ----------------------------------------------------------------------- */
@@ -107,7 +126,6 @@ static result_t painting_saveas_save(const char *path, void *opaque)
 static result_t painting_load(painting_task_t *pt, const char *path)
 {
   result_t rc;
-  size2d_t size;
 
   pt->held = 0; /* abandon any stroke in progress */
 
@@ -118,15 +136,7 @@ static result_t painting_load(painting_task_t *pt, const char *path)
   painting_set_path(pt, path);
   painting_title(pt);
 
-  size = painting_stage_size(pt);
-
-  rc = wuss_window_resize(pt->base.window,
-                          SIZE2D(MIN(size.w, PAINTING_VIEW_W),
-                                 MIN(size.h, PAINTING_VIEW_H)));
-  if (rc != result_OK)
-    return rc;
-
-  return wuss_window_set_doc(pt->base.window, size);
+  return painting_fit(pt);
 }
 
 /* build the canvas and its windows; on failure the caller reaps the task */
@@ -152,6 +162,7 @@ static result_t painting_build(painting_task_t            *task,
   task->wander    = 100;
   task->tolerance = 16;
   task->dithering = screen_DITHER_NEAREST; /* painted colours stay exact */
+  task->zoom      = 1;
 
   task->swatches.bbox     = (box_t) BOX_POS_SIZE(OB_SWATCH_X, OB_SWATCH_Y,
                                                  OB_SWATCH_ROW, OB_SWATCH);
@@ -438,10 +449,12 @@ static result_t painting_redraw(painting_task_t    *pt,
   result_t        rc;
   const box_t    *bounds;
   screen_t       *scr;
-  int             i, ox, oy;
+  int             i, ox, oy, z, c;
   const bitmap_t *bm;
   box_t           canvas;
+  screen_scale_t  scale;
   point_t         a, b;
+  int             size;
 
   scr    = event->data.redraw.scr;
   bounds = event->data.redraw.bounds;
@@ -453,32 +466,40 @@ static result_t painting_redraw(painting_task_t    *pt,
   /* from here on, draw relative to the canvas */
   ox    += pt->page.x;
   oy    += pt->page.y;
+  z      = pt->zoom;
+  c      = z / 2; /* a canvas pixel's centre, zoomed */
   bm     = paintingdoc_bitmap(pt->doc);
-  canvas = (box_t) BOX_POS_SIZE(ox, oy, bm->size.w, bm->size.h);
+  canvas = (box_t) BOX_POS_SIZE(ox, oy, bm->size.w * z, bm->size.h * z);
 
   /* the checks show through wherever the canvas is transparent */
   task_draw_checks(scr, &canvas, POINT(ox, oy));
-  rc = screen_copy_bitmap_dithered(scr, ox, oy, bm, pt->dithering);
+  scale.xmul = scale.ymul = z;
+  scale.xdiv = scale.ydiv = 1;
+  rc = screen_copy_bitmap_scaled_dithered(scr, &canvas, bm, &scale,
+                                          pt->dithering);
 
+  /* ponytail: the overlays are drawn at window resolution through zoomed
+   * pixel centres, so zoomed they only approximate the result's edges */
   if (pt->held && painting_is_rubber_band(pt))
   {
     painting_band_ends(pt, &a, &b);
-    a = POINT(a.x + ox, a.y + oy);
-    b = POINT(b.x + ox, b.y + oy);
+    a    = POINT(a.x * z + c + ox, a.y * z + c + oy);
+    b    = POINT(b.x * z + c + ox, b.y * z + c + oy);
+    size = pt->size * z;
 
     if (pt->tool == painting_TOOL_LINE)
-      paintingdoc_draw_stroke(scr, a, b, pt->size, painting_stroke_colour(pt));
+      paintingdoc_draw_stroke(scr, a, b, size, painting_stroke_colour(pt));
     else if (pt->tool == painting_TOOL_GRADIENT)
       paintingdoc_draw_stroke(scr, a, b, 1, colour_rgb(0x00, 0x00, 0x00));
     else if (pt->tool == painting_TOOL_SELECT)
       paintingdoc_draw_rect(scr, a, b, 1, 0, colour_rgb(0x00, 0x00, 0x00));
     else if (pt->tool == painting_TOOL_ELLIPSE ||
              pt->tool == painting_TOOL_ELLIPSE_FILL)
-      paintingdoc_draw_ellipse(scr, a, b, pt->size,
+      paintingdoc_draw_ellipse(scr, a, b, size,
                                pt->tool == painting_TOOL_ELLIPSE_FILL,
                                painting_stroke_colour(pt));
     else
-      paintingdoc_draw_rect(scr, a, b, pt->size, pt->tool == painting_TOOL_RECT_FILL,
+      paintingdoc_draw_rect(scr, a, b, size, pt->tool == painting_TOOL_RECT_FILL,
                          painting_stroke_colour(pt));
   }
 
@@ -487,8 +508,11 @@ static result_t painting_redraw(painting_task_t    *pt,
   if (pt->held && painting_collects_points(pt))
   {
     for (i = 1; i < pt->nlasso; i++)
-      screen_draw_line(scr, pt->lasso[i - 1].x + ox, pt->lasso[i - 1].y + oy,
-                       pt->lasso[i].x + ox, pt->lasso[i].y + oy,
+      screen_draw_line(scr,
+                       pt->lasso[i - 1].x * z + c + ox,
+                       pt->lasso[i - 1].y * z + c + oy,
+                       pt->lasso[i].x * z + c + ox,
+                       pt->lasso[i].y * z + c + oy,
                        painting_is_path(pt) ? painting_stroke_colour(pt) :
                                               colour_rgb(0x00, 0x00, 0x00));
   }
@@ -496,6 +520,13 @@ static result_t painting_redraw(painting_task_t    *pt,
   painting_draw_ants(pt, scr, ox, oy);
 
   return rc;
+}
+
+/* the canvas pixel a window offset from the canvas's origin falls in,
+ * rounding down either side of it */
+static int painting_unzoom(const painting_task_t *pt, int v)
+{
+  return v >= 0 ? v / pt->zoom : -((pt->zoom - 1 - v) / pt->zoom);
 }
 
 /* a MOVE always reports the SELECT button, hovering or not, so a stroke in
@@ -508,8 +539,8 @@ static result_t painting_mouse(painting_task_t    *pt,
   point_t  p;
   colour_t colour;
 
-  p = POINT(event->data.mouse.point.x - pt->page.x,
-            event->data.mouse.point.y - pt->page.y); /* canvas pixels */
+  p = POINT(painting_unzoom(pt, event->data.mouse.point.x - pt->page.x),
+            painting_unzoom(pt, event->data.mouse.point.y - pt->page.y));
 
   switch (event->data.mouse.action)
   {
@@ -752,9 +783,30 @@ static result_t painting_undo(painting_task_t *pt)
   return result_OK;
 }
 
+/* Step the zoom by step levels, or to 1:1 if step is 0. A stroke in
+ * progress is abandoned, as its points are in the old zoom's canvas. */
+static result_t painting_zoom(painting_task_t *pt, int step)
+{
+  static const int zooms[] = { 1, 2, 3, 4, 6, 8 };
+
+  int i;
+
+  for (i = 0; i < (int) NELEMS(zooms) - 1 && zooms[i] < pt->zoom; i++)
+    ;
+  i = step ? CLAMP(i + step, 0, (int) NELEMS(zooms) - 1) : 0;
+  if (zooms[i] == pt->zoom)
+    return result_OK;
+
+  pt->held = 0;
+  pt->zoom = zooms[i];
+  wuss_window_invalidate_visible(pt->base.window);
+  return painting_fit(pt);
+}
+
 /* B, H, E, L, R, X, C, D, N, M, F, G, P, S, O, W and I pick the matching
- * tool, [ and ] step the size down and up, Escape drops the selection.
- * Anything else is passed back unclaimed */
+ * tool, [ and ] step the size down and up, + and - zoom, 1 returns to
+ * actual size, Escape drops the selection. Anything else is passed back
+ * unclaimed */
 static result_t painting_key(painting_task_t *pt, int code)
 {
   painting_tool_t tool;
@@ -783,6 +835,9 @@ static result_t painting_key(painting_task_t *pt, int code)
   case 'v': case 'V': tool = painting_TOOL_MOVE;         break;
   case '[':           painting_step_size(pt, -1);        return result_OK;
   case ']':           painting_step_size(pt, +1);        return result_OK;
+  case '=': case '+': return painting_zoom(pt, +1);
+  case '-':           return painting_zoom(pt, -1);
+  case '1':           return painting_zoom(pt, 0);
   case wuss_KEY_ESCAPE:
     box = paintingdoc_selection_bounds(pt->doc);
     paintingdoc_select_none(pt->doc);

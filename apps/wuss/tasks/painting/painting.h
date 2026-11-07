@@ -134,6 +134,7 @@ typedef struct painting_task
   stageconfig_t      stagecfg;  /* the pasteboard, border and shadow around
                                  * the canvas */
   point_t            page;      /* the canvas's origin in the window */
+  int                zoom;      /* window pixels per canvas pixel */
   char              path[DPTLIB_MAXPATH]; /* document's file; "" until
                                             * loaded or saved */
   colour_t           fg, bg;

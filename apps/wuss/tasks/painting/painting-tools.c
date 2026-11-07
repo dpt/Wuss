@@ -181,8 +181,10 @@ void painting_invalidate_box(painting_task_t *pt, const box_t *box)
   if (box_is_empty(box))
     return;
 
-  b = (box_t) { box->x0 + pt->page.x, box->y0 + pt->page.y,
-                box->x1 + pt->page.x, box->y1 + pt->page.y };
+  b = (box_t) { box->x0 * pt->zoom + pt->page.x,
+                box->y0 * pt->zoom + pt->page.y,
+                box->x1 * pt->zoom + pt->page.x,
+                box->y1 * pt->zoom + pt->page.y };
   wuss_window_invalidate(pt->base.window, &b);
 }
 
@@ -327,8 +329,10 @@ void painting_select_commit(painting_task_t *pt, point_t p)
   painting_invalidate_box(pt, &drag);
 }
 
-/* the marching ants: a one pixel outline of black and white dashes round the
- * selection, drawn over the canvas and shifted along by ants_phase */
+/* the marching ants: a one canvas pixel outline of black and white dashes
+ * round the selection, drawn over the canvas and shifted along by ants_phase.
+ * Zoomed, each outline pixel is a block, the dashes phased in canvas
+ * pixels */
 void painting_draw_ants(const painting_task_t *pt,
                         screen_t              *scr,
                         int                    ox,
@@ -336,7 +340,12 @@ void painting_draw_ants(const painting_task_t *pt,
 {
   const box_t   *spans;
   pixelfmt_any_t black, white;
-  int            n, lo, hi, mid, i, y, x1, x;
+  int            z;
+  int            n, lo, hi, mid, i;
+  int            wy, y0, y1;
+  int            cx, wx, x0, x1;
+  pixelfmt_any_t ant;
+  int            x, y;
 
   spans = paintingdoc_selection_outline(pt->doc, &n);
 
@@ -345,13 +354,15 @@ void painting_draw_ants(const painting_task_t *pt,
   black = screen_colour_to_pixel(scr, colour_rgb(0x00, 0x00, 0x00));
   white = screen_colour_to_pixel(scr, colour_rgb(0xFF, 0xFF, 0xFF));
 
+  z = pt->zoom;
+
   /* the spans run down the rows, so skip straight to the first in the clip */
   lo = 0;
   hi = n;
   while (lo < hi)
   {
     mid = (lo + hi) / 2;
-    if (oy + spans[mid].y0 < scr->clip.y0)
+    if (oy + (spans[mid].y0 + 1) * z <= scr->clip.y0)
       lo = mid + 1;
     else
       hi = mid;
@@ -359,15 +370,28 @@ void painting_draw_ants(const painting_task_t *pt,
 
   for (i = lo; i < n; i++)
   {
-    y = oy + spans[i].y0;
-    if (y >= scr->clip.y1)
+    wy = oy + spans[i].y0 * z;
+    if (wy >= scr->clip.y1)
       break;
 
-    x1 = MIN(ox + spans[i].x1, scr->clip.x1);
-    for (x = MAX(ox + spans[i].x0, scr->clip.x0); x < x1; x++)
-      screen_set_pixel_value(scr, x, y,
-                             ((x - ox + y - oy - pt->ants_phase) & 7) < 4 ?
-                             black : white);
+    y0 = MAX(wy, scr->clip.y0);
+    y1 = MIN(wy + z, scr->clip.y1);
+
+    /* ponytail: steps every canvas pixel of the span, clipped or not;
+     * start from the clip's edge if wide zoomed selections crawl */
+    for (cx = spans[i].x0; cx < spans[i].x1; cx++)
+    {
+      wx = ox + cx * z;
+      x0 = MAX(wx, scr->clip.x0);
+      x1 = MIN(wx + z, scr->clip.x1);
+      if (x0 >= x1)
+        continue;
+
+      ant = ((cx + spans[i].y0 - pt->ants_phase) & 7) < 4 ? black : white;
+      for (y = y0; y < y1; y++)
+        for (x = x0; x < x1; x++)
+          screen_set_pixel_value(scr, x, y, ant);
+    }
   }
 }
 

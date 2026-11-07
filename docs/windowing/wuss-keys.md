@@ -162,6 +162,8 @@ Direct keys:
 | painting                            | S O W               | Select, Lasso, Magic wand                               |
 | painting                            | I V                 | Pick colour, Move                                       |
 | painting                            | `[` `]`             | Size down / up                                          |
+| painting                            | `+` `=` / `-`       | Zoom in / out                                           |
+| painting                            | `1`                 | Actual size                                             |
 | painting                            | Escape              | Drop selection                                          |
 | saturn                              | Left / Right        | Previous / next seed                                    |
 | sofa                                | Left / Right        | Previous / next model                                   |
