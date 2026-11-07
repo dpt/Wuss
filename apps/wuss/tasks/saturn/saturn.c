@@ -561,6 +561,7 @@ static result_t saturn_handle(wuss_window_t      *window,
   case wuss_EVENT_PRE_SHOW:
   case wuss_EVENT_CLOSE:
   case wuss_EVENT_QUIT:
+  case wuss_EVENT_RELAYOUT:
     return confdlg_event(&task->conf, window, event);
 
   case wuss_EVENT_PRE_SUBMENU_OPEN:

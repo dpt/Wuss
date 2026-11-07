@@ -119,10 +119,9 @@ wuss_window_fn_t tagging_handle;
 /* ----------------------------------------------------------------------- */
 
 #define TAGGING_INITIAL_TAGS 100
-#define TAGGING_FIELD_W      200
 
-/* name dialogue layout items, in creation order. See
- * docs/windowing/wuss-layout.md */
+/* name dialogue layout items, in creation order; sizes come from the font in
+ * tagging_name_solve. See docs/windowing/wuss-layout.md */
 enum
 {
   TAGGING_ST_ROOT,
@@ -140,14 +139,61 @@ static const stack_item_t g_tagging_stack[TAGGING_ST__LIMIT] =
   [TAGGING_ST_ROOT]      = { .kind = stack_KIND_VBOX, .parent = -1,
                              .gap = wuss_STD_GAP, .pad = wuss_STD_INSETS },
 
-  [TAGGING_ST_FIELD_ROW] = STACK_HBOX(TAGGING_ST_ROOT, wuss_STD_GLYPH_SIZE, wuss_STD_GAP, stack_ALIGN_START),
-  [TAGGING_ST_FIELD]     = STACK_LEAF(TAGGING_ST_FIELD_ROW, TAGGING_FIELD_W, wuss_STD_GLYPH_SIZE, stack_ALIGN_CENTRE),
+  [TAGGING_ST_FIELD_ROW] = STACK_HBOX(TAGGING_ST_ROOT, 0, wuss_STD_GAP, stack_ALIGN_START),
+  [TAGGING_ST_FIELD]     = STACK_LEAF(TAGGING_ST_FIELD_ROW, 0, 0, stack_ALIGN_CENTRE),
 
-  [TAGGING_ST_BUTTONS]   = STACK_HBOX(TAGGING_ST_ROOT, wuss_STD_PRIMARY_BUTTON_HEIGHT, wuss_STD_GAP, stack_ALIGN_END),
+  [TAGGING_ST_BUTTONS]   = STACK_HBOX(TAGGING_ST_ROOT, 0, wuss_STD_GAP, stack_ALIGN_END),
   [TAGGING_ST_SPACER]    = STACK_SPACER(TAGGING_ST_BUTTONS, 1), /* push the buttons right */
-  [TAGGING_ST_CANCEL]    = STACK_LEAF(TAGGING_ST_BUTTONS, 0, wuss_STD_SECONDARY_BUTTON_HEIGHT, stack_ALIGN_CENTRE),
-  [TAGGING_ST_OK]        = STACK_LEAF(TAGGING_ST_BUTTONS, 0, wuss_STD_PRIMARY_BUTTON_HEIGHT, stack_ALIGN_CENTRE),
+  [TAGGING_ST_CANCEL]    = STACK_LEAF(TAGGING_ST_BUTTONS, 0, 0, stack_ALIGN_CENTRE),
+  [TAGGING_ST_OK]        = STACK_LEAF(TAGGING_ST_BUTTONS, 0, 0, stack_ALIGN_CENTRE),
 };
+
+/* the stack item laying out each name dialogue icon */
+static const int g_tagging_name_item[TAGGING_NAME__LIMIT] =
+{
+  [TAGGING_NAME_FIELD]  = TAGGING_ST_FIELD,
+  [TAGGING_NAME_CANCEL] = TAGGING_ST_CANCEL,
+  [TAGGING_NAME_OK]     = TAGGING_ST_OK
+};
+
+/* lay the name dialogue out for the current desktop font: the field holds
+ * TAGGING_NAME_LEN average letters */
+static result_t tagging_name_solve(const wuss_t *wuss,
+                                   size2d_t     *size,
+                                   box_t         boxes[TAGGING_ST__LIMIT])
+{
+  result_t     rc;
+  stack_item_t items[TAGGING_ST__LIMIT];
+  int          field_h;
+  int          primary_h;
+  int          secondary_h;
+  box_t        root;
+
+  memcpy(items, g_tagging_stack, sizeof(items));
+
+  field_h     = wuss_std_height(wuss, wuss_STD_FIELD);
+  primary_h   = wuss_std_height(wuss, wuss_STD_PRIMARY_BUTTON);
+  secondary_h = wuss_std_height(wuss, wuss_STD_SECONDARY_BUTTON);
+
+  items[TAGGING_ST_FIELD_ROW].axis_size = field_h;
+  items[TAGGING_ST_FIELD].axis_size     = TAGGING_NAME_LEN *
+                                          task_text_width(wuss, "n");
+  items[TAGGING_ST_FIELD].cross_size    = field_h;
+  items[TAGGING_ST_BUTTONS].axis_size   = primary_h;
+  items[TAGGING_ST_CANCEL].axis_size    =
+    task_button_width(wuss, "Cancel", wuss_STD_SECONDARY_BUTTON_BORDER);
+  items[TAGGING_ST_CANCEL].cross_size   = secondary_h;
+  items[TAGGING_ST_OK].axis_size        =
+    task_button_width(wuss, "OK", wuss_STD_PRIMARY_BUTTON_BORDER);
+  items[TAGGING_ST_OK].cross_size       = primary_h;
+
+  rc = stack_smallest(items, NELEMS(items), size);
+  if (rc != result_OK)
+    return rc;
+
+  root = (box_t) BOX_POS_SIZE(0, 0, size->w, size->h);
+  return stack_solve(items, NELEMS(items), &root, boxes);
+}
 
 /* ----------------------------------------------------------------------- */
 
@@ -278,6 +324,31 @@ static result_t tagging_name_ok(void *opaque, wuss_button_t button)
   return tagging_push(tt);
 }
 
+static result_t tagging_name_relayout(tagging_task_t *tt)
+{
+  result_t       rc;
+  size2d_t       size;
+  box_t          boxes[TAGGING_ST__LIMIT];
+  wuss_window_t *window;
+  int            i;
+
+  rc = tagging_name_solve(tt->wuss, &size, boxes);
+  if (rc != result_OK)
+    return rc;
+
+  window = wuss_dialogue_window(tt->name_dialogue);
+
+  rc = task_fit_window(window, size);
+  if (rc != result_OK)
+    return rc;
+
+  for (i = 0; i < TAGGING_NAME__LIMIT; i++)
+    wuss_icon_set_bbox(window, tt->name_icons[i],
+                       &boxes[g_tagging_name_item[i]]);
+
+  return result_OK;
+}
+
 /* the name dialogue's own task: not autoclose, so it survives its window
  * being dismissed and shown again. Its QUIT frees the dialogue, and the
  * task block too if the window's QUIT has already run */
@@ -310,6 +381,9 @@ static result_t tagging_name_handle(wuss_window_t      *window,
     tt->name_handle = NULL; /* wuss closed the chain under us */
     return result_OK;
 
+  case wuss_EVENT_RELAYOUT:
+    return tagging_name_relayout(tt);
+
   case wuss_EVENT_QUIT:
     wuss_dialogue_destroy(tt->name_dialogue);
     tt->name_dialogue = NULL;
@@ -327,9 +401,7 @@ static result_t tagging_name_create(tagging_task_t *tt)
 {
   result_t               rc;
   wuss_task_desc_t       desc;
-  stack_item_t           items[TAGGING_ST__LIMIT];
   size2d_t               size;
-  box_t                  root;
   box_t                  boxes[TAGGING_ST__LIMIT];
   wuss_icon_spec_t       specs[TAGGING_NAME__LIMIT];
   wuss_dialogue_action_t actions[2];
@@ -341,17 +413,7 @@ static result_t tagging_name_create(tagging_task_t *tt)
   if (rc != result_OK)
     return rc;
 
-  memcpy(items, g_tagging_stack, sizeof(items));
-  items[TAGGING_ST_CANCEL].axis_size =
-    task_button_width(tt->wuss, "Cancel", wuss_STD_SECONDARY_BUTTON_BORDER);
-  items[TAGGING_ST_OK].axis_size =
-    task_button_width(tt->wuss, "OK", wuss_STD_PRIMARY_BUTTON_BORDER);
-
-  rc = stack_smallest(items, NELEMS(items), &size);
-  if (rc != result_OK)
-    return rc;
-  root = (box_t) BOX_POS_SIZE(0, 0, size.w, size.h);
-  rc = stack_solve(items, NELEMS(items), &root, boxes);
+  rc = tagging_name_solve(tt->wuss, &size, boxes);
   if (rc != result_OK)
     return rc;
 

@@ -1106,7 +1106,7 @@ result_t wuss_toggle_test(const char *resources)
     wuss_window_get_visible_bounds(win_s, &after);
     if (after.x0 != WUSS_SAFE_INSET || after.y0 != WUSS_SAFE_INSET ||
         after.x1 != 200 - WUSS_SAFE_INSET ||
-        after.y1 != 200 - WUSS_SAFE_INSET_BOTTOM)
+        after.y1 != 200 - WUSS_SAFE_INSET_BOTTOM(wuss))
       goto Failure; /* doc == 0: fills the safe area exactly */
 
     rc = wuss_redraw_dirty(wuss);

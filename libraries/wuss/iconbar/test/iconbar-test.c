@@ -90,7 +90,7 @@ result_t wuss_iconbar_test(const char *resources)
     if (wuss->iconbar.window->visible.x0 != 0 ||
         wuss->iconbar.window->visible.x1 != 200 ||
         wuss->iconbar.window->visible.y1 != 200 ||
-        wuss->iconbar.window->visible.y0 != 200 - WUSS_ICONBAR_HEIGHT)
+        wuss->iconbar.window->visible.y0 != 200 - wuss__iconbar_height(wuss))
       goto Failure;
 
     /* icons are as wide as their label, WUSS_ICONBAR_GAP apart, and pack
@@ -386,7 +386,7 @@ result_t wuss_iconbar_test(const char *resources)
      * except this one is pinned, so both must refuse */
     wuss_window_move(wuss->iconbar.window, POINT(5, 5));
     if (wuss->iconbar.window->visible.x0 != 0 ||
-        wuss->iconbar.window->visible.y0 != 200 - WUSS_ICONBAR_HEIGHT)
+        wuss->iconbar.window->visible.y0 != 200 - wuss__iconbar_height(wuss))
       goto Failure; /* move silently ignored on a pinned window */
 
     mrc = wuss_window_resize(wuss->iconbar.window, SIZE2D(50, 50));
@@ -397,7 +397,7 @@ result_t wuss_iconbar_test(const char *resources)
      * it in z-order -- covered by the general occlusion machinery now that
      * the bar is a normal window, not a special-cased always-on-top draw */
     box_over.x0 = 0;   box_over.y0 = 100;
-    box_over.x1 = 200; box_over.y1 = 200 - WUSS_ICONBAR_HEIGHT + 10;
+    box_over.x1 = 200; box_over.y1 = 200 - wuss__iconbar_height(wuss) + 10;
     rc = wuss_window_create(mk_task(wuss, paint_handle, NULL), &box_over,
                             "OVER", wuss_WINDOW_DEFAULT, wuss_NO_BACKDROP,
                             SIZE2D(200, 50), SIZE2D(20, 20), &win_over);
@@ -413,11 +413,11 @@ result_t wuss_iconbar_test(const char *resources)
     {
       wuss_window_t *hit;
 
-      rc = wuss_mouse_click(wuss, POINT(10, 200 - WUSS_ICONBAR_HEIGHT + 5),
+      rc = wuss_mouse_click(wuss, POINT(10, 200 - wuss__iconbar_height(wuss) + 5),
                             wuss_BUTTON_SELECT, wuss_MOUSE_DOWN, &hit);
       if (rc != result_OK || hit != win_over)
         goto Failure;
-      rc = wuss_mouse_click(wuss, POINT(10, 200 - WUSS_ICONBAR_HEIGHT + 5),
+      rc = wuss_mouse_click(wuss, POINT(10, 200 - wuss__iconbar_height(wuss) + 5),
                             wuss_BUTTON_SELECT, wuss_MOUSE_UP, &hit);
       if (rc != result_OK)
         goto Failure;

@@ -1,6 +1,5 @@
 /* wuss/component/colourpicker.c -- true-colour colour picker dialogue */
 
-#include <limits.h>
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
@@ -26,6 +25,7 @@
 #include "wuss/component/dialogue.h"
 
 #include "../core/types.h"
+#include "../font/font.h"
 #include "../icon.h"
 
 /* ----------------------------------------------------------------------- */
@@ -34,7 +34,6 @@
 #define CP_NCHANNELS 4   /* most channels any model has (CMYK) */
 #define CP_SLIDER_W  160
 #define CP_SWATCH_W  48
-#define CP_SWATCH_H  wuss_STD_PRIMARY_BUTTON_HEIGHT
 #define CP_HEX_SIZE  8   /* "#RRGGBB" and terminator */
 
 enum
@@ -101,6 +100,8 @@ struct wuss_colourpicker
   wuss_icon_t                    *labels[CP_NMODELS][CP_NCHANNELS];
   wuss_slider_row_t               rows[CP_NMODELS][CP_NCHANNELS];
   wuss_icon_t                    *hex;
+  wuss_icon_t                    *cancel;
+  wuss_icon_t                    *ok;
   colour_t                        shown[2]; /* the swatches: old, new */
   wuss_swatches_t                 swatches;
 };
@@ -109,21 +110,26 @@ enum { CP_SWATCH_OLD, CP_SWATCH_NEW };
 
 /* ----------------------------------------------------------------------- */
 
+/* every box in the window, for the current system font. Every model's rows
+ * share the same boxes */
+typedef struct
+{
+  size2d_t size;
+  box_t    radios[CP_NMODELS];
+  box_t    labels[CP_NCHANNELS];
+  box_t    sliders[CP_NCHANNELS];
+  box_t    values[CP_NCHANNELS];
+  box_t    swatches;
+  box_t    hex;
+  box_t    cancel;
+  box_t    ok;
+}
+cp_boxes_t;
+
 /* pixel width of text in the desktop font */
 static int cp_text_width(const wuss_t *wuss, const char *text)
 {
-  bmfont_width_t width;
-
-  bmfont_measure(wuss_get_font(wuss), text, (int) strlen(text), NULL,
-                 INT_MAX, NULL, &width);
-
-  return width;
-}
-
-static int cp_button_width(const wuss_t *wuss, const char *text, int border)
-{
-  return cp_text_width(wuss, text) + 2 * cp_text_width(wuss, " ") +
-         2 * border;
+  return (int) wuss__text_width(wuss_get_font(wuss), text);
 }
 
 /* ----------------------------------------------------------------------- */
@@ -274,9 +280,9 @@ static void cp_sync_swatch(wuss_colourpicker_t *picker,
   box_t box;
 
   picker->shown[which] = colour;
-  box = (box_t) BOX_POS_SIZE(picker->swatches.bbox.x0 + which * CP_SWATCH_W,
-                             picker->swatches.bbox.y0, CP_SWATCH_W,
-                             CP_SWATCH_H);
+  box = picker->swatches.bbox;
+  box.x0 += which * CP_SWATCH_W;
+  box.x1  = box.x0 + CP_SWATCH_W;
   wuss_window_invalidate(cp_window(picker), &box);
 }
 
@@ -438,6 +444,49 @@ static result_t cp_icon(wuss_colourpicker_t *picker,
   return rc;
 }
 
+static void cp_layout(const wuss_t *wuss, cp_boxes_t *b);
+
+/* re-lay out for a new system font: move every icon and refit the window */
+static result_t cp_relayout(wuss_colourpicker_t *picker)
+{
+  result_t       rc;
+  cp_boxes_t     b;
+  wuss_window_t *win;
+  int            m, i;
+
+  cp_layout(picker->wuss, &b);
+  win = cp_window(picker);
+
+  rc = wuss_window_set_min_size(win, b.size);
+  if (rc != result_OK)
+    return rc;
+
+  rc = wuss_window_set_doc(win, b.size);
+  if (rc != result_OK)
+    return rc;
+
+  rc = wuss_window_resize(win, b.size);
+  if (rc != result_OK)
+    return rc;
+
+  for (m = 0; m < CP_NMODELS; m++)
+  {
+    wuss_icon_set_bbox(win, picker->radios[m], &b.radios[m]);
+    for (i = 0; i < cp_models[m].nchannels; i++)
+    {
+      wuss_icon_set_bbox(win, picker->labels[m][i], &b.labels[i]);
+      wuss_icon_set_bbox(win, picker->rows[m][i].slider, &b.sliders[i]);
+      wuss_icon_set_bbox(win, picker->rows[m][i].value, &b.values[i]);
+    }
+  }
+  wuss_icon_set_bbox(win, picker->hex, &b.hex);
+  wuss_icon_set_bbox(win, picker->cancel, &b.cancel);
+  wuss_icon_set_bbox(win, picker->ok, &b.ok);
+  picker->swatches.bbox = b.swatches;
+
+  return result_OK;
+}
+
 /* The picker's own task: not autoclose, so it survives its window being
  * hidden and shown again; wuss_colourpicker_destroy frees it. */
 static result_t cp_task_handle(wuss_window_t      *window,
@@ -468,6 +517,9 @@ static result_t cp_task_handle(wuss_window_t      *window,
   case wuss_EVENT_PRE_CLOSE:
     return wuss_dialogue_handle_pre_close(picker->dialogue);
 
+  case wuss_EVENT_RELAYOUT:
+    return cp_relayout(picker);
+
   default:
     return result_OK;
   }
@@ -475,34 +527,22 @@ static result_t cp_task_handle(wuss_window_t      *window,
 
 /* ----------------------------------------------------------------------- */
 
-/* Lay out and create every icon. Every model's rows share the same boxes;
- * all but the current model's are hidden. From the top: the model radios,
- * up to four slider rows, the swatches with the hex field, then Cancel and
- * OK. */
-static result_t cp_build(wuss_colourpicker_t *picker, const char *title)
+/* Lay out every box for the current system font. From the top: the model
+ * radios, up to four slider rows, the swatches with the hex field, then
+ * Cancel and OK. */
+static void cp_layout(const wuss_t *wuss, cp_boxes_t *b)
 {
-  enum
-  {
-    NRADIOS = CP_NMODELS,
-    NROWS   = CP_NMODELS * CP_NCHANNELS,
-    NICONS  = NRADIOS + 3 * NROWS + 3 /* hex, Cancel, OK */
-  };
+  int  radio_h, slider_h, field_h, primary, secondary;
+  int  label_w, value_w, radio_w, radios_w;
+  int  m, i, x, y;
+  char digit[2];
+  int  cancel_w, ok_w, width;
 
-  result_t               rc;
-  wuss_t                *wuss;
-  box_t                  content;
-  int                    label_w, value_w, radio_w[CP_NMODELS], radios_w;
-  int                    cancel_w, ok_w, width, height;
-  int                    m, i, n, x, y;
-  char                   digit[2];
-  wuss_icon_spec_t       specs[NICONS];
-  wuss_icon_t           *made[NICONS];
-  char                   bufs[NROWS][WUSS_SLIDER_ROW_BUF];
-  box_t                  box;
-  const cp_channel_t    *ch;
-  wuss_dialogue_action_t actions[2];
-
-  wuss = picker->wuss;
+  radio_h   = MAX(wuss_std_height(wuss, wuss_STD_FIELD), wuss_STD_GLYPH_SIZE);
+  slider_h  = wuss_std_height(wuss, wuss_STD_SLIDER);
+  field_h   = wuss_std_height(wuss, wuss_STD_FIELD);
+  primary   = wuss_std_height(wuss, wuss_STD_PRIMARY_BUTTON);
+  secondary = wuss_std_height(wuss, wuss_STD_SECONDARY_BUTTON);
 
   /* measure */
   label_w = 0;
@@ -519,38 +559,94 @@ static result_t cp_build(wuss_colourpicker_t *picker, const char *title)
     value_w = MAX(value_w, cp_text_width(wuss, digit));
   value_w = cp_text_width(wuss, "-") + 3 * value_w;
 
-  radios_w = 0;
+  /* model radios */
+  x = wuss_STD_INSET;
+  y = wuss_STD_INSET;
   for (m = 0; m < CP_NMODELS; m++)
   {
-    radio_w[m] = wuss_STD_GLYPH_SIZE + wuss_STD_GAP +
-                 cp_text_width(wuss, cp_models[m].name);
-    radios_w  += radio_w[m] + wuss_STD_GAP;
+    radio_w = wuss_STD_GLYPH_SIZE + wuss_STD_GAP +
+              cp_text_width(wuss, cp_models[m].name);
+    b->radios[m] = (box_t) BOX_POS_SIZE(x, y, radio_w, radio_h);
+    x += radio_w + wuss_STD_GAP;
   }
-  radios_w -= wuss_STD_GAP;
+  radios_w = x - wuss_STD_GAP - wuss_STD_INSET;
 
-  cancel_w = cp_button_width(wuss, "Cancel", wuss_STD_SECONDARY_BUTTON_BORDER);
-  ok_w     = cp_button_width(wuss, "OK", wuss_STD_PRIMARY_BUTTON_BORDER);
+  cancel_w = wuss__button_width(wuss, "Cancel",
+                                wuss_STD_SECONDARY_BUTTON_BORDER);
+  ok_w     = wuss__button_width(wuss, "OK", wuss_STD_PRIMARY_BUTTON_BORDER);
   ok_w     = MAX(ok_w, cancel_w);
 
   width  = label_w + CP_SLIDER_W + value_w + 2 * wuss_STD_GAP;
   width  = MAX(width, radios_w);
   width += 2 * wuss_STD_INSET;
-  height = 2 * wuss_STD_INSET +
-           wuss_STD_GLYPH_SIZE + wuss_STD_GAP +
-           CP_NCHANNELS * (wuss_STD_SLIDER_HEIGHT + wuss_STD_GAP) +
-           CP_SWATCH_H + wuss_STD_GAP +
-           wuss_STD_PRIMARY_BUTTON_HEIGHT;
+
+  /* slider rows: label, slider, value echo */
+  y += radio_h + wuss_STD_GAP;
+  for (i = 0; i < CP_NCHANNELS; i++)
+  {
+    x = wuss_STD_INSET;
+    b->labels[i]  = (box_t) BOX_POS_SIZE(x, y, label_w, slider_h);
+    x += label_w + wuss_STD_GAP;
+    b->sliders[i] = (box_t) BOX_POS_SIZE(x, y, CP_SLIDER_W, slider_h);
+    x += CP_SLIDER_W + wuss_STD_GAP;
+    b->values[i]  = (box_t) BOX_POS_SIZE(x, y, value_w, slider_h);
+    y += slider_h + wuss_STD_GAP;
+  }
+
+  /* swatches, old then new, as tall as OK, and the hex field */
+  x = wuss_STD_INSET;
+  b->swatches = (box_t) BOX_POS_SIZE(x, y, 2 * CP_SWATCH_W, primary);
+  x += 2 * CP_SWATCH_W + wuss_STD_GAP;
+  b->hex = (box_t) BOX_POS_SIZE(x, y + (primary - field_h) / 2,
+                                width - wuss_STD_INSET - x, field_h);
+
+  /* Cancel and OK, at the right */
+  y += primary + wuss_STD_GAP;
+  x  = width - wuss_STD_INSET - ok_w;
+  b->cancel = (box_t) BOX_POS_SIZE(x - wuss_STD_GAP - cancel_w,
+                                   y + (primary - secondary) / 2,
+                                   cancel_w, secondary);
+  b->ok     = (box_t) BOX_POS_SIZE(x, y, ok_w, primary);
+
+  b->size = SIZE2D(width, y + primary + wuss_STD_INSET);
+}
+
+/* Create every icon. Every model's rows share the same boxes; all but the
+ * current model's are hidden. */
+static result_t cp_build(wuss_colourpicker_t *picker, const char *title)
+{
+  enum
+  {
+    NRADIOS = CP_NMODELS,
+    NROWS   = CP_NMODELS * CP_NCHANNELS,
+    NICONS  = NRADIOS + 3 * NROWS + 3 /* hex, Cancel, OK */
+  };
+
+  result_t               rc;
+  wuss_t                *wuss;
+  cp_boxes_t             b;
+  box_t                  content;
+  int                    m, i, n;
+  wuss_icon_spec_t       specs[NICONS];
+  wuss_icon_t           *made[NICONS];
+  char                   bufs[NROWS][WUSS_SLIDER_ROW_BUF];
+  const cp_channel_t    *ch;
+  wuss_dialogue_action_t actions[2];
+
+  wuss = picker->wuss;
+
+  cp_layout(wuss, &b);
 
   /* the window is made here, not by wuss_dialogue_create, since that one
    * skips the task's redraw and the swatches are painted from it */
-  content = (box_t) BOX_POS_SIZE(0, 0, width, height);
+  content = (box_t) BOX_POS_SIZE(0, 0, b.size.w, b.size.h);
   rc = wuss_window_create(picker->task,
                           &content,
                           title != NULL ? title : "Colour",
                           wuss_WINDOW_HIDDEN | wuss_WINDOW_FOCUSABLE,
                           wuss_BACKDROP_COLOUR(wuss_COLOUR_WINDOW),
-                          SIZE2D(width, height),
-                          SIZE2D(width, height),
+                          b.size,
+                          b.size,
                           &picker->window);
   if (rc != result_OK)
     return rc;
@@ -560,79 +656,37 @@ static result_t cp_build(wuss_colourpicker_t *picker, const char *title)
   if (rc != result_OK)
     return rc;
 
-  /* model radios */
   n = 0;
-  x = wuss_STD_INSET;
-  y = wuss_STD_INSET;
   for (m = 0; m < CP_NMODELS; m++)
-  {
-    box = (box_t) BOX_POS_SIZE(x, y, radio_w[m], wuss_STD_GLYPH_SIZE);
-    wuss_icon_spec_radio(&specs[n++], box, cp_models[m].name, 1);
-    x += radio_w[m] + wuss_STD_GAP;
-  }
+    wuss_icon_spec_radio(&specs[n++], b.radios[m], cp_models[m].name, 1);
 
-  /* slider rows: label, slider, value echo */
-  y += wuss_STD_GLYPH_SIZE + wuss_STD_GAP;
   for (m = 0; m < CP_NMODELS; m++)
   {
-    for (i = 0; i < CP_NCHANNELS; i++)
+    for (i = 0; i < cp_models[m].nchannels; i++)
     {
-      int row_y;
-
-      if (i >= cp_models[m].nchannels)
-        continue;
-
-      ch    = &cp_models[m].channels[i];
-      row_y = y + i * (wuss_STD_SLIDER_HEIGHT + wuss_STD_GAP);
-      x     = wuss_STD_INSET;
-
-      box = (box_t) BOX_POS_SIZE(x, row_y, label_w, wuss_STD_SLIDER_HEIGHT);
-      wuss_icon_spec_label(&specs[n++], box, ch->label,
+      ch = &cp_models[m].channels[i];
+      wuss_icon_spec_label(&specs[n++], b.labels[i], ch->label,
                            wuss_ICON_FLAGS_JUSTIFY_RIGHT);
-      x += label_w + wuss_STD_GAP;
-
-      wuss_icon_spec_slider_row(&specs[n], &specs[n + 1],
-                                (box_t) BOX_POS_SIZE(x, row_y, CP_SLIDER_W,
-                                                     wuss_STD_SLIDER_HEIGHT),
-                                (box_t) BOX_POS_SIZE(x + CP_SLIDER_W +
-                                                     wuss_STD_GAP, row_y,
-                                                     value_w,
-                                                     wuss_STD_SLIDER_HEIGHT),
-                                wuss_SLIDER_HORIZONTAL, ch->min, ch->max,
-                                ch->min, NULL, 0, bufs[m * CP_NCHANNELS + i],
+      wuss_icon_spec_slider_row(&specs[n], &specs[n + 1], b.sliders[i],
+                                b.values[i], wuss_SLIDER_HORIZONTAL, ch->min,
+                                ch->max, ch->min, NULL, 0,
+                                bufs[m * CP_NCHANNELS + i],
                                 WUSS_SLIDER_ROW_BUF);
       n += 2;
     }
   }
 
-  /* swatches, old then new, and the hex field */
-  y += CP_NCHANNELS * (wuss_STD_SLIDER_HEIGHT + wuss_STD_GAP);
-  x  = wuss_STD_INSET;
-
-  picker->swatches.bbox     = (box_t) BOX_POS_SIZE(x, y, 2 * CP_SWATCH_W,
-                                                   CP_SWATCH_H);
+  picker->swatches.bbox     = b.swatches;
   picker->swatches.columns  = 2;
   picker->swatches.gap      = 0;
   picker->swatches.outline  = 0;
   picker->swatches.colours  = picker->shown;
   picker->swatches.ncolours = 2;
   picker->swatches.selected = -1;
-  x += 2 * CP_SWATCH_W + wuss_STD_GAP;
 
-  box = (box_t) BOX_POS_SIZE(x, y + (CP_SWATCH_H - wuss_STD_GLYPH_SIZE) / 2,
-                             width - wuss_STD_INSET - x, wuss_STD_GLYPH_SIZE);
-  wuss_icon_spec_writable(&specs[n++], box, "", CP_HEX_SIZE, 0);
-
-  /* Cancel and OK, at the right */
-  y += CP_SWATCH_H + wuss_STD_GAP;
-  x  = width - wuss_STD_INSET - ok_w;
-  box = (box_t) BOX_POS_SIZE(x - wuss_STD_GAP - cancel_w,
-                             y + (wuss_STD_PRIMARY_BUTTON_HEIGHT -
-                                  wuss_STD_SECONDARY_BUTTON_HEIGHT) / 2,
-                             cancel_w, wuss_STD_SECONDARY_BUTTON_HEIGHT);
-  wuss_icon_spec_action(&specs[n++], box, "Cancel", 0);
-  box = (box_t) BOX_POS_SIZE(x, y, ok_w, wuss_STD_PRIMARY_BUTTON_HEIGHT);
-  wuss_icon_spec_action(&specs[n++], box, "OK", 1);
+  wuss_icon_spec_writable(&specs[n++], b.hex, "", CP_HEX_SIZE, 0);
+  wuss_icon_spec_action(&specs[n++], b.cancel, "Cancel", 0);
+  wuss_icon_spec_action(&specs[n++], b.ok, "OK", 1);
 
   rc = wuss_icon_create_array(cp_window(picker), specs, n, made);
   if (rc != result_OK)
@@ -653,11 +707,13 @@ static result_t cp_build(wuss_colourpicker_t *picker, const char *title)
       n += 3;
     }
   }
-  picker->hex = made[n++];
+  picker->hex    = made[n++];
+  picker->cancel = made[n++];
+  picker->ok     = made[n++];
 
-  actions[0].icon = made[n++];
+  actions[0].icon = picker->cancel;
   actions[0].fn   = cp_action_cancel;
-  actions[1].icon = made[n++];
+  actions[1].icon = picker->ok;
   actions[1].fn   = cp_action_ok;
 
   wuss_dialogue_set_cancel(picker->dialogue, actions[0].icon);

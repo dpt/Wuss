@@ -40,7 +40,7 @@ static point_t snap_to_screen(const wuss_window_t *win, point_t p)
   v.x = snap_axis(p.x - off.x, size.w, scr.w,
                   WUSS_SAFE_INSET, WUSS_SAFE_INSET);
   v.y = snap_axis(p.y - off.y, size.h, scr.h,
-                  WUSS_SAFE_INSET, WUSS_SAFE_INSET_BOTTOM);
+                  WUSS_SAFE_INSET, WUSS_SAFE_INSET_BOTTOM(win->wuss));
 
   return POINT(v.x + off.x, v.y + off.y);
 }

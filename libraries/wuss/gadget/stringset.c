@@ -38,6 +38,9 @@ struct wuss_stringset
   wuss_window_t               *window;
   wuss_icon_t                 *field;
   wuss_icon_t                 *arrow;
+  wuss_icon_t                 *title_icon; /* NULL if none */
+  const char                  *title;
+  int                          title_width;
   const char *const           *strings;
   int                          count;
   int                          index;
@@ -98,16 +101,19 @@ result_t wuss_stringset_create(wuss_stringset_t           **out,
     return rc;
   }
 
-  ss->alloc   = wuss->alloc;
-  ss->window  = window;
-  ss->field   = icons[0];
-  ss->arrow   = icons[1];
-  ss->strings = strings;
-  ss->count   = count;
-  ss->index   = 0;
-  ss->changed = changed;
-  ss->opaque  = opaque;
-  ss->handle  = NULL;
+  ss->alloc       = wuss->alloc;
+  ss->window      = window;
+  ss->field       = icons[0];
+  ss->arrow       = icons[1];
+  ss->title_icon  = (nspecs > 2) ? icons[2] : NULL;
+  ss->title       = title;
+  ss->title_width = title_width;
+  ss->strings     = strings;
+  ss->count       = count;
+  ss->index       = 0;
+  ss->changed     = changed;
+  ss->opaque      = opaque;
+  ss->handle      = NULL;
 
   *out = ss;
   return result_OK;
@@ -120,6 +126,16 @@ void wuss_stringset_destroy(wuss_stringset_t *doomed)
 
   wuss_menu_close(doomed->handle);
   doomed->alloc.free(doomed);
+}
+
+void wuss_stringset_set_bbox(wuss_stringset_t *stringset, box_t bbox)
+{
+  box_t field;
+
+  wuss__popup_relayout(stringset->window, bbox, stringset->title,
+                       stringset->title_width, "gright", "gright-p",
+                       stringset->arrow, stringset->title_icon, &field);
+  wuss_icon_set_bbox(stringset->window, stringset->field, &field);
 }
 
 /* ----------------------------------------------------------------------- */

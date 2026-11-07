@@ -44,13 +44,12 @@
  * in a row from the left, each its label then a slider and its readout, or
  * the nozzle button. Placed by painting_sizebar_build */
 #define SB_MARGIN      4
-#define SB_ROW_H       18
+#define SB_ROW_H(wuss) wuss_std_height((wuss), wuss_STD_SLIDER)
 #define SB_LABEL_GAP   4   /* between a setting's label and its control */
 #define SB_SETTING_GAP 10  /* between settings */
 #define SB_SLIDER_W    58
-#define SB_NOZZLE_W    76  /* the nozzle button, wide enough for "Backslash" */
 #define SB_W           580 /* wide enough for the widest tool's settings */
-#define SB_H           (SB_MARGIN + SB_ROW_H + SB_MARGIN)
+#define SB_H(wuss)     (SB_MARGIN + SB_ROW_H(wuss) + SB_MARGIN)
 
 /* the paintbrush's nozzle rows, indexed by paintingdoc_nozzle_t */
 extern const char *const painting_nozzle_names[paintingdoc_NOZZLE__COUNT];
@@ -76,6 +75,10 @@ result_t painting_toolbar_icon(painting_task_t    *pt,
 
 /* step the brush size by delta, keeping the size bar in step */
 void painting_step_size(painting_task_t *pt, int delta);
+
+/* on wuss_EVENT_RELAYOUT: refit the size bar and the toolbox below it to
+ * the new font */
+result_t painting_sizebar_relayout(painting_task_t *pt);
 
 #endif /* WUSS_APP */
 

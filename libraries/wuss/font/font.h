@@ -48,6 +48,10 @@ void wuss__fontset_set(struct wuss_fontset    *set,
  * regular and bold faces. */
 int wuss__fontset_height(const struct wuss_fontset *set, int slot);
 
+/* Pixel height of the system font (slot 0), or WUSS_FALLBACK_FONT_HEIGHT if
+ * none is loaded. Standard sizes are derived from it. */
+int wuss__system_font_height(const wuss_t *wuss);
+
 /* Cached advance of a space in "font", which must be one of "set"'s slots;
  * 0 if it isn't. Saves re-measuring it on every text layout. */
 bmfont_width_t wuss__fontset_space_width(const struct wuss_fontset *set,

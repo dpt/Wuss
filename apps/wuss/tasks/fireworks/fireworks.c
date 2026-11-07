@@ -31,6 +31,24 @@
 
 #define FIREWORKS_NSTYLES 4
 
+/* the Strength dialogue's icons, in creation order (see
+ * fireworks_strength_dialogue_create) */
+enum
+{
+  FIREWORKS_STRENGTH_ICON_LABEL = 0,
+  FIREWORKS_STRENGTH_ICON_SLIDER,
+  FIREWORKS_STRENGTH_ICON_VALUE,
+
+  FIREWORKS_STRENGTH_ICON_RANGE_LABEL,
+  FIREWORKS_STRENGTH_ICON_RANGE_SLIDER,
+  FIREWORKS_STRENGTH_ICON_RANGE_VALUE,
+
+  FIREWORKS_STRENGTH_ICON_CANCEL,
+  FIREWORKS_STRENGTH_ICON_APPLY,
+
+  FIREWORKS_STRENGTH_NICONS
+};
+
 /* window task: the Explosion particle engine. SELECT bursts a random mix of
  * styles at the click; ADJUST bursts flecks. The pointer trails particles
  * while over the content. Menu > Add > Emitter adds a smoke emitter, at a
@@ -62,8 +80,7 @@ typedef struct fireworks_task
                                           * window leaf, never closed here */
   wuss_slider_row_t   strength_row;
   wuss_slider_row_t   range_row; /* the force's sphere of influence, pixels */
-  wuss_icon_t        *strength_cancel;
-  wuss_icon_t        *strength_apply;
+  wuss_icon_t        *strength_icons[FIREWORKS_STRENGTH_NICONS];
   int                 strength_which; /* FIREWORKS_ADD_ATTRACTOR or
                                        * FIREWORKS_ADD_REPELLER: set from the
                                        * leaf's PRE_SHOW index, read by Apply */
@@ -173,24 +190,6 @@ fireworks_intensities[] =
 #define FIREWORKS_RANGE_DEFAULT        100 /* pixels of influence */
 
 #define FIREWORKS_EMITTER_RING         6 /* radius of an emitter's marker */
-
-/* the Strength dialogue's icons, in creation order (see
- * fireworks_strength_dialogue_create) */
-enum
-{
-  FIREWORKS_STRENGTH_ICON_LABEL = 0,
-  FIREWORKS_STRENGTH_ICON_SLIDER,
-  FIREWORKS_STRENGTH_ICON_VALUE,
-
-  FIREWORKS_STRENGTH_ICON_RANGE_LABEL,
-  FIREWORKS_STRENGTH_ICON_RANGE_SLIDER,
-  FIREWORKS_STRENGTH_ICON_RANGE_VALUE,
-
-  FIREWORKS_STRENGTH_ICON_CANCEL,
-  FIREWORKS_STRENGTH_ICON_APPLY,
-
-  FIREWORKS_STRENGTH_NICONS
-};
 
 static result_t fireworks_strength_dialogue_create(fireworks_task_t *task);
 static result_t fireworks_strength_fillout(void *opaque);
@@ -460,10 +459,9 @@ static result_t fireworks_init(fireworks_task_t *task)
 }
 
 /* stack items for the Strength dialogue's layout: label/slider/value-echo
- * rows above a Cancel/Apply button row, as saturn's g_saturn_conf_stack.
- * Labels and values are size-grouped (widths patched from the font in
- * fireworks_strength_dialogue_create); a spacer in the label group puts the
- * buttons under the sliders. */
+ * rows above a Cancel/Apply button row. Labels and values are size-grouped;
+ * sizes are patched from the font in fireworks_strength_solve. A spacer in
+ * the label group puts the buttons under the sliders. */
 enum
 {
   PST_ROOT,
@@ -496,23 +494,111 @@ static const stack_item_t g_fireworks_strength_stack[FIREWORKS_STRENGTH_STACK__L
   [PST_ROOT] = { .kind = stack_KIND_VBOX, .parent = -1,
                .gap = wuss_STD_GAP, .pad = wuss_STD_INSETS },
 
-  [PST_ROW]  = STACK_HBOX(PST_ROOT, wuss_STD_SLIDER_HEIGHT, wuss_STD_GAP, stack_ALIGN_START),
-  [PST_LABL] = STACK_LEAF_GROUP(PST_ROW, 0, 16, stack_ALIGN_CENTRE, PST_G_LABEL),
-  [PST_SLDR] = STACK_LEAF_EX(PST_ROW, 0, wuss_STD_SLIDER_HEIGHT, stack_ALIGN_CENTRE, 1, PST_SLIDER_MIN_W, 0),
-  [PST_VAL]  = STACK_LEAF_GROUP(PST_ROW, 0, 16, stack_ALIGN_CENTRE, PST_G_VALUE),
+  [PST_ROW]  = STACK_HBOX(PST_ROOT, 0, wuss_STD_GAP, stack_ALIGN_START),
+  [PST_LABL] = STACK_LEAF_GROUP(PST_ROW, 0, 0, stack_ALIGN_CENTRE, PST_G_LABEL),
+  [PST_SLDR] = STACK_LEAF_EX(PST_ROW, 0, 0, stack_ALIGN_CENTRE, 1, PST_SLIDER_MIN_W, 0),
+  [PST_VAL]  = STACK_LEAF_GROUP(PST_ROW, 0, 0, stack_ALIGN_CENTRE, PST_G_VALUE),
 
-  [PST_ROW2]  = STACK_HBOX(PST_ROOT, wuss_STD_SLIDER_HEIGHT, wuss_STD_GAP, stack_ALIGN_START),
-  [PST_LABL2] = STACK_LEAF_GROUP(PST_ROW2, 0, 16, stack_ALIGN_CENTRE, PST_G_LABEL),
-  [PST_SLDR2] = STACK_LEAF_EX(PST_ROW2, 0, wuss_STD_SLIDER_HEIGHT, stack_ALIGN_CENTRE, 1, PST_SLIDER_MIN_W, 0),
-  [PST_VAL2]  = STACK_LEAF_GROUP(PST_ROW2, 0, 16, stack_ALIGN_CENTRE, PST_G_VALUE),
+  [PST_ROW2]  = STACK_HBOX(PST_ROOT, 0, wuss_STD_GAP, stack_ALIGN_START),
+  [PST_LABL2] = STACK_LEAF_GROUP(PST_ROW2, 0, 0, stack_ALIGN_CENTRE, PST_G_LABEL),
+  [PST_SLDR2] = STACK_LEAF_EX(PST_ROW2, 0, 0, stack_ALIGN_CENTRE, 1, PST_SLIDER_MIN_W, 0),
+  [PST_VAL2]  = STACK_LEAF_GROUP(PST_ROW2, 0, 0, stack_ALIGN_CENTRE, PST_G_VALUE),
 
-  [PST_BTNS] = STACK_HBOX(PST_ROOT, wuss_STD_SECONDARY_BUTTON_HEIGHT, wuss_STD_GAP, stack_ALIGN_START),
+  [PST_BTNS] = STACK_HBOX(PST_ROOT, 0, wuss_STD_GAP, stack_ALIGN_START),
   [PST_BSPC] = STACK_SPACER_GROUP(PST_BTNS, 0, PST_G_LABEL),
   [PST_BBOX] = { .kind = stack_KIND_HBOX, .parent = PST_BTNS,
                .gap = wuss_STD_GAP, .flex = 1 },
-  [PST_CNCL] = STACK_LEAF_EX(PST_BBOX, 0, wuss_STD_SECONDARY_BUTTON_HEIGHT, stack_ALIGN_CENTRE, 1, 0, 0),
-  [PST_APLY] = STACK_LEAF_EX(PST_BBOX, 0, wuss_STD_SECONDARY_BUTTON_HEIGHT, stack_ALIGN_CENTRE, 1, 0, 0),
+  [PST_CNCL] = STACK_LEAF_EX(PST_BBOX, 0, 0, stack_ALIGN_CENTRE, 1, 0, 0),
+  [PST_APLY] = STACK_LEAF_EX(PST_BBOX, 0, 0, stack_ALIGN_CENTRE, 1, 0, 0),
 };
+
+/* the stack item laying out each of the Strength dialogue's icons */
+static const int g_fireworks_strength_item[FIREWORKS_STRENGTH_NICONS] =
+{
+  PST_LABL, PST_SLDR, PST_VAL, PST_LABL2, PST_SLDR2, PST_VAL2, PST_CNCL,
+  PST_APLY
+};
+
+/* lay the Strength dialogue out for the current desktop font */
+static result_t fireworks_strength_solve(fireworks_task_t *task,
+                                         size2d_t         *size,
+                                         box_t             boxes[FIREWORKS_STRENGTH_STACK__LIMIT])
+{
+  result_t     rc;
+  stack_item_t items[FIREWORKS_STRENGTH_STACK__LIMIT];
+  wuss_t      *wuss;
+  int          label_h;
+  int          slider_h;
+  int          button_h;
+  int          button_w;
+  char         widest[WUSS_SLIDER_ROW_BUF];
+  box_t        root;
+
+  memcpy(items, g_fireworks_strength_stack, sizeof(items));
+
+  wuss     = task->base.wuss;
+  label_h  = wuss_std_height(wuss, wuss_STD_LABEL);
+  slider_h = wuss_std_height(wuss, wuss_STD_SLIDER);
+  button_h = wuss_std_height(wuss, wuss_STD_SECONDARY_BUTTON);
+
+  items[PST_ROW].axis_size    = slider_h;
+  items[PST_ROW2].axis_size   = slider_h;
+  items[PST_SLDR].cross_size  = slider_h;
+  items[PST_SLDR2].cross_size = slider_h;
+  items[PST_LABL].cross_size  = label_h;
+  items[PST_LABL2].cross_size = label_h;
+  items[PST_VAL].cross_size   = label_h;
+  items[PST_VAL2].cross_size  = label_h;
+  items[PST_BTNS].axis_size   = button_h;
+  items[PST_CNCL].cross_size  = button_h;
+  items[PST_APLY].cross_size  = button_h;
+
+  /* each label/value's natural width; the size groups widen the rest to match */
+  items[PST_LABL].axis_size  = task_text_width(wuss, "Strength");
+  items[PST_LABL2].axis_size = task_text_width(wuss, "Range");
+  snprintf(widest, sizeof(widest), "%d", FIREWORKS_STRENGTH_MAX);
+  items[PST_VAL].axis_size   = task_text_width(wuss, widest);
+  snprintf(widest, sizeof(widest), "%d", FIREWORKS_RANGE_MAX);
+  items[PST_VAL2].axis_size  = task_text_width(wuss, widest);
+
+  /* the buttons share the widest label's width */
+  button_w = task_button_width(wuss, "Cancel",
+                               wuss_STD_SECONDARY_BUTTON_BORDER);
+  items[PST_CNCL].min = button_w;
+  items[PST_APLY].min = button_w;
+
+  rc = stack_smallest(items, NELEMS(items), size);
+  if (rc != result_OK)
+    return rc;
+
+  root = (box_t) BOX_POS_SIZE(0, 0, size->w, size->h);
+  return stack_solve(items, NELEMS(items), &root, boxes);
+}
+
+static result_t fireworks_strength_relayout(fireworks_task_t *task)
+{
+  result_t       rc;
+  size2d_t       size;
+  box_t          boxes[FIREWORKS_STRENGTH_STACK__LIMIT];
+  wuss_window_t *window;
+  int            i;
+
+  rc = fireworks_strength_solve(task, &size, boxes);
+  if (rc != result_OK)
+    return rc;
+
+  window = wuss_dialogue_window(task->strength_dialogue);
+
+  rc = task_fit_window(window, size);
+  if (rc != result_OK)
+    return rc;
+
+  for (i = 0; i < FIREWORKS_STRENGTH_NICONS; i++)
+    wuss_icon_set_bbox(window, task->strength_icons[i],
+                       &boxes[g_fireworks_strength_item[i]]);
+
+  return result_OK;
+}
 
 /* Build the Strength dialogue once: a label, a slider 1..100, a label
  * echoing its current value, and Cancel/Apply buttons, positioned by
@@ -524,32 +610,14 @@ static const stack_item_t g_fireworks_strength_stack[FIREWORKS_STRENGTH_STACK__L
 static result_t fireworks_strength_dialogue_create(fireworks_task_t *task)
 {
   result_t         rc;
-  wuss_icon_spec_t specs[FIREWORKS_STRENGTH_NICONS];
-  wuss_icon_t     *made[FIREWORKS_STRENGTH_NICONS];
-  stack_item_t     items[FIREWORKS_STRENGTH_STACK__LIMIT];
   box_t            boxes[FIREWORKS_STRENGTH_STACK__LIMIT];
-  box_t            root;
+  size2d_t         min_sz;
+  wuss_icon_spec_t specs[FIREWORKS_STRENGTH_NICONS];
   char             value_buf[WUSS_SLIDER_ROW_BUF];
   char             range_buf[WUSS_SLIDER_ROW_BUF];
-  char             widest[WUSS_SLIDER_ROW_BUF];
-  size2d_t         min_sz;
+  wuss_icon_t    **made;
 
-  /* each label/value's natural width; the size groups widen the rest to match */
-  memcpy(items, g_fireworks_strength_stack, sizeof(items));
-  items[PST_LABL].axis_size  = task_text_width(task->base.wuss, "Strength");
-  items[PST_LABL2].axis_size = task_text_width(task->base.wuss, "Range");
-  snprintf(widest, sizeof(widest), "%d", FIREWORKS_STRENGTH_MAX);
-  items[PST_VAL].axis_size   = task_text_width(task->base.wuss, widest);
-  snprintf(widest, sizeof(widest), "%d", FIREWORKS_RANGE_MAX);
-  items[PST_VAL2].axis_size  = task_text_width(task->base.wuss, widest);
-
-  /* the buttons share the widest label's width */
-  items[PST_CNCL].min = task_button_width(task->base.wuss, "Cancel",
-                                          wuss_STD_SECONDARY_BUTTON_BORDER);
-  items[PST_APLY].min = task_button_width(task->base.wuss, "Cancel",
-                                          wuss_STD_SECONDARY_BUTTON_BORDER);
-
-  rc = stack_smallest(items, NELEMS(items), &min_sz);
+  rc = fireworks_strength_solve(task, &min_sz, boxes);
   if (rc != result_OK)
     return rc;
 
@@ -559,11 +627,6 @@ static result_t fireworks_strength_dialogue_create(fireworks_task_t *task)
     return rc;
 
   wuss_dialogue_set_focusable(task->strength_dialogue, 0); /* no writables */
-
-  root = (box_t) BOX_POS_SIZE(0, 0, min_sz.w, min_sz.h);
-  rc = stack_solve(items, NELEMS(items), &root, boxes);
-  if (rc != result_OK)
-    goto exit;
 
   wuss_icon_spec_label(&specs[FIREWORKS_STRENGTH_ICON_LABEL], boxes[PST_LABL],
                        "Strength", wuss_ICON_FLAGS_JUSTIFY_RIGHT);
@@ -589,8 +652,9 @@ static result_t fireworks_strength_dialogue_create(fireworks_task_t *task)
   wuss_icon_spec_action(&specs[FIREWORKS_STRENGTH_ICON_CANCEL], boxes[PST_CNCL], "Cancel", 0);
   wuss_icon_spec_action(&specs[FIREWORKS_STRENGTH_ICON_APPLY], boxes[PST_APLY], "Apply", 0);
 
-  rc = wuss_icon_create_array(wuss_dialogue_window(task->strength_dialogue),
-                              specs, FIREWORKS_STRENGTH_NICONS, made);
+  made = task->strength_icons;
+  rc   = wuss_icon_create_array(wuss_dialogue_window(task->strength_dialogue),
+                                specs, FIREWORKS_STRENGTH_NICONS, made);
   if (rc != result_OK)
     goto exit;
 
@@ -602,15 +666,13 @@ static result_t fireworks_strength_dialogue_create(fireworks_task_t *task)
                        made[FIREWORKS_STRENGTH_ICON_RANGE_SLIDER],
                        made[FIREWORKS_STRENGTH_ICON_RANGE_VALUE], NULL,
                        FIREWORKS_RANGE_MIN, FIREWORKS_RANGE_MAX, 0);
-  task->strength_cancel = made[FIREWORKS_STRENGTH_ICON_CANCEL];
-  task->strength_apply  = made[FIREWORKS_STRENGTH_ICON_APPLY];
 
   {
     wuss_dialogue_action_t actions[2];
 
-    actions[0].icon = task->strength_cancel;
+    actions[0].icon = made[FIREWORKS_STRENGTH_ICON_CANCEL];
     actions[0].fn   = fireworks_strength_cancel;
-    actions[1].icon = task->strength_apply;
+    actions[1].icon = made[FIREWORKS_STRENGTH_ICON_APPLY];
     actions[1].fn   = fireworks_strength_apply_action;
 
     rc = wuss_dialogue_set_actions(task->strength_dialogue, actions,
@@ -1095,6 +1157,11 @@ static result_t fireworks_handle(wuss_window_t      *window,
   case wuss_EVENT_QUIT:
     wuss_dialogue_destroy(pt->strength_dialogue);
     return result_OK;
+
+  case wuss_EVENT_RELAYOUT:
+    if (window != wuss_dialogue_window(pt->strength_dialogue))
+      return result_OK;
+    return fireworks_strength_relayout(pt);
 
   default:
     return result_OK;

@@ -30,7 +30,8 @@
 #include "../tasks.h"
 
 #define PINBOARD_CELL_W 96
-#define PINBOARD_CELL_H 64
+/* the glyph, its pads and the label lozenge's border, then a line of text */
+#define PINBOARD_CELL_H(wuss) (54 + wuss_std_height((wuss), wuss_STD_LABEL))
 #define PINBOARD_PAD     4 /* above the glyph and below the label */
 #define PINBOARD_MARGIN  8 /* screen edge to the first cell */
 
@@ -169,7 +170,7 @@ static int pinboard_rows(const pinboard_t *pb)
   screen = wuss_get_screen_size(pb->wuss);
 
   return MAX((screen.h - PINBOARD_ICONBAR - PINBOARD_MARGIN) /
-             PINBOARD_CELL_H, 1);
+             PINBOARD_CELL_H(pb->wuss), 1);
 }
 
 static int pinboard_columns(const pinboard_t *pb)
@@ -188,7 +189,7 @@ static point_t pinboard_cell_pos(const pinboard_t *pb, int cell)
   rows = pinboard_rows(pb);
 
   return POINT(PINBOARD_MARGIN + cell / rows * PINBOARD_CELL_W,
-               PINBOARD_MARGIN + cell % rows * PINBOARD_CELL_H);
+               PINBOARD_MARGIN + cell % rows * PINBOARD_CELL_H(pb->wuss));
 }
 
 /* the cell under screen point p, clamped to the grid */
@@ -198,7 +199,7 @@ static int pinboard_cell_at(const pinboard_t *pb, point_t p)
 
   col = CLAMP((p.x - PINBOARD_MARGIN) / PINBOARD_CELL_W, 0,
               pinboard_columns(pb) - 1);
-  row = CLAMP((p.y - PINBOARD_MARGIN) / PINBOARD_CELL_H, 0,
+  row = CLAMP((p.y - PINBOARD_MARGIN) / PINBOARD_CELL_H(pb->wuss), 0,
               pinboard_rows(pb) - 1);
 
   return col * pinboard_rows(pb) + row;
@@ -227,10 +228,10 @@ static int pinboard_free_cell(const pinboard_t *pb, int from, int except)
   return from;
 }
 
-static box_t pinboard_pin_box(const pin_t *pin)
+static box_t pinboard_pin_box(const pinboard_t *pb, const pin_t *pin)
 {
   box_t box = BOX_POS_SIZE(pin->pos.x, pin->pos.y, PINBOARD_CELL_W,
-                           PINBOARD_CELL_H);
+                           PINBOARD_CELL_H(pb->wuss));
 
   return box;
 }
@@ -239,7 +240,7 @@ static void pinboard_invalidate_pin(pinboard_t *pb, int i)
 {
   box_t box;
 
-  box = pinboard_pin_box(&pb->pins[i]);
+  box = pinboard_pin_box(pb, &pb->pins[i]);
   wuss_window_invalidate(pb->window, &box);
 }
 
@@ -251,7 +252,7 @@ static int pinboard_hit(const pinboard_t *pb, point_t p)
 
   for (i = pb->npins - 1; i >= 0; i--)
   {
-    box = pinboard_pin_box(&pb->pins[i]);
+    box = pinboard_pin_box(pb, &pb->pins[i]);
     if (box_contains_point(&box, p.x, p.y))
       return i;
   }
@@ -516,7 +517,7 @@ static void pinboard_draw_pin(pinboard_t  *pb,
   bmfont_width_t  w, ellipsis_w;
   point_t         pos, end;
 
-  cell = pinboard_pin_box(pin);
+  cell = pinboard_pin_box(pb, pin);
   if (box_intersection(&scr->clip, &cell, &clip))
     return;
 
@@ -623,7 +624,7 @@ static void pinboard_band_end(pinboard_t *pb)
 
   for (i = 0; i < pb->npins; i++)
   {
-    box = pinboard_pin_box(&pb->pins[i]);
+    box = pinboard_pin_box(pb, &pb->pins[i]);
     if (!box_intersection(&pb->band.box, &box, &clipped))
       pinboard_select(pb, i, 1);
   }
@@ -656,7 +657,7 @@ static void pinboard_drag_maybe(pinboard_t *pb, point_t p)
   else
   {
     rc = wuss_drag_start(pb->wuss, pb->window,
-                         SIZE2D(PINBOARD_CELL_W, PINBOARD_CELL_H),
+                         SIZE2D(PINBOARD_CELL_W, PINBOARD_CELL_H(pb->wuss)),
                          pb->hotspot);
   }
 
@@ -683,7 +684,7 @@ static void pinboard_drag_end(pinboard_t *pb, const wuss_event_t *event)
   {
     p = wuss_get_pointer(pb->wuss);
     p = POINT(p.x - pb->hotspot.x + PINBOARD_CELL_W / 2,
-              p.y - pb->hotspot.y + PINBOARD_CELL_H / 2);
+              p.y - pb->hotspot.y + PINBOARD_CELL_H(pb->wuss) / 2);
     pinboard_invalidate_pin(pb, i);
     pb->pins[i].pos = pinboard_cell_pos(pb,
                                         pinboard_free_cell(pb,

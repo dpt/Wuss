@@ -242,8 +242,10 @@ static void wuss__icon_draw_frame(const icon_draw_ctx_t *c)
                        NULL, &cap_w);
   }
 
+  /* the border meets the caption about halfway down its text */
   frame    = c->b;
-  frame.y0 += WUSS_FRAME_CAPTION_TOP;
+  frame.y0 += c->have_font ? MAX(c->font_height / 2 - 1, 0)
+                           : WUSS_FRAME_CAPTION_TOP;
   icon_draw_divider_border(c->scr, &frame, light, divider);
 
   if (cap_w > 0)

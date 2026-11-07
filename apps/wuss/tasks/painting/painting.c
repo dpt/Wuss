@@ -208,7 +208,7 @@ static result_t painting_build(painting_task_t            *task,
    * toolbox to share its top outline with the size bar's bottom edge */
   if (rc == result_OK)
     rc = wuss_window_attach(task->toolbox, task->base.window, wuss_EDGE_LEFT,
-                            wuss_ALIGN_TOP, SB_H + 1);
+                            wuss_ALIGN_TOP, SB_H(task->base.wuss) + 1);
   if (rc == result_OK)
     rc = wuss_window_create_at(delegate,
                                &place,
@@ -227,13 +227,13 @@ static result_t painting_build(painting_task_t            *task,
   if (rc == result_OK)
     rc = wuss_window_create_at(delegate,
                                &place,
-                               SIZE2D(SB_W, SB_H),
+                               SIZE2D(SB_W, SB_H(task->base.wuss)),
                                NULL,
                                wuss_WINDOW_NO_TITLEBAR |
                                wuss_WINDOW_NO_OUTLINE  |
                                wuss_WINDOW_NO_REDRAW,
                                wuss_BACKDROP_COLOUR(wuss_COLOUR_WINDOW),
-                               SIZE2D(SB_W, SB_H),
+                               SIZE2D(SB_W, SB_H(task->base.wuss)),
                                SIZE2D(0, 0),
                                &task->sizebar);
   if (rc == result_OK)
@@ -837,6 +837,11 @@ static result_t painting_handle(wuss_window_t      *window,
 
   case wuss_EVENT_ICON:
     return painting_toolbar_icon(pt, event);
+
+  case wuss_EVENT_RELAYOUT:
+    if (window == pt->base.window && pt->sizebar != NULL)
+      return painting_sizebar_relayout(pt);
+    return result_OK;
 
   case wuss_EVENT_KEY:
   {

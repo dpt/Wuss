@@ -32,16 +32,14 @@
 
 #define SAVEAS_ICON_W    34
 #define SAVEAS_ICON_H    34
-#define SAVEAS_BUTTON_W  64
-#define SAVEAS_ROW_H     24
-#define SAVEAS_SAVE_GROW  8 /* extra height for wuss_ICON_BORDER_ACTION */
+#define SAVEAS_BUTTON_W  64 /* least button width, so the writable is usable */
 #define SAVEAS_GAP       wuss_STD_INSET
 
 #define SAVEAS_LEAF_SIZE DPTLIB_MAXPATH
 
 /* stack items for the dialogue: a VBOX of the file icon, centred, above the
  * writable above the row of buttons, Cancel centred against the taller Save.
- * The dialogue is sized to fit with stack_smallest. */
+ * Heights and button widths come from the system font: see saveas_solve. */
 enum
 {
   SA_ROOT,
@@ -59,12 +57,10 @@ static const stack_item_t saveas_layout[SA__LIMIT] =
                    .gap = SAVEAS_GAP, .pad = wuss_STD_INSETS },
   [SA_FILE]    = STACK_LEAF(SA_ROOT, SAVEAS_ICON_H, SAVEAS_ICON_W,
                             stack_ALIGN_CENTRE),
-  [SA_LEAF]    = STACK_LEAF(SA_ROOT, SAVEAS_ROW_H, 0, stack_ALIGN_FILL),
-  [SA_BUTTONS] = STACK_HBOX(SA_ROOT, SAVEAS_ROW_H + SAVEAS_SAVE_GROW,
-                            SAVEAS_GAP, stack_ALIGN_FILL),
-  [SA_CANCEL]  = STACK_LEAF(SA_BUTTONS, SAVEAS_BUTTON_W, SAVEAS_ROW_H,
-                            stack_ALIGN_CENTRE),
-  [SA_SAVE]    = STACK_LEAF(SA_BUTTONS, SAVEAS_BUTTON_W, 0, stack_ALIGN_FILL)
+  [SA_LEAF]    = STACK_LEAF(SA_ROOT, 0, 0, stack_ALIGN_FILL),
+  [SA_BUTTONS] = STACK_HBOX(SA_ROOT, 0, SAVEAS_GAP, stack_ALIGN_FILL),
+  [SA_CANCEL]  = STACK_LEAF(SA_BUTTONS, 0, 0, stack_ALIGN_CENTRE),
+  [SA_SAVE]    = STACK_LEAF(SA_BUTTONS, 0, 0, stack_ALIGN_FILL)
 };
 
 /* The struct is opaque outside this file, unlike wuss_dialogue/wuss_info --
@@ -195,21 +191,79 @@ static int saveas_file_icon(const wuss_t *wuss, filetype_t filetype)
   return idx >= 0 ? wuss_ICONPOOL_SET(idx) : 0;
 }
 
+/* solve the layout for the current system font: the window size and a box
+ * for every item */
+static result_t saveas_solve(const wuss_t *wuss,
+                             size2d_t     *size,
+                             box_t         boxes[SA__LIMIT])
+{
+  result_t     rc;
+  stack_item_t items[SA__LIMIT];
+  int          primary;
+  box_t        root;
+
+  memcpy(items, saveas_layout, sizeof(items));
+
+  primary = wuss_std_height(wuss, wuss_STD_PRIMARY_BUTTON);
+
+  items[SA_LEAF].axis_size    = wuss_std_height(wuss, wuss_STD_FIELD);
+  items[SA_BUTTONS].axis_size = primary;
+  items[SA_CANCEL].axis_size  =
+    MAX(SAVEAS_BUTTON_W, wuss__button_width(wuss, "Cancel",
+                                            wuss_STD_SECONDARY_BUTTON_BORDER));
+  items[SA_CANCEL].cross_size =
+    wuss_std_height(wuss, wuss_STD_SECONDARY_BUTTON);
+  items[SA_SAVE].axis_size    =
+    MAX(SAVEAS_BUTTON_W, wuss__button_width(wuss, "Save",
+                                            wuss_STD_PRIMARY_BUTTON_BORDER));
+  items[SA_SAVE].cross_size   = primary;
+
+  rc = stack_smallest(items, SA__LIMIT, size);
+  if (rc != result_OK)
+    return rc;
+
+  root = (box_t) BOX_POS_SIZE(0, 0, size->w, size->h);
+  return stack_solve(items, SA__LIMIT, &root, boxes);
+}
+
+/* re-solve for a new system font, then move the icons and refit the window */
+static result_t saveas_relayout(wuss_saveas_t *sa)
+{
+  result_t       rc;
+  size2d_t       size;
+  box_t          boxes[SA__LIMIT];
+  wuss_window_t *window;
+
+  rc = saveas_solve(sa->wuss, &size, boxes);
+  if (rc != result_OK)
+    return rc;
+
+  window = wuss_dialogue_window(sa->dialogue);
+
+  rc = wuss_window_resize(window, size);
+  if (rc != result_OK)
+    return rc;
+
+  rc = wuss_window_set_doc(window, size);
+  if (rc != result_OK)
+    return rc;
+
+  wuss_icon_set_bbox(window, sa->drag_icon, &boxes[SA_FILE]);
+  wuss_icon_set_bbox(window, sa->leaf_icon, &boxes[SA_LEAF]);
+  wuss_icon_set_bbox(window, sa->cancel_icon, &boxes[SA_CANCEL]);
+  wuss_icon_set_bbox(window, sa->save_icon, &boxes[SA_SAVE]);
+
+  return result_OK;
+}
+
 static result_t saveas_build_icons(wuss_saveas_t *sa,
                                    const char    *leafname,
-                                   size2d_t       size)
+                                   const box_t    boxes[SA__LIMIT])
 {
   result_t         rc;
-  box_t            root;
-  box_t            boxes[SA__LIMIT];
   wuss_window_t   *window;
   wuss_icon_spec_t specs[4];
   wuss_icon_t     *icons[4];
-
-  root = (box_t) BOX_POS_SIZE(0, 0, size.w, size.h);
-  rc = stack_solve(saveas_layout, SA__LIMIT, &root, boxes);
-  if (rc != result_OK)
-    return rc;
 
   window = wuss_dialogue_window(sa->dialogue);
   memset(specs, 0, sizeof(specs));
@@ -250,6 +304,8 @@ static result_t saveas_task_handle(wuss_window_t      *window,
     return result_OK;
   if (event->kind == wuss_EVENT_PRE_CLOSE)
     return wuss_dialogue_handle_pre_close(saveas->dialogue);
+  if (event->kind == wuss_EVENT_RELAYOUT)
+    return saveas_relayout(saveas);
 
   (void) wuss_saveas_handle_event(saveas, window, event);
 
@@ -266,6 +322,7 @@ result_t wuss_saveas_create(wuss_saveas_t        **out,
   result_t         rc;
   wuss_saveas_t   *sa;
   size2d_t         size;
+  box_t            boxes[SA__LIMIT];
   wuss_task_desc_t desc;
 
   if (out == NULL || wuss == NULL || save_fn == NULL)
@@ -285,7 +342,7 @@ result_t wuss_saveas_create(wuss_saveas_t        **out,
   sa->transfer_active = 0;
   sa->save_target     = NULL;
 
-  rc = stack_smallest(saveas_layout, SA__LIMIT, &size);
+  rc = saveas_solve(wuss, &size, boxes);
   if (rc != result_OK)
     goto failure;
 
@@ -301,7 +358,7 @@ result_t wuss_saveas_create(wuss_saveas_t        **out,
   if (rc != result_OK)
     goto failure;
 
-  rc = saveas_build_icons(sa, leafname, size);
+  rc = saveas_build_icons(sa, leafname, boxes);
   if (rc != result_OK)
     goto failure;
 

@@ -350,6 +350,10 @@ const bitmap_t *wuss__iconpool_find(const wuss_t      *wuss,
  * unchanged, so icons holding them stay valid. */
 result_t wuss__iconpool_match_screen(wuss_t *wuss);
 
+/* Width of an action button labelled "text" in the system font: the text,
+ * a space either side and "border" (wuss_STD_*_BUTTON_BORDER) each side. */
+int wuss__button_width(const wuss_t *wuss, const char *text, int border);
+
 #endif /* WUSS_ICONS */
 
 #endif /* WUSS_ICON_IMPL_H */

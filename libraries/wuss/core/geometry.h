@@ -4,6 +4,14 @@
 #define WUSS_CORE_GEOMETRY_H
 
 #include "types.h"
+#include "../font/font.h"
+
+/* height of the icon bar strip for the current system font */
+static inline int wuss__iconbar_height(const wuss_t *wuss)
+{
+  return WUSS_ICONBAR_ICON + WUSS_ICONBAR_TEXT_PAD +
+         wuss__system_font_height(wuss) + WUSS_ICONBAR_MARGIN;
+}
 
 
 /* clamp "desired" to the window's scrollable range; step the current offset

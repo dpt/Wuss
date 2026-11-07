@@ -59,6 +59,7 @@ result_t wuss_set_font(wuss_t *wuss, int index, const wuss_font_desc_t *desc)
   int old_height;
   int auto_height;
 #endif
+  wuss_window_t *win;
 
   assert(wuss != NULL);
   assert(desc != NULL);
@@ -72,6 +73,11 @@ result_t wuss_set_font(wuss_t *wuss, int index, const wuss_font_desc_t *desc)
 #endif
 
   wuss__fontset_set(&wuss->fonts, index, desc);
+
+  /* the icon bar's height follows the system font */
+  for (win = wuss__z_first(wuss); win != NULL; win = wuss__z_below(win))
+    if (win->flags & wuss_WINDOW_PINNED)
+      wuss__fit_pinned_window(win);
 
 #ifdef WUSS_FURNITURE
   /* ponytail: an explicit config height that happens to equal the derived

@@ -284,6 +284,7 @@ set(WUSS_ICON_SOURCES
     libraries/wuss/icon/plot.c
     libraries/wuss/icon/iconpool.c
     libraries/wuss/icon/screen-box.c
+    libraries/wuss/icon/set-bbox.c
     libraries/wuss/icon/set-disabled.c
     libraries/wuss/icon/set-flag.c
     libraries/wuss/icon/set-hidden.c
@@ -292,6 +293,7 @@ set(WUSS_ICON_SOURCES
     libraries/wuss/icon/set-text.c
     libraries/wuss/icon/set-value.c
     libraries/wuss/icon/slider-box.c
+    libraries/wuss/icon/std-height.c
     libraries/wuss/icon/writable.c
     libraries/wuss/icon.h)
 

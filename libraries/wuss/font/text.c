@@ -29,7 +29,7 @@ bmfont_width_t wuss__text_width(bmfont_t *font, const char *text)
   bmfont_width_t w;
 
   w = 0;
-  if (font != NULL && text != NULL)
+  if (font != NULL && text != NULL && text[0] != '\0')
     (void) wuss__text_measure(font, text, (int) strlen(text), INT_MAX, NULL,
                               &w);
 

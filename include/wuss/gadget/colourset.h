@@ -121,6 +121,18 @@ int wuss_colourset_button_width(const wuss_t *wuss, int height);
 void wuss_colourset_destroy(wuss_colourset_t *doomed);
 
 /**
+ * Lay a colour set out again in a new bounding box, e.g. after a font
+ * change. The title, field and button are placed as by \ref
+ * wuss_colourset_create; a title made to fit its text is measured again.
+ *
+ * \param[in] colourset Gadget to move.
+ * \param[in] bbox      New bounding box, virtual document space.
+ * \return \ref result_OK on success, or \ref result_OOM if the field's image
+ *         could not be resized (the gadget is then left where it was).
+ */
+result_t wuss_colourset_set_bbox(wuss_colourset_t *colourset, box_t bbox);
+
+/**
  * Offer an event from the task's own handler: a wuss_EVENT_ICON on the
  * gadget's button, or a wuss_EVENT_MENU_SELECT from the colour menu while
  * the gadget opened it. An ADJUST pick keeps the menu open with the tick

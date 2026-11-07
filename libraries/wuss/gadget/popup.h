@@ -35,6 +35,20 @@ int wuss__popup_layout(const wuss_t    *wuss,
                        wuss_icon_spec_t specs[3],
                        box_t           *field);
 
+/* Lay out again within "bbox" the arrow and title icons made from
+ * wuss__popup_layout's specs, moving them, and set "field" to the field's
+ * new box for the caller to move its own icon into. "title_icon" is NULL
+ * when there was no title icon. */
+void wuss__popup_relayout(wuss_window_t *window,
+                          box_t          bbox,
+                          const char    *title,
+                          int            title_width,
+                          const char    *arrow_name,
+                          const char    *arrow_pressed_name,
+                          wuss_icon_t   *arrow_icon,
+                          wuss_icon_t   *title_icon,
+                          box_t         *field);
+
 /* Open "menu" with its top-left at the top-right of "arrow" in "window". */
 result_t wuss__popup_open(wuss_window_t      *window,
                           wuss_icon_t        *arrow,

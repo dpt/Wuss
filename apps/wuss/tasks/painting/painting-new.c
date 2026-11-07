@@ -26,7 +26,6 @@
 
 /* ----------------------------------------------------------------------- */
 
-#define PN_FIELD_W  60
 #define PN_DIGITS   4    /* PAINTINGNEW_SIZE_MAX is four digits */
 #define PN_G_LABEL  1    /* size group, see stack_item_t::group */
 
@@ -82,30 +81,47 @@ enum
 };
 
 #define PN_ST_RADIO(i) \
-  [PN_ST_BG + (i)] = STACK_LEAF(PN_ST_BG_ROW, 0, wuss_STD_GLYPH_SIZE, stack_ALIGN_CENTRE)
+  [PN_ST_BG + (i)] = STACK_LEAF(PN_ST_BG_ROW, 0, 0, stack_ALIGN_CENTRE)
 
+/* sizes are zero here: paintingnew_layout sets them from the font */
 static const stack_item_t g_paintingnew_stack[PN_ST__LIMIT] =
 {
   [PN_ST_ROOT] = { .kind = stack_KIND_VBOX, .parent = -1,
                    .gap = wuss_STD_GAP, .pad = wuss_STD_INSETS },
 
-  [PN_ST_DIM_ROW]      = STACK_HBOX(PN_ST_ROOT, wuss_STD_GLYPH_SIZE, wuss_STD_GAP, stack_ALIGN_START),
-  [PN_ST_DIM_LABEL]    = STACK_LEAF_GROUP(PN_ST_DIM_ROW, 0, wuss_STD_GLYPH_SIZE, stack_ALIGN_CENTRE, PN_G_LABEL),
-  [PN_ST_WIDTH]        = STACK_LEAF(PN_ST_DIM_ROW, PN_FIELD_W, wuss_STD_GLYPH_SIZE, stack_ALIGN_CENTRE),
-  [PN_ST_X_LABEL]      = STACK_LEAF(PN_ST_DIM_ROW, 0, wuss_STD_GLYPH_SIZE, stack_ALIGN_CENTRE),
-  [PN_ST_HEIGHT]       = STACK_LEAF(PN_ST_DIM_ROW, PN_FIELD_W, wuss_STD_GLYPH_SIZE, stack_ALIGN_CENTRE),
+  [PN_ST_DIM_ROW]      = STACK_HBOX(PN_ST_ROOT, 0, wuss_STD_GAP, stack_ALIGN_START),
+  [PN_ST_DIM_LABEL]    = STACK_LEAF_GROUP(PN_ST_DIM_ROW, 0, 0, stack_ALIGN_CENTRE, PN_G_LABEL),
+  [PN_ST_WIDTH]        = STACK_LEAF(PN_ST_DIM_ROW, 0, 0, stack_ALIGN_CENTRE),
+  [PN_ST_X_LABEL]      = STACK_LEAF(PN_ST_DIM_ROW, 0, 0, stack_ALIGN_CENTRE),
+  [PN_ST_HEIGHT]       = STACK_LEAF(PN_ST_DIM_ROW, 0, 0, stack_ALIGN_CENTRE),
 
-  [PN_ST_BG_ROW]       = STACK_HBOX(PN_ST_ROOT, wuss_STD_GLYPH_SIZE, wuss_STD_GAP, stack_ALIGN_START),
-  [PN_ST_BG_LABEL]     = STACK_LEAF_GROUP(PN_ST_BG_ROW, 0, wuss_STD_GLYPH_SIZE, stack_ALIGN_CENTRE, PN_G_LABEL),
+  [PN_ST_BG_ROW]       = STACK_HBOX(PN_ST_ROOT, 0, wuss_STD_GAP, stack_ALIGN_START),
+  [PN_ST_BG_LABEL]     = STACK_LEAF_GROUP(PN_ST_BG_ROW, 0, 0, stack_ALIGN_CENTRE, PN_G_LABEL),
   PN_ST_RADIO(0),
   PN_ST_RADIO(1),
   PN_ST_RADIO(2),
   PN_ST_RADIO(3),
 
-  [PN_ST_BUTTONS]      = STACK_HBOX(PN_ST_ROOT, wuss_STD_PRIMARY_BUTTON_HEIGHT, wuss_STD_GAP, stack_ALIGN_END),
+  [PN_ST_BUTTONS]      = STACK_HBOX(PN_ST_ROOT, 0, wuss_STD_GAP, stack_ALIGN_END),
   [PN_ST_SPACER]       = STACK_SPACER(PN_ST_BUTTONS, 1), /* push the buttons right */
-  [PN_ST_CANCEL]       = STACK_LEAF(PN_ST_BUTTONS, 0, wuss_STD_SECONDARY_BUTTON_HEIGHT, stack_ALIGN_CENTRE),
-  [PN_ST_CREATE]       = STACK_LEAF(PN_ST_BUTTONS, 0, wuss_STD_PRIMARY_BUTTON_HEIGHT, stack_ALIGN_CENTRE),
+  [PN_ST_CANCEL]       = STACK_LEAF(PN_ST_BUTTONS, 0, 0, stack_ALIGN_CENTRE),
+  [PN_ST_CREATE]       = STACK_LEAF(PN_ST_BUTTONS, 0, 0, stack_ALIGN_CENTRE),
+};
+
+/* the stack item laying out each icon */
+static const int g_paintingnew_item[PN_ICON__COUNT] =
+{
+  [PN_ICON_DIM_LABEL]      = PN_ST_DIM_LABEL,
+  [PN_ICON_WIDTH]          = PN_ST_WIDTH,
+  [PN_ICON_X_LABEL]        = PN_ST_X_LABEL,
+  [PN_ICON_HEIGHT]         = PN_ST_HEIGHT,
+  [PN_ICON_BG_LABEL]       = PN_ST_BG_LABEL,
+  [PN_ICON_BG + 0]         = PN_ST_BG + 0,
+  [PN_ICON_BG + 1]         = PN_ST_BG + 1,
+  [PN_ICON_BG + 2]         = PN_ST_BG + 2,
+  [PN_ICON_BG + 3]         = PN_ST_BG + 3,
+  [PN_ICON_CANCEL]         = PN_ST_CANCEL,
+  [PN_ICON_CREATE]         = PN_ST_CREATE
 };
 
 struct paintingnew
@@ -223,13 +239,35 @@ static result_t paintingnew_layout(const wuss_t *wuss,
 {
   result_t     rc;
   stack_item_t items[PN_ST__LIMIT];
-  box_t        root;
+  int          row_h;
+  int          field_w;
   int          i;
+  box_t        root;
 
-  /* each label's natural width; the size group widens the others to match */
   memcpy(items, g_paintingnew_stack, sizeof(items));
+
+  /* rows fit a field or a radio glyph, whichever is taller */
+  row_h = MAX(wuss_std_height(wuss, wuss_STD_FIELD), wuss_STD_GLYPH_SIZE);
+  for (i = PN_ST_DIM_ROW; i < PN_ST_BUTTONS; i++)
+  {
+    if (items[i].kind == stack_KIND_HBOX)
+      items[i].axis_size = row_h;
+    else
+      items[i].cross_size = row_h;
+  }
+  items[PN_ST_BUTTONS].axis_size = wuss_std_height(wuss, wuss_STD_PRIMARY_BUTTON);
+  items[PN_ST_CANCEL].cross_size =
+    wuss_std_height(wuss, wuss_STD_SECONDARY_BUTTON);
+  items[PN_ST_CREATE].cross_size =
+    wuss_std_height(wuss, wuss_STD_PRIMARY_BUTTON);
+
+  /* each label's natural width; the size group widens the others to match.
+   * a field fits PN_DIGITS + 1 digits with a space either side */
+  field_w = task_button_width(wuss, "99999", 0);
   items[PN_ST_DIM_LABEL].axis_size    = task_text_width(wuss, "Dimensions");
+  items[PN_ST_WIDTH].axis_size        = field_w;
   items[PN_ST_X_LABEL].axis_size      = task_text_width(wuss, "x");
+  items[PN_ST_HEIGHT].axis_size       = field_w;
   items[PN_ST_BG_LABEL].axis_size     = task_text_width(wuss, "Background");
   for (i = 0; i < PN_BG__COUNT; i++)
     items[PN_ST_BG + i].axis_size = wuss_STD_GLYPH_SIZE + wuss_STD_GAP +
@@ -301,6 +339,30 @@ static result_t paintingnew_build_icons(paintingnew_t *pn,
   return wuss_dialogue_set_actions(pn->dialogue, actions, 2);
 }
 
+static result_t paintingnew_relayout(paintingnew_t *pn)
+{
+  result_t       rc;
+  size2d_t       size;
+  box_t          boxes[PN_ST__LIMIT];
+  wuss_window_t *window;
+  int            i;
+
+  rc = paintingnew_layout(pn->wuss, &size, boxes);
+  if (rc != result_OK)
+    return rc;
+
+  window = wuss_dialogue_window(pn->dialogue);
+
+  rc = task_fit_window(window, size);
+  if (rc != result_OK)
+    return rc;
+
+  for (i = 0; i < PN_ICON__COUNT; i++)
+    wuss_icon_set_bbox(window, pn->icons[i], &boxes[g_paintingnew_item[i]]);
+
+  return result_OK;
+}
+
 /* the dialogue's own task: not autoclose, so it survives its window being
  * dismissed and shown again. Its QUIT, while the window is still alive,
  * frees everything */
@@ -332,6 +394,9 @@ static result_t paintingnew_handle(wuss_window_t      *window,
   case wuss_EVENT_MENU_CLOSED:
     pn->menu_handle = NULL; /* wuss closed the chain under us */
     return result_OK;
+
+  case wuss_EVENT_RELAYOUT:
+    return paintingnew_relayout(pn);
 
   case wuss_EVENT_QUIT:
     wuss_dialogue_destroy(pn->dialogue);

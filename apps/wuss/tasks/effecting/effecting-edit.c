@@ -121,7 +121,8 @@ static tonemap_channels_t edit_tone_read_channel(const effecting_edit_t *edit)
 
 /* fills in one slider row's three icon specs; the label is right-justified
  * in its own box */
-static void edit_row_specs(wuss_icon_spec_t *label,
+static void edit_row_specs(const wuss_t     *wuss,
+                           wuss_icon_spec_t *label,
                            wuss_icon_spec_t *slider,
                            wuss_icon_spec_t *value,
                            int               x,
@@ -135,14 +136,15 @@ static void edit_row_specs(wuss_icon_spec_t *label,
                            const char       *fmt,
                            char             *buf)
 {
+  int   h;
   box_t label_box, slider_box, value_box;
 
-  label_box  = (box_t) BOX_POS_SIZE(x, y, label_w, wuss_STD_SLIDER_HEIGHT);
+  h          = wuss_std_height(wuss, wuss_STD_SLIDER);
+  label_box  = (box_t) BOX_POS_SIZE(x, y, label_w, h);
   slider_box = (box_t) BOX_POS_SIZE(x + label_w + wuss_STD_GAP, y,
-                                    EDIT_SLIDER_W, wuss_STD_SLIDER_HEIGHT);
+                                    EDIT_SLIDER_W, h);
   value_box  = (box_t) BOX_POS_SIZE(x + label_w + EDIT_SLIDER_W +
-                                    2 * wuss_STD_GAP, y, value_w,
-                                    wuss_STD_SLIDER_HEIGHT);
+                                    2 * wuss_STD_GAP, y, value_w, h);
 
   wuss_icon_spec_label(label, label_box, text, wuss_ICON_FLAGS_JUSTIFY_RIGHT);
   wuss_icon_spec_slider_row(slider, value, slider_box, value_box,
@@ -216,7 +218,7 @@ static result_t edit_blur_create(effecting_edit_t *edit)
             2 * wuss_STD_GAP;
   width   = MAX(width, 2 * wuss_STD_INSET + 2 * radio_w + wuss_STD_GAP);
   height  = 2 * wuss_STD_INSET + wuss_STD_GLYPH_SIZE + wuss_STD_GAP +
-            wuss_STD_SLIDER_HEIGHT;
+            wuss_std_height(wuss, wuss_STD_SLIDER);
 
   rc = wuss_dialogue_create(&dlg->dialogue, edit->ec->base.delegate,
                             SIZE2D(width, height), "Blur", edit_blur_fillout,
@@ -235,7 +237,7 @@ static result_t edit_blur_create(effecting_edit_t *edit)
   wuss_icon_spec_radio(&specs[1], box, "Gaussian", 1);
 
   y += wuss_STD_GLYPH_SIZE + wuss_STD_GAP;
-  edit_row_specs(&specs[2], &specs[3], &specs[4], x, y, label_w, value_w,
+  edit_row_specs(wuss, &specs[2], &specs[3], &specs[4], x, y, label_w, value_w,
                  "Radius", effects_blur_MIN_AMOUNT, effects_blur_MAX_AMOUNT,
                  effects_blur_MIN_AMOUNT, NULL, buf);
 
@@ -323,7 +325,7 @@ static result_t edit_level_create(effecting_edit_t *edit)
                              EFFECTING_LEVEL_MAX);
   width   = 2 * wuss_STD_INSET + label_w + EDIT_SLIDER_W + value_w +
             2 * wuss_STD_GAP;
-  height  = 2 * wuss_STD_INSET + wuss_STD_SLIDER_HEIGHT;
+  height  = 2 * wuss_STD_INSET + wuss_std_height(wuss, wuss_STD_SLIDER);
 
   rc = wuss_dialogue_create(&dlg->dialogue, edit->ec->base.delegate,
                             SIZE2D(width, height), "Level",
@@ -333,7 +335,7 @@ static result_t edit_level_create(effecting_edit_t *edit)
 
   wuss_dialogue_set_focusable(dlg->dialogue, 0);
 
-  edit_row_specs(&specs[0], &specs[1], &specs[2], wuss_STD_INSET,
+  edit_row_specs(wuss, &specs[0], &specs[1], &specs[2], wuss_STD_INSET,
                  wuss_STD_INSET, label_w, value_w, "Level",
                  EFFECTING_LEVEL_MIN, EFFECTING_LEVEL_MAX, edit->ec->level,
                  "%d%%", buf);
@@ -454,6 +456,7 @@ static result_t edit_tone_create(effecting_edit_t *edit)
   char                   bufs[EDIT_NTONE][WUSS_SLIDER_ROW_BUF];
   wuss_dialogue_action_t action;
   int                    label_w, value_w, radios_w, opts_w, width, height;
+  int                    slider_h, button_h;
   int                    x, y, i;
   int                    radio_w[EDIT_NCHANNELS];
   box_t                  box;
@@ -484,10 +487,11 @@ static result_t edit_tone_create(effecting_edit_t *edit)
   width  = MAX(width, 2 * wuss_STD_INSET + opts_w + wuss_STD_GAP +
                task_button_width(wuss, "Reset",
                                  wuss_STD_SECONDARY_BUTTON_BORDER));
+  slider_h = wuss_std_height(wuss, wuss_STD_SLIDER);
+  button_h = wuss_std_height(wuss, wuss_STD_SECONDARY_BUTTON);
   height = 2 * wuss_STD_INSET + wuss_STD_GLYPH_SIZE + wuss_STD_GAP +
            EDIT_PLOT_SIZE + wuss_STD_GAP +
-           EDIT_NTONE * (wuss_STD_SLIDER_HEIGHT + wuss_STD_GAP) +
-           wuss_STD_SECONDARY_BUTTON_HEIGHT;
+           EDIT_NTONE * (slider_h + wuss_STD_GAP) + button_h;
 
   rc = bitmap_init(&edit->plot, SIZE2D(EDIT_PLOT_SIZE, EDIT_PLOT_SIZE),
                    pixelfmt_rgbx8888, EDIT_PLOT_SIZE * 4, NULL,
@@ -527,11 +531,12 @@ static result_t edit_tone_create(effecting_edit_t *edit)
   x  = wuss_STD_INSET;
   for (i = 0; i < EDIT_NTONE; i++)
   {
-    edit_row_specs(&specs[TONE_ICON_LABEL(i)], &specs[TONE_ICON_SLIDER(i)],
-                   &specs[TONE_ICON_VALUE(i)], x, y, label_w, value_w,
-                   g_tone_rows[i].label, g_tone_rows[i].min,
-                   g_tone_rows[i].max, g_tone_rows[i].min, NULL, bufs[i]);
-    y += wuss_STD_SLIDER_HEIGHT + wuss_STD_GAP;
+    edit_row_specs(wuss, &specs[TONE_ICON_LABEL(i)],
+                   &specs[TONE_ICON_SLIDER(i)], &specs[TONE_ICON_VALUE(i)],
+                   x, y, label_w, value_w, g_tone_rows[i].label,
+                   g_tone_rows[i].min, g_tone_rows[i].max, g_tone_rows[i].min,
+                   NULL, bufs[i]);
+    y += slider_h + wuss_STD_GAP;
   }
 
   box = (box_t) BOX_POS_SIZE(x, y,
@@ -549,11 +554,10 @@ static result_t edit_tone_create(effecting_edit_t *edit)
   box = (box_t) BOX_POS_SIZE(width - wuss_STD_INSET -
                              task_button_width(wuss, "Reset",
                                wuss_STD_SECONDARY_BUTTON_BORDER),
-                             height - wuss_STD_INSET -
-                             wuss_STD_SECONDARY_BUTTON_HEIGHT,
+                             height - wuss_STD_INSET - button_h,
                              task_button_width(wuss, "Reset",
                                wuss_STD_SECONDARY_BUTTON_BORDER),
-                             wuss_STD_SECONDARY_BUTTON_HEIGHT);
+                             button_h);
   wuss_icon_spec_action(&specs[TONE_ICON_RESET], box, "Reset", 0);
 
   rc = wuss_icon_create_array(wuss_dialogue_window(dlg->dialogue), specs,

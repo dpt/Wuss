@@ -30,6 +30,7 @@ typedef struct display_task
   wuss_icon_t        *pointer;
   wuss_icon_t        *cancel;
   wuss_icon_t        *change;
+  wuss_icon_t        *labels[3]; /* Colours, Resolution, Zoom */
 }
 display_task_t;
 

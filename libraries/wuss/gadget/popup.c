@@ -85,6 +85,31 @@ int wuss__popup_layout(const wuss_t    *wuss,
   return nspecs;
 }
 
+void wuss__popup_relayout(wuss_window_t *window,
+                          box_t          bbox,
+                          const char    *title,
+                          int            title_width,
+                          const char    *arrow_name,
+                          const char    *arrow_pressed_name,
+                          wuss_icon_t   *arrow_icon,
+                          wuss_icon_t   *title_icon,
+                          box_t         *field)
+{
+  wuss_icon_spec_t specs[3];
+  int              nspecs;
+
+  /* a title icon exists only if the first layout made one */
+  if (title_icon == NULL)
+    title_width = -1;
+
+  nspecs = wuss__popup_layout(window->task->wuss, bbox, title, title_width,
+                              arrow_name, arrow_pressed_name, specs, field);
+
+  wuss_icon_set_bbox(window, arrow_icon, &specs[1].bbox);
+  if (nspecs > 2)
+    wuss_icon_set_bbox(window, title_icon, &specs[2].bbox);
+}
+
 result_t wuss__popup_open(wuss_window_t      *window,
                           wuss_icon_t        *arrow,
                           const wuss_menu_t  *menu,

@@ -918,6 +918,25 @@ ColourPairOK: ;
                                wuss_colourset_button_width(cswuss, 22))
       goto ColourSetFail;
 
+    /* moving it into a taller box resizes the field's image to match,
+     * still showing the colour */
+    if (wuss_colourset_set_bbox(cs, (box_t) BOX_POS_SIZE(4, 30, 140, 30)) !=
+        result_OK)
+      goto ColourSetFail;
+    if (field->spec.bbox.y0 != 30 || field->spec.bbox.y1 != 60 ||
+        field->spec.u.bitmap.image->size.h != 30 - 2 * WUSS_BEVEL_WIDTH ||
+        field->spec.u.bitmap.image->size.w !=
+          field->spec.bbox.x1 - field->spec.bbox.x0 - 2 * WUSS_BEVEL_WIDTH)
+      goto ColourSetFail;
+    fpx = field->spec.u.bitmap.image->base;
+    if ((*fpx & 0xFFFFFF) != 0) goto ColourSetFail;
+    if (wuss__icon_hit_test(cswin, POINT(4 + 140 - 2, 30 + 15)) != button)
+      goto ColourSetFail;
+    if (wuss_colourset_set_bbox(cs, (box_t) BOX_POS_SIZE(4, 4, 120, 22)) !=
+        result_OK)
+      goto ColourSetFail;
+    fpx = field->spec.u.bitmap.image->base; /* the image was reallocated */
+
     /* a colour menu pick while the gadget has not opened it is declined */
     ev.kind                    = wuss_EVENT_MENU_SELECT;
     ev.data.menu_select.menu   = wuss_colourmenu_menu(cswuss);

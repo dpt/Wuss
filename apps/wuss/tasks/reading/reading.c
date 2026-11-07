@@ -725,6 +725,15 @@ static result_t reading_handle(wuss_window_t      *window,
   case wuss_EVENT_IDLE:
     return reading_idle(task_data);
 
+  case wuss_EVENT_RELAYOUT:
+    /* on the system font, follow it: the old one may have been released */
+    if (window == tcx->base.window && tcx->current < 0)
+    {
+      tcx->md.font = wuss_get_font(tcx->base.wuss);
+      wuss_window_invalidate_visible(window);
+    }
+    return result_OK;
+
   case wuss_EVENT_KEY:
     return result_WUSS_KEY_UNCLAIMED;
 

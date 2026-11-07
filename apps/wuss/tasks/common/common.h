@@ -167,13 +167,16 @@ static inline int task_key_is_plain(wuss_task_t        *task,
           (wuss_KEY_MOD_CTRL | wuss_KEY_MOD_ALT)) == 0;
 }
 
-/* pixel width of text in the desktop font, for sizing stack leaves */
+/* pixel width of text in the desktop font, for sizing stack leaves; 0 for
+ * empty text, which bmfont_measure rejects */
 static inline int task_text_width(const wuss_t *wuss, const char *text)
 {
   bmfont_width_t width;
 
-  bmfont_measure(wuss_get_font(wuss), text, (int) strlen(text), NULL,
-                 INT_MAX, NULL, &width);
+  width = 0;
+  if (text[0] != '\0')
+    (void) bmfont_measure(wuss_get_font(wuss), text, (int) strlen(text), NULL,
+                          INT_MAX, NULL, &width);
 
   return width;
 }
@@ -186,6 +189,23 @@ static inline int task_button_width(const wuss_t *wuss,
 {
   return task_text_width(wuss, text) + 2 * task_text_width(wuss, " ") +
          2 * border;
+}
+
+/* resize a dialogue to a newly solved layout: min size, doc and visible
+ * size all become size. used on wuss_EVENT_RELAYOUT */
+static inline result_t task_fit_window(wuss_window_t *window, size2d_t size)
+{
+  result_t rc;
+
+  rc = wuss_window_set_min_size(window, size);
+  if (rc != result_OK)
+    return rc;
+
+  rc = wuss_window_set_doc(window, size);
+  if (rc != result_OK)
+    return rc;
+
+  return wuss_window_resize(window, size);
 }
 
 /* fill box with a light and dark grey checkerboard of 4 pixel squares phased

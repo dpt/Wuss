@@ -106,6 +106,16 @@ result_t wuss_stringset_create(wuss_stringset_t           **out,
 void wuss_stringset_destroy(wuss_stringset_t *doomed);
 
 /**
+ * Lay a string set out again in a new bounding box, e.g. after a font
+ * change. The title, field and arrow are placed as by \ref
+ * wuss_stringset_create; a title made to fit its text is measured again.
+ *
+ * \param[in] stringset Gadget to move.
+ * \param[in] bbox      New bounding box, virtual document space.
+ */
+void wuss_stringset_set_bbox(wuss_stringset_t *stringset, box_t bbox);
+
+/**
  * Offer an event from the task's own handler: a wuss_EVENT_ICON on the
  * gadget's arrow, or a wuss_EVENT_MENU_SELECT from its menu. An ADJUST pick
  * keeps the menu open with the tick moved. A wuss_EVENT_MENU_CLOSED must be

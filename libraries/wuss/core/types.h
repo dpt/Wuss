@@ -64,11 +64,25 @@
 
 #define WUSS_PLACE_GUTTER 6 /* px left between windows auto-placed by wuss_window_create_at */
 
+/* System font height assumed when no font is loaded */
+#define WUSS_FALLBACK_FONT_HEIGHT 10
+
+/* The icon bar's height is a WUSS_ICONBAR_ICON high icon, WUSS_ICONBAR_TEXT_PAD
+ * of clear space, a label of the system font and WUSS_ICONBAR_MARGIN, split
+ * 5:3 above:below the icon and label. See wuss__iconbar_height */
+#define WUSS_ICONBAR_ICON     34
+#define WUSS_ICONBAR_TEXT_PAD 2
+#define WUSS_ICONBAR_MARGIN   21
+
 /* The safe area wuss_window_create_at places windows in: the screen inset by
- * these. Icon bar menus open with their bottom edge on the bottom inset, so
- * every icon's menu sits at the same height */
-#define WUSS_SAFE_INSET        8
-#define WUSS_SAFE_INSET_BOTTOM 47
+ * WUSS_SAFE_INSET, and at the bottom by WUSS_SAFE_INSET_BOTTOM(wuss), which
+ * reaches WUSS_SAFE_INSET_OVERLAP down into the icon bar. Icon bar menus open
+ * with their bottom edge on the bottom inset, so every icon's menu sits at
+ * the same height */
+#define WUSS_SAFE_INSET         8
+#define WUSS_SAFE_INSET_OVERLAP 20
+#define WUSS_SAFE_INSET_BOTTOM(wuss) \
+  (wuss__iconbar_height(wuss) - WUSS_SAFE_INSET_OVERLAP)
 
 #define WUSS_BUTTON_INSET 3  /* shared by close/back/toggle/resize furniture buttons and scrollbar breadth */
 
@@ -88,9 +102,8 @@
 #endif
 
 #ifdef WUSS_ICONS
-#define WUSS_FRAME_CAPTION_TOP   4  /* y shift to make frame neatly meet caption */
+#define WUSS_FRAME_CAPTION_TOP   4  /* y shift to make frame neatly meet caption, when there is no font */
 #define WUSS_FRAME_CAPTION_INSET 8  /* x offset of a wuss_ICON_TYPE_FRAME caption from the frame's left edge */
-#define WUSS_FRAME_CAPTION_PAD   22 /* gap left in the frame's top edge either side of the caption */
 
 #define WUSS_SLIDER_BEVEL 2 /* width of a wuss_ICON_TYPE_SLIDER's bevel edge, around its surround */
 #define WUSS_SLIDER_GAP   4 /* fixed inset on all four sides of a wuss_ICON_TYPE_SLIDER's surround, between it and the inner (clickable) rect */

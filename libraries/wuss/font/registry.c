@@ -65,6 +65,14 @@ int wuss__fontset_height(const struct wuss_fontset *set, int slot)
   return height;
 }
 
+int wuss__system_font_height(const wuss_t *wuss)
+{
+  int height;
+
+  height = wuss__fontset_height(&wuss->fonts, 0);
+  return (height > 0) ? height : WUSS_FALLBACK_FONT_HEIGHT;
+}
+
 bmfont_width_t wuss__fontset_space_width(const struct wuss_fontset *set,
                                          const bmfont_t            *font)
 {

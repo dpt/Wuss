@@ -45,8 +45,7 @@ typedef struct compositing_task
   wuss_menu_t         rule_menu;
   int                 paused; /* Menu > Pause; idle does nothing while set */
   int                 swapped; /* Menu > Swap images; a and b exchanged */
-  bmfont_t        *font;
-  bitmap_t         a;               /* owned: pristine source, BGRA */
+  bitmap_t         a;              /* owned: pristine source, BGRA */
   bitmap_t         b;               /* owned: pristine destination, BGRA */
   bitmap_t         src;             /* owned: scratch, rebuilt each frame */
   bitmap_t         dst;             /* owned: scratch, rebuilt each frame */
@@ -71,7 +70,6 @@ enum
 };
 
 #define PD_SIZE            (256) /* the demo images are 256x256 */
-#define PD_LABEL_HEIGHT     (20) /* strip below the pane, for the rule name */
 #define PD_CHECKER_BAND      (8) /* checkerboard square size, in pixels */
 #define PD_FORMAT          (pixelfmt_bgra8888)
 
@@ -124,6 +122,23 @@ static result_t load_demo_png(bitmap_t   *bm,
 
 /* ----------------------------------------------------------------------- */
 
+/* size the window to the pane plus a strip below it for the rule name, as
+ * tall as the font */
+static result_t compositing_fit(compositing_task_t *task)
+{
+  result_t rc;
+  size2d_t size;
+
+  size = SIZE2D(PD_SIZE,
+                PD_SIZE + wuss_std_height(task->base.wuss, wuss_STD_LABEL) + 4);
+
+  rc = wuss_window_set_doc(task->base.window, size);
+  if (rc != result_OK)
+    return rc;
+
+  return wuss_window_resize(task->base.window, size);
+}
+
 static result_t compositing_init(compositing_task_t *task)
 {
   result_t        rc;
@@ -134,7 +149,6 @@ static result_t compositing_init(compositing_task_t *task)
 
   wuss                  = task->base.wuss;
   palette               = wuss_get_palette(wuss, NULL);
-  task->font            = wuss_get_font_n(wuss, 0);
   task->rule            = composite_RULE_CLEAR;
   task->frame           = 0;
   task->frames_per_rule = PD_FRAMES_DEFAULT;
@@ -182,7 +196,7 @@ static result_t compositing_init(compositing_task_t *task)
   WUSS_MENU_TITLE(task->base.menu, "Compositing", task->menu_items,
                  NELEMS(task->menu_items));
 
-  return result_OK;
+  return compositing_fit(task);
 }
 
 static void compositing_destroy(compositing_task_t *task)
@@ -245,6 +259,7 @@ static result_t compositing_redraw(const wuss_event_t *event,
   const char         *name;
   point_t             pos;
   int                 sx, sy;
+  bmfont_t           *font;
 
   pd = task_data;
 
@@ -273,16 +288,18 @@ static result_t compositing_redraw(const wuss_event_t *event,
 
   screen_copy_bitmap(scr, bounds->x0 - sx, bounds->y0 - sy, &pd->dst);
 
+  /* fetched each time: a font change releases the old one */
+  font = wuss_get_font_n(pd->base.wuss, 0);
   {
     int ascent;
 
-    bmfont_get_info(pd->font, NULL, NULL, &ascent, NULL);
+    bmfont_get_info(font, NULL, NULL, &ascent, NULL);
     name  = rule_names[pd->rule];
     pos.x = bounds->x0 - sx + 2;
     pos.y = bounds->y0 - sy + PD_SIZE + 2 + ascent;
   }
 
-  return bmfont_draw(pd->font, scr, name, (int) strlen(name),
+  return bmfont_draw(font, scr, name, (int) strlen(name),
                      pd->fg, pd->bg, NULL, &pos, NULL);
 }
 
@@ -463,6 +480,9 @@ static result_t compositing_handle(wuss_window_t      *window,
   case wuss_EVENT_IDLE:
     return compositing_idle(task_data);
 
+  case wuss_EVENT_RELAYOUT:
+    return window == pd->base.window ? compositing_fit(pd) : result_OK;
+
   case wuss_EVENT_MENU_SELECT:
     if (event->data.menu_select.menu == &pd->base.menu &&
         (event->data.menu_select.index == COMPOSITING_MENU_PAUSE ||
@@ -488,7 +508,7 @@ result_t compositing_app_create(wuss_t *wuss)
     .name          = "Compositing",
     .purpose       = "Animated Porter-Duff compositing",
     .instance_size = sizeof(compositing_task_t),
-    .window_size   = { PD_SIZE, PD_SIZE + PD_LABEL_HEIGHT },
+    .window_size   = { PD_SIZE, PD_SIZE }, /* compositing_fit adds the label */
     .init          = (taskapp_init_fn_t) compositing_init,
     .handle        = compositing_handle,
     .save_name     = "compositing.png"

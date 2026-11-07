@@ -139,7 +139,7 @@ result_t wuss_placement_test(const char *resources)
     reap_test_tasks();
 
     right  = 200 - WUSS_SAFE_INSET;
-    bottom = 200 - WUSS_SAFE_INSET_BOTTOM;
+    bottom = 200 - WUSS_SAFE_INSET_BOTTOM(wuss);
 
     memset(&tc_a, 0, sizeof(tc_a));
     delegate_a = mk_task(wuss, test_handle, &tc_a);
@@ -333,7 +333,7 @@ result_t wuss_placement_test(const char *resources)
       goto Failure;
     wuss_window_get_visible_bounds(win_b, &vis_b);
     if (vis_b.x1 != 200 - WUSS_SAFE_INSET ||
-        vis_b.y1 != 200 - WUSS_SAFE_INSET_BOTTOM)
+        vis_b.y1 != 200 - WUSS_SAFE_INSET_BOTTOM(wuss))
       goto Failure;
     wuss_window_close(win_b);
 
@@ -405,9 +405,9 @@ result_t wuss_placement_test(const char *resources)
     if (visible.x0 != WUSS_SAFE_INSET || visible.y0 != WUSS_SAFE_INSET) goto Failure;
 
     /* within range of the safe area's bottom-right corner: snaps to both edges */
-    wuss_mouse_move(wuss, POINT(grab.x + scr.w - WUSS_SAFE_INSET - start.x1 + 2, grab.y + scr.h - WUSS_SAFE_INSET_BOTTOM - start.y1 - 2), NULL);
+    wuss_mouse_move(wuss, POINT(grab.x + scr.w - WUSS_SAFE_INSET - start.x1 + 2, grab.y + scr.h - WUSS_SAFE_INSET_BOTTOM(wuss) - start.y1 - 2), NULL);
     wuss_window_get_visible_bounds(win_sn, &visible);
-    if (visible.x1 != scr.w - WUSS_SAFE_INSET || visible.y1 != scr.h - WUSS_SAFE_INSET_BOTTOM) goto Failure;
+    if (visible.x1 != scr.w - WUSS_SAFE_INSET || visible.y1 != scr.h - WUSS_SAFE_INSET_BOTTOM(wuss)) goto Failure;
 
     wuss_mouse_click(wuss, grab, wuss_BUTTON_SELECT, wuss_MOUSE_UP, NULL);
     wuss_window_close(win_sn);

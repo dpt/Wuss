@@ -8,6 +8,7 @@
 #include "framebuf/screen.h"
 
 #include "../core/types.h"
+#include "../core/geometry.h"
 #include "../core/input.h"
 #include "../core/invalidate.h"
 #include "../core/palette.h"
@@ -242,7 +243,7 @@ void wuss__iconbar_icon_box(const wuss_t *wuss, int index, box_t *out)
 
   /* spare space splits 5:3 above:below, rounded to nearest */
   out->x0 = slot.x0;
-  out->y0 = slot.y0 + ((WUSS_ICONBAR_HEIGHT - block) * 5 + 4) / 8;
+  out->y0 = slot.y0 + ((wuss__iconbar_height(wuss) - block) * 5 + 4) / 8;
   out->x1 = slot.x1;
   out->y1 = out->y0 + h;
 }

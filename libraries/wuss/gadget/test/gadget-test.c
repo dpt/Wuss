@@ -285,6 +285,17 @@ result_t wuss_gadget_test(const char *resources)
     if (wuss_stringset_set_index(ss, 1) != result_OK)      goto StringSetFail;
     if (wuss_stringset_get_index(ss) != 1 || calls != 1)   goto StringSetFail;
 
+    /* moving it carries the title, field and arrow along, keeping the
+     * entry; the arrow stays vertically centred in a taller box */
+    wuss_stringset_set_bbox(ss, (box_t) BOX_POS_SIZE(8, 50, 130, 30));
+    if (sswin->icons[0]->spec.bbox.x0 != 8 + 40 + wuss_STD_GAP ||
+        sswin->icons[0]->spec.bbox.y0 != 50 ||
+        sswin->icons[0]->spec.bbox.y1 != 80)
+      goto StringSetFail;
+    if (wuss__icon_hit_test(sswin, POINT(8 + 130 - 2, 50 + 15)) != arrow)
+      goto StringSetFail;
+    if (wuss_stringset_get_index(ss) != 1) goto StringSetFail;
+
     /* destroying it closes the menu */
     wuss_stringset_destroy(ss);
     if (wuss__menu_chain(sswuss) != NULL) goto StringSetFail;

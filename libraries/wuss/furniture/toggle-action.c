@@ -41,7 +41,7 @@ void wuss__furniture_toggle_size(wuss_window_t *window, int safe)
       area.x0 += WUSS_SAFE_INSET;
       area.y0 += WUSS_SAFE_INSET;
       area.x1 -= WUSS_SAFE_INSET;
-      area.y1 -= WUSS_SAFE_INSET_BOTTOM;
+      area.y1 -= WUSS_SAFE_INSET_BOTTOM(window->wuss);
     }
 
     outline_px      = wuss__outline_px(window);

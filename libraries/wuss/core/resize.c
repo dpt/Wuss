@@ -67,9 +67,9 @@ static void resize_one_window(wuss_window_t *window)
 }
 
 /* A pinned window (the icon bar) is never nudged/shrunk like an ordinary
- * window -- its box is fully determined by the new screen size, so just
- * recompute it directly and invalidate the change. */
-static void resize_pinned_window(wuss_window_t *window)
+ * window -- its box is fully determined by the screen size and system font,
+ * so just recompute it directly and invalidate the change. */
+void wuss__fit_pinned_window(wuss_window_t *window)
 {
   box_t before;
 
@@ -81,7 +81,8 @@ static void resize_pinned_window(wuss_window_t *window)
   window->visible.y1 = window->wuss->scr->size.h;
 #ifdef WUSS_ICONBAR
   if (!(window->flags & wuss_WINDOW_BACKDROP))
-    window->visible.y0 = window->wuss->scr->size.h - WUSS_ICONBAR_HEIGHT;
+    window->visible.y0 = window->wuss->scr->size.h -
+                         wuss__iconbar_height(window->wuss);
 #endif
 
   if (!box_equal(&before, &window->visible))
@@ -93,11 +94,10 @@ static void resize_pinned_window(wuss_window_t *window)
     window->doc.w = window->visible.x1 - window->visible.x0 -
                     2 * wuss__outline_px(window);
     window->min_doc.w = window->doc.w;
-    if (window->flags & wuss_WINDOW_BACKDROP)
-    {
-      window->doc.h     = window->visible.y1 - window->visible.y0;
-      window->min_doc.h = window->doc.h;
-    }
+    window->doc.h     = window->visible.y1 - window->visible.y0;
+    if (!(window->flags & wuss_WINDOW_BACKDROP))
+      window->doc.h -= 2 * wuss__outline_px(window);
+    window->min_doc.h = window->doc.h;
 
     box_union(&before, &window->visible, &dirty);
     wuss__invalidate_clipped(window, &dirty);
@@ -127,7 +127,7 @@ result_t wuss_resize(wuss_t *wuss, screen_t *scr)
   for (win = wuss__z_first(wuss); win != NULL; win = wuss__z_below(win))
   {
     if (win->flags & wuss_WINDOW_PINNED)
-      resize_pinned_window(win);
+      wuss__fit_pinned_window(win);
     else
       resize_one_window(win);
   }

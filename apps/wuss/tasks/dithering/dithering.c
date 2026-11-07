@@ -568,16 +568,17 @@ static result_t dithering_slider_create(dithering_task_t           *dt,
   wuss_icon_spec_t specs[3];
   wuss_icon_t     *made[3];
   char             buf[WUSS_SLIDER_ROW_BUF];
-  int              label_w, value_w, width, height;
+  int              label_w, value_w, slider_h, width, height;
   box_t            label_box, slider_box, value_box;
 
-  label_w = task_text_width(dt->base.wuss, title);
+  label_w  = task_text_width(dt->base.wuss, title);
   /* +2: a label insets its text a pixel either side, and an overhang would
    * be left behind when the text shrinks */
-  value_w = task_text_width(dt->base.wuss, widest) + 2;
-  width   = 2 * wuss_STD_INSET + label_w + DITHERING_SLIDER_W + value_w +
-            2 * wuss_STD_GAP;
-  height  = 2 * wuss_STD_INSET + wuss_STD_SLIDER_HEIGHT;
+  value_w  = task_text_width(dt->base.wuss, widest) + 2;
+  slider_h = wuss_std_height(dt->base.wuss, wuss_STD_SLIDER);
+  width    = 2 * wuss_STD_INSET + label_w + DITHERING_SLIDER_W + value_w +
+             2 * wuss_STD_GAP;
+  height   = 2 * wuss_STD_INSET + slider_h;
 
   rc = wuss_dialogue_create(dialogue, dt->base.delegate, SIZE2D(width, height),
                             title, fillout, dt);
@@ -587,13 +588,12 @@ static result_t dithering_slider_create(dithering_task_t           *dt,
   wuss_dialogue_set_focusable(*dialogue, 0);
 
   label_box  = (box_t) BOX_POS_SIZE(wuss_STD_INSET, wuss_STD_INSET, label_w,
-                                    wuss_STD_SLIDER_HEIGHT);
+                                    slider_h);
   slider_box = (box_t) BOX_POS_SIZE(label_box.x1 + wuss_STD_GAP,
                                     wuss_STD_INSET, DITHERING_SLIDER_W,
-                                    wuss_STD_SLIDER_HEIGHT);
+                                    slider_h);
   value_box  = (box_t) BOX_POS_SIZE(slider_box.x1 + wuss_STD_GAP,
-                                    wuss_STD_INSET, value_w,
-                                    wuss_STD_SLIDER_HEIGHT);
+                                    wuss_STD_INSET, value_w, slider_h);
 
   wuss_icon_spec_label(&specs[0], label_box, title,
                        wuss_ICON_FLAGS_JUSTIFY_RIGHT);

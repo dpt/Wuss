@@ -9,9 +9,6 @@ LAYER 2 - TEXT & FONTS (needs UTF-8, font-arch decision)
 - Hierarchical fonts: let the wuss library itself take a family rather than
   fixed slots, and italic/large selection.
     blocks: bold/italic/large fonts, symbol selection
-- Identify and fix places where we've assumed a 6px desktop font size. e.g. use
-  of the stacker. Similarly some desktop components are sized around RISC OS
-  sizings and not derived from the currently selected desktop font.
 - How to get bold etc. into the system (consistently)? How to select symbols?
 - Large fonts for titles, italic font, ...
 - Wussmoji (needs colour fonts)

@@ -19,10 +19,7 @@
  * and at the edge -- the gap is not drawn on, so it reads as space rather
  * than a shared border. An icon bar wider than the screen scrolls (see
  * WUSS_ICONBAR_SCROLL_ZONE). */
-#define WUSS_ICONBAR_ICON       34
 #define WUSS_ICONBAR_GAP        8
-#define WUSS_ICONBAR_HEIGHT     67
-#define WUSS_ICONBAR_TEXT_PAD   2  /* clear space above the label */
 
 /* An icon bar wider than the screen scrolls: while the pointer is directly
  * over the bar, not over a window in front of it, and within
