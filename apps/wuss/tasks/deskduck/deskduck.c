@@ -32,6 +32,7 @@
 #define DUCK_CHASE      120 /* px: the pointer is chased within this */
 #define DUCK_SLEEP      (30 * 60) /* the pointer is still this long */
 #define DUCK_SPEED      24  /* px/s, top waddle speed */
+#define DUCK_SWIM       12  /* px/s, top swim speed */
 
 /* Actor ids. Pinboard draws actors in slot order, and the pond is sent
  * first, so it takes a lower slot and lies under the duck.
@@ -350,19 +351,19 @@ static box_t deskduck_water(const deskduck_t *duck)
   return water;
 }
 
-/* one pixel step along the heading, when the speed allows, bouncing off
+/* one pixel step along the heading, when speed (px/s) allows, bouncing off
  * the edges of bounds */
-static void deskduck_walk(deskduck_t *duck, box_t bounds)
+static void deskduck_walk(deskduck_t *duck, box_t bounds, int speed)
 {
   int stride;
 
   if (duck->heading.x != 0)
     duck->left = duck->heading.x < 0;
 
-  /* A pixel step every 60 / DUCK_SPEED ticks, a diagonal one root two times
+  /* A pixel step every 60 / speed ticks, a diagonal one root two times
    * that, so no heading beats the top speed. */
   stride        = (duck->heading.x != 0 && duck->heading.y != 0) ? 85 : 60;
-  duck->stride += DUCK_SPEED;
+  duck->stride += speed;
   if (duck->stride < stride)
     return;
   duck->stride -= stride;
@@ -420,9 +421,9 @@ static int deskduck_tick(deskduck_t *duck, point_t pointer, int moved)
       POINT(deskduck_sign((water.x0 + water.x1) / 2 - duck->pos.x),
             deskduck_sign((water.y0 + water.y1) / 2 - duck->pos.y));
   if (state->does & WALKS)
-    deskduck_walk(duck, deskduck_land(duck));
+    deskduck_walk(duck, deskduck_land(duck), DUCK_SPEED);
   if (state->does & SWIMS)
-    deskduck_walk(duck, water);
+    deskduck_walk(duck, water, DUCK_SWIM);
 
   alt = state->period ? duck->ticks / state->period : duck->steps;
   return (alt & 1) ? state->other : state->frame;
