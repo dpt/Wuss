@@ -715,6 +715,36 @@ result_t wuss_task_iconpool_load_resource(wuss_task_t *task,
 const bitmap_t *wuss_task_iconpool_find(const wuss_task_t *task,
                                         const char        *name);
 
+/**
+ * Find one frame of an icon by name, searching as \ref
+ * wuss_task_iconpool_find does. A sprite sheet's frames are numbered
+ * row-major from 0 at the top left; a plain PNG has only frame 0.
+ *
+ * \param[in] task  Task whose private pool to search first.
+ * \param[in] name  Entry name (for a sheet, without its "_<w>x<h>").
+ * \param[in] frame 0-based frame.
+ * \return The bitmap, owned and valid as for \ref wuss_task_iconpool_find,
+ *         or NULL if neither pool has \p name or \p frame is out of range.
+ */
+const bitmap_t *wuss_task_iconpool_frame(const wuss_task_t *task,
+                                         const char        *name,
+                                         int                frame);
+
+/**
+ * Give an icon's frame grid by name, searching as \ref
+ * wuss_task_iconpool_find does: 1 x 1 for a plain PNG.
+ *
+ * \param[in]  task Task whose private pool to search first.
+ * \param[in]  name Entry name.
+ * \param[out] cols Columns in the grid, if not NULL. Unset if not found.
+ * \param[out] rows Rows in the grid, if not NULL. Unset if not found.
+ * \return The frame count (cols x rows), or 0 if neither pool has \p name.
+ */
+int wuss_task_iconpool_frames(const wuss_task_t *task,
+                              const char        *name,
+                              int               *cols,
+                              int               *rows);
+
 #endif /* WUSS_ICONS */
 
 #ifdef __cplusplus

@@ -19,7 +19,6 @@ LAYER 3 - SPRITES (needs masks)
 - Sprites (with names, with masks, with multiple sprites)
 - Masked sprites/bitmaps. Covered by RLE work?
 - Sprite scaling everywhere
-- Icon sprite pools: implement PNG sprite sheets?
 - Custom mouse pointers
 
 

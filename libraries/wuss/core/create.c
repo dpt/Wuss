@@ -115,7 +115,8 @@ result_t wuss_create(screen_t               *scr,
   w->caret.index        = 0;
   w->caret.anchor       = 0;
   w->icon.names         = NULL;
-  w->icon.atoms         = NULL;
+  w->icon.entries       = NULL;
+  w->icon.nentries      = 0;
   w->icon.bitmaps       = NULL;
   w->icon.nbitmaps      = 0;
 #endif

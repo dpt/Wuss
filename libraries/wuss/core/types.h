@@ -135,19 +135,31 @@ enum
 };
 
 #ifdef WUSS_ICONS
+/* One pool entry: a plain PNG (a 1x1 grid) or a sprite sheet split into
+ * cols x rows frames, held row-major at wuss_iconpool::bitmaps[first...]. atom
+ * is the entry's name in wuss_iconpool::names (atom values are not array
+ * indices, so the position is tracked explicitly). */
+struct wuss_iconpool_entry
+{
+  int atom;
+  int first;
+  int cols;
+  int rows;
+};
+
 /* A set of named, RLE-compressed icons loaded from a directory of PNGs: the
  * wuss-wide shared pool (wuss::icon) and, optionally, one private pool per
- * task (wuss_task::iconpool). Index i is the i-th ".png" in name order
- * (strcmp -- still address by name). names interns the leafnames-sans-".png";
- * atoms[i] is entry i's atom in it (atom values are not array indices, so the
- * position is tracked explicitly); bitmaps[i] is the matching RLE-compressed
- * bitmap. All owned; freed by wuss__iconpool_clear. NULL / 0 until loaded. */
+ * task (wuss_task::iconpool). Entry i is the i-th name in strcmp order (still
+ * address by name). names interns the entry names; bitmaps holds every
+ * entry's frames. All owned; freed by wuss__iconpool_clear. NULL / 0 until
+ * loaded. */
 struct wuss_iconpool
 {
-  struct atom_set *names;
-  int             *atoms;
-  bitmap_t        *bitmaps;
-  int              nbitmaps;
+  struct atom_set            *names;
+  struct wuss_iconpool_entry *entries;
+  int                         nentries;
+  bitmap_t                   *bitmaps;
+  int                         nbitmaps;
 };
 #endif
 

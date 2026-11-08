@@ -11,6 +11,7 @@
 #include "fortify/fortify.h"
 #endif
 
+#include "base/debug.h"
 #include "base/result.h"
 #include "datastruct/atom.h"
 #include "framebuf/bitmap.h"
@@ -23,24 +24,37 @@
  * keep our own copy. Bounded by that buffer's own DPTLIB_MAXPATH. */
 #define ICONS_DIR_MAX 256
 
+/* Longest leafname loaded, terminator included; longer ones are skipped. */
+#define ICONS_LEAF_MAX 128
+
+/* Sheet cell sizes are at most this many digits. */
+#define ICONS_DIM_DIGITS 4
+
+typedef char icons_leaf_t[ICONS_LEAF_MAX];
+
 #include "../core/types.h"
 #include "../core/alloc.h"
 #include "../core/windows.h"
 
 #ifdef WUSS_ICONS
 
-/* State threaded through the dirscan callback while a set is being built. The
- * three arrays grow in lockstep via array_grow_alloc. */
+/* State while a set is being built: the dirscan collects the leaves, then
+ * they are loaded in strcmp order. The arrays grow via array_grow_alloc. */
 typedef struct icons_load
 {
-  wuss_t          *wuss;
-  char             dir[ICONS_DIR_MAX]; /* own copy; see ICONS_DIR_MAX */
-  struct atom_set *names;   /* owned until handed to the pool */
-  int             *atoms;   /* owned; atoms[i] is entry i's atom in names */
-  bitmap_t *bitmaps; /* owned */
-  int       n;
-  int       cap;     /* shared allocation length of atoms[] and bitmaps[] */
-  result_t  rc;      /* first failure; stops the walk */
+  wuss_t                     *wuss;
+  char                        dir[ICONS_DIR_MAX]; /* own copy; see above */
+  icons_leaf_t               *leaves;   /* owned */
+  int                         nleaves;
+  int                         leafcap;
+  struct atom_set            *names;    /* owned until handed to the pool */
+  struct wuss_iconpool_entry *entries;  /* owned */
+  int                         nentries;
+  int                         entcap;
+  bitmap_t                   *bitmaps;  /* owned; every entry's frames */
+  int                         n;
+  int                         cap;
+  result_t                    rc;       /* first failure; stops the walk */
 }
 icons_load_t;
 
@@ -96,27 +110,179 @@ static void icons_free_bitmap(bitmap_t *bm)
   free(bm->palette);
 }
 
-static result_t icons_load_entry(const char *leaf, void *opaque)
+/* dirscan callback: note each ".png" leaf for loading once all are known. */
+static result_t icons_collect(const char *leaf, void *opaque)
 {
-  result_t      rc;
   icons_load_t *st = opaque;
-  char          name[128];
-  const char   *path;
-  bitmap_t      bm;
-  atom_t        atom;
-  int           oldcap;
+  char          name[ICONS_LEAF_MAX];
 
-  if (!path_leaf_strip_ext(leaf, ".png", name, sizeof(name)))
+  if (!path_leaf_strip_ext(leaf, ".png", name, sizeof(name)) ||
+      strlen(leaf) >= ICONS_LEAF_MAX)
     return result_OK; /* not a ".png", or name too long -- skip */
 
-  path = pathf("%s/%s", st->dir, leaf);
-
-  rc = bitmap_load_png(&bm, path);
-  if (rc != result_OK)
+  if (array_grow_alloc(&st->wuss->alloc, (void **) &st->leaves,
+                       sizeof(*st->leaves), st->nleaves, &st->leafcap, 1,
+                       8) != 0)
   {
-    st->rc = rc;
+    st->rc = result_OOM;
     return result_STOP_WALK;
   }
+
+  strcpy(st->leaves[st->nleaves++], leaf);
+  return result_OK;
+}
+
+static int icons_leaf_compare(const void *a, const void *b)
+{
+  return strcmp(a, b);
+}
+
+/* Parse a cell dimension at *p: decimal, no leading zero, at most
+ * ICONS_DIM_DIGITS digits. Advances *p past it. Returns 0 if there is none. */
+static int icons_parse_dim(const char **p)
+{
+  int v;
+  int digits;
+
+  if (**p == '0')
+    return 0;
+
+  v = 0;
+  for (digits = 0; digits < ICONS_DIM_DIGITS && isdigit((unsigned char) **p);
+       digits++)
+    v = v * 10 + *(*p)++ - '0';
+
+  return v;
+}
+
+/* If name ends in "_<w>x<h>" it names a sprite sheet: cut the suffix off
+ * name, set cell and return non-zero. */
+static int icons_parse_sheet(char *name, size2d_t *cell)
+{
+  char       *us;
+  const char *p;
+
+  us = strrchr(name, '_');
+  if (us == NULL || us == name)
+    return 0;
+
+  p       = us + 1;
+  cell->w = icons_parse_dim(&p);
+  if (cell->w == 0 || *p++ != 'x')
+    return 0;
+  cell->h = icons_parse_dim(&p);
+  if (cell->h == 0 || *p != '\0')
+    return 0;
+
+  *us = '\0';
+  return 1;
+}
+
+/* Compress bm and append it to the frames. Takes ownership of bm's pixels,
+ * freeing them on failure. */
+static result_t icons_push_frame(icons_load_t *st, bitmap_t *bm)
+{
+  result_t rc;
+
+  /* paletted formats can't be RLE-compressed: keep those uncompressed */
+  rc = bitmap_compress(bm);
+  if (rc != result_OK && rc != result_NOT_SUPPORTED)
+  {
+    icons_free_bitmap(bm);
+    return rc;
+  }
+
+  if (array_grow_alloc(&st->wuss->alloc, (void **) &st->bitmaps,
+                       sizeof(*st->bitmaps), st->n, &st->cap, 1, 8) != 0)
+  {
+    icons_free_bitmap(bm);
+    return result_OOM;
+  }
+
+  st->bitmaps[st->n++] = *bm;
+  return result_OK;
+}
+
+/* Split sheet into cell-sized frames, row-major, appending them for entry e
+ * and setting its grid. Partial edge cells are dropped. A sheet that yields
+ * no frames is skipped, leaving e's grid empty. */
+static result_t icons_split(icons_load_t               *st,
+                            const char                 *leaf,
+                            const bitmap_t             *sheet,
+                            size2d_t                    cell,
+                            struct wuss_iconpool_entry *e)
+{
+  result_t rc;
+  box_t    box;
+  bitmap_t frame;
+  int      r, c;
+
+  e->cols = sheet->size.w / cell.w;
+  e->rows = sheet->size.h / cell.h;
+  if (e->cols == 0 || e->rows == 0)
+  {
+    logf_warning("iconpool: %s is smaller than one cell; skipped", leaf);
+    e->cols = e->rows = 0;
+    return result_OK;
+  }
+  if (sheet->size.w % cell.w != 0 || sheet->size.h % cell.h != 0)
+    logf_warning("iconpool: %s is not a whole number of cells; partial "
+                 "cells dropped", leaf);
+
+  for (r = 0; r < e->rows; r++)
+    for (c = 0; c < e->cols; c++)
+    {
+      box.x0 = c * cell.w;
+      box.y0 = r * cell.h;
+      box.x1 = box.x0 + cell.w;
+      box.y1 = box.y0 + cell.h;
+
+      /* ponytail: a paletted frame gets its own copy of the sheet's palette;
+       * share one if many paletted sheets make that matter */
+      rc = bitmap_extract(sheet, &box, &frame);
+      if (rc == result_NOT_SUPPORTED) /* sub-byte cells off a byte */
+      {
+        logf_warning("iconpool: %s has cells off byte boundaries; skipped",
+                     leaf);
+        while (st->n > e->first)
+          icons_free_bitmap(&st->bitmaps[--st->n]);
+        e->cols = e->rows = 0;
+        return result_OK;
+      }
+      if (rc == result_OK)
+        rc = icons_push_frame(st, &frame);
+      if (rc != result_OK)
+        return rc;
+    }
+
+  return result_OK;
+}
+
+/* Load one collected leaf as a new entry. */
+static result_t icons_load_leaf(icons_load_t *st, const char *leaf)
+{
+  result_t rc;
+  char     name[ICONS_LEAF_MAX];
+  size2d_t cell;
+  int      sheet;
+  bitmap_t bm;
+  struct wuss_iconpool_entry e;
+  atom_t                     atom;
+
+  (void) path_leaf_strip_ext(leaf, ".png", name, sizeof(name)); /* checked */
+  sheet = icons_parse_sheet(name, &cell);
+
+  /* leaves arrive in strcmp order, so of two sharing a name the first wins */
+  if (atom_for_block(st->names, (const unsigned char *) name,
+                     strlen(name) + 1) != atom_NOT_FOUND)
+  {
+    logf_warning("iconpool: %s repeats the name \"%s\"; skipped", leaf, name);
+    return result_OK;
+  }
+
+  rc = bitmap_load_png(&bm, pathf("%s/%s", st->dir, leaf));
+  if (rc != result_OK)
+    return rc;
 
   /* bring the pixels into screen byte order before compressing -- see
    * icons_swap_rb. Only the R/B-swapped 32bpp case is handled; a matching
@@ -129,52 +295,34 @@ static result_t icons_load_entry(const char *leaf, void *opaque)
    * the rest as is, so a colour key kept under alpha 0 would be drawn */
   bitmap_clear_transparent(&bm);
 
-  /* paletted formats can't be RLE-compressed: keep those uncompressed */
-  rc = bitmap_compress(&bm);
-  if (rc != result_OK && rc != result_NOT_SUPPORTED)
+  e.first = st->n;
+  if (sheet)
   {
+    rc = icons_split(st, leaf, &bm, cell, &e);
     icons_free_bitmap(&bm);
-    st->rc = rc;
-    return result_STOP_WALK;
   }
-
-  /* Intern the name. atom_new returns result_ATOM_NAME_EXISTS (with the
-   * existing atom) for a repeat -- a directory scan can't repeat a leaf, so
-   * treat only a hard error as failure. */
-  rc = atom_new(st->names,
-                (const unsigned char *) name, strlen(name) + 1, &atom);
-  if (rc != result_OK && rc != result_ATOM_NAME_EXISTS)
+  else
   {
-    icons_free_bitmap(&bm);
-    st->rc = rc;
-    return result_STOP_WALK;
+    e.cols = e.rows = 1;
+    rc     = icons_push_frame(st, &bm);
   }
+  if (rc != result_OK)
+    return rc;
+  if (e.cols == 0)
+    return result_OK; /* skipped */
 
-  oldcap = st->cap;
-  if (array_grow_alloc(&st->wuss->alloc, (void **) &st->bitmaps,
-                       sizeof(*st->bitmaps), st->n, &st->cap, 1, 8) != 0)
-  {
-    icons_free_bitmap(&bm);
-    st->rc = result_OOM;
-    return result_STOP_WALK;
-  }
-  if (st->cap != oldcap) /* bitmaps[] grew; bring atoms[] to the same length */
-  {
-    int *grown;
+  rc = atom_new(st->names, (const unsigned char *) name, strlen(name) + 1,
+                &atom);
+  if (rc != result_OK)
+    return rc;
+  e.atom = (int) atom;
 
-    grown = wuss__realloc(st->wuss, st->atoms,
-                          (size_t) st->cap * sizeof(*st->atoms));
-    if (grown == NULL)
-    {
-      icons_free_bitmap(&bm);
-      st->rc = result_OOM;
-      return result_STOP_WALK;
-    }
-    st->atoms = grown;
-  }
+  if (array_grow_alloc(&st->wuss->alloc, (void **) &st->entries,
+                       sizeof(*st->entries), st->nentries, &st->entcap, 1,
+                       8) != 0)
+    return result_OOM;
 
-  st->atoms[st->n]     = (int) atom;
-  st->bitmaps[st->n++] = bm;
+  st->entries[st->nentries++] = e;
   return result_OK;
 }
 
@@ -189,10 +337,11 @@ void wuss__iconpool_clear(wuss_t *wuss, struct wuss_iconpool *pool)
     icons_free_bitmap(&pool->bitmaps[i]);
 
   wuss__free(wuss, pool->bitmaps);
-  wuss__free(wuss, pool->atoms);
+  wuss__free(wuss, pool->entries);
   pool->bitmaps  = NULL;
-  pool->atoms    = NULL;
   pool->nbitmaps = 0;
+  pool->entries  = NULL;
+  pool->nentries = 0;
 
   atom_destroy(pool->names);
   pool->names = NULL;
@@ -254,40 +403,35 @@ result_t wuss__iconpool_match_screen(wuss_t *wuss)
   return result_OK;
 }
 
-/* Order the entries by name (strcmp) so indices don't depend on the platform's
- * directory scan order. Insertion sort: a handful of icons. atoms[] and
- * bitmaps[] are permuted in lockstep. */
-static void icons_sort(struct atom_set *names,
-                       int             *atoms,
-                       bitmap_t        *bitmaps,
-                       int              n)
+/* Order the entries by name (strcmp): a sheet's suffix is cut from its name,
+ * so leaf order is not quite name order. Insertion sort: a handful of icons.
+ * The frames stay put. */
+static void icons_sort(struct atom_set            *names,
+                       struct wuss_iconpool_entry *entries,
+                       int                         n)
 {
+  struct wuss_iconpool_entry e;
   const char *name;
-  bitmap_t    bm;
-  int         atom;
   int         i, j;
 
   for (i = 1; i < n; i++)
   {
-    atom = atoms[i];
-    bm   = bitmaps[i];
-    name = (const char *) atom_get(names, (atom_t) atom, NULL);
+    e    = entries[i];
+    name = (const char *) atom_get(names, (atom_t) e.atom, NULL);
 
     for (j = i; j > 0; j--)
     {
       const char *prev;
 
-      prev = (const char *) atom_get(names, (atom_t) atoms[j - 1],
+      prev = (const char *) atom_get(names, (atom_t) entries[j - 1].atom,
                                      NULL);
       if (strcmp(prev, name) <= 0)
         break;
 
-      atoms[j]   = atoms[j - 1];
-      bitmaps[j] = bitmaps[j - 1];
+      entries[j] = entries[j - 1];
     }
 
-    atoms[j]   = atom;
-    bitmaps[j] = bm;
+    entries[j] = e;
   }
 }
 
@@ -305,19 +449,24 @@ static result_t icons_load(wuss_t               *wuss,
 
   wuss__iconpool_clear(wuss, pool);
 
-  st.wuss    = wuss;
-  st.names   = atom_create();
-  st.atoms   = NULL;
-  st.bitmaps = NULL;
-  st.n       = 0;
-  st.cap     = 0;
-  st.rc      = result_OK;
+  st.wuss     = wuss;
+  st.leaves   = NULL;
+  st.nleaves  = 0;
+  st.leafcap  = 0;
+  st.names    = atom_create();
+  st.entries  = NULL;
+  st.nentries = 0;
+  st.entcap   = 0;
+  st.bitmaps  = NULL;
+  st.n        = 0;
+  st.cap      = 0;
+  st.rc       = result_OK;
   strcpy(st.dir, dir);
 
   if (st.names == NULL)
     return result_OOM;
 
-  rc = dirscan_walk(dir, icons_load_entry, &st);
+  rc = dirscan_walk(dir, icons_collect, &st);
 
   /* A missing directory just yields no entries. */
   if (rc == result_FILE_NOT_FOUND)
@@ -326,20 +475,33 @@ static result_t icons_load(wuss_t               *wuss,
   if (rc == result_OK && st.rc != result_OK)
     rc = st.rc;
 
+  /* in strcmp order, so which of two leaves sharing a name wins does not
+   * depend on the platform's directory scan order */
+  if (rc == result_OK)
+  {
+    qsort(st.leaves, (size_t) st.nleaves, sizeof(*st.leaves),
+          icons_leaf_compare);
+    for (i = 0; i < st.nleaves && rc == result_OK; i++)
+      rc = icons_load_leaf(&st, st.leaves[i]);
+  }
+
+  wuss__free(wuss, st.leaves);
+
   if (rc != result_OK)
   {
     for (i = 0; i < st.n; i++)
       icons_free_bitmap(&st.bitmaps[i]);
     wuss__free(wuss, st.bitmaps);
-    wuss__free(wuss, st.atoms);
+    wuss__free(wuss, st.entries);
     atom_destroy(st.names);
     return rc;
   }
 
-  icons_sort(st.names, st.atoms, st.bitmaps, st.n);
+  icons_sort(st.names, st.entries, st.nentries);
 
   pool->names    = st.names;
-  pool->atoms    = st.atoms;
+  pool->entries  = st.entries;
+  pool->nentries = st.nentries;
   pool->bitmaps  = st.bitmaps;
   pool->nbitmaps = st.n;
   return result_OK;
@@ -396,17 +558,56 @@ static int icons_find(const struct wuss_iconpool *pool, const char *name)
 
   /* atom values are not array indices -- find which entry holds it. A handful
    * of icons, so a linear scan is cheaper than a second index structure. */
-  for (i = 0; i < pool->nbitmaps; i++)
-    if (pool->atoms[i] == (int) atom)
+  for (i = 0; i < pool->nentries; i++)
+    if (pool->entries[i].atom == (int) atom)
       return i;
 
   return -1;
 }
 
+/* Frame "frame" of entry "index" in pool, or NULL if either is out of range.
+ */
+static const bitmap_t *icons_frame(const struct wuss_iconpool *pool,
+                                   int                         index,
+                                   int                         frame)
+{
+  const struct wuss_iconpool_entry *e;
+
+  if (index < 0 || index >= pool->nentries)
+    return NULL;
+
+  e = &pool->entries[index];
+  if (frame < 0 || frame >= e->cols * e->rows)
+    return NULL;
+
+  return &pool->bitmaps[e->first + frame];
+}
+
+/* The frame count of entry "index" in pool, or 0 if out of range. Sets
+ * *cols and *rows when not NULL. */
+static int icons_frames(const struct wuss_iconpool *pool,
+                        int                         index,
+                        int                        *cols,
+                        int                        *rows)
+{
+  const struct wuss_iconpool_entry *e;
+
+  if (index < 0 || index >= pool->nentries)
+    return 0;
+
+  e = &pool->entries[index];
+  if (cols != NULL)
+    *cols = e->cols;
+  if (rows != NULL)
+    *rows = e->rows;
+
+  return e->cols * e->rows;
+}
+
 int wuss_iconpool_count(const wuss_t *wuss)
 {
   assert(wuss != NULL);
-  return wuss->icon.nbitmaps;
+  return wuss->icon.nentries;
 }
 
 int wuss_iconpool_lookup(const wuss_t *wuss, const char *name)
@@ -420,21 +621,33 @@ const bitmap_t *wuss_iconpool_bitmap(const wuss_t *wuss, int index)
 {
   assert(wuss != NULL);
 
-  if (index < 0 || index >= wuss->icon.nbitmaps)
-    return NULL;
+  return icons_frame(&wuss->icon, index, 0);
+}
 
-  return &wuss->icon.bitmaps[index];
+const bitmap_t *wuss_iconpool_frame(const wuss_t *wuss, int index, int frame)
+{
+  assert(wuss != NULL);
+
+  return icons_frame(&wuss->icon, index, frame);
+}
+
+int wuss_iconpool_frames(const wuss_t *wuss, int index, int *cols, int *rows)
+{
+  assert(wuss != NULL);
+
+  return icons_frames(&wuss->icon, index, cols, rows);
 }
 
 const char *wuss_iconpool_name(const wuss_t *wuss, int index)
 {
   assert(wuss != NULL);
 
-  if (index < 0 || index >= wuss->icon.nbitmaps)
+  if (index < 0 || index >= wuss->icon.nentries)
     return NULL;
 
   return (const char *) atom_get(wuss->icon.names,
-                                 (atom_t) wuss->icon.atoms[index], NULL);
+                                 (atom_t) wuss->icon.entries[index].atom,
+                                 NULL);
 }
 
 /* ----------------------------------------------------------------------- */
@@ -477,24 +690,38 @@ result_t wuss_task_iconpool_load_resource(wuss_task_t *task,
   return wuss_task_iconpool_load(task, dir);
 }
 
+/* The pool holding "name" -- task's private pool first, if task is given,
+ * then the shared pool -- setting *index to its index there. NULL if neither
+ * has it. */
+static const struct wuss_iconpool *icons_locate(const wuss_t      *wuss,
+                                                const wuss_task_t *task,
+                                                const char        *name,
+                                                int               *index)
+{
+  if (task != NULL)
+  {
+    *index = icons_find(&task->iconpool, name);
+    if (*index >= 0)
+      return &task->iconpool;
+  }
+
+  *index = icons_find(&wuss->icon, name);
+
+  return (*index >= 0) ? &wuss->icon : NULL;
+}
+
 const bitmap_t *wuss__iconpool_find(const wuss_t      *wuss,
                                     const wuss_task_t *task,
                                     const char        *name)
 {
-  int idx;
+  const struct wuss_iconpool *pool;
+  int                         idx;
 
   assert(wuss != NULL);
 
-  if (task != NULL)
-  {
-    idx = icons_find(&task->iconpool, name);
-    if (idx >= 0)
-      return &task->iconpool.bitmaps[idx];
-  }
+  pool = icons_locate(wuss, task, name, &idx);
 
-  idx = icons_find(&wuss->icon, name);
-
-  return (idx >= 0) ? &wuss->icon.bitmaps[idx] : NULL;
+  return (pool != NULL) ? icons_frame(pool, idx, 0) : NULL;
 }
 
 const bitmap_t *wuss_task_iconpool_find(const wuss_task_t *task,
@@ -503,6 +730,35 @@ const bitmap_t *wuss_task_iconpool_find(const wuss_task_t *task,
   assert(task != NULL);
 
   return wuss__iconpool_find(task->wuss, task, name);
+}
+
+const bitmap_t *wuss_task_iconpool_frame(const wuss_task_t *task,
+                                         const char        *name,
+                                         int                frame)
+{
+  const struct wuss_iconpool *pool;
+  int                         idx;
+
+  assert(task != NULL);
+
+  pool = icons_locate(task->wuss, task, name, &idx);
+
+  return (pool != NULL) ? icons_frame(pool, idx, frame) : NULL;
+}
+
+int wuss_task_iconpool_frames(const wuss_task_t *task,
+                              const char        *name,
+                              int               *cols,
+                              int               *rows)
+{
+  const struct wuss_iconpool *pool;
+  int                         idx;
+
+  assert(task != NULL);
+
+  pool = icons_locate(task->wuss, task, name, &idx);
+
+  return (pool != NULL) ? icons_frames(pool, idx, cols, rows) : 0;
 }
 
 #endif /* WUSS_ICONS */
