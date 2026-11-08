@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 # gen_deskduck_sprites.py -- draw the DeskDuck task's sprites as PNGs
 #
-# Each frame is a 16x16 character grid in a four-colour palette, facing left.
+# Each frame is a 16x16 character grid in a small palette, side views facing
+# left.
 # The frames go into one sprite sheet, deskduck_16x16.png, in the task's icon
 # pool directory: the top row faces right, the bottom row faces left, as
 # Pinboard draws actors whole with no flipping. The sleep frames' z is laid
@@ -23,6 +24,8 @@ PALETTE = {
     "#": (0, 0, 0, 255),        # outline and eye
     "A": (255, 236, 39, 255),   # body
     "B": (255, 163, 0, 255),    # bill and feet
+    "H": (255, 241, 232, 255),  # highlights
+    "R": (171, 82, 54, 255),    # under the bill
     "W": (200, 235, 255, 255),  # ripples and glints
     "P": (41, 173, 255, 255),   # pond water
     "D": (16, 104, 200, 255),   # pond rim
@@ -35,10 +38,10 @@ BLANK = "." * SIZE
 BODY = [
     "....####........",
     "...#AAAA#.......",
-    "..#AAAAAA#......",
-    ".##BA#AAA#......",
+    "..#AAHAAA#......",
+    ".##BA#HAA#......",
     "#BBBAAAAA#......",
-    ".#BBBAAA####..#.",
+    ".#RRBAAA####..#.",
     "..##AAAAAAAA##A#",
     "..#AAAAAAAAAAAA#",
     ".#AAAA#AAAAAA#A#",
@@ -72,9 +75,9 @@ WALK2 = BODY + [
 ]
 
 QUACK = replace(IDLE, {
-    3: "#BBBA#AAA#......",
+    3: "#BBBA#HAA#......",
     4: ".###AAAAA#......",
-    5: "#BBBBAAA####..#.",
+    5: "#RRRBAAA####..#.",
     6: ".###AAAAAAAA##A#",
 })
 
@@ -87,7 +90,54 @@ SLEEP2 = SAT
 SWIM1 = [BLANK] * 3 + BODY[:12] + ["..WWW.......WW.."]
 SWIM2 = [BLANK] * 4 + BODY[:11] + [".WW.......WWW..."]
 
-FRAMES = [WALK1, WALK2, IDLE, QUACK, SLEEP1, SLEEP2, SWIM1, SWIM2]
+# seen from the front, walking towards the viewer, and from the back
+FRONT_BODY = [
+    "......####......",
+    ".....#AAAA#.....",
+    "....#AAAAAA#....",
+    "....#H#AA#H#....",
+    "....#ABBBBA#....",
+    "...##ARRRRA##...",
+    "..#AA#AAAA#AA#..",
+    ".#AAAAAAAAAAAA#.",
+    ".#AA#AAAAAA#AA#.",
+    ".#A#AAAAAAAA#A#.",
+    ".##AAAAAAAAAA##.",
+    "...#AAAAAAAA#...",
+    "....##AAAA##....",
+    "......####......",
+]
+
+BACK_BODY = [
+    "......####......",
+    ".....#AAAA#.....",
+    "....#AAAAAA#....",
+    "....#AAAAAA#....",
+    "....#AAAAAA#....",
+    "...#A#AAAA#A#...",
+    "..#AAABBBBAAA#..",
+    ".#AAAAAAAAAAAA#.",
+    ".#AA#AAAAAA#AA#.",
+    ".#A#AAA##AAA#A#.",
+    ".##AAA#AA#AAA##.",
+    "...#AA#AA#AA#...",
+    "....##AAAA##....",
+    "......####......",
+]
+
+# feet seen end on: both down, then each lifted in turn
+FEET = ["......B..B......", ".....BB..BB....."]
+FEET1 = ["......B..B......", ".....BB........."]
+FEET2 = ["......B..B......", ".........BB....."]
+
+FRONT = FRONT_BODY + FEET
+FRONT1 = FRONT_BODY + FEET1
+FRONT2 = FRONT_BODY + FEET2
+BACK1 = BACK_BODY + FEET1
+BACK2 = BACK_BODY + FEET2
+
+FRAMES = [WALK1, WALK2, IDLE, QUACK, SLEEP1, SLEEP2, SWIM1, SWIM2,
+          FRONT, FRONT1, FRONT2, BACK1, BACK2]
 
 # the z of each sleep frame: (frame index, column, top row, rows), drawn at
 # the top of the cell, behind the head

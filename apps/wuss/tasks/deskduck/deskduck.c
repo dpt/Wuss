@@ -50,6 +50,11 @@ enum /* the columns of deskduck_16x16.png */
   FRAME_SLEEP2,
   FRAME_SWIM1,
   FRAME_SWIM2,
+  FRAME_FRONT,
+  FRAME_FRONT1, /* walking towards the viewer */
+  FRAME_FRONT2,
+  FRAME_BACK1,  /* walking away */
+  FRAME_BACK2,
   FRAME__LIMIT
 };
 
@@ -120,7 +125,7 @@ static const deskduck_state_t deskduck_states[STATE__LIMIT] =
   [PAUSE]   = { FRAME_IDLE,   FRAME_IDLE,    0, 0,               60, 120 },
   [WANDER]  = { FRAME_WALK1,  FRAME_WALK2,   0, WALKS | ROAMS,  180, 420 },
   [CHASE]   = { FRAME_WALK1,  FRAME_WALK2,   0, WALKS | STEERS,   0,   0 },
-  [CAUGHT]  = { FRAME_IDLE,   FRAME_IDLE,    0, 0,                0,   0 },
+  [CAUGHT]  = { FRAME_FRONT,  FRAME_FRONT,   0, 0,                0,   0 },
   [QUACK]   = { FRAME_QUACK,  FRAME_QUACK,   0, BUBBLES,         90,   0 },
   [SLEEP]   = { FRAME_SLEEP1, FRAME_SLEEP2, 32, 0,                0,   0 },
   [TO_POND] = { FRAME_WALK1,  FRAME_WALK2,   0, WALKS | HOMES,    0,   0 },
@@ -388,6 +393,7 @@ static int deskduck_tick(deskduck_t *duck, point_t pointer, int moved)
   int                     dx, dy;
   const deskduck_state_t *state;
   int                     alt;
+  int                     frame;
 
   events = moved ? ON_MOVED : 0;
   if (duck->still >= DUCK_SLEEP)
@@ -425,8 +431,14 @@ static int deskduck_tick(deskduck_t *duck, point_t pointer, int moved)
   if (state->does & SWIMS)
     deskduck_walk(duck, water, DUCK_SWIM);
 
-  alt = state->period ? duck->ticks / state->period : duck->steps;
-  return (alt & 1) ? state->other : state->frame;
+  alt   = state->period ? duck->ticks / state->period : duck->steps;
+  frame = (alt & 1) ? state->other : state->frame;
+  /* walking straight up or down the screen: the back or front view, as the
+   * WALKS states all show FRAME_WALK1 and 2 */
+  if ((state->does & WALKS) && duck->heading.x == 0)
+    frame += (duck->heading.y > 0 ? FRAME_FRONT1 : FRAME_BACK1) -
+             FRAME_WALK1;
+  return frame;
 }
 
 static void deskduck_idle(deskduck_t *duck)
