@@ -55,6 +55,7 @@ enum /* the columns of deskduck_16x16.png */
   FRAME_FRONT2,
   FRAME_BACK1,  /* walking away */
   FRAME_BACK2,
+  FRAME_SQUACK, /* quacking afloat */
   FRAME__LIMIT
 };
 
@@ -76,6 +77,7 @@ enum /* states */
   SLEEP,   /* dozes once the pointer has been still a while */
   TO_POND, /* walks to the pond */
   SWIM,    /* paddles about on it */
+  SQUACK,  /* quacks afloat */
   STATE__LIMIT
 };
 
@@ -83,6 +85,7 @@ enum /* states */
 #define ANY       (IN(STATE__LIMIT) - 1)
 #define AWAKE     (IN(PAUSE) | IN(WANDER) | IN(CHASE) | IN(CAUGHT) | \
                    IN(TO_POND))
+#define AFLOAT    (IN(SWIM) | IN(SQUACK))
 
 enum /* events, as bits */
 {
@@ -129,7 +132,8 @@ static const deskduck_state_t deskduck_states[STATE__LIMIT] =
   [QUACK]   = { FRAME_QUACK,  FRAME_QUACK,   0, BUBBLES,         90,   0 },
   [SLEEP]   = { FRAME_SLEEP1, FRAME_SLEEP2, 32, 0,                0,   0 },
   [TO_POND] = { FRAME_WALK1,  FRAME_WALK2,   0, WALKS | HOMES,    0,   0 },
-  [SWIM]    = { FRAME_SWIM1,  FRAME_SWIM2,  30, SWIMS | ROAMS,  600, 900 }
+  [SWIM]    = { FRAME_SWIM1,  FRAME_SWIM2,  30, SWIMS | ROAMS,  600, 900 },
+  [SQUACK]  = { FRAME_SQUACK, FRAME_SQUACK,  0, BUBBLES,         90,   0 }
 };
 
 typedef struct deskduck_transition
@@ -144,10 +148,12 @@ deskduck_transition_t;
 static const deskduck_transition_t deskduck_transitions[] =
 {
   /* from                                 on          to */
-  { ANY & ~IN(SWIM),                     ON_CLICK,   QUACK   },
+  { ANY & ~AFLOAT,                       ON_CLICK,   QUACK   },
+  { IN(SWIM),                            ON_CLICK,   SQUACK  },
   { IN(QUACK),                           ON_TIMEOUT, PAUSE   },
-  { IN(SWIM),                            ON_DRY,     WANDER  },
-  { ANY & ~IN(SWIM),                     ON_SPLASH,  SWIM    },
+  { IN(SQUACK),                          ON_TIMEOUT, SWIM    },
+  { AFLOAT,                              ON_DRY,     WANDER  },
+  { ANY & ~AFLOAT,                       ON_SPLASH,  SWIM    },
   { IN(SLEEP),                           ON_MOVED,   PAUSE   },
   { AWAKE,                               ON_STILL,   SLEEP   },
   { AWAKE & ~IN(CAUGHT),                 ON_CAUGHT,  CAUGHT  },

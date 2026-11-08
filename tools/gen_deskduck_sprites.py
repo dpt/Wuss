@@ -89,6 +89,7 @@ SLEEP2 = SAT
 # swimming: sunk to the waterline, bobbing a pixel, with ripples
 SWIM1 = [BLANK] * 3 + BODY[:12] + ["..WWW.......WW.."]
 SWIM2 = [BLANK] * 4 + BODY[:11] + [".WW.......WWW..."]
+SWIMQUACK = [BLANK] * 3 + QUACK[:12] + ["..WWW.......WW.."]
 
 # seen from the front, walking towards the viewer, and from the back
 FRONT_BODY = [
@@ -137,7 +138,7 @@ BACK1 = BACK_BODY + FEET1
 BACK2 = BACK_BODY + FEET2
 
 FRAMES = [WALK1, WALK2, IDLE, QUACK, SLEEP1, SLEEP2, SWIM1, SWIM2,
-          FRONT, FRONT1, FRONT2, BACK1, BACK2]
+          FRONT, FRONT1, FRONT2, BACK1, BACK2, SWIMQUACK]
 
 # the z of each sleep frame: (frame index, column, top row, rows), drawn at
 # the top of the cell, behind the head
