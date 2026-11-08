@@ -68,16 +68,16 @@ void wuss_task_destroy(wuss_task_t *doomed)
   }
   while (child != NULL);
 
+  /* Let other tasks drop what they borrowed from this one, before its QUIT
+   * frees its task data, while its windows and icon pool still exist. */
+  wuss__message_task_close_down(wuss, doomed);
+
   /* One QUIT while every window is still alive. */
   (void) wuss__deliver_kind(doomed, NULL, wuss_EVENT_QUIT);
 
   /* Drop anything this task sent before the close loop below bounces
    * messages addressed to its windows, so none bounce back to it. */
   wuss__message_purge_task(wuss, doomed);
-
-  /* Let other tasks drop what they borrowed from this one, while it, its
-   * windows and its icon pool still exist. */
-  wuss__message_task_close_down(wuss, doomed);
 
   /* Force-close every window the task owns, in task-list order. No
    * PRE_CLOSE/CLOSE -- wuss_window_close is the unvetoable teardown. Each

@@ -158,8 +158,8 @@ behind every window. It holds at most 8 at once.
 - **Borrowed bitmaps.** The Pinboard does not copy the bitmap. The owner
   keeps it alive until the actor is removed or the owner is destroyed.
 - **Owner destroyed.** Core broadcasts `wuss_MESSAGE_TASK_CLOSE_DOWN` from a
-  task as `wuss_task_destroy` takes it down, after its QUIT and before its
-  memory is freed. The broadcast is delivered at once, not queued. The
+  task as `wuss_task_destroy` takes it down, before its QUIT, so before it
+  frees anything. The broadcast is delivered at once, not queued. The
   Pinboard then removes that task's actors.
 - **Click.** A SELECT or ADJUST press over an actor broadcasts
   `wuss_MESSAGE_PINBOARD_ACTOR_CLICK` with the owner, id, button and pointer

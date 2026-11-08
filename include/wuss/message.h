@@ -68,10 +68,10 @@ enum
                                 *   NUL-terminated string, in the first free
                                 *   cell. Bounces if no Pinboard runs. See
                                 *   docs/windowing/backdrop.md. */
-  /** Core -> broadcast: wuss_message_t::sender is being destroyed and has
-   *  had its QUIT. Delivered at once, not queued, so a task can drop
-   *  anything it borrowed from the sender before it is freed. Compare the
-   *  sender; never call through it. No payload. */
+  /** Core -> broadcast: wuss_message_t::sender is being destroyed and is
+   *  about to get its QUIT. Delivered at once, not queued, so a task can
+   *  drop anything it borrowed from the sender before it is freed. Compare
+   *  the sender; never call through it. No payload. */
   wuss_MESSAGE_TASK_CLOSE_DOWN,
   /** Any -> broadcast: Pinboard, set or remove an actor; see
    *  wuss_pinboard_actor_t. Send it recorded: it bounces if no Pinboard
