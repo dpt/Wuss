@@ -20,15 +20,19 @@
  * this ever feels cramped. */
 #define FILING_MAX_WINDOWS 16
 
-/* Filer menu rows, which act on the window the menu was opened over.
- * Download only exists in the browser build, where saved files
- * otherwise stay trapped in Emscripten's in-memory filesystem. */
+/* Filer menu rows, which act on the window the menu was opened over, laid
+ * out as the RISC OS Filer's. Rows not yet implemented report so when
+ * picked (see filing_stub). Download only exists in the browser build, where
+ * saved files otherwise stay trapped in Emscripten's in-memory filesystem. */
 enum
 {
   FILING_MENU_DISPLAY,
   FILING_MENU_SELECTION, /* "File 'x'", "Dir. 'x'" or "Selection" */
   FILING_MENU_SELECT_ALL,
   FILING_MENU_CLEAR_SELECTION,
+  FILING_MENU_OPTIONS,
+  FILING_MENU_NEW_DIRECTORY,      /* stub */
+  FILING_MENU_SET_WORK_DIRECTORY, /* stub */
   FILING_MENU_OPEN_PARENT,
 #ifdef __EMSCRIPTEN__
   FILING_MENU_DOWNLOAD,
@@ -36,20 +40,47 @@ enum
   FILING_MENU__LIMIT
 };
 
-/* rows of the submenu on FILING_MENU_DISPLAY, in wuss_gridview_mode_t order */
+/* rows of the submenu on FILING_MENU_DISPLAY: the modes, in
+ * wuss_gridview_mode_t order, then the sort orders */
 enum
 {
   FILING_DISPLAY_LARGE,
   FILING_DISPLAY_SMALL,
   FILING_DISPLAY_FULL,
+  FILING_DISPLAY_SORT_NAME, /* stub: listings are always sorted by name */
+  FILING_DISPLAY_SORT_TYPE, /* stub */
+  FILING_DISPLAY_SORT_SIZE, /* stub */
+  FILING_DISPLAY_SORT_DATE, /* stub */
   FILING_DISPLAY__LIMIT
 };
 
 /* rows of the submenu on FILING_MENU_SELECTION, which act on the selection */
 enum
 {
+  FILING_SEL_MENU_COPY,     /* stub */
+  FILING_SEL_MENU_RENAME,   /* stub */
   FILING_SEL_MENU_DELETE,
+  FILING_SEL_MENU_ACCESS,   /* stub */
+  FILING_SEL_MENU_COUNT,    /* stub */
+  FILING_SEL_MENU_HELP,     /* stub */
+  FILING_SEL_MENU_INFO,     /* stub */
+  FILING_SEL_MENU_FIND,     /* stub */
+  FILING_SEL_MENU_SET_TYPE, /* stub */
+  FILING_SEL_MENU_STAMP,    /* stub */
   FILING_SEL_MENU__LIMIT
+};
+
+/* rows of the submenu on FILING_MENU_OPTIONS: task-wide toggles, each kept as
+ * its row's tick. Stub: they tick and untick but change nothing yet. */
+enum
+{
+  FILING_OPTIONS_CONFIRM_ALL,
+  FILING_OPTIONS_CONFIRM_DELETES,
+  FILING_OPTIONS_VERBOSE,
+  FILING_OPTIONS_FORCE,
+  FILING_OPTIONS_NEWER,
+  FILING_OPTIONS_FASTER,
+  FILING_OPTIONS__LIMIT
 };
 
 /* icon bar menu rows */
@@ -156,6 +187,8 @@ struct filing_task
   wuss_menu_t            menu;
   wuss_menu_item_t       display_menu_items[FILING_DISPLAY__LIMIT];
   wuss_menu_t            display_menu;
+  wuss_menu_item_t       options_menu_items[FILING_OPTIONS__LIMIT];
+  wuss_menu_t            options_menu;
   char                   sel_text[64]; /* FILING_MENU_SELECTION's label */
   wuss_menu_item_t       sel_menu_items[FILING_SEL_MENU__LIMIT];
   wuss_menu_t            sel_menu;

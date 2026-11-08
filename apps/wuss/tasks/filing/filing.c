@@ -577,7 +577,25 @@ result_t filing_create(wuss_t *wuss, filing_task_t **out)
   task->wuss     = wuss;
   task->nwindows = 0;
 
+  WUSS_MENU_ITEM(task->sel_menu_items, FILING_SEL_MENU_COPY, "Copy",
+                 wuss_MENU_ITEM_NONE);
+  WUSS_MENU_ITEM(task->sel_menu_items, FILING_SEL_MENU_RENAME, "Rename",
+                 wuss_MENU_ITEM_NONE);
   WUSS_MENU_ITEM(task->sel_menu_items, FILING_SEL_MENU_DELETE, "Delete",
+                 wuss_MENU_ITEM_NONE);
+  WUSS_MENU_ITEM(task->sel_menu_items, FILING_SEL_MENU_ACCESS, "Access",
+                 wuss_MENU_ITEM_NONE);
+  WUSS_MENU_ITEM(task->sel_menu_items, FILING_SEL_MENU_COUNT, "Count",
+                 wuss_MENU_ITEM_NONE);
+  WUSS_MENU_ITEM(task->sel_menu_items, FILING_SEL_MENU_HELP, "Help",
+                 wuss_MENU_ITEM_NONE);
+  WUSS_MENU_ITEM(task->sel_menu_items, FILING_SEL_MENU_INFO, "Info",
+                 wuss_MENU_ITEM_NONE);
+  WUSS_MENU_ITEM(task->sel_menu_items, FILING_SEL_MENU_FIND, "Find",
+                 wuss_MENU_ITEM_NONE);
+  WUSS_MENU_ITEM(task->sel_menu_items, FILING_SEL_MENU_SET_TYPE, "Set type",
+                 wuss_MENU_ITEM_NONE);
+  WUSS_MENU_ITEM(task->sel_menu_items, FILING_SEL_MENU_STAMP, "Stamp",
                  wuss_MENU_ITEM_NONE);
   WUSS_MENU_TITLE(task->sel_menu, "Selection", task->sel_menu_items,
                   NELEMS(task->sel_menu_items));
@@ -588,8 +606,32 @@ result_t filing_create(wuss_t *wuss, filing_task_t **out)
                  "Small icons", wuss_MENU_ITEM_NONE);
   WUSS_MENU_ITEM(task->display_menu_items, FILING_DISPLAY_FULL, "Full info",
                  wuss_MENU_ITEM_NONE);
+  WUSS_MENU_ITEM(task->display_menu_items, FILING_DISPLAY_SORT_NAME,
+                 "Sort by name", wuss_MENU_ITEM_DASHED);
+  WUSS_MENU_ITEM(task->display_menu_items, FILING_DISPLAY_SORT_TYPE,
+                 "Sort by type", wuss_MENU_ITEM_NONE);
+  WUSS_MENU_ITEM(task->display_menu_items, FILING_DISPLAY_SORT_SIZE,
+                 "Sort by size", wuss_MENU_ITEM_NONE);
+  WUSS_MENU_ITEM(task->display_menu_items, FILING_DISPLAY_SORT_DATE,
+                 "Sort by date", wuss_MENU_ITEM_NONE);
   WUSS_MENU_TITLE(task->display_menu, "Display", task->display_menu_items,
                   NELEMS(task->display_menu_items));
+
+  /* the RISC OS Filer's defaults */
+  WUSS_MENU_ITEM(task->options_menu_items, FILING_OPTIONS_CONFIRM_ALL,
+                 "Confirm all", wuss_MENU_ITEM_NONE);
+  WUSS_MENU_ITEM(task->options_menu_items, FILING_OPTIONS_CONFIRM_DELETES,
+                 "Confirm deletes", wuss_MENU_ITEM_TICKED);
+  WUSS_MENU_ITEM(task->options_menu_items, FILING_OPTIONS_VERBOSE, "Verbose",
+                 wuss_MENU_ITEM_TICKED);
+  WUSS_MENU_ITEM(task->options_menu_items, FILING_OPTIONS_FORCE, "Force",
+                 wuss_MENU_ITEM_NONE);
+  WUSS_MENU_ITEM(task->options_menu_items, FILING_OPTIONS_NEWER, "Newer",
+                 wuss_MENU_ITEM_NONE);
+  WUSS_MENU_ITEM(task->options_menu_items, FILING_OPTIONS_FASTER, "Faster",
+                 wuss_MENU_ITEM_NONE);
+  WUSS_MENU_TITLE(task->options_menu, "Options", task->options_menu_items,
+                  NELEMS(task->options_menu_items));
 
   WUSS_MENU_ITEM_MENU(task->menu_items, FILING_MENU_DISPLAY, "Display",
                       wuss_MENU_ITEM_NONE, &task->display_menu);
@@ -599,6 +641,12 @@ result_t filing_create(wuss_t *wuss, filing_task_t **out)
                  wuss_MENU_ITEM_NONE);
   WUSS_MENU_ITEM(task->menu_items, FILING_MENU_CLEAR_SELECTION,
                  "Clear selection", wuss_MENU_ITEM_NONE);
+  WUSS_MENU_ITEM_MENU(task->menu_items, FILING_MENU_OPTIONS, "Options",
+                      wuss_MENU_ITEM_NONE, &task->options_menu);
+  WUSS_MENU_ITEM(task->menu_items, FILING_MENU_NEW_DIRECTORY,
+                 "New directory", wuss_MENU_ITEM_NONE);
+  WUSS_MENU_ITEM(task->menu_items, FILING_MENU_SET_WORK_DIRECTORY,
+                 "Set work directory", wuss_MENU_ITEM_NONE);
   WUSS_MENU_ITEM(task->menu_items, FILING_MENU_OPEN_PARENT, "Open parent",
                  wuss_MENU_ITEM_NONE);
   task->menu_items[FILING_MENU_OPEN_PARENT].shortcut = "^" WUSS_MENU_SHIFT "UP";
@@ -825,6 +873,16 @@ static void filing_delete_selection(filing_task_t *task, filing_window_t *fw)
                              wuss_ERROR_BUTTONS_OK, NULL, NULL);
 }
 
+/* report that the menu row labelled what does nothing yet */
+static void filing_stub(filing_task_t *task, const char *what)
+{
+  char message[128];
+
+  snprintf(message, sizeof(message), "%s is not implemented yet", what);
+  (void) wuss_error_report(task->wuss, "file_dir", "Filing", message,
+                           wuss_ERROR_BUTTONS_OK, NULL, NULL);
+}
+
 /* set which rows apply to the window the menu was opened over, from its
  * listing and selection. Called as the menu opens and again after a pick that
  * leaves it open (ADJUST) and changes the selection. */
@@ -834,20 +892,25 @@ static void filing_menu_update(filing_task_t *task)
   char             parent[DPTLIB_MAXPATH];
   int              count;
   int              selected;
+  int              mode;
+  int              i;
 
   fw       = filing_find_by_window(task, task->menu_window);
   count    = fw != NULL ? dirlist_count(fw->listing) : 0;
   selected = fw != NULL ? wuss_gridview_selected_count(fw->gridview) : 0;
+  mode     = fw != NULL ? (int) wuss_gridview_get_mode(fw->gridview) : -1;
 
   filing_label_selection(task, fw, selected);
   filing_menu_enable(task, FILING_MENU_DISPLAY, fw != NULL);
-  wuss_menu_tick_exclusive_live(task->menu_handle, &task->display_menu,
-                                fw != NULL
-                                ? (int) wuss_gridview_get_mode(fw->gridview)
-                                : -1);
+  /* tick the mode, and name as the only sort order */
+  for (i = 0; i < FILING_DISPLAY__LIMIT; i++)
+    wuss_menu_tick_item_live(task->menu_handle, &task->display_menu, i,
+                             i == mode || i == FILING_DISPLAY_SORT_NAME);
   filing_menu_enable(task, FILING_MENU_SELECTION, selected > 0);
   filing_menu_enable(task, FILING_MENU_SELECT_ALL, selected < count);
   filing_menu_enable(task, FILING_MENU_CLEAR_SELECTION, selected > 0);
+  filing_menu_enable(task, FILING_MENU_NEW_DIRECTORY, fw != NULL);
+  filing_menu_enable(task, FILING_MENU_SET_WORK_DIRECTORY, fw != NULL);
   filing_menu_enable(task, FILING_MENU_OPEN_PARENT,
                     fw != NULL &&
                     path_parent(fw->path, parent, sizeof(parent)));
@@ -1034,6 +1097,7 @@ result_t filing_handle(wuss_window_t      *window,
 
   case wuss_EVENT_MENU_SELECT:
   {
+    int              idx;
     filing_window_t *fw;
     char             parent[DPTLIB_MAXPATH];
 
@@ -1060,8 +1124,14 @@ result_t filing_handle(wuss_window_t      *window,
       }
       return result_OK;
     }
-    if (wuss_menu_select_is(event, &task->sel_menu, FILING_SEL_MENU_DELETE))
+    if (event->data.menu_select.menu == &task->sel_menu)
     {
+      idx = event->data.menu_select.index;
+      if (idx != FILING_SEL_MENU_DELETE)
+      {
+        filing_stub(task, task->sel_menu_items[idx].text);
+        return result_OK;
+      }
       fw = filing_find_by_window(task, task->menu_window);
       if (fw != NULL)
       {
@@ -1070,14 +1140,28 @@ result_t filing_handle(wuss_window_t      *window,
       }
       return result_OK;
     }
+    if (event->data.menu_select.menu == &task->options_menu)
+    {
+      /* stub: the tick is the only state */
+      idx = event->data.menu_select.index;
+      wuss_menu_tick_item_live(task->menu_handle, &task->options_menu, idx,
+                               !(task->options_menu_items[idx].flags &
+                                 wuss_MENU_ITEM_TICKED));
+      return result_OK;
+    }
     if (event->data.menu_select.menu == &task->display_menu)
     {
+      idx = event->data.menu_select.index;
+      if (idx >= FILING_DISPLAY_SORT_NAME)
+      {
+        filing_stub(task, task->display_menu_items[idx].text);
+        return result_OK;
+      }
       fw = filing_find_by_window(task, task->menu_window);
       if (fw != NULL)
       {
         /* rows are in wuss_gridview_mode_t order */
-        wuss_gridview_set_mode(fw->gridview, (wuss_gridview_mode_t)
-                               event->data.menu_select.index);
+        wuss_gridview_set_mode(fw->gridview, (wuss_gridview_mode_t) idx);
         wuss_gridview_fit_window(fw->gridview, FILING_COLUMNS,
                                  FILING_MAX_ROWS, NULL);
         filing_menu_update(task);
@@ -1104,6 +1188,12 @@ result_t filing_handle(wuss_window_t      *window,
         wuss_gridview_clear_selection(fw->gridview);
         filing_menu_update(task);
       }
+      return result_OK;
+
+    case FILING_MENU_NEW_DIRECTORY:
+    case FILING_MENU_SET_WORK_DIRECTORY:
+      filing_stub(task,
+                  task->menu_items[event->data.menu_select.index].text);
       return result_OK;
 
     case FILING_MENU_OPEN_PARENT:
