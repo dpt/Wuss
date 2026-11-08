@@ -63,12 +63,78 @@ enum
   wuss_MESSAGE_FILER_OPEN_DIR, /**< Any -> broadcast: Filer, open a window on
                                 *   the directory whose path is the payload,
                                 *   a NUL-terminated string. */
-  wuss_MESSAGE_PINBOARD_PIN    /**< Any -> broadcast: Pinboard, pin the file
+  wuss_MESSAGE_PINBOARD_PIN,   /**< Any -> broadcast: Pinboard, pin the file
                                 *   whose path is the payload, a
                                 *   NUL-terminated string, in the first free
                                 *   cell. Bounces if no Pinboard runs. See
                                 *   docs/windowing/backdrop.md. */
+  /** Core -> broadcast: wuss_message_t::sender is being destroyed and has
+   *  had its QUIT. Delivered at once, not queued, so a task can drop
+   *  anything it borrowed from the sender before it is freed. Compare the
+   *  sender; never call through it. No payload. */
+  wuss_MESSAGE_TASK_CLOSE_DOWN,
+  /** Any -> broadcast: Pinboard, set or remove an actor; see
+   *  wuss_pinboard_actor_t. Send it recorded: it bounces if no Pinboard
+   *  runs. */
+  wuss_MESSAGE_PINBOARD_ACTOR,
+  /** Pinboard -> broadcast: an actor was clicked; see
+   *  wuss_pinboard_actor_click_t. */
+  wuss_MESSAGE_PINBOARD_ACTOR_CLICK,
+  /** Pinboard -> broadcast: an actor drag ended; see
+   *  wuss_pinboard_actor_drop_t. */
+  wuss_MESSAGE_PINBOARD_ACTOR_DROP
 };
+
+/** Operations for wuss_pinboard_actor_t::op. */
+enum
+{
+  wuss_PINBOARD_ACTOR_SET,   /**< Add the actor, or update it if present. */
+  wuss_PINBOARD_ACTOR_REMOVE /**< Remove the actor; only \c id is read. */
+};
+
+/**
+ * Wire payload for \ref wuss_MESSAGE_PINBOARD_ACTOR. An actor is a bitmap
+ * Pinboard draws on the backdrop over its pins, owned by the sending task.
+ * Pinboard borrows \c bitmap: keep it alive until the actor is removed or
+ * the task is destroyed (Pinboard drops a task's actors on \ref
+ * wuss_MESSAGE_TASK_CLOSE_DOWN).
+ */
+typedef struct
+{
+  int             op;     /**< wuss_PINBOARD_ACTOR_SET or _REMOVE. */
+  int             id;     /**< Owner-chosen, unique per owner. */
+  const bitmap_t *bitmap; /**< Image, drawn whole with its alpha. */
+  point_t         pos;    /**< Screen position of its top left. */
+}
+wuss_pinboard_actor_t;
+
+/**
+ * Wire payload for \ref wuss_MESSAGE_PINBOARD_ACTOR_CLICK. Broadcast: a
+ * recipient ignores it unless \c owner is itself.
+ */
+typedef struct
+{
+  const wuss_task_t *owner;  /**< Actor's owner. */
+  int                id;     /**< Actor's id. */
+  wuss_button_t      button; /**< wuss_BUTTON_SELECT or _ADJUST. */
+  point_t            point;  /**< Pointer, in screen coordinates. */
+}
+wuss_pinboard_actor_click_t;
+
+/**
+ * Wire payload for \ref wuss_MESSAGE_PINBOARD_ACTOR_DROP. A SELECT drag
+ * hides the actor and drags its image; on a drop Pinboard moves the actor to
+ * \c pos, on Escape it shows it where it was. Broadcast: a recipient ignores
+ * it unless \c owner is itself.
+ */
+typedef struct
+{
+  const wuss_task_t *owner;     /**< Actor's owner. */
+  int                id;        /**< Actor's id. */
+  point_t            pos;       /**< Actor's position now. */
+  int                cancelled; /**< Non-zero if Escape cancelled it. */
+}
+wuss_pinboard_actor_drop_t;
 
 /**
  * Wire payload for \ref wuss_MESSAGE_DATA_SAVE (wuss_message_t::data, cast

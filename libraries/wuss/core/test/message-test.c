@@ -675,6 +675,35 @@ result_t wuss_message_test(const char *resources)
     reap_test_tasks();
   }
 
+  printf("test: wuss_task_destroy tells every other task at once, with a "
+         "TaskCloseDown from the doomed task\n");
+
+  {
+    static msg_task_t tc_watch;
+    wuss_task_t      *delegate_watch, *delegate_doomed;
+
+    memset(&tc_watch, 0, sizeof(tc_watch));
+    tc_watch.wuss = wuss;
+
+    delegate_watch = mk_task(wuss, msg_handle, &tc_watch);
+    if (delegate_watch == NULL) goto Failure;
+    tc_watch.self = delegate_watch;
+
+    delegate_doomed = mk_task(wuss, NULL, NULL);
+    if (delegate_doomed == NULL) goto Failure;
+
+    wuss_task_destroy(delegate_doomed);
+    mk_task_count = 1; /* forget delegate_doomed, already gone */
+
+    /* delivered inside wuss_task_destroy: no wuss_idle */
+    if (tc_watch.message_count != 1 ||
+        tc_watch.last_message.action != wuss_MESSAGE_TASK_CLOSE_DOWN ||
+        tc_watch.last_message.sender != delegate_doomed)
+      goto Failure;
+
+    reap_test_tasks();
+  }
+
   wuss_fixture_close(&fixture);
 
   return result_TEST_PASSED;

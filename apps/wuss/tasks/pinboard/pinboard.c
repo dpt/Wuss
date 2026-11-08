@@ -51,6 +51,20 @@ typedef struct pin
 }
 pin_t;
 
+/* ponytail: a fixed table of actors, slots freed in place so a pending press
+ * or drag keeps its index; raise it if more tasks want actors at once */
+#define PINBOARD_MAX_ACTORS 8
+
+/* a bitmap another task shows on the backdrop; see wuss_pinboard_actor_t */
+typedef struct actor
+{
+  const wuss_task_t *owner; /* NULL for a free slot */
+  int                id;
+  const bitmap_t    *bitmap; /* borrowed from the owner */
+  point_t            pos;
+}
+actor_t;
+
 enum
 {
   PINBOARD_IMAGE_NONE,
@@ -123,6 +137,10 @@ typedef struct pinboard
   point_t            hotspot; /* the press point, relative to its cell */
   unsigned int       open_retry; /* my_ref of a DataOpen re-sent after
                                   * starting the app for its type */
+
+  actor_t            actors[PINBOARD_MAX_ACTORS];
+  int                actor_press; /* actor under a SELECT press, or -1 */
+  int                actor_drag;  /* actor being dragged, hidden, or -1 */
 
   wuss_backdrop_t    initial; /* as configured at start-up, for Clear */
   wuss_backdrop_t    backdrop;
@@ -598,6 +616,11 @@ static void pinboard_redraw(pinboard_t *pb, const wuss_event_t *event)
   for (i = 0; i < pb->npins; i++)
     pinboard_draw_pin(pb, scr, &pb->pins[i]);
 
+  for (i = 0; i < PINBOARD_MAX_ACTORS; i++)
+    if (pb->actors[i].owner != NULL && i != pb->actor_drag)
+      (void) screen_copy_bitmap(scr, pb->actors[i].pos.x, pb->actors[i].pos.y,
+                                pb->actors[i].bitmap);
+
   palette = wuss_get_palette(pb->wuss, NULL);
   wuss_rubberband_draw(&pb->band, event, palette[pb->label_fg]);
 }
@@ -688,6 +711,180 @@ static void pinboard_drag_end(pinboard_t *pb, const wuss_event_t *event)
   target.icon   = event->data.drag_end.drop_icon;
   (void) wuss_send_to(pb->wuss, pb->task, &target, wuss_MESSAGE_DATA_LOAD,
                       pb->pins[i].path, strlen(pb->pins[i].path) + 1, 0);
+}
+
+/* ----------------------------------------------------------------------- */
+
+static box_t pinboard_actor_box(const actor_t *a)
+{
+  box_t box = BOX_POS_SIZE(a->pos.x, a->pos.y, a->bitmap->size.w,
+                           a->bitmap->size.h);
+
+  return box;
+}
+
+static void pinboard_invalidate_actor(pinboard_t *pb, int i)
+{
+  box_t box;
+
+  box = pinboard_actor_box(&pb->actors[i]);
+  wuss_window_invalidate(pb->window, &box);
+}
+
+/* the slot holding owner's actor id, or -1 */
+static int pinboard_actor_find(const pinboard_t  *pb,
+                               const wuss_task_t *owner,
+                               int                id)
+{
+  int i;
+
+  for (i = 0; i < PINBOARD_MAX_ACTORS; i++)
+    if (pb->actors[i].owner == owner && pb->actors[i].id == id)
+      return i;
+
+  return -1;
+}
+
+/* the topmost shown actor under screen point p, or -1
+ * ponytail: hits the bitmap's box, transparent corners included; test the
+ * pixel's alpha if actors get odd shapes */
+static int pinboard_actor_hit(const pinboard_t *pb, point_t p)
+{
+  int   i;
+  box_t box;
+
+  for (i = PINBOARD_MAX_ACTORS - 1; i >= 0; i--)
+  {
+    if (pb->actors[i].owner == NULL || i == pb->actor_drag)
+      continue;
+    box = pinboard_actor_box(&pb->actors[i]);
+    if (box_contains_point(&box, p.x, p.y))
+      return i;
+  }
+
+  return -1;
+}
+
+static void pinboard_actor_remove(pinboard_t *pb, int i)
+{
+  if (i != pb->actor_drag)
+    pinboard_invalidate_actor(pb, i);
+
+  pb->actors[i].owner = NULL;
+  if (pb->actor_press == i)
+    pb->actor_press = -1;
+  if (pb->actor_drag == i)
+    pb->actor_drag = -1; /* its DRAG_END then finds nothing to drop */
+}
+
+/* a wuss_MESSAGE_PINBOARD_ACTOR from owner */
+static void pinboard_actor_message(pinboard_t                  *pb,
+                                   const wuss_task_t           *owner,
+                                   const wuss_pinboard_actor_t *msg)
+{
+  int i;
+
+  i = pinboard_actor_find(pb, owner, msg->id);
+
+  if (msg->op == wuss_PINBOARD_ACTOR_REMOVE)
+  {
+    if (i >= 0)
+      pinboard_actor_remove(pb, i);
+    return;
+  }
+
+  if (msg->bitmap == NULL)
+    return;
+
+  if (i < 0)
+  {
+    for (i = 0; i < PINBOARD_MAX_ACTORS; i++)
+      if (pb->actors[i].owner == NULL)
+        break;
+    if (i == PINBOARD_MAX_ACTORS)
+      return; /* full: the actor just isn't shown */
+  }
+  else if (i != pb->actor_drag)
+  {
+    pinboard_invalidate_actor(pb, i);
+  }
+
+  pb->actors[i].owner  = owner;
+  pb->actors[i].id     = msg->id;
+  pb->actors[i].bitmap = msg->bitmap;
+  pb->actors[i].pos    = msg->pos;
+
+  if (i != pb->actor_drag)
+    pinboard_invalidate_actor(pb, i);
+}
+
+/* a SELECT or ADJUST press on actor i: tell its owner */
+static void pinboard_actor_click(pinboard_t   *pb,
+                                 int           i,
+                                 wuss_button_t button,
+                                 point_t       p)
+{
+  wuss_pinboard_actor_click_t click;
+
+  click.owner  = pb->actors[i].owner;
+  click.id     = pb->actors[i].id;
+  click.button = button;
+  click.point  = p;
+  (void) wuss_send(pb->wuss, pb->task, NULL,
+                   wuss_MESSAGE_PINBOARD_ACTOR_CLICK, &click, sizeof(click),
+                   0);
+}
+
+static void pinboard_actor_drag_maybe(pinboard_t *pb, point_t p)
+{
+  int            dx, dy;
+  int            i;
+  const actor_t *a;
+
+  dx = p.x - pb->press_point.x;
+  dy = p.y - pb->press_point.y;
+  if (dx * dx + dy * dy < pb->threshold * pb->threshold)
+    return;
+
+  i               = pb->actor_press;
+  pb->actor_press = -1;
+  a               = &pb->actors[i];
+  pb->hotspot     = POINT(pb->press_point.x - a->pos.x,
+                          pb->press_point.y - a->pos.y);
+
+  if (wuss_drag_start_bitmap(pb->wuss, pb->window, a->bitmap,
+                             pb->hotspot) != result_OK)
+    return;
+
+  pinboard_invalidate_actor(pb, i); /* hidden while its image is dragged */
+  pb->actor_drag = i;
+}
+
+/* an actor drag ended: show it where it was dropped, or where it was if
+ * cancelled, and tell its owner */
+static void pinboard_actor_drag_end(pinboard_t         *pb,
+                                    const wuss_event_t *event)
+{
+  int                        i;
+  point_t                    p;
+  wuss_pinboard_actor_drop_t drop;
+
+  i              = pb->actor_drag;
+  pb->actor_drag = -1;
+
+  if (!event->data.drag_end.cancelled)
+  {
+    p                 = wuss_get_pointer(pb->wuss);
+    pb->actors[i].pos = POINT(p.x - pb->hotspot.x, p.y - pb->hotspot.y);
+  }
+  pinboard_invalidate_actor(pb, i);
+
+  drop.owner     = pb->actors[i].owner;
+  drop.id        = pb->actors[i].id;
+  drop.pos       = pb->actors[i].pos;
+  drop.cancelled = event->data.drag_end.cancelled;
+  (void) wuss_send(pb->wuss, pb->task, NULL,
+                   wuss_MESSAGE_PINBOARD_ACTOR_DROP, &drop, sizeof(drop), 0);
 }
 
 /* ----------------------------------------------------------------------- */
@@ -888,6 +1085,7 @@ static result_t pinboard_mouse(pinboard_t *pb, const wuss_event_t *event)
   point_t       p;
   wuss_button_t button;
   int           i;
+  int           a;
 
   p      = event->data.mouse.point;
   button = event->data.mouse.button;
@@ -897,17 +1095,29 @@ static result_t pinboard_mouse(pinboard_t *pb, const wuss_event_t *event)
   case wuss_MOUSE_MOVE:
     /* hover moves carry no button state: only a captured move is a drag */
     if (!wuss_is_capturing(pb->wuss))
-      pb->press = -1;
+    {
+      pb->press       = -1;
+      pb->actor_press = -1;
+    }
     else if (pb->band.active)
+    {
       wuss_rubberband_to(&pb->band, pb->window, p);
+    }
+    else if (pb->actor_press >= 0)
+    {
+      pinboard_actor_drag_maybe(pb, p);
+    }
     else if (pb->press >= 0)
+    {
       pinboard_drag_maybe(pb, p);
+    }
     return result_OK;
 
   case wuss_MOUSE_UP:
     if (pb->band.active)
       pinboard_band_end(pb);
-    pb->press = -1;
+    pb->press       = -1;
+    pb->actor_press = -1;
     return result_OK;
 
   default:
@@ -928,6 +1138,16 @@ static result_t pinboard_mouse(pinboard_t *pb, const wuss_event_t *event)
     return result_OK;
 
   pb->press_point = p;
+
+  /* actors sit over pins: a press on one is its owner's, not a selection */
+  a = pinboard_actor_hit(pb, p);
+  if (a >= 0)
+  {
+    pinboard_actor_click(pb, a, button, p);
+    if (button & wuss_BUTTON_SELECT)
+      pb->actor_press = a;
+    return result_OK;
+  }
 
   if (i < 0)
   {
@@ -967,8 +1187,26 @@ static result_t pinboard_message(pinboard_t         *pb,
   char                  path[DPTLIB_MAXPATH];
   const char           *dot;
   int                   cell;
+  int                   i;
 
   msg = event->data.message;
+
+  if (msg->action == wuss_MESSAGE_TASK_CLOSE_DOWN)
+  {
+    for (i = 0; i < PINBOARD_MAX_ACTORS; i++)
+      if (pb->actors[i].owner == msg->sender)
+        pinboard_actor_remove(pb, i);
+    return result_OK;
+  }
+
+  if (msg->action == wuss_MESSAGE_PINBOARD_ACTOR)
+  {
+    if (msg->size != sizeof(wuss_pinboard_actor_t))
+      return result_OK;
+    pinboard_actor_message(pb, msg->sender,
+                           (const wuss_pinboard_actor_t *) msg->data);
+    return wuss_acknowledge(pb->wuss, pb->task, msg);
+  }
 
   if (msg->action != wuss_MESSAGE_PINBOARD_PIN &&
       (msg->action != wuss_MESSAGE_DATA_LOAD || window != pb->window))
@@ -1033,7 +1271,8 @@ static result_t pinboard_handle(wuss_window_t      *window,
     return pinboard_mouse(pb, event);
 
   case wuss_EVENT_POINTER_EXIT:
-    pb->press = -1;
+    pb->press       = -1;
+    pb->actor_press = -1;
     return result_OK;
 
   case wuss_EVENT_RELAYOUT:
@@ -1043,7 +1282,10 @@ static result_t pinboard_handle(wuss_window_t      *window,
     return result_OK;
 
   case wuss_EVENT_DRAG_END:
-    pinboard_drag_end(pb, event);
+    if (pb->actor_drag >= 0)
+      pinboard_actor_drag_end(pb, event);
+    else
+      pinboard_drag_end(pb, event);
     return result_OK;
 
   case wuss_EVENT_PRE_SUBMENU_OPEN:
@@ -1161,6 +1403,8 @@ result_t pinboard_app_create(wuss_t *wuss)
   pb->wuss         = wuss;
   pb->press        = -1;
   pb->drag         = -1;
+  pb->actor_press  = -1;
+  pb->actor_drag   = -1;
   pb->initial      = config.backdrop;
   pb->backdrop     = config.backdrop;
   pb->label_fg     = config.button.fg;

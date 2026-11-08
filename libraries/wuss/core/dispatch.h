@@ -78,6 +78,11 @@ void wuss__message_drain(wuss_t *wuss);
  * unsent. Called by wuss_task_destroy before it unlinks/frees the task. */
 void wuss__message_purge_task(wuss_t *wuss, wuss_task_t *task);
 
+/* Deliver wuss_MESSAGE_TASK_CLOSE_DOWN from "task" to every other task at
+ * once, bypassing the queue. Called by wuss_task_destroy after the task's
+ * QUIT. */
+void wuss__message_task_close_down(wuss_t *wuss, wuss_task_t *task);
+
 /* Purge "window" from the message queue: messages addressed to it are
  * removed and recorded ones bounce to their senders as
  * wuss_EVENT_MESSAGE_BOUNCED (delivered inline, before this returns). Called

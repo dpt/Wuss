@@ -144,6 +144,34 @@ Pinboard
   from the top left. With no Pinboard running, the message bounces to the
   sender.
 
+## Actors
+
+An actor is a bitmap that another task shows on the backdrop, such as the
+DeskDuck task's duck. The Pinboard draws actors over the pinned icons and
+behind every window. It holds at most 8 at once.
+
+- **Set and remove.** The owner broadcasts `wuss_MESSAGE_PINBOARD_ACTOR` with
+  a `wuss_pinboard_actor_t`: an operation, an id that is unique to the
+  owner, the bitmap and its screen position. A set adds the actor or moves
+  it. A remove takes it away. The owner sends it recorded: the Pinboard
+  acknowledges it, so it bounces only when no Pinboard is running.
+- **Borrowed bitmaps.** The Pinboard does not copy the bitmap. The owner
+  keeps it alive until the actor is removed or the owner is destroyed.
+- **Owner destroyed.** Core broadcasts `wuss_MESSAGE_TASK_CLOSE_DOWN` from a
+  task as `wuss_task_destroy` takes it down, after its QUIT and before its
+  memory is freed. The broadcast is delivered at once, not queued. The
+  Pinboard then removes that task's actors.
+- **Click.** A SELECT or ADJUST press over an actor broadcasts
+  `wuss_MESSAGE_PINBOARD_ACTOR_CLICK` with the owner, id, button and pointer
+  position. The owner acts on it when the owner field matches. The press
+  does not select icons or start a rubber band. MENU still opens the
+  Pinboard menu. The hit test uses the bitmap's whole box.
+- **Drag.** A SELECT drag hides the actor and drags its image with
+  `wuss_drag_start_bitmap`. At the end, the Pinboard shows the actor at the
+  drop point and broadcasts `wuss_MESSAGE_PINBOARD_ACTOR_DROP` with the new
+  position. If Escape cancels the drag, the actor stays where it was and
+  the message has `cancelled` set.
+
 ## Jottings notes
 
 Notes belong to a separate Jottings task under `apps/wuss/tasks/jottings/`.
@@ -214,6 +242,7 @@ through messages.
 | Backdrop, no Pinboard | nothing | nothing | nothing | bounces |
 | Empty backdrop | clear selection; drag: rubber band | drag: rubber band, adding | Pinboard menu | pin; SHIFT: set image |
 | Pinned icon | select; double: open; drag: move or transfer | toggle | Pinboard menu, Selection live | pin in nearest free cell |
+| Actor | to its owner; drag: move | to its owner | Pinboard menu | as for what lies beneath |
 
 ## Persistence
 
