@@ -143,6 +143,9 @@ g_visuals_tasks[] =
 },
 g_toys_tasks[] =
 {
+#ifdef WUSS_ICONBAR
+  { "DeskDuck", deskduck_app_create },
+#endif
   { "Doughnut", doughnut_app_create },
   { "Fern", fern_app_create },
   { "Fireworks", fireworks_app_create },

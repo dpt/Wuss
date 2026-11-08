@@ -17,6 +17,7 @@ result_t checker_app_create(wuss_t *wuss);
 result_t clock_app_create(wuss_t *wuss);
 result_t compositing_app_create(wuss_t *wuss);
 result_t curving_app_create(wuss_t *wuss);
+result_t deskduck_app_create(wuss_t *wuss);
 result_t dithering_app_create(wuss_t *wuss);
 result_t doughnut_app_create(wuss_t *wuss);
 result_t fern_app_create(wuss_t *wuss);
