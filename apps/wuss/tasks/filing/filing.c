@@ -1274,6 +1274,7 @@ result_t filing_handle(wuss_window_t      *window,
   }
 
   case wuss_EVENT_QUIT:
+    wuss_proginfo_release(task->delegate);
     filing_destroy(task);
     return result_OK;
 

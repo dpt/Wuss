@@ -602,6 +602,7 @@ static result_t deskduck_handle(wuss_window_t      *window,
     return result_OK;
 
   case wuss_EVENT_QUIT:
+    wuss_proginfo_release(duck->delegate);
     free(duck->bubble.base);
     free(duck);
     return result_OK;

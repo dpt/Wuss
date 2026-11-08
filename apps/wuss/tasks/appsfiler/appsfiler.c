@@ -396,6 +396,7 @@ static result_t apps_handle(wuss_window_t      *window,
     return result_OK;
 
   case wuss_EVENT_QUIT:
+    wuss_proginfo_release(task->delegate);
     apps_destroy(task);
     return result_OK;
 
