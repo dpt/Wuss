@@ -34,6 +34,7 @@ static const test_t tests[] =
   { "gridview-bench", gridview_bench_test },
   { "paintingdoc",   paintingdoc_test   },
   { "wuss",       wuss_test       },
+  { "wuss-api",   wuss_api_test   },
   { "wuss-menu",  wuss_menu_test  },
   { "wuss-pointer", wuss_pointer_test },
   { "wuss-pointer-bounds", wuss_pointer_bounds_test },

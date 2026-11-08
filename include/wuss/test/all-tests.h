@@ -9,6 +9,7 @@ typedef result_t (testfn_t)(const char *resources);
 
 extern testfn_t gridview_bench_test,
                 paintingdoc_test,
+                wuss_api_test,
                 wuss_menu_test,
                 wuss_pointer_test,
                 wuss_pointer_bounds_test,

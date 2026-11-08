@@ -407,6 +407,7 @@ endif()
 if(BUILD_TESTS)
     set(TEST_SOURCES
         apps/test/main.c
+        libraries/wuss/test/api-test.c
         libraries/wuss/test/gridview-bench-test.c
         libraries/wuss/test/painting-doc-test.c
         libraries/wuss/test/harness.c
