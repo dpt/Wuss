@@ -21,8 +21,8 @@
 #define FILING_MAX_WINDOWS 16
 
 /* Filer menu rows, which act on the window the menu was opened over, laid
- * out as the RISC OS Filer's. Rows not yet implemented report so when
- * picked (see filing_stub). Download only exists in the browser build, where
+ * out as the RISC OS Filer's. Rows marked stub are not yet implemented and
+ * stay shaded. Download only exists in the browser build, where
  * saved files otherwise stay trapped in Emscripten's in-memory filesystem. */
 enum
 {
@@ -71,7 +71,7 @@ enum
 };
 
 /* rows of the submenu on FILING_MENU_OPTIONS: task-wide toggles, each kept as
- * its row's tick. Stub: they tick and untick but change nothing yet. */
+ * its row's tick. Stub: all shaded, showing the RISC OS defaults. */
 enum
 {
   FILING_OPTIONS_CONFIRM_ALL,
