@@ -244,6 +244,15 @@ result_t wuss_menu_test(const char *resources)
     if (wuss__z_first(fwuss) != wuss__menu_level_window(chain))
       goto FlashCheckFail;
 
+    /* --- a SELECT pick still flashing when its owner is destroyed: the
+     * owner is being reaped, so the pick is dropped, not delivered --- */
+    flash_pick_row(fwuss, chain, 0, wuss_BUTTON_SELECT);
+    if (!wuss__menu_level_flashing(chain)) goto FlashCheckFail;
+    wuss_task_destroy(fowner);
+    forget_test_tasks(); /* fowner is freed */
+    if (ftc.menu_select_count != 3) goto FlashCheckFail;
+    if (wuss__menu_chain(fwuss) != NULL) goto FlashCheckFail;
+
     rc = result_OK;
     goto FlashDestroy;
 
