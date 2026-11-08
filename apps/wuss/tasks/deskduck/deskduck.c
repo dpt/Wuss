@@ -27,17 +27,19 @@
 #include "../common/common.h"
 
 /* Timings are in idle ticks, which come at 60 Hz. */
-#define DUCK_SIZE       24  /* px, of every frame */
+#define DUCK_SIZE       16  /* px, of every frame */
 #define DUCK_ICONBAR    68  /* px kept clear at the bottom, as Pinboard does */
 #define DUCK_CHASE      120 /* px: the pointer is chased within this */
 #define DUCK_SLEEP      (30 * 60) /* the pointer is still this long */
-#define DUCK_QUACK      90  /* the bubble shows this long */
-#define DUCK_DOZE       32  /* ticks per sleep frame */
 #define DUCK_SPEED      24  /* px/s, top waddle speed */
 
-enum { DUCK_ACTOR, BUBBLE_ACTOR }; /* actor ids */
+/* Actor ids. Pinboard draws actors in slot order, and the pond is sent
+ * first, so it takes a lower slot and lies under the duck.
+ * ponytail: holds only while no other task frees a slot below; give actors
+ * a depth if that bites. */
+enum { POND_ACTOR, DUCK_ACTOR, BUBBLE_ACTOR };
 
-enum /* the columns of deskduck_24x24.png */
+enum /* the columns of deskduck_16x16.png */
 {
   FRAME_WALK1,
   FRAME_WALK2,
@@ -45,7 +47,110 @@ enum /* the columns of deskduck_24x24.png */
   FRAME_QUACK,
   FRAME_SLEEP1,
   FRAME_SLEEP2,
+  FRAME_SWIM1,
+  FRAME_SWIM2,
   FRAME__LIMIT
+};
+
+/* ----------------------------------------------------------------------- */
+
+/* The duck is a state machine. Each idle tick senses a set of events. The
+ * first row of deskduck_transitions whose states hold the current one and
+ * whose event happened picks the next state, and a click is one more event.
+ * Entering a state starts its timer, and deskduck_states says what the duck
+ * shows and does while in it. */
+
+enum /* states */
+{
+  PAUSE,   /* stands about */
+  WANDER,  /* walks a random heading */
+  CHASE,   /* walks at the pointer */
+  CAUGHT,  /* stands on the pointer */
+  QUACK,   /* says so in a bubble */
+  SLEEP,   /* dozes once the pointer has been still a while */
+  TO_POND, /* walks to the pond */
+  SWIM,    /* paddles about on it */
+  STATE__LIMIT
+};
+
+#define IN(state) (1u << (state))
+#define ANY       (IN(STATE__LIMIT) - 1)
+#define AWAKE     (IN(PAUSE) | IN(WANDER) | IN(CHASE) | IN(CAUGHT) | \
+                   IN(TO_POND))
+
+enum /* events, as bits */
+{
+  ON_CLICK   = 1 << 0,  /* the duck was clicked */
+  ON_TIMEOUT = 1 << 1,  /* the state's timer ran out */
+  ON_WHIM    = 1 << 2,  /* with a third of timeouts: off for a swim */
+  ON_MOVED   = 1 << 3,  /* the pointer moved */
+  ON_STILL   = 1 << 4,  /* the pointer has been still DUCK_SLEEP ticks */
+  ON_CAUGHT  = 1 << 5,  /* the pointer is on the duck */
+  ON_NEAR    = 1 << 6,  /* the pointer is within DUCK_CHASE */
+  ON_FAR     = 1 << 7,  /* the pointer is further off */
+  ON_WET     = 1 << 8,  /* the duck is on the pond */
+  ON_SPLASH  = 1 << 9,  /* ... and was not last tick */
+  ON_DRY     = 1 << 10  /* the duck or the pond was dragged */
+};
+
+enum /* what a state does */
+{
+  WALKS   = 1 << 0, /* steps along the heading, on the backdrop */
+  SWIMS   = 1 << 1, /* steps along the heading, on the pond */
+  STEERS  = 1 << 2, /* heads at the pointer */
+  HOMES   = 1 << 3, /* heads for the pond */
+  ROAMS   = 1 << 4, /* takes a random heading on entry */
+  BUBBLES = 1 << 5  /* shows the bubble */
+};
+
+typedef struct deskduck_state
+{
+  unsigned char frame, other; /* alternated */
+  unsigned char period;       /* ticks per frame, 0 to alternate per step */
+  unsigned char does;
+  short         ticks;        /* the timer on entry, 0 for none */
+  short         spread;       /* plus up to this, at random */
+}
+deskduck_state_t;
+
+static const deskduck_state_t deskduck_states[STATE__LIMIT] =
+{
+  /*            frame         other     period does           ticks spread */
+  [PAUSE]   = { FRAME_IDLE,   FRAME_IDLE,    0, 0,               60, 120 },
+  [WANDER]  = { FRAME_WALK1,  FRAME_WALK2,   0, WALKS | ROAMS,  180, 420 },
+  [CHASE]   = { FRAME_WALK1,  FRAME_WALK2,   0, WALKS | STEERS,   0,   0 },
+  [CAUGHT]  = { FRAME_IDLE,   FRAME_IDLE,    0, 0,                0,   0 },
+  [QUACK]   = { FRAME_QUACK,  FRAME_QUACK,   0, BUBBLES,         90,   0 },
+  [SLEEP]   = { FRAME_SLEEP1, FRAME_SLEEP2, 32, 0,                0,   0 },
+  [TO_POND] = { FRAME_WALK1,  FRAME_WALK2,   0, WALKS | HOMES,    0,   0 },
+  [SWIM]    = { FRAME_SWIM1,  FRAME_SWIM2,  30, SWIMS | ROAMS,  600, 900 }
+};
+
+typedef struct deskduck_transition
+{
+  unsigned      from; /* IN() set of states */
+  unsigned      on;   /* event */
+  unsigned char to;
+}
+deskduck_transition_t;
+
+/* in priority order */
+static const deskduck_transition_t deskduck_transitions[] =
+{
+  /* from                                 on          to */
+  { ANY & ~IN(SWIM),                     ON_CLICK,   QUACK   },
+  { IN(QUACK),                           ON_TIMEOUT, PAUSE   },
+  { IN(SWIM),                            ON_DRY,     WANDER  },
+  { ANY & ~IN(SWIM),                     ON_SPLASH,  SWIM    },
+  { IN(SLEEP),                           ON_MOVED,   PAUSE   },
+  { AWAKE,                               ON_STILL,   SLEEP   },
+  { AWAKE & ~IN(CAUGHT),                 ON_CAUGHT,  CAUGHT  },
+  { AWAKE & ~IN(CHASE),                  ON_NEAR,    CHASE   },
+  { IN(CHASE) | IN(CAUGHT),              ON_FAR,     PAUSE   },
+  { IN(TO_POND),                         ON_WET,     SWIM    },
+  { IN(PAUSE),                           ON_WHIM,    TO_POND },
+  { IN(PAUSE) | IN(SWIM),                ON_TIMEOUT, WANDER  },
+  { IN(WANDER),                          ON_TIMEOUT, PAUSE   }
 };
 
 enum
@@ -70,9 +175,11 @@ typedef struct deskduck
   point_t              pos;
   point_t              heading; /* each -1, 0 or 1 */
   int                  left;    /* faces left */
-  int                  walk;    /* ticks left walking, else pausing */
-  int                  pause;   /* ticks left pausing */
-  int                  quack;   /* ticks left showing the bubble */
+  int                  state;
+  int                  timer;   /* ticks left in the state, 0 for none */
+  const bitmap_t      *pond_bitmap;
+  point_t              pond;
+  int                  wet;     /* on the pond last tick */
   int                  still;   /* ticks the pointer has been still */
   int                  ticks;
   int                  stride;  /* px/s summed per tick; a step at 60 */
@@ -168,8 +275,6 @@ static void deskduck_wander(deskduck_t *duck)
     duck->heading.y = rng_range(&duck->rng, 3) - 1;
   }
   while (duck->heading.x == 0 && duck->heading.y == 0);
-
-  duck->walk = 180 + rng_range(&duck->rng, 420);
 }
 
 static int deskduck_sign(int v)
@@ -177,48 +282,79 @@ static int deskduck_sign(int v)
   return (v > 0) - (v < 0);
 }
 
-/* Move the duck one tick and return the frame to show. */
-static int deskduck_step(deskduck_t *duck, point_t pointer)
+static void deskduck_enter(deskduck_t *duck, int to)
+{
+  const deskduck_state_t *from;
+  const deskduck_state_t *state;
+
+  from  = &deskduck_states[duck->state];
+  state = &deskduck_states[to];
+
+  if ((from->does & BUBBLES) && !(state->does & BUBBLES))
+    deskduck_send(duck, wuss_PINBOARD_ACTOR_REMOVE, BUBBLE_ACTOR, NULL,
+                  duck->pos);
+  if ((state->does & BUBBLES) && duck->bubble.base != NULL)
+    deskduck_send(duck, wuss_PINBOARD_ACTOR_SET, BUBBLE_ACTOR,
+                  &duck->bubble, deskduck_bubble_pos(duck));
+
+  duck->state = to;
+  duck->timer = state->ticks;
+  if (state->spread > 0)
+    duck->timer += rng_range(&duck->rng, state->spread);
+  if (state->does & ROAMS)
+    deskduck_wander(duck);
+}
+
+/* take the first transition the events allow, if any */
+static void deskduck_fire(deskduck_t *duck, unsigned events)
+{
+  size_t i;
+
+  for (i = 0; i < NELEMS(deskduck_transitions); i++)
+  {
+    if ((deskduck_transitions[i].from & IN(duck->state)) &&
+        (deskduck_transitions[i].on & events))
+    {
+      deskduck_enter(duck, deskduck_transitions[i].to);
+      return;
+    }
+  }
+}
+
+/* where the duck may stand: the positions it may take */
+static box_t deskduck_land(const deskduck_t *duck)
 {
   size2d_t screen;
-  point_t  centre;
-  int      dx, dy;
-  int      stride;
+  box_t    land;
 
-  if (duck->quack > 0)
-  {
-    if (--duck->quack == 0)
-      deskduck_send(duck, wuss_PINBOARD_ACTOR_REMOVE, BUBBLE_ACTOR, NULL,
-                    duck->pos);
-    return FRAME_QUACK;
-  }
+  screen = wuss_get_screen_size(duck->wuss);
+  land.x0 = 0;
+  land.y0 = 0;
+  land.x1 = screen.w - DUCK_SIZE + 1;
+  land.y1 = screen.h - DUCK_ICONBAR - DUCK_SIZE + 1;
+  return land;
+}
 
-  if (duck->still >= DUCK_SLEEP)
-    return ((duck->ticks / DUCK_DOZE) & 1) ? FRAME_SLEEP2 : FRAME_SLEEP1;
+/* where the duck may swim: the positions it may take on the pond
+ * ponytail: a box inside the oval, so a corner can stray onto the bank */
+static box_t deskduck_water(const deskduck_t *duck)
+{
+  size2d_t size;
+  box_t    water;
 
-  centre = POINT(duck->pos.x + DUCK_SIZE / 2, duck->pos.y + DUCK_SIZE / 2);
-  dx     = pointer.x - centre.x;
-  dy     = pointer.y - centre.y;
+  size     = duck->pond_bitmap->size;
+  water.x0 = duck->pond.x + 8;
+  water.y0 = duck->pond.y - 4;
+  water.x1 = duck->pond.x + size.w - DUCK_SIZE - 8 + 1;
+  water.y1 = duck->pond.y + size.h - DUCK_SIZE - 4 + 1;
+  return water;
+}
 
-  /* ponytail: eight-way steps, so a chase zigzags towards the pointer */
-  if (dx * dx + dy * dy < DUCK_CHASE * DUCK_CHASE)
-  {
-    if (abs(dx) + abs(dy) < DUCK_SIZE / 2)
-      return FRAME_IDLE; /* caught it */
-    duck->heading = POINT(deskduck_sign(dx), deskduck_sign(dy));
-    duck->walk    = 1; /* wander on once the pointer gets away */
-  }
-  else if (duck->walk > 0)
-  {
-    if (--duck->walk == 0)
-      duck->pause = 60 + rng_range(&duck->rng, 120);
-  }
-  else
-  {
-    if (--duck->pause <= 0)
-      deskduck_wander(duck);
-    return FRAME_IDLE;
-  }
+/* one pixel step along the heading, when the speed allows, bouncing off
+ * the edges of bounds */
+static void deskduck_walk(deskduck_t *duck, box_t bounds)
+{
+  int stride;
 
   if (duck->heading.x != 0)
     duck->left = duck->heading.x < 0;
@@ -228,41 +364,89 @@ static int deskduck_step(deskduck_t *duck, point_t pointer)
   stride        = (duck->heading.x != 0 && duck->heading.y != 0) ? 85 : 60;
   duck->stride += DUCK_SPEED;
   if (duck->stride < stride)
-    return (duck->steps & 1) ? FRAME_WALK2 : FRAME_WALK1;
+    return;
   duck->stride -= stride;
   duck->steps++;
 
-  /* bounce off the screen edges */
-  screen = wuss_get_screen_size(duck->wuss);
   duck->pos.x += duck->heading.x;
   duck->pos.y += duck->heading.y;
-  if (duck->pos.x < 0 || duck->pos.x > screen.w - DUCK_SIZE)
+  if (duck->pos.x < bounds.x0 || duck->pos.x >= bounds.x1)
     duck->heading.x = -duck->heading.x;
-  if (duck->pos.y < 0 || duck->pos.y > screen.h - DUCK_ICONBAR - DUCK_SIZE)
+  if (duck->pos.y < bounds.y0 || duck->pos.y >= bounds.y1)
     duck->heading.y = -duck->heading.y;
-  duck->pos.x = CLAMP(duck->pos.x, 0, screen.w - DUCK_SIZE);
-  duck->pos.y = CLAMP(duck->pos.y, 0, screen.h - DUCK_ICONBAR - DUCK_SIZE);
+  duck->pos.x = CLAMP(duck->pos.x, bounds.x0, bounds.x1 - 1);
+  duck->pos.y = CLAMP(duck->pos.y, bounds.y0, bounds.y1 - 1);
+}
 
-  return (duck->steps & 1) ? FRAME_WALK2 : FRAME_WALK1;
+/* Sense, step the state machine, act, and return the frame to show. */
+static int deskduck_tick(deskduck_t *duck, point_t pointer, int moved)
+{
+  unsigned                events;
+  box_t                   water;
+  int                     wet;
+  int                     dx, dy;
+  const deskduck_state_t *state;
+  int                     alt;
+
+  events = moved ? ON_MOVED : 0;
+  if (duck->still >= DUCK_SLEEP)
+    events |= ON_STILL;
+  if (duck->timer > 0 && --duck->timer == 0)
+    events |= ON_TIMEOUT | (rng_range(&duck->rng, 3) == 0 ? ON_WHIM : 0);
+
+  water = deskduck_water(duck);
+  wet   = box_contains_point(&water, duck->pos.x, duck->pos.y);
+  if (wet)
+    events |= ON_WET | (duck->wet ? 0 : ON_SPLASH);
+  duck->wet = wet;
+
+  dx = pointer.x - (duck->pos.x + DUCK_SIZE / 2);
+  dy = pointer.y - (duck->pos.y + DUCK_SIZE / 2);
+  if (dx * dx + dy * dy >= DUCK_CHASE * DUCK_CHASE)
+    events |= ON_FAR;
+  else if (abs(dx) + abs(dy) < DUCK_SIZE / 2)
+    events |= ON_CAUGHT;
+  else
+    events |= ON_NEAR;
+
+  deskduck_fire(duck, events);
+
+  state = &deskduck_states[duck->state];
+  /* ponytail: eight-way steps, so a chase zigzags towards the pointer */
+  if (state->does & STEERS)
+    duck->heading = POINT(deskduck_sign(dx), deskduck_sign(dy));
+  if (state->does & HOMES)
+    duck->heading =
+      POINT(deskduck_sign((water.x0 + water.x1) / 2 - duck->pos.x),
+            deskduck_sign((water.y0 + water.y1) / 2 - duck->pos.y));
+  if (state->does & WALKS)
+    deskduck_walk(duck, deskduck_land(duck));
+  if (state->does & SWIMS)
+    deskduck_walk(duck, water);
+
+  alt = state->period ? duck->ticks / state->period : duck->steps;
+  return (alt & 1) ? state->other : state->frame;
 }
 
 static void deskduck_idle(deskduck_t *duck)
 {
   point_t         pointer;
+  int             moved;
   const bitmap_t *bitmap;
 
   if (duck->paused || wuss_is_dragging(duck->wuss))
     return; /* ponytail: any drag holds the duck, not just one of it */
 
   pointer = wuss_get_pointer(duck->wuss);
-  if (pointer.x != duck->pointer.x || pointer.y != duck->pointer.y)
+  moved   = pointer.x != duck->pointer.x || pointer.y != duck->pointer.y;
+  if (moved)
     duck->still = 0;
   else if (duck->still < DUCK_SLEEP)
     duck->still++;
   duck->pointer = pointer;
   duck->ticks++;
 
-  bitmap = duck->frames[deskduck_step(duck, pointer)][duck->left];
+  bitmap = duck->frames[deskduck_tick(duck, pointer, moved)][duck->left];
   if (bitmap == duck->shown &&
       duck->pos.x == duck->shown_pos.x && duck->pos.y == duck->shown_pos.y)
     return;
@@ -283,24 +467,36 @@ static void deskduck_message(deskduck_t *duck, const wuss_message_t *msg)
       msg->size == sizeof(*click))
   {
     click = (const wuss_pinboard_actor_click_t *) msg->data;
-    if (click->owner != duck->delegate || duck->paused)
+    if (click->owner != duck->delegate || click->id == POND_ACTOR ||
+        duck->paused)
       return;
-    duck->still = 0; /* wakes it */
-    duck->quack = DUCK_QUACK;
-    if (duck->bubble.base != NULL)
-      deskduck_send(duck, wuss_PINBOARD_ACTOR_SET, BUBBLE_ACTOR,
-                    &duck->bubble, deskduck_bubble_pos(duck));
+    duck->still = 0; /* so it does not drop straight back to sleep */
+    deskduck_fire(duck, ON_CLICK);
   }
   else if (msg->action == wuss_MESSAGE_PINBOARD_ACTOR_DROP &&
            msg->size == sizeof(*drop))
   {
     drop = (const wuss_pinboard_actor_drop_t *) msg->data;
-    if (drop->owner != duck->delegate || drop->id != DUCK_ACTOR ||
-        drop->cancelled)
+    if (drop->owner != duck->delegate || drop->cancelled)
       return;
-    duck->pos       = drop->pos; /* Pinboard has already moved it there */
-    duck->shown_pos = drop->pos;
-    if (duck->quack > 0 && duck->bubble.base != NULL)
+    /* Pinboard has already moved it there */
+    if (drop->id == POND_ACTOR)
+    {
+      duck->pond = drop->pos;
+    }
+    else if (drop->id == DUCK_ACTOR)
+    {
+      duck->pos       = drop->pos;
+      duck->shown_pos = drop->pos;
+    }
+    else
+    {
+      return;
+    }
+    duck->wet = 0; /* so a drop on the pond splashes next tick */
+    deskduck_fire(duck, ON_DRY);
+    if ((deskduck_states[duck->state].does & BUBBLES) &&
+        duck->bubble.base != NULL)
       deskduck_send(duck, wuss_PINBOARD_ACTOR_SET, BUBBLE_ACTOR,
                     &duck->bubble, deskduck_bubble_pos(duck));
   }
@@ -458,22 +654,36 @@ result_t deskduck_app_create(wuss_t *wuss)
     }
   }
 
+  duck->pond_bitmap = wuss_task_iconpool_find(duck->delegate, "pond");
+  if (duck->pond_bitmap == NULL)
+  {
+    rc = result_NOT_FOUND;
+    goto failure;
+  }
+
   rc = deskduck_bubble_create(duck);
   if (rc != result_OK)
     goto failure;
 
   rng_seed(&duck->rng, (uint32_t) time(NULL) ^ (uint32_t) (size_t) duck);
-  screen    = wuss_get_screen_size(wuss);
+  screen     = wuss_get_screen_size(wuss);
+  duck->pond = POINT(rng_range(&duck->rng,
+                               MAX(screen.w - duck->pond_bitmap->size.w, 1)),
+                     rng_range(&duck->rng,
+                               MAX(screen.h - DUCK_ICONBAR -
+                                   duck->pond_bitmap->size.h, 1)));
+  deskduck_send(duck, wuss_PINBOARD_ACTOR_SET, POND_ACTOR, duck->pond_bitmap,
+                duck->pond); /* first, so it lies under the duck */
   duck->pos = POINT(rng_range(&duck->rng, MAX(screen.w - DUCK_SIZE, 1)),
                     rng_range(&duck->rng,
                               MAX(screen.h - DUCK_ICONBAR - DUCK_SIZE, 1)));
   duck->pointer = wuss_get_pointer(wuss);
-  deskduck_wander(duck);
+  deskduck_enter(duck, WANDER);
 
   memset(&spec, 0, sizeof(spec));
   spec.text  = NULL;
   spec.side  = wuss_ICONBAR_RIGHT;
-  spec.image = wuss_task_iconpool_find(duck->delegate, "head");
+  spec.image = wuss_task_iconpool_find(duck->delegate, "app_deskduck");
   rc = wuss_iconbar_icon_create(wuss, duck->delegate, &spec,
                                 &duck->iconbar_icon);
   if (rc != result_OK)

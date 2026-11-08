@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 # gen_deskduck_sprites.py -- draw the DeskDuck task's sprites as PNGs
 #
-# Each frame is a 24x24 character grid in a four-colour palette, facing right.
-# The frames go into one sprite sheet, deskduck_24x24.png, in the task's icon
-# pool directory: the top row faces right, the bottom row is the same frames
-# mirrored, facing left, as Pinboard draws actors whole with no flipping. The
-# column order matches DeskDuck's frame enum. The icon bar head is its own
-# head.png.
+# Each frame is a 16x16 character grid in a four-colour palette, facing left.
+# The frames go into one sprite sheet, deskduck_16x16.png, in the task's icon
+# pool directory: the top row faces right, the bottom row faces left, as
+# Pinboard draws actors whole with no flipping. The sleep frames' z is laid
+# over after mirroring, so it reads the right way round in both rows. The
+# column order matches DeskDuck's frame enum. The pond it swims on is
+# pond.png. The icon bar uses the shared pool's hand-drawn app_deskduck.png.
 #
 # Usage: tools/gen_deskduck_sprites.py   (from the repo root)
 
@@ -15,71 +16,37 @@ import struct
 import zlib
 
 OUT = "resources/wuss-tasks/deskduck/iconpool"
-SIZE = 24
+SIZE = 16
 
 PALETTE = {
     ".": (0, 0, 0, 0),
-    "W": (255, 255, 255, 255),  # body
-    "O": (255, 153, 0, 255),    # bill and feet
-    "K": (0, 0, 0, 255),        # eye
-    "G": (128, 128, 128, 255),  # shade and outline
+    "#": (0, 0, 0, 255),        # outline and eye
+    "A": (255, 236, 39, 255),   # body
+    "B": (255, 163, 0, 255),    # bill and feet
+    "W": (200, 235, 255, 255),  # ripples and glints
+    "P": (41, 173, 255, 255),   # pond water
+    "D": (16, 104, 200, 255),   # pond rim
 }
+
+POND_W, POND_H = 64, 32
 
 BLANK = "." * SIZE
 
-# idle, standing: rows 20-22 are the feet, which the walk frames replace
-IDLE = [
-    BLANK,
-    BLANK,
-    BLANK,
-    "..............GGGG......",
-    ".............GWWWWG.....",
-    "............GWWWWWWG....",
-    "............GWWWKWWG....",
-    "............GWWWWWWOOO..",
-    "............GWWWWWWOOOO.",
-    ".............GWWWWGOOO..",
-    "..............GWWG......",
-    "..G...........GWWG......",
-    "..GWG........GWWWWG.....",
-    "..GWWGGGGGGGGWWWWWWG....",
-    "..GWWWWWWWWWWWWWWWWG....",
-    "...GWWWWWWWWWWWWWWWG....",
-    "...GWWWWWGGWWWWWWWWG....",
-    "....GWWWWWWGGWWWWWG.....",
-    ".....GWWWWWWWWWWWG......",
-    "......GGGGGGGGGGG.......",
-    ".........O....O.........",
-    ".........O....O.........",
-    ".........OO...OO........",
-    BLANK,
-]
-
-HEAD = [
-    BLANK,
-    BLANK,
-    BLANK,
-    "........GGGGGG..........",
-    ".......GWWWWWWGG........",
-    "......GWWWWWWWWWG.......",
-    ".....GWWWWWWWWWWWG......",
-    ".....GWWWWWWWKKWWG......",
-    ".....GWWWWWWWKKWWG......",
-    ".....GWWWWWWWWWWWGOOOO..",
-    ".....GWWWWWWWWWWGOOOOOO.",
-    ".....GWWWWWWWWWWGOOOOOO.",
-    "......GWWWWWWWWWWGOOOO..",
-    ".......GWWWWWWWWG.......",
-    "........GWWWWWWG........",
-    "........GWWWWWWWG.......",
-    ".......GWWWWWWWWWG......",
-    "......GWWWWWWWWWWWG.....",
-    "......GWWWWWWWWWWWG.....",
-    "......GGGGGGGGGGGGG.....",
-    BLANK,
-    BLANK,
-    BLANK,
-    BLANK,
+BODY = [
+    "....####........",
+    "...#AAAA#.......",
+    "..#AAAAAA#......",
+    ".##BA#AAA#......",
+    "#BBBAAAAA#......",
+    ".#BBBAAA####..#.",
+    "..##AAAAAAAA##A#",
+    "..#AAAAAAAAAAAA#",
+    ".#AAAA#AAAAAA#A#",
+    ".#AAAAA#AAAA#AA#",
+    ".#AAAAAA####AAA#",
+    "..#AAAAAAAAAAA#.",
+    "...##AAAAAAA##..",
+    ".....#######....",
 ]
 
 
@@ -88,44 +55,81 @@ def replace(grid, rows):
     return [rows.get(i, row) for i, row in enumerate(grid)]
 
 
-WALK1 = replace(IDLE, {
-    20: "........O......O........",
-    21: ".......O........O.......",
-    22: ".......OO.......OO......",
-})
+# standing: rows 14-15 are the feet
+IDLE = BODY + [
+    "......B...B.....",
+    ".....BB..BB.....",
+]
 
-WALK2 = replace(IDLE, {
-    20: "...........OO...........",
-    21: "...........OO...........",
-    22: "...........OOO..........",
-})
+WALK1 = BODY + [
+    ".....B.....B....",
+    "....BB....BB....",
+]
+
+WALK2 = BODY + [
+    "........B.......",
+    ".......BB.......",
+]
 
 QUACK = replace(IDLE, {
-    6: "............GWWWKWWGOO..",
-    7: "............GWWWWWWGOOOO",
-    8: "............GWWWWWWG....",
-    9: ".............GWWWWGOOO..",
+    3: "#BBBA#AAA#......",
+    4: ".###AAAAA#......",
+    5: "#BBBBAAA####..#.",
+    6: ".###AAAAAAAA##A#",
 })
 
-# sleeping: sat down three rows, feet tucked away, eye shut, then a z
-SAT = [BLANK] * 3 + IDLE[:20] + [BLANK]
-SAT = replace(SAT, {9: SAT[9].replace("K", "G")})
+# sleeping: sat down on the feet with the eye shut
+SAT = [BLANK] * 2 + replace(BODY, {3: ".##BA##AA#......"})
+SLEEP1 = SAT
+SLEEP2 = SAT
 
-SLEEP1 = replace(SAT, {
-    3: "...................KKK..",
-    4: "....................K...",
-    5: "...................KKK..",
-})
+# swimming: sunk to the waterline, bobbing a pixel, with ripples
+SWIM1 = [BLANK] * 3 + BODY[:12] + ["..WWW.......WW.."]
+SWIM2 = [BLANK] * 4 + BODY[:11] + [".WW.......WWW..."]
 
-SLEEP2 = replace(SAT, {
-    0: "...................KKKK.",
-    1: "......................K.",
-    2: ".....................K..",
-    3: "....................K...",
-    4: "...................KKKK.",
-})
+FRAMES = [WALK1, WALK2, IDLE, QUACK, SLEEP1, SLEEP2, SWIM1, SWIM2]
 
-FRAMES = [WALK1, WALK2, IDLE, QUACK, SLEEP1, SLEEP2]
+# the z of each sleep frame: (frame index, column, top row, rows), drawn at
+# the top of the cell, behind the head
+ZEDS = [
+    (4, 11, 2, ["###",
+                "..#",
+                ".#.",
+                "###"]),
+    (5, 11, 0, ["####",
+                "..#.",
+                ".#..",
+                "####"]),
+]
+
+
+def pond():
+    """an oval of water with a darker rim and a few glints"""
+    a, b = POND_W / 2, POND_H / 2
+    grid = []
+    for y in range(POND_H):
+        row = ""
+        for x in range(POND_W):
+            u, v = (x + 0.5 - a) / a, (y + 0.5 - b) / b
+            uu, vv = (x + 0.5 - a) / (a - 2), (y + 0.5 - b) / (b - 2)
+            row += ("." if u * u + v * v > 1 else
+                    "D" if uu * uu + vv * vv > 1 else "P")
+        grid.append(row)
+    for x, y, n in [(14, 8, 4), (40, 12, 3), (22, 21, 5), (46, 23, 2)]:
+        grid[y] = grid[y][:x] + "W" * n + grid[y][x + n:]
+    return grid
+
+
+def zed(grid, col, top, z):
+    """grid with the z drawn over it, its left column at col"""
+    grid = list(grid)
+    for i, zrow in enumerate(z):
+        row = list(grid[top + i])
+        for j, c in enumerate(zrow):
+            if c != ".":
+                row[col + j] = c
+        grid[top + i] = "".join(row)
+    return grid
 
 
 def chunk(kind, data):
@@ -147,13 +151,17 @@ def write_png(path, grid):
 
 def main():
     os.makedirs(OUT, exist_ok=True)
-    for grid in FRAMES:
+    left = list(FRAMES)
+    right = [[row[::-1] for row in grid] for grid in FRAMES]
+    for i, col, top, z in ZEDS:
+        left[i] = zed(left[i], col, top, z)
+        right[i] = zed(right[i], SIZE - col - len(z[0]), top, z)
+    for grid in left + right:
         assert len(grid) == SIZE and all(len(row) == SIZE for row in grid)
-    right = ["".join(rows) for rows in zip(*FRAMES)]
-    left = ["".join(row[::-1] for row in rows) for rows in zip(*FRAMES)]
     write_png(os.path.join(OUT, "deskduck_%dx%d.png" % (SIZE, SIZE)),
-              right + left)
-    write_png(os.path.join(OUT, "head.png"), HEAD)
+              ["".join(rows) for rows in zip(*right)] +
+              ["".join(rows) for rows in zip(*left)])
+    write_png(os.path.join(OUT, "pond.png"), pond())
 
 
 if __name__ == "__main__":
