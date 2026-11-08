@@ -33,7 +33,8 @@
 #define DUCK_CHASE      120 /* px: the pointer is chased within this */
 #define DUCK_SLEEP      (30 * 60) /* the pointer is still this long */
 #define DUCK_QUACK      90  /* the bubble shows this long */
-#define DUCK_STEP       8   /* ticks per walk or sleep frame */
+#define DUCK_DOZE       32  /* ticks per sleep frame */
+#define DUCK_SPEED      24  /* px/s, top waddle speed */
 
 enum { DUCK_ACTOR, BUBBLE_ACTOR }; /* actor ids */
 
@@ -75,6 +76,8 @@ typedef struct deskduck
   int                  quack;   /* ticks left showing the bubble */
   int                  still;   /* ticks the pointer has been still */
   int                  ticks;
+  int                  stride;  /* px/s summed per tick; a step at 60 */
+  int                  steps;   /* px walked, for the waddle frame */
   point_t              pointer; /* where the pointer was last tick */
   const bitmap_t      *shown;   /* the frame last sent, NULL for none */
   point_t              shown_pos;
@@ -167,7 +170,7 @@ static void deskduck_wander(deskduck_t *duck)
   }
   while (duck->heading.x == 0 && duck->heading.y == 0);
 
-  duck->walk = 60 + rng_range(&duck->rng, 180);
+  duck->walk = 180 + rng_range(&duck->rng, 420);
 }
 
 static int deskduck_sign(int v)
@@ -181,7 +184,7 @@ static int deskduck_step(deskduck_t *duck, point_t pointer)
   size2d_t screen;
   point_t  centre;
   int      dx, dy;
-  int      speed;
+  int      stride;
 
   if (duck->quack > 0)
   {
@@ -192,8 +195,7 @@ static int deskduck_step(deskduck_t *duck, point_t pointer)
   }
 
   if (duck->still >= DUCK_SLEEP)
-    return ((duck->ticks / (DUCK_STEP * 4)) & 1) ? FRAME_SLEEP2
-                                                 : FRAME_SLEEP1;
+    return ((duck->ticks / DUCK_DOZE) & 1) ? FRAME_SLEEP2 : FRAME_SLEEP1;
 
   centre = POINT(duck->pos.x + DUCK_SIZE / 2, duck->pos.y + DUCK_SIZE / 2);
   dx     = pointer.x - centre.x;
@@ -206,13 +208,11 @@ static int deskduck_step(deskduck_t *duck, point_t pointer)
       return FRAME_IDLE; /* caught it */
     duck->heading = POINT(deskduck_sign(dx), deskduck_sign(dy));
     duck->walk    = 1; /* wander on once the pointer gets away */
-    speed         = 2;
   }
   else if (duck->walk > 0)
   {
     if (--duck->walk == 0)
       duck->pause = 60 + rng_range(&duck->rng, 120);
-    speed = 1;
   }
   else
   {
@@ -224,10 +224,19 @@ static int deskduck_step(deskduck_t *duck, point_t pointer)
   if (duck->heading.x != 0)
     duck->left = duck->heading.x < 0;
 
+  /* A pixel step every 60 / DUCK_SPEED ticks, a diagonal one root two times
+   * that, so no heading beats the top speed. */
+  stride        = (duck->heading.x != 0 && duck->heading.y != 0) ? 85 : 60;
+  duck->stride += DUCK_SPEED;
+  if (duck->stride < stride)
+    return (duck->steps & 1) ? FRAME_WALK2 : FRAME_WALK1;
+  duck->stride -= stride;
+  duck->steps++;
+
   /* bounce off the screen edges */
   screen = wuss_get_screen_size(duck->wuss);
-  duck->pos.x += duck->heading.x * speed;
-  duck->pos.y += duck->heading.y * speed;
+  duck->pos.x += duck->heading.x;
+  duck->pos.y += duck->heading.y;
   if (duck->pos.x < 0 || duck->pos.x > screen.w - DUCK_SIZE)
     duck->heading.x = -duck->heading.x;
   if (duck->pos.y < 0 || duck->pos.y > screen.h - DUCK_ICONBAR - DUCK_SIZE)
@@ -235,7 +244,7 @@ static int deskduck_step(deskduck_t *duck, point_t pointer)
   duck->pos.x = CLAMP(duck->pos.x, 0, screen.w - DUCK_SIZE);
   duck->pos.y = CLAMP(duck->pos.y, 0, screen.h - DUCK_ICONBAR - DUCK_SIZE);
 
-  return ((duck->ticks / DUCK_STEP) & 1) ? FRAME_WALK2 : FRAME_WALK1;
+  return (duck->steps & 1) ? FRAME_WALK2 : FRAME_WALK1;
 }
 
 static void deskduck_idle(deskduck_t *duck)
