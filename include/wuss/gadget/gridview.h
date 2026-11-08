@@ -23,6 +23,13 @@
  * Hit-testing is arithmetic -- gaps between cells miss -- so no per-cell
  * icon exists to click.
  *
+ * Three display modes (see \ref wuss_gridview_mode_t) set how a cell is laid
+ * out: large icons (glyph over label), small icons (a half-size glyph beside
+ * the label) and full info (as small icons, then the item's info columns,
+ * one item per row). The half-size glyphs are made on first use and kept
+ * until the gadget is destroyed or re-measured on wuss_EVENT_PALETTE or
+ * wuss_EVENT_RELAYOUT.
+ *
  * Selection follows RISC OS rules: SELECT on an unselected item selects only
  * it, and on a selected item changes nothing; ADJUST toggles the item.
  * SELECT on empty space clears the selection and ADJUST there keeps it;
@@ -66,16 +73,35 @@ extern "C"
 /** Opaque handle: the gadget's state and selection. */
 typedef struct wuss_gridview wuss_gridview_t;
 
+/** Most info columns an item can have in wuss_GRIDVIEW_FULL. */
+#define wuss_GRIDVIEW_MAX_INFO 4
+
+/** How each cell is laid out. */
+typedef enum wuss_gridview_mode
+{
+  wuss_GRIDVIEW_LARGE, /**< Glyph centred above the label. The default. */
+  wuss_GRIDVIEW_SMALL, /**< Glyph at half size, left of the label. */
+  wuss_GRIDVIEW_FULL   /**< As wuss_GRIDVIEW_SMALL, then the item's info
+                        *   columns, in a single column of items. */
+}
+wuss_gridview_mode_t;
+
 /**
- * One item's appearance, filled by \ref wuss_gridview_item_fn_t.
+ * One item's appearance, filled by \ref wuss_gridview_item_fn_t. The gadget
+ * clears it before each call, so a callback need only set what it has.
  */
 typedef struct wuss_gridview_item
 {
   const bitmap_t *glyph; /**< Drawn centred above the label; NULL for
                           *   none. */
-  const char      *label; /**< Drawn centred below the glyph; NULL for none.
+  const char      *label; /**< Drawn below or beside the glyph, by mode;
+                           *   NULL for none.
                            *   Borrowed -- must stay valid until the next
                            *   call into the gadget. */
+  const char      *info[wuss_GRIDVIEW_MAX_INFO]; /**< Drawn after the label
+                           *   in wuss_GRIDVIEW_FULL, each in a column as
+                           *   wide as its widest; NULL for none. Borrowed
+                           *   as \c label. */
 }
 wuss_gridview_item_t;
 
@@ -217,7 +243,8 @@ result_t wuss_gridview_window_create(wuss_gridview_t            **out,
  * route to \ref wuss_gridview_handle_event.
  *
  * \param[in] gridview Handle.
- * \param[in] columns  Column count wanted; at least 1.
+ * \param[in] columns  Column count wanted; at least 1. Ignored in
+ *                     wuss_GRIDVIEW_FULL, which has one column.
  * \param[in] max_rows Row limit; at least 1.
  * \param[in] place    Where to put the fitted window, or NULL to leave it
  *                     where it is.
@@ -393,6 +420,23 @@ void wuss_gridview_set_padding(wuss_gridview_t *gridview,
  * \param[in] cell     Cell size in pixels; each side at least 1.
  */
 void wuss_gridview_set_cell_size(wuss_gridview_t *gridview, size2d_t cell);
+
+/**
+ * Set the display mode, then re-measure the cell, reflow and redraw. The
+ * window keeps its size, so follow with \ref wuss_gridview_fit_window to
+ * suit the new cell. wuss_GRIDVIEW_FULL always uses one column.
+ *
+ * \param[in] gridview Handle.
+ * \param[in] mode     Display mode.
+ */
+void wuss_gridview_set_mode(wuss_gridview_t     *gridview,
+                            wuss_gridview_mode_t mode);
+
+/**
+ * \param[in] gridview Handle.
+ * \return Current display mode; wuss_GRIDVIEW_LARGE until set.
+ */
+wuss_gridview_mode_t wuss_gridview_get_mode(const wuss_gridview_t *gridview);
 
 /**
  * Set the colour the content is cleared to before the cells are drawn,

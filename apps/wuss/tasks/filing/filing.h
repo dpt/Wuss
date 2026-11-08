@@ -25,6 +25,7 @@
  * otherwise stay trapped in Emscripten's in-memory filesystem. */
 enum
 {
+  FILING_MENU_DISPLAY,
   FILING_MENU_SELECTION, /* "File 'x'", "Dir. 'x'" or "Selection" */
   FILING_MENU_SELECT_ALL,
   FILING_MENU_CLEAR_SELECTION,
@@ -33,6 +34,15 @@ enum
   FILING_MENU_DOWNLOAD,
 #endif
   FILING_MENU__LIMIT
+};
+
+/* rows of the submenu on FILING_MENU_DISPLAY, in wuss_gridview_mode_t order */
+enum
+{
+  FILING_DISPLAY_LARGE,
+  FILING_DISPLAY_SMALL,
+  FILING_DISPLAY_FULL,
+  FILING_DISPLAY__LIMIT
 };
 
 /* rows of the submenu on FILING_MENU_SELECTION, which act on the selection */
@@ -108,6 +118,11 @@ typedef struct filing_window
   wuss_gridview_t *gridview;
   dirlist_t       *listing;
   char             path[DPTLIB_MAXPATH];
+  /* filing_item's info strings for wuss_GRIDVIEW_FULL, each valid until its
+   * next call */
+  char             size_text[16];
+  char             type_text[8];
+  char             date_text[24];
 }
 filing_window_t;
 
@@ -139,6 +154,8 @@ struct filing_task
                                        * over, or NULL */
   wuss_menu_item_t       menu_items[FILING_MENU__LIMIT];
   wuss_menu_t            menu;
+  wuss_menu_item_t       display_menu_items[FILING_DISPLAY__LIMIT];
+  wuss_menu_t            display_menu;
   char                   sel_text[64]; /* FILING_MENU_SELECTION's label */
   wuss_menu_item_t       sel_menu_items[FILING_SEL_MENU__LIMIT];
   wuss_menu_t            sel_menu;

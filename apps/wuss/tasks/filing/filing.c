@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
@@ -201,6 +202,56 @@ static const bitmap_t *filing_glyph_for(const filing_window_t *fw,
   return task_file_glyph(task->delegate, entry->type.riscos);
 }
 
+/* fills fw's info strings for entry: size, type and date */
+static void filing_info(filing_window_t       *fw,
+                        const dirlist_entry_t *entry,
+                        wuss_gridview_item_t  *out)
+{
+  static const char units[] = "KMG";
+
+  long long size;
+  int       u;
+  struct tm *tm;
+
+  if (!entry->is_dir)
+  {
+    size = entry->size;
+    if (size < 1024)
+    {
+      snprintf(fw->size_text, sizeof(fw->size_text), "%lld bytes", size);
+    }
+    else
+    {
+      /* rounded, as the RISC OS Filer: 1536 bytes shows as 2 Kbytes */
+      for (u = 0; u < 2 && size >= 1024 * 1024; u++)
+        size /= 1024;
+      snprintf(fw->size_text, sizeof(fw->size_text), "%lld %cbytes",
+               (size + 512) / 1024, units[u]);
+    }
+    out->info[0] = fw->size_text;
+  }
+
+  if (entry->is_dir)
+  {
+    out->info[1] = "Directory";
+  }
+  else if (entry->type.name != NULL && entry->type.name[0] != '\0')
+  {
+    out->info[1] = entry->type.name;
+  }
+  else
+  {
+    snprintf(fw->type_text, sizeof(fw->type_text), "&%03X",
+             entry->type.riscos & 0xFFFu);
+    out->info[1] = fw->type_text;
+  }
+
+  tm = entry->mtime != 0 ? localtime(&entry->mtime) : NULL;
+  if (tm != NULL && strftime(fw->date_text, sizeof(fw->date_text),
+                             "%H:%M:%S %d-%b-%Y", tm) != 0)
+    out->info[2] = fw->date_text;
+}
+
 static void filing_item(int index, void *opaque, wuss_gridview_item_t *out)
 {
   filing_window_t       *fw;
@@ -209,14 +260,13 @@ static void filing_item(int index, void *opaque, wuss_gridview_item_t *out)
   fw    = opaque;
   entry = dirlist_get(fw->listing, index);
   if (entry == NULL)
-  {
-    out->glyph = NULL;
-    out->label = NULL;
-    return;
-  }
+    return; /* the gadget cleared out */
 
   out->label = entry->leaf;
   out->glyph = filing_glyph_for(fw, entry);
+  if (fw->gridview != NULL &&
+      wuss_gridview_get_mode(fw->gridview) == wuss_GRIDVIEW_FULL)
+    filing_info(fw, entry, out);
 }
 
 static result_t filing_open_path(filing_task_t       *task,
@@ -418,6 +468,7 @@ static result_t filing_open_path(filing_task_t       *task,
   dirlist_t       *listing;
   wuss_place_t     place;
   wuss_window_t   *window;
+  filing_window_t *from;
 
 #ifndef __riscos
   /* "." or "a/../b" becomes the full path, for the title and so that the
@@ -452,9 +503,10 @@ static result_t filing_open_path(filing_task_t       *task,
   if (rc != result_OK)
     return rc;
 
-  fw          = &task->windows[slot];
-  fw->owner   = task;
-  fw->listing = listing; /* wuss_gridview_create measures through filing_item */
+  fw           = &task->windows[slot];
+  fw->owner    = task;
+  fw->gridview = NULL; /* so filing_item sees no stale one while measuring */
+  fw->listing  = listing; /* wuss_gridview_create measures through filing_item */
   snprintf(fw->path, sizeof(fw->path), "%s", path);
 
   place = task_place_from(parent);
@@ -473,6 +525,12 @@ static result_t filing_open_path(filing_task_t       *task,
   }
 
   wuss_gridview_set_drag(fw->gridview, filing_drag);
+
+  /* a new window shows its contents as the window it was opened from */
+  from = filing_find_by_window(task, parent);
+  if (from != NULL)
+    wuss_gridview_set_mode(fw->gridview,
+                           wuss_gridview_get_mode(from->gridview));
 
   fw->window = window;
   if (slot == task->nwindows)
@@ -524,6 +582,17 @@ result_t filing_create(wuss_t *wuss, filing_task_t **out)
   WUSS_MENU_TITLE(task->sel_menu, "Selection", task->sel_menu_items,
                   NELEMS(task->sel_menu_items));
 
+  WUSS_MENU_ITEM(task->display_menu_items, FILING_DISPLAY_LARGE,
+                 "Large icons", wuss_MENU_ITEM_NONE);
+  WUSS_MENU_ITEM(task->display_menu_items, FILING_DISPLAY_SMALL,
+                 "Small icons", wuss_MENU_ITEM_NONE);
+  WUSS_MENU_ITEM(task->display_menu_items, FILING_DISPLAY_FULL, "Full info",
+                 wuss_MENU_ITEM_NONE);
+  WUSS_MENU_TITLE(task->display_menu, "Display", task->display_menu_items,
+                  NELEMS(task->display_menu_items));
+
+  WUSS_MENU_ITEM_MENU(task->menu_items, FILING_MENU_DISPLAY, "Display",
+                      wuss_MENU_ITEM_NONE, &task->display_menu);
   WUSS_MENU_ITEM_MENU(task->menu_items, FILING_MENU_SELECTION, task->sel_text,
                       wuss_MENU_ITEM_NONE, &task->sel_menu);
   WUSS_MENU_ITEM(task->menu_items, FILING_MENU_SELECT_ALL, "Select all",
@@ -771,6 +840,11 @@ static void filing_menu_update(filing_task_t *task)
   selected = fw != NULL ? wuss_gridview_selected_count(fw->gridview) : 0;
 
   filing_label_selection(task, fw, selected);
+  filing_menu_enable(task, FILING_MENU_DISPLAY, fw != NULL);
+  wuss_menu_tick_exclusive_live(task->menu_handle, &task->display_menu,
+                                fw != NULL
+                                ? (int) wuss_gridview_get_mode(fw->gridview)
+                                : -1);
   filing_menu_enable(task, FILING_MENU_SELECTION, selected > 0);
   filing_menu_enable(task, FILING_MENU_SELECT_ALL, selected < count);
   filing_menu_enable(task, FILING_MENU_CLEAR_SELECTION, selected > 0);
@@ -992,6 +1066,20 @@ result_t filing_handle(wuss_window_t      *window,
       if (fw != NULL)
       {
         filing_delete_selection(task, fw);
+        filing_menu_update(task);
+      }
+      return result_OK;
+    }
+    if (event->data.menu_select.menu == &task->display_menu)
+    {
+      fw = filing_find_by_window(task, task->menu_window);
+      if (fw != NULL)
+      {
+        /* rows are in wuss_gridview_mode_t order */
+        wuss_gridview_set_mode(fw->gridview, (wuss_gridview_mode_t)
+                               event->data.menu_select.index);
+        wuss_gridview_fit_window(fw->gridview, FILING_COLUMNS,
+                                 FILING_MAX_ROWS, NULL);
         filing_menu_update(task);
       }
       return result_OK;

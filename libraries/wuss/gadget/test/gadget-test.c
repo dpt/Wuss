@@ -844,6 +844,31 @@ StringSetOK: ;
         goto GridViewFail;
       }
 
+      /* small icons put the glyph beside the label, so rows are shorter;
+       * full info is a single column; both draw */
+      cell_h = wuss_gridview_get_cell_size(glyph_gv).h;
+      wuss_gridview_set_mode(glyph_gv, wuss_GRIDVIEW_SMALL);
+      ev.kind                = wuss_EVENT_REDRAW;
+      ev.data.redraw.scr     = &gvscr;
+      ev.data.redraw.content = &glyph_content;
+      ev.data.redraw.bounds  = &glyph_content;
+      ev.data.redraw.scroll  = POINT(0, 0);
+      if (wuss_gridview_get_mode(glyph_gv) != wuss_GRIDVIEW_SMALL ||
+          wuss_gridview_get_cell_size(glyph_gv).h >= cell_h ||
+          !wuss_gridview_handle_event(glyph_gv, &ev))
+      {
+        wuss_gridview_destroy(glyph_gv);
+        goto GridViewFail;
+      }
+      wuss_gridview_set_mode(glyph_gv, wuss_GRIDVIEW_FULL);
+      wuss_gridview_fit_window(glyph_gv, 3, 4, NULL);
+      if (wuss_gridview_get_columns(glyph_gv) != 1 ||
+          !wuss_gridview_handle_event(glyph_gv, &ev))
+      {
+        wuss_gridview_destroy(glyph_gv);
+        goto GridViewFail;
+      }
+
       wuss_gridview_destroy(glyph_gv);
       wuss_window_close(glyph_win);
     }
