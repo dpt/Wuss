@@ -626,7 +626,8 @@ result_t filing_create(wuss_t *wuss, filing_task_t **out)
                  "Confirm deletes",
                  wuss_MENU_ITEM_TICKED | wuss_MENU_ITEM_DISABLED);
   WUSS_MENU_ITEM(task->options_menu_items, FILING_OPTIONS_VERBOSE, "Verbose",
-                 wuss_MENU_ITEM_TICKED | wuss_MENU_ITEM_DISABLED);
+                 wuss_MENU_ITEM_DASHED | wuss_MENU_ITEM_TICKED |
+                 wuss_MENU_ITEM_DISABLED);
   WUSS_MENU_ITEM(task->options_menu_items, FILING_OPTIONS_FORCE, "Force",
                  wuss_MENU_ITEM_DISABLED);
   WUSS_MENU_ITEM(task->options_menu_items, FILING_OPTIONS_NEWER, "Newer",
@@ -648,8 +649,6 @@ result_t filing_create(wuss_t *wuss, filing_task_t **out)
                       wuss_MENU_ITEM_NONE, &task->options_menu);
   WUSS_MENU_ITEM(task->menu_items, FILING_MENU_NEW_DIRECTORY,
                  "New directory", wuss_MENU_ITEM_DISABLED);
-  WUSS_MENU_ITEM(task->menu_items, FILING_MENU_SET_WORK_DIRECTORY,
-                 "Set work directory", wuss_MENU_ITEM_DISABLED);
   WUSS_MENU_ITEM(task->menu_items, FILING_MENU_OPEN_PARENT, "Open parent",
                  wuss_MENU_ITEM_NONE);
   task->menu_items[FILING_MENU_OPEN_PARENT].shortcut = "^" WUSS_MENU_SHIFT "UP";
