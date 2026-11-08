@@ -445,10 +445,12 @@ static result_t sv_task_handle(wuss_window_t      *window,
     if (event->data.pre_show.handle == NULL)
       return result_OK; /* shown by wuss_scaleview_open */
     sv->leaf_handle = event->data.pre_show.handle;
-    rc = wuss_menu_open_window_now(event->data.pre_show.handle,
-                                   event->data.pre_show.index);
-    if (rc != result_OK)
-      return rc;
+    return wuss_menu_open_window_now(event->data.pre_show.handle,
+                                     event->data.pre_show.index);
+
+  case wuss_EVENT_SHOW:
+    /* ready to type over: the caret at the end of the value. Not on
+     * PRE_SHOW: a still-hidden window cannot take the focus */
     (void) wuss_icon_set_caret(wuss_dialogue_window(sv->dialogue),
                                sv->icons[SV_ICON_FIELD], -1);
     return result_OK;
@@ -567,14 +569,7 @@ result_t wuss_scaleview_open(wuss_scaleview_t *sv, int percent)
   at.x -= (content.x1 - content.x0) / 2;
   at.y -= (content.y1 - content.y0) / 2;
 
-  rc = wuss_menu_open_window(sv->task, win, at, &sv->menu_handle);
-  if (rc != result_OK)
-    return rc;
-
-  /* ready to type over: the caret at the end of the value */
-  (void) wuss_icon_set_caret(win, sv->icons[SV_ICON_FIELD], -1);
-
-  return result_OK;
+  return wuss_menu_open_window(sv->task, win, at, &sv->menu_handle);
 }
 
 wuss_window_t *wuss_scaleview_window(const wuss_scaleview_t *sv)

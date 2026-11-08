@@ -19,6 +19,7 @@
 #include "wuss/task.h"
 #include "wuss/wuss.h"
 #include "wuss/window.h"
+#include "wuss/menu.h"
 #include "wuss/component/scaleview.h"
 
 #include "wuss/test/all-tests.h"
@@ -102,8 +103,10 @@ result_t scaleview_test(const char *resources)
   wuss_scaleview_t *sv;
   sv_test_state_t   state;
   int               claimed;
+  test_task_t       tc; /* outlives the menu block: wuss_destroy QUITs it */
 
   memset(&state, 0, sizeof(state));
+  memset(&tc, 0, sizeof(tc));
   sv     = NULL;
   font   = NULL;
   pixels = NULL;
@@ -191,6 +194,51 @@ result_t scaleview_test(const char *resources)
   rc = sv_test_click(wuss, "Cancel");
   if (rc != result_OK || state.calls != 3)
     goto Failure;
+
+  printf("test: as a PRE_OPEN menu leaf it opens itself and a choice closes "
+         "the chain\n");
+  {
+    static wuss_menu_item_t leaf_items[1];
+    static const wuss_menu_t leaf_menu =
+    {
+      "View", leaf_items, NELEMS(leaf_items)
+    };
+
+    wuss_task_t       *owner;
+    struct wuss__menu *root;
+
+    owner = mk_task(wuss, test_handle, &tc);
+    if (owner == NULL)
+      goto Failure;
+
+    leaf_items[0].text    = "Scale view";
+    leaf_items[0].flags   = wuss_MENU_ITEM_PRE_OPEN;
+    leaf_items[0].submenu = NULL;
+    leaf_items[0].window  = wuss_scaleview_window(sv);
+
+    rc = wuss_scaleview_set_percent(sv, 0); /* clamps up to the minimum */
+    if (rc == result_OK)
+      rc = wuss_menu_open(owner, &leaf_menu, POINT(20, 20), NULL);
+    if (rc != result_OK)
+      goto Failure;
+
+    root = wuss__menu_chain(wuss);
+    if (root == NULL)
+      goto Failure;
+    menu_move_over_row(wuss, root, 0, 1);
+    if (wuss_scaleview_window(sv)->flags & wuss_WINDOW_HIDDEN)
+      goto Failure; /* the dialogue answered PRE_SHOW itself */
+
+    /* the field took the caret, so RETURN reaches the dialogue */
+    rc = wuss_key(wuss, wuss_KEY_RETURN, wuss_KEY_MOD_NONE, &claimed);
+    if (rc != result_OK || !claimed)
+      goto Failure;
+    if (state.calls != 4 || state.choice != wuss_SCALEVIEW_SCALE ||
+        state.percent != wuss_SCALEVIEW_MIN)
+      goto Failure;
+    if (wuss__menu_chain(wuss) != NULL)
+      goto Failure; /* the whole chain closed, not just the leaf */
+  }
 
   wuss_scaleview_destroy(sv);
   sv = NULL;
