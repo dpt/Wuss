@@ -3,7 +3,6 @@
 #if defined(WUSS_APP) && defined(WUSS_ICONBAR)
 
 #include <limits.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
@@ -38,7 +37,7 @@
 
 enum { DUCK_ACTOR, BUBBLE_ACTOR }; /* actor ids */
 
-enum
+enum /* the columns of deskduck_24x24.png */
 {
   FRAME_WALK1,
   FRAME_WALK2,
@@ -407,16 +406,10 @@ static result_t deskduck_handle(wuss_window_t      *window,
 
 result_t deskduck_app_create(wuss_t *wuss)
 {
-  static const char *const names[FRAME__LIMIT] =
-  {
-    "walk1", "walk2", "idle", "quack", "sleep1", "sleep2"
-  };
-
   result_t                 rc;
   deskduck_t              *duck;
   wuss_task_desc_t         desc;
   int                      i;
-  char                     name[16];
   size2d_t                 screen;
   wuss_iconbar_icon_spec_t spec;
 
@@ -453,13 +446,12 @@ result_t deskduck_app_create(wuss_t *wuss)
   if (rc != result_OK)
     goto failure;
 
-  for (i = 0; i < FRAME__LIMIT; i++)
+  /* one sheet: a row facing right, then the same frames facing left */
+  for (i = 0; i < FRAME__LIMIT * 2; i++)
   {
-    snprintf(name, sizeof(name), "%s-r", names[i]);
-    duck->frames[i][0] = wuss_task_iconpool_find(duck->delegate, name);
-    snprintf(name, sizeof(name), "%s-l", names[i]);
-    duck->frames[i][1] = wuss_task_iconpool_find(duck->delegate, name);
-    if (duck->frames[i][0] == NULL || duck->frames[i][1] == NULL)
+    duck->frames[i % FRAME__LIMIT][i / FRAME__LIMIT] =
+      wuss_task_iconpool_frame(duck->delegate, "deskduck", i);
+    if (duck->frames[i % FRAME__LIMIT][i / FRAME__LIMIT] == NULL)
     {
       rc = result_NOT_FOUND;
       goto failure;

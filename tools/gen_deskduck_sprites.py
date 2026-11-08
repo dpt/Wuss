@@ -2,9 +2,11 @@
 # gen_deskduck_sprites.py -- draw the DeskDuck task's sprites as PNGs
 #
 # Each frame is a 24x24 character grid in a four-colour palette, facing right.
-# Every frame but the icon bar head is also written mirrored, facing left, as
-# Pinboard draws actors whole with no flipping. Output goes to the task's
-# icon pool directory, one PNG per frame, named <frame>-r / <frame>-l.
+# The frames go into one sprite sheet, deskduck_24x24.png, in the task's icon
+# pool directory: the top row faces right, the bottom row is the same frames
+# mirrored, facing left, as Pinboard draws actors whole with no flipping. The
+# column order matches DeskDuck's frame enum. The icon bar head is its own
+# head.png.
 #
 # Usage: tools/gen_deskduck_sprites.py   (from the repo root)
 
@@ -123,14 +125,7 @@ SLEEP2 = replace(SAT, {
     4: "...................KKKK.",
 })
 
-FRAMES = {
-    "walk1": WALK1,
-    "walk2": WALK2,
-    "idle": IDLE,
-    "quack": QUACK,
-    "sleep1": SLEEP1,
-    "sleep2": SLEEP2,
-}
+FRAMES = [WALK1, WALK2, IDLE, QUACK, SLEEP1, SLEEP2]
 
 
 def chunk(kind, data):
@@ -140,12 +135,11 @@ def chunk(kind, data):
 
 
 def write_png(path, grid):
-    assert len(grid) == SIZE, path
     raw = b""
     for row in grid:
-        assert len(row) == SIZE, (path, row)
+        assert len(row) == len(grid[0]), (path, row)
         raw += b"\0" + b"".join(bytes(PALETTE[c]) for c in row)
-    ihdr = struct.pack(">IIBBBBB", SIZE, SIZE, 8, 6, 0, 0, 0)  # 8-bit RGBA
+    ihdr = struct.pack(">IIBBBBB", len(grid[0]), len(grid), 8, 6, 0, 0, 0)
     with open(path, "wb") as f:
         f.write(b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", ihdr) +
                 chunk(b"IDAT", zlib.compress(raw, 9)) + chunk(b"IEND", b""))
@@ -153,10 +147,12 @@ def write_png(path, grid):
 
 def main():
     os.makedirs(OUT, exist_ok=True)
-    for name, grid in FRAMES.items():
-        write_png(os.path.join(OUT, name + "-r.png"), grid)
-        write_png(os.path.join(OUT, name + "-l.png"),
-                  [row[::-1] for row in grid])
+    for grid in FRAMES:
+        assert len(grid) == SIZE and all(len(row) == SIZE for row in grid)
+    right = ["".join(rows) for rows in zip(*FRAMES)]
+    left = ["".join(row[::-1] for row in rows) for rows in zip(*FRAMES)]
+    write_png(os.path.join(OUT, "deskduck_%dx%d.png" % (SIZE, SIZE)),
+              right + left)
     write_png(os.path.join(OUT, "head.png"), HEAD)
 
 
