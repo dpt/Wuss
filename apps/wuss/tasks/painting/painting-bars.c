@@ -298,6 +298,9 @@ static result_t painting_sizebar_build(painting_task_t *pt)
     pt->sizebar_icons[i] = icons[i];
   pt->nsizebar_icons = n;
 
+  /* the new settings start from the left, not part-scrolled away */
+  wuss_window_set_scroll(pt->sizebar, POINT(0, 0));
+
   if (pot_at >= 0)
     for (i = 0; i < PAINTING_POT_LEVELS; i++)
       pt->pot_icons[i] = icons[pot_at + i];
@@ -425,17 +428,62 @@ result_t painting_optionbar_redraw(painting_task_t    *pt,
   return result_OK;
 }
 
-/* SELECT sets the foreground colour from the swatch under the pointer, ADJUST
- * the background colour */
+/* wuss_colourpicker_changed_fn_t: the edited chip takes the colour */
+static void painting_picker_changed(colour_t colour, void *opaque)
+{
+  painting_task_t *pt;
+
+  pt = opaque;
+
+  *pt->picking = colour;
+  if (pt->optionbar != NULL)
+    wuss_window_invalidate_visible(pt->optionbar);
+}
+
+/* open the colour picker on the chip at colour */
+static result_t painting_pick_chip(painting_task_t *pt, colour_t *colour)
+{
+  result_t rc;
+
+  if (pt->picker == NULL)
+  {
+    rc = wuss_colourpicker_create(&pt->picker, pt->base.wuss, NULL,
+                                  painting_picker_changed, pt);
+    if (rc != result_OK)
+      return rc;
+  }
+
+  pt->picking = colour;
+
+  return wuss_colourpicker_open(pt->picker, *colour);
+}
+
+/* ADJUST on the foreground or background chip opens the colour picker on
+ * it. SELECT on a swatch sets the foreground colour from it, ADJUST the
+ * background colour */
 result_t painting_optionbar_mouse(painting_task_t    *pt,
                                   const wuss_event_t *event)
 {
-  int i;
+  box_t   chip;
+  point_t p;
+  int     i;
 
   if (event->data.mouse.action != wuss_MOUSE_DOWN)
     return result_OK;
 
-  i = wuss_swatches_hit_test(&pt->swatches, event->data.mouse.point);
+  /* the fg chip overlaps the bg chip, so is tested first */
+  chip = (box_t) BOX_POS_SIZE(OB_MARGIN, OB_MARGIN, OB_CHIP, OB_CHIP);
+  p    = event->data.mouse.point;
+  if (event->data.mouse.button & wuss_BUTTON_ADJUST)
+  {
+    if (box_contains_point(&chip, p.x, p.y))
+      return painting_pick_chip(pt, &pt->fg);
+    box_translated(&chip, OB_CHIP_STEP, OB_CHIP_STEP, &chip);
+    if (box_contains_point(&chip, p.x, p.y))
+      return painting_pick_chip(pt, &pt->bg);
+  }
+
+  i = wuss_swatches_hit_test(&pt->swatches, p);
   if (i < 0)
     return result_OK;
 

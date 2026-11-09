@@ -1122,9 +1122,13 @@ static result_t painting_handle(wuss_window_t      *window,
     pt->toolbox     = NULL;
     pt->optionbar   = NULL;
     pt->sizebar     = NULL;
+    /* the picker is on a task of its own, so would outlive the canvas */
+    wuss_colourpicker_destroy(pt->picker);
+    pt->picker      = NULL;
     return result_OK;
 
   case wuss_EVENT_QUIT:
+    wuss_colourpicker_destroy(pt->picker);
     wuss_scaleview_destroy(pt->scaleview);
     free(pt->lasso);
     paintingdoc_destroy(pt->doc);

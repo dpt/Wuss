@@ -12,6 +12,7 @@
 #include "wuss/icon.h"
 #include "wuss/icon-spec.h"
 #include "wuss/menu.h"
+#include "wuss/component/colourpicker.h"
 #include "wuss/component/saveas.h"
 #include "wuss/component/scaleview.h"
 #include "wuss/gadget/swatches.h"
@@ -190,6 +191,8 @@ typedef struct painting_task
   screen_dither_t    dithering; /* how the canvas is blitted */
   char               row_text[painting_SETTING__COUNT][WUSS_SLIDER_ROW_BUF];
   wuss_swatches_t    swatches;  /* the desktop palette, as a colour grid */
+  wuss_colourpicker_t *picker;  /* edits a chip; made on first use, else NULL */
+  colour_t          *picking;   /* &fg or &bg: the chip the picker edits */
 }
 painting_task_t;
 
