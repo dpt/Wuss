@@ -50,7 +50,10 @@
 #define SB_SLIDER_W    58
 #define SB_POT         16  /* the pot gauge's images */
 #define SB_W           580 /* wide enough for the widest tool's settings */
-#define SB_H(wuss)     (SB_MARGIN + SB_ROW_H(wuss) + SB_MARGIN)
+/* the row: tall enough for an option's tick box, which does not scale with
+ * the font; the other controls are centred in it */
+#define SB_LINE_H(wuss) MAX(SB_ROW_H(wuss), wuss_STD_GLYPH_SIZE)
+#define SB_H(wuss)     (SB_MARGIN + SB_LINE_H(wuss) + SB_MARGIN)
 
 /* the paintbrush's nozzle rows, indexed by paintingdoc_nozzle_t */
 extern const char *const painting_nozzle_names[paintingdoc_NOZZLE__COUNT];

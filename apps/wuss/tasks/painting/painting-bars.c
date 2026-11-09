@@ -196,12 +196,16 @@ static result_t painting_sizebar_build(painting_task_t *pt)
   char             widest[WUSS_SLIDER_ROW_BUF];
   int              rw;
   int              row_h;
+  int              line_h;
+  int              y;
   int              nozzle_w;
   int              pot_at;
   int              level;
   wuss_icon_t     *icons[PAINTING_SIZEBAR_ICONS];
 
   row_h    = SB_ROW_H(pt->base.wuss);
+  line_h   = SB_LINE_H(pt->base.wuss);
+  y        = SB_MARGIN + (line_h - row_h) / 2; /* centred in the line */
   /* the nozzle button fits its widest name */
   nozzle_w = task_button_width(pt->base.wuss, "Backslash",
                                wuss_STD_SECONDARY_BUTTON_BORDER);
@@ -231,7 +235,7 @@ static result_t painting_sizebar_build(painting_task_t *pt)
       w     = wuss_STD_GLYPH_SIZE + task_text_width(pt->base.wuss, label) + 8;
       at[s] = n;
       wuss_icon_spec_option(&specs[n++],
-                            (box_t) BOX_POS_SIZE(x, SB_MARGIN, w, row_h),
+                            (box_t) BOX_POS_SIZE(x, SB_MARGIN, w, line_h),
                             label);
       x += w + SB_SETTING_GAP;
       continue;
@@ -243,14 +247,14 @@ static result_t painting_sizebar_build(painting_task_t *pt)
     w     = task_text_width(pt->base.wuss, label) + 2;
 
     wuss_icon_spec_label(&specs[n++],
-                         (box_t) BOX_POS_SIZE(x, SB_MARGIN, w, row_h),
+                         (box_t) BOX_POS_SIZE(x, y, w, row_h),
                          label, 0);
     x += w + SB_LABEL_GAP;
 
     at[s] = n;
     if (s == painting_SETTING_NOZZLE)
     {
-      control = (box_t) BOX_POS_SIZE(x, SB_MARGIN, nozzle_w, row_h);
+      control = (box_t) BOX_POS_SIZE(x, y, nozzle_w, row_h);
       wuss_icon_spec_action(&specs[n++], control,
                             painting_nozzle_names[pt->nozzle], 0);
       x += nozzle_w;
@@ -265,10 +269,9 @@ static result_t painting_sizebar_build(painting_task_t *pt)
       rw = task_text_width(pt->base.wuss, widest) + 2;
 
       wuss_icon_spec_slider_row(&specs[n], &specs[n + 1],
-                                (box_t) BOX_POS_SIZE(x, SB_MARGIN,
+                                (box_t) BOX_POS_SIZE(x, y,
                                                      SB_SLIDER_W, row_h),
-                                (box_t) BOX_POS_SIZE(x + SB_SLIDER_W + 2,
-                                                     SB_MARGIN,
+                                (box_t) BOX_POS_SIZE(x + SB_SLIDER_W + 2, y,
                                                      rw, row_h),
                                 wuss_SLIDER_HORIZONTAL,
                                 painting_settings[s].min,
@@ -288,7 +291,7 @@ static result_t painting_sizebar_build(painting_task_t *pt)
       pot_at  = n;
       level   = painting_pot_level(pt);
       control = (box_t) BOX_POS_SIZE(x + SB_LABEL_GAP,
-                                     SB_MARGIN + (row_h - SB_POT) / 2,
+                                     SB_MARGIN + (line_h - SB_POT) / 2,
                                      SB_POT, SB_POT);
       for (i = 0; i < PAINTING_POT_LEVELS; i++)
       {
@@ -305,7 +308,7 @@ static result_t painting_sizebar_build(painting_task_t *pt)
 
   if (n == 0)
     wuss_icon_spec_label(&specs[n++],
-                         (box_t) BOX_POS_SIZE(SB_MARGIN, SB_MARGIN,
+                         (box_t) BOX_POS_SIZE(SB_MARGIN, y,
                                               SB_W - 2 * SB_MARGIN, row_h),
                          "No settings", 0);
 
