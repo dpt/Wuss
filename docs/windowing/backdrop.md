@@ -155,6 +155,10 @@ behind every window. It holds at most 16 at once.
   owner, the bitmap and its screen position. A set adds the actor or moves
   it. A remove takes it away. The owner sends it recorded: the Pinboard
   acknowledges it, so it bounces only when no Pinboard is running.
+- **Draw order.** The actor's `depth` picks its layer: a higher one draws
+  over a lower one. In one layer, an actor whose bottom edge is lower on
+  the screen draws over one higher up, so nearer actors cover further
+  ones. A click goes to the actor drawn on top.
 - **Borrowed bitmaps.** The Pinboard does not copy the bitmap. The owner
   keeps it alive until the actor is removed or the owner is destroyed.
 - **Owner destroyed.** Core broadcasts `wuss_MESSAGE_TASK_CLOSE_DOWN` from a

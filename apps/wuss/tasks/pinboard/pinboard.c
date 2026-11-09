@@ -62,6 +62,7 @@ typedef struct actor
   int                id;
   const bitmap_t    *bitmap; /* borrowed from the owner */
   point_t            pos;
+  int                depth;
 }
 actor_t;
 
@@ -577,11 +578,47 @@ static void pinboard_draw_pin(pinboard_t  *pb,
   scr->clip = saved;
 }
 
+/* nonzero if actor a draws over actor b: a deeper layer, or the same one
+ * and lower down the screen */
+static int pinboard_actor_over(const actor_t *a, const actor_t *b)
+{
+  if (a->depth != b->depth)
+    return a->depth > b->depth;
+
+  return a->pos.y + a->bitmap->size.h > b->pos.y + b->bitmap->size.h;
+}
+
+/* Fill order with the shown actors' slots, furthest first, and return how
+ * many. Insertion sort: there are few actors and they move little between
+ * frames. Equals keep slot order. */
+static int pinboard_actor_order(const pinboard_t *pb,
+                                int               order[PINBOARD_MAX_ACTORS])
+{
+  int n;
+  int i, j;
+
+  n = 0;
+  for (i = 0; i < PINBOARD_MAX_ACTORS; i++)
+  {
+    if (pb->actors[i].owner == NULL || i == pb->actor_drag)
+      continue;
+    for (j = n; j > 0 &&
+         pinboard_actor_over(&pb->actors[order[j - 1]], &pb->actors[i]); j--)
+      order[j] = order[j - 1];
+    order[j] = i;
+    n++;
+  }
+
+  return n;
+}
+
 static void pinboard_redraw(pinboard_t *pb, const wuss_event_t *event)
 {
   screen_t       *scr;
   size2d_t        screen;
   int             i;
+  int             order[PINBOARD_MAX_ACTORS];
+  int             n;
   const colour_t *palette;
 
   scr    = event->data.redraw.scr;
@@ -611,10 +648,11 @@ static void pinboard_redraw(pinboard_t *pb, const wuss_event_t *event)
   for (i = 0; i < pb->npins; i++)
     pinboard_draw_pin(pb, scr, &pb->pins[i]);
 
-  for (i = 0; i < PINBOARD_MAX_ACTORS; i++)
-    if (pb->actors[i].owner != NULL && i != pb->actor_drag)
-      (void) screen_copy_bitmap(scr, pb->actors[i].pos.x, pb->actors[i].pos.y,
-                                pb->actors[i].bitmap);
+  n = pinboard_actor_order(pb, order);
+  for (i = 0; i < n; i++)
+    (void) screen_copy_bitmap(scr, pb->actors[order[i]].pos.x,
+                              pb->actors[order[i]].pos.y,
+                              pb->actors[order[i]].bitmap);
 
   palette = wuss_get_palette(pb->wuss, NULL);
   wuss_rubberband_draw(&pb->band, event, palette[pb->label_fg]);
@@ -742,16 +780,15 @@ static int pinboard_actor_find(const pinboard_t  *pb,
  * pixel's alpha if actors get odd shapes */
 static int pinboard_actor_hit(const pinboard_t *pb, point_t p)
 {
+  int   order[PINBOARD_MAX_ACTORS];
   int   i;
   box_t box;
 
-  for (i = PINBOARD_MAX_ACTORS - 1; i >= 0; i--)
+  for (i = pinboard_actor_order(pb, order) - 1; i >= 0; i--)
   {
-    if (pb->actors[i].owner == NULL || i == pb->actor_drag)
-      continue;
-    box = pinboard_actor_box(&pb->actors[i]);
+    box = pinboard_actor_box(&pb->actors[order[i]]);
     if (box_contains_point(&box, p.x, p.y))
-      return i;
+      return order[i];
   }
 
   return -1;
@@ -805,6 +842,7 @@ static void pinboard_actor_message(pinboard_t                  *pb,
   pb->actors[i].id     = msg->id;
   pb->actors[i].bitmap = msg->bitmap;
   pb->actors[i].pos    = msg->pos;
+  pb->actors[i].depth  = msg->depth;
 
   if (i != pb->actor_drag)
     pinboard_invalidate_actor(pb, i);

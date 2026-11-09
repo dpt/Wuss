@@ -97,7 +97,9 @@ enum
  * Pinboard draws on the backdrop over its pins, owned by the sending task.
  * Pinboard borrows \c bitmap: keep it alive until the actor is removed or
  * the task is destroyed (Pinboard drops a task's actors on \ref
- * wuss_MESSAGE_TASK_CLOSE_DOWN).
+ * wuss_MESSAGE_TASK_CLOSE_DOWN). Pinboard draws actors by \c depth, then
+ * those lower down the screen (by bottom edge) over those higher up, so
+ * nearer ones cover further ones; a click goes to the one drawn on top.
  */
 typedef struct
 {
@@ -105,6 +107,8 @@ typedef struct
   int             id;     /**< Owner-chosen, unique per owner. */
   const bitmap_t *bitmap; /**< Image, drawn whole with its alpha. */
   point_t         pos;    /**< Screen position of its top left. */
+  int             depth;  /**< Layer: higher draws over lower; 0 for
+                           *   ground. */
 }
 wuss_pinboard_actor_t;
 

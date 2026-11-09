@@ -39,10 +39,9 @@
 #define MAMA_SPEED      16  /* px/s, slower, so the ducks keep up */
 #define MAMA_BOB        4   /* px walked per 1px bob */
 
-/* Actor ids. Pinboard draws actors in slot order, and the pond is sent
- * first, so it takes a lower slot and lies under the ducks.
- * ponytail: holds only while no other task frees a slot below, and a bubble
- * may take a slot under a later duck; give actors a depth if that bites. */
+/* Actor ids. Pinboard draws by depth, then lower on screen over higher, so
+ * the pond lies under the ducks, the nearer ducks cover the further ones and
+ * the bubbles go over all of them. */
 #define POND_ACTOR      0
 #define DUCK_ACTOR(i)   (1 + 2 * (i))
 #define BUBBLE_ACTOR(i) (2 + 2 * (i))
@@ -254,6 +253,8 @@ static void duckling_send(duckling_t     *desk,
   actor.id     = id;
   actor.bitmap = bitmap;
   actor.pos    = pos;
+  /* the pond on the ground, the ducks on it, their bubbles over all */
+  actor.depth  = id == POND_ACTOR ? 0 : id % 2 == 0 ? 2 : 1;
   (void) wuss_send_recorded(desk->wuss, desk->delegate, NULL,
                             wuss_MESSAGE_PINBOARD_ACTOR, &actor,
                             sizeof(actor), 0, NULL);
@@ -1015,7 +1016,7 @@ result_t duckling_app_create(wuss_t *wuss)
                                MAX(screen.h - DUCK_ICONBAR -
                                    desk->pond_bitmap->size.h, 1)));
   duckling_send(desk, wuss_PINBOARD_ACTOR_SET, POND_ACTOR, desk->pond_bitmap,
-                desk->pond); /* first, so it lies under the ducks */
+                desk->pond);
   desk->pointer = wuss_get_pointer(wuss);
   duckling_add(desk);
 
