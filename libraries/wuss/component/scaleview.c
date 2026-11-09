@@ -121,7 +121,7 @@ sv_presets[] =
   { "200%", 200 }
 };
 
-#define SV_FIELD_SIZE 4 /* bytes: "999" and a terminator */
+#define SV_FIELD_SIZE 5 /* bytes: "9999" and a terminator */
 
 struct wuss_scaleview
 {
@@ -270,7 +270,7 @@ static result_t sv_solve(const wuss_t *wuss,
     (int) wuss__text_width(font, "Scale") + 2 * WUSS_LABEL_TEXT_PAD;
   items[SV_ST_LABEL].cross_size     = field;
   items[SV_ST_FIELD].axis_size      =
-    (int) wuss__text_width(font, "0000") + 4 * WUSS_LABEL_TEXT_PAD;
+    (int) wuss__text_width(font, "00000") + 4 * WUSS_LABEL_TEXT_PAD;
   items[SV_ST_FIELD].cross_size     = field;
   items[SV_ST_DOWN].axis_size       = glyph;
   items[SV_ST_DOWN].cross_size      = glyph;

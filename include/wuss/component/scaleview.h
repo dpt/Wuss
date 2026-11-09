@@ -48,7 +48,7 @@ extern "C"
 #define wuss_SCALEVIEW_MIN  1
 
 /** Greatest percentage the dialogue reports. */
-#define wuss_SCALEVIEW_MAX  999
+#define wuss_SCALEVIEW_MAX  9999
 
 /** Percentage an adjuster click steps by. */
 #define wuss_SCALEVIEW_STEP 10

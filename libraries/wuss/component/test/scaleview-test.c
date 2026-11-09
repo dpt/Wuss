@@ -186,9 +186,9 @@ result_t scaleview_test(const char *resources)
     goto Failure;
 
   printf("test: Cancel reports nothing; the scale is clamped\n");
-  rc = wuss_scaleview_open(sv, 5000);
+  rc = wuss_scaleview_open(sv, 50000);
   if (rc == result_OK)
-    rc = sv_test_click(wuss, "999");
+    rc = sv_test_click(wuss, "9999");
   if (rc != result_OK)
     goto Failure; /* the field shows the clamped value */
   rc = sv_test_click(wuss, "Cancel");
