@@ -34,8 +34,10 @@
 #define DUCK_SPEED      24  /* px/s, top waddle speed */
 #define DUCK_SWIM       12  /* px/s, top swim speed */
 #define DUCK_TURN       10  /* ticks per eighth of a turn, steering */
-#define DUCK_MAX        7   /* ducks: the pond, ducks and bubbles fit
+#define DUCK_MAX        7   /* ducks: the pond, Mama, ducks and bubbles fit
                              * Pinboard's 16 actor slots */
+#define MAMA_SPEED      16  /* px/s, slower, so the ducks keep up */
+#define MAMA_BOB        4   /* px walked per 1px bob */
 
 /* Actor ids. Pinboard draws actors in slot order, and the pond is sent
  * first, so it takes a lower slot and lies under the ducks.
@@ -45,6 +47,10 @@
 #define DUCK_ACTOR(i)   (1 + 2 * (i))
 #define BUBBLE_ACTOR(i) (2 + 2 * (i))
 #define ACTOR_DUCK(id)  (((id) - 1) / 2) /* the duck a duck or bubble is */
+#define MAMA_ACTOR      (2 * DUCK_MAX + 1) /* after the last bubble */
+
+/* mama_33x34.png is hand-drawn: a column per heading, in duckling_compass
+ * order. She has no walk or swim frames, so she bobs as she goes. */
 
 enum /* the columns of duckling_16x16.png */
 {
@@ -84,13 +90,14 @@ enum /* states */
   TO_POND, /* walks to the pond */
   SWIM,    /* paddles about on it */
   SQUACK,  /* quacks afloat */
+  FOLLOW,  /* walks behind Mama, or the duck before it */
   STATE__LIMIT
 };
 
 #define IN(state) (1u << (state))
 #define ANY       (IN(STATE__LIMIT) - 1)
 #define AWAKE     (IN(PAUSE) | IN(WANDER) | IN(CHASE) | IN(CAUGHT) | \
-                   IN(TO_POND))
+                   IN(TO_POND) | IN(FOLLOW))
 #define AFLOAT    (IN(SWIM) | IN(SQUACK))
 
 enum /* events, as bits */
@@ -105,7 +112,9 @@ enum /* events, as bits */
   ON_FAR     = 1 << 7,  /* the pointer is further off */
   ON_WET     = 1 << 8,  /* the duck is on the pond */
   ON_SPLASH  = 1 << 9,  /* ... and was not last tick */
-  ON_DRY     = 1 << 10  /* the duck or the pond was dragged */
+  ON_DRY     = 1 << 10, /* the duck or the pond was dragged */
+  ON_MAMA    = 1 << 11, /* Mama is out */
+  ON_ALONE   = 1 << 12  /* ... or not */
 };
 
 enum /* what a state does */
@@ -115,7 +124,8 @@ enum /* what a state does */
   STEERS  = 1 << 2, /* heads at the pointer */
   HOMES   = 1 << 3, /* heads for the pond */
   ROAMS   = 1 << 4, /* takes a random heading on entry */
-  BUBBLES = 1 << 5  /* shows the bubble */
+  BUBBLES = 1 << 5, /* shows the bubble */
+  FOLLOWS = 1 << 6  /* heads for its leader, resting when close */
 };
 
 typedef struct duckling_state
@@ -139,7 +149,8 @@ static const duckling_state_t duckling_states[STATE__LIMIT] =
   [SLEEP]   = { FRAME_SLEEP1, FRAME_SLEEP2, 32, 0,                0,   0 },
   [TO_POND] = { FRAME_WALK1,  FRAME_WALK2,   0, WALKS | HOMES,    0,   0 },
   [SWIM]    = { FRAME_SWIM1,  FRAME_SWIM2,  30, SWIMS | ROAMS,  600, 900 },
-  [SQUACK]  = { FRAME_SQUACK, FRAME_SQUACK,  0, BUBBLES,         90,   0 }
+  [SQUACK]  = { FRAME_SQUACK, FRAME_SQUACK,  0, BUBBLES,         90,   0 },
+  [FOLLOW]  = { FRAME_WALK1,  FRAME_WALK2,   0, WALKS | FOLLOWS,  0,   0 }
 };
 
 typedef struct duckling_transition
@@ -165,6 +176,8 @@ static const duckling_transition_t duckling_transitions[] =
   { AWAKE & ~IN(CAUGHT),                 ON_CAUGHT,  CAUGHT  },
   { AWAKE & ~IN(CHASE),                  ON_NEAR,    CHASE   },
   { IN(CHASE) | IN(CAUGHT),              ON_FAR,     PAUSE   },
+  { IN(FOLLOW),                          ON_ALONE,   PAUSE   },
+  { IN(PAUSE) | IN(WANDER),              ON_MAMA,    FOLLOW  },
   { IN(TO_POND),                         ON_WET,     SWIM    },
   { IN(PAUSE),                           ON_WHIM,    TO_POND },
   { IN(PAUSE) | IN(SWIM),                ON_TIMEOUT, WANDER  },
@@ -176,6 +189,7 @@ enum
   DUCK_MENU_INFO,
   DUCK_MENU_ADD,
   DUCK_MENU_REMOVE,
+  DUCK_MENU_MAMA,
   DUCK_MENU_PAUSE,
   DUCK_MENU_QUIT,
   DUCK_MENU__LIMIT
@@ -213,6 +227,11 @@ typedef struct duckling
   point_t              pond;
   duck_t               ducks[DUCK_MAX];
   int                  nducks;
+  const bitmap_t      *mama_frames[8]; /* by duckling_compass heading */
+  size2d_t             mama_size;
+  duck_t               mama;
+  int                  mama_out;
+  int                  mama_face;      /* duckling_compass point shown */
   int                  still;   /* ticks the pointer has been still */
   point_t              pointer; /* where the pointer was last tick */
   int                  paused;
@@ -399,36 +418,38 @@ static void duckling_fire(duckling_t *desk, duck_t *duck, unsigned events)
   }
 }
 
-/* the positions a duck may take wholly inside the w by h area at x,y */
-static box_t duckling_room(int x, int y, int w, int h)
+/* the positions a duck of the given size may take wholly inside the w by h
+ * area at x,y */
+static box_t duckling_room(int x, int y, int w, int h, size2d_t duck)
 {
   box_t room;
 
   room.x0 = x;
   room.y0 = y;
-  room.x1 = x + w - DUCK_SIZE + 1;
-  room.y1 = y + h - DUCK_SIZE + 1;
+  room.x1 = x + w - duck.w + 1;
+  room.y1 = y + h - duck.h + 1;
   return room;
 }
 
-/* where a duck may stand */
-static box_t duckling_land(const duckling_t *desk)
+/* where a duck of the given size may stand */
+static box_t duckling_land(const duckling_t *desk, size2d_t duck)
 {
   size2d_t screen;
 
   screen = wuss_get_screen_size(desk->wuss);
-  return duckling_room(0, 0, screen.w, screen.h - DUCK_ICONBAR);
+  return duckling_room(0, 0, screen.w, screen.h - DUCK_ICONBAR, duck);
 }
 
-/* where a duck may swim
+/* where a duck of the given size may swim: its feet in the same band of the
+ * pond whatever its height, so Mama, taller than the pond, fits too
  * ponytail: a box inside the oval, so a corner can stray onto the bank */
-static box_t duckling_water(const duckling_t *desk)
+static box_t duckling_water(const duckling_t *desk, size2d_t duck)
 {
   size2d_t size;
 
   size = desk->pond_bitmap->size;
-  return duckling_room(desk->pond.x + 8, desk->pond.y - 4, size.w - 16,
-                       size.h);
+  return duckling_room(desk->pond.x + 8, desk->pond.y + 12 - duck.h,
+                       size.w - 16, size.h - 16 + duck.h, duck);
 }
 
 /* one pixel step along the heading, when speed (px/s) allows, bouncing off
@@ -459,31 +480,71 @@ static void duckling_walk(duck_t *duck, box_t bounds, int speed)
   duck->pos.y = CLAMP(duck->pos.y, bounds.y0, bounds.y1 - 1);
 }
 
+/* the events from duck's timer and the pond, of which water is the part it
+ * may swim */
+static unsigned duckling_sense(duckling_t *desk, duck_t *duck, box_t water)
+{
+  unsigned events;
+  int      wet;
+
+  events = 0;
+  if (duck->timer > 0 && --duck->timer == 0)
+    events |= ON_TIMEOUT | (rng_range(&desk->rng, 3) == 0 ? ON_WHIM : 0);
+
+  wet = box_contains_point(&water, duck->pos.x, duck->pos.y);
+  if (wet)
+    events |= ON_WET | (duck->wet ? 0 : ON_SPLASH);
+  duck->wet = wet;
+  return events;
+}
+
+/* Set (*dx,*dy) to the way from duck to whoever it follows, Mama for the
+ * first duck, and return non-zero if it is close enough to rest. */
+static int duckling_ahead(const duckling_t *desk,
+                          const duck_t     *duck,
+                          int              *dx,
+                          int              *dy)
+{
+  const duck_t *leader;
+  size2d_t      size;
+
+  if (duck == desk->ducks)
+  {
+    leader = &desk->mama;
+    size   = desk->mama_size;
+  }
+  else
+  {
+    leader = duck - 1;
+    size   = SIZE2D(DUCK_SIZE, DUCK_SIZE);
+  }
+
+  *dx = leader->pos.x + size.w / 2 - (duck->pos.x + DUCK_SIZE / 2);
+  *dy = leader->pos.y + size.h / 2 - (duck->pos.y + DUCK_SIZE / 2);
+  return MAX(abs(*dx), abs(*dy)) <= (size.w + DUCK_SIZE) / 2 + 2;
+}
+
 /* Sense, step the state machine, act, and return the frame to show. */
 static int duckling_tick(duckling_t *desk,
                          duck_t     *duck,
                          point_t     pointer,
                          int         moved)
 {
-  unsigned                events;
   box_t                   water;
-  int                     wet;
+  unsigned                events;
   int                     dx, dy;
   const duckling_state_t *state;
+  int                     rest;
   int                     alt;
   int                     frame;
 
-  events = moved ? ON_MOVED : 0;
+  water  = duckling_water(desk, SIZE2D(DUCK_SIZE, DUCK_SIZE));
+  events = duckling_sense(desk, duck, water);
+  if (moved)
+    events |= ON_MOVED;
   if (desk->still >= DUCK_SLEEP)
     events |= ON_STILL;
-  if (duck->timer > 0 && --duck->timer == 0)
-    events |= ON_TIMEOUT | (rng_range(&desk->rng, 3) == 0 ? ON_WHIM : 0);
-
-  water = duckling_water(desk);
-  wet   = box_contains_point(&water, duck->pos.x, duck->pos.y);
-  if (wet)
-    events |= ON_WET | (duck->wet ? 0 : ON_SPLASH);
-  duck->wet = wet;
+  events |= desk->mama_out ? ON_MAMA : ON_ALONE;
 
   dx = pointer.x - (duck->pos.x + DUCK_SIZE / 2);
   dy = pointer.y - (duck->pos.y + DUCK_SIZE / 2);
@@ -497,16 +558,27 @@ static int duckling_tick(duckling_t *desk,
   duckling_fire(desk, duck, events);
 
   state = &duckling_states[duck->state];
+  rest  = 0;
   /* ponytail: eight-way steps, so a chase zigzags towards the pointer */
   if (state->does & STEERS)
     duckling_steer(duck, dx, dy);
   if (state->does & HOMES)
     duckling_steer(duck, (water.x0 + water.x1) / 2 - duck->pos.x,
                    (water.y0 + water.y1) / 2 - duck->pos.y);
-  if (state->does & WALKS)
-    duckling_walk(duck, duckling_land(desk), DUCK_SPEED);
+  if (state->does & FOLLOWS)
+  {
+    rest = duckling_ahead(desk, duck, &dx, &dy);
+    if (!rest)
+      duckling_steer(duck, dx, dy);
+  }
+  if ((state->does & WALKS) && !rest)
+    duckling_walk(duck, duckling_land(desk, SIZE2D(DUCK_SIZE, DUCK_SIZE)),
+                  DUCK_SPEED);
   if (state->does & SWIMS)
     duckling_walk(duck, water, DUCK_SWIM);
+
+  if (rest)
+    return FRAME_IDLE;
 
   alt   = state->period ? duck->ticks / state->period : duck->steps;
   frame = (alt & 1) ? state->other : state->frame;
@@ -516,6 +588,59 @@ static int duckling_tick(duckling_t *desk,
     frame += (duck->heading.y > 0 ? FRAME_FRONT1 : FRAME_BACK1) -
              FRAME_WALK1;
   return frame;
+}
+
+/* Mama runs the same machine, but with only the pointerless events, so she
+ * never chases, quacks or sleeps. She turns on the spot before she sets off
+ * a new way, an eighth every DUCK_TURN ticks, and bobs as she goes. */
+static void duckling_mama_tick(duckling_t *desk)
+{
+  duck_t                 *mama;
+  box_t                   water;
+  const duckling_state_t *state;
+  int                     to;
+  int                     turn;
+  int                     bob;
+  const bitmap_t         *bitmap;
+  point_t                 pos;
+
+  mama  = &desk->mama;
+  water = duckling_water(desk, desk->mama_size);
+  duckling_fire(desk, mama, duckling_sense(desk, mama, water));
+
+  state = &duckling_states[mama->state];
+  if (state->does & HOMES)
+    mama->heading = POINT(SIGN((water.x0 + water.x1) / 2 - mama->pos.x),
+                          SIGN((water.y0 + water.y1) / 2 - mama->pos.y));
+
+  to   = duckling_bearing(mama->heading);
+  turn = to < 0 ? 0 : (to - desk->mama_face + 8) % 8;
+  if (turn != 0 && ++mama->turning >= DUCK_TURN)
+  {
+    mama->turning   = 0;
+    desk->mama_face = (desk->mama_face + (turn <= 4 ? 1 : 7)) % 8;
+  }
+
+  bob = 0;
+  if (turn <= 1 || turn == 7) /* a slight turn she makes on the move */
+  {
+    if (state->does & WALKS)
+      duckling_walk(mama, duckling_land(desk, desk->mama_size), MAMA_SPEED);
+    if (state->does & SWIMS)
+      duckling_walk(mama, water, DUCK_SWIM);
+    if (state->does & (WALKS | SWIMS))
+      bob = (mama->steps / MAMA_BOB) & 1;
+  }
+
+  bitmap = desk->mama_frames[desk->mama_face];
+  pos    = POINT(mama->pos.x, mama->pos.y - bob);
+  if (bitmap == mama->shown &&
+      pos.x == mama->shown_pos.x && pos.y == mama->shown_pos.y)
+    return;
+
+  mama->shown     = bitmap;
+  mama->shown_pos = pos;
+  duckling_send(desk, wuss_PINBOARD_ACTOR_SET, MAMA_ACTOR, bitmap, pos);
 }
 
 static void duckling_idle(duckling_t *desk)
@@ -536,6 +661,9 @@ static void duckling_idle(duckling_t *desk)
   else if (desk->still < DUCK_SLEEP)
     desk->still++;
   desk->pointer = pointer;
+
+  if (desk->mama_out)
+    duckling_mama_tick(desk); /* first, so the ducks follow where she is */
 
   for (i = 0; i < desk->nducks; i++)
   {
@@ -575,7 +703,7 @@ static void duckling_add(duckling_t *desk)
   if (desk->nducks == DUCK_MAX)
     return;
 
-  land = duckling_land(desk);
+  land = duckling_land(desk, SIZE2D(DUCK_SIZE, DUCK_SIZE));
   duck = &desk->ducks[desk->nducks++];
   memset(duck, 0, sizeof(*duck));
   duck->pos = POINT(rng_range(&desk->rng, MAX(land.x1 - 1, 1)),
@@ -594,6 +722,29 @@ static void duckling_remove(duckling_t *desk)
                 NULL, POINT(0, 0));
   duckling_send(desk, wuss_PINBOARD_ACTOR_REMOVE, BUBBLE_ACTOR(desk->nducks),
                 NULL, POINT(0, 0));
+}
+
+/* Mama out somewhere on the backdrop, facing the viewer, or back in */
+static void duckling_mama(duckling_t *desk, int out)
+{
+  box_t   land;
+  duck_t *mama;
+
+  desk->mama_out = out;
+  if (!out)
+  {
+    duckling_send(desk, wuss_PINBOARD_ACTOR_REMOVE, MAMA_ACTOR, NULL,
+                  POINT(0, 0));
+    return;
+  }
+
+  land = duckling_land(desk, desk->mama_size);
+  mama = &desk->mama;
+  memset(mama, 0, sizeof(*mama));
+  mama->pos = POINT(rng_range(&desk->rng, MAX(land.x1 - 1, 1)),
+                    rng_range(&desk->rng, MAX(land.y1 - 1, 1)));
+  desk->mama_face = 2; /* south */
+  duckling_enter(desk, mama, WANDER);
 }
 
 /* the duck or the pond was dragged */
@@ -617,7 +768,7 @@ static void duckling_message(duckling_t *desk, const wuss_message_t *msg)
   {
     click = (const wuss_pinboard_actor_click_t *) msg->data;
     if (click->actor.owner != desk->delegate ||
-        click->actor.id == POND_ACTOR ||
+        click->actor.id == POND_ACTOR || click->actor.id == MAMA_ACTOR ||
         ACTOR_DUCK(click->actor.id) >= desk->nducks || desk->paused)
       return;
     desk->still = 0; /* so it does not drop straight back to sleep */
@@ -636,6 +787,14 @@ static void duckling_message(duckling_t *desk, const wuss_message_t *msg)
       desk->pond = drop->pos;
       for (i = 0; i < desk->nducks; i++) /* those afloat come ashore */
         duckling_dry(desk, &desk->ducks[i]);
+      if (desk->mama_out)
+        duckling_dry(desk, &desk->mama);
+    }
+    else if (drop->actor.id == MAMA_ACTOR && desk->mama_out)
+    {
+      desk->mama.pos       = drop->pos;
+      desk->mama.shown_pos = drop->pos;
+      duckling_dry(desk, &desk->mama);
     }
     else if (drop->actor.id % 2 == 1 &&
              ACTOR_DUCK(drop->actor.id) < desk->nducks)
@@ -656,6 +815,7 @@ static result_t duckling_menu_open(duckling_t *desk)
   wuss_proginfo_set_desc(&desc);
   desk->menu_items[DUCK_MENU_INFO].window =
     wuss_proginfo_window(desk->delegate);
+  wuss_menu_tick_item(&desk->menu, DUCK_MENU_MAMA, desk->mama_out);
   wuss_menu_tick_item(&desk->menu, DUCK_MENU_PAUSE, desk->paused);
   duckling_shade_rows(desk);
 
@@ -702,6 +862,12 @@ static result_t duckling_handle(wuss_window_t      *window,
     case DUCK_MENU_REMOVE:
       duckling_remove(desk);
       duckling_shade_rows(desk);
+      break;
+
+    case DUCK_MENU_MAMA:
+      duckling_mama(desk, !desk->mama_out);
+      wuss_menu_tick_item_live(desk->menu_handle, &desk->menu,
+                               DUCK_MENU_MAMA, desk->mama_out);
       break;
 
     case DUCK_MENU_PAUSE:
@@ -782,6 +948,8 @@ result_t duckling_app_create(wuss_t *wuss)
                  wuss_MENU_ITEM_DASHED);
   WUSS_MENU_ITEM(desk->menu_items, DUCK_MENU_REMOVE, "Remove duck",
                  wuss_MENU_ITEM_NONE);
+  WUSS_MENU_ITEM(desk->menu_items, DUCK_MENU_MAMA, "Mama duck",
+                 wuss_MENU_ITEM_NONE);
   WUSS_MENU_ITEM(desk->menu_items, DUCK_MENU_PAUSE, "Pause",
                  wuss_MENU_ITEM_DASHED);
   WUSS_MENU_ITEM(desk->menu_items, DUCK_MENU_QUIT, "Quit",
@@ -815,6 +983,18 @@ result_t duckling_app_create(wuss_t *wuss)
       goto failure;
     }
   }
+
+  for (i = 0; i < 8; i++)
+  {
+    desk->mama_frames[i] = wuss_task_iconpool_frame(desk->delegate, "mama",
+                                                    i);
+    if (desk->mama_frames[i] == NULL)
+    {
+      rc = result_NOT_FOUND;
+      goto failure;
+    }
+  }
+  desk->mama_size = desk->mama_frames[0]->size;
 
   desk->pond_bitmap = wuss_task_iconpool_find(desk->delegate, "pond");
   if (desk->pond_bitmap == NULL)
