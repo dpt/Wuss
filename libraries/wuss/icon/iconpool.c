@@ -141,18 +141,19 @@ static int icons_leaf_compare(const void *a, const void *b)
  * ICONS_DIM_DIGITS digits. Advances *p past it. Returns 0 if there is none. */
 static int icons_parse_dim(const char **p)
 {
-  int v;
-  int digits;
+  char *end;
+  long  v;
 
-  if (**p == '0')
+  /* strtol alone would take a sign, spaces and leading zeros */
+  if (!isdigit((unsigned char) **p) || **p == '0')
     return 0;
 
-  v = 0;
-  for (digits = 0; digits < ICONS_DIM_DIGITS && isdigit((unsigned char) **p);
-       digits++)
-    v = v * 10 + *(*p)++ - '0';
+  v = strtol(*p, &end, 10);
+  if (end - *p > ICONS_DIM_DIGITS)
+    return 0;
 
-  return v;
+  *p = end;
+  return (int) v;
 }
 
 /* If name ends in "_<w>x<h>" it names a sprite sheet: cut the suffix off

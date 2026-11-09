@@ -317,11 +317,6 @@ static void deskduck_wander(deskduck_t *desk, duck_t *duck)
   while (duck->heading.x == 0 && duck->heading.y == 0);
 }
 
-static int deskduck_sign(int v)
-{
-  return (v > 0) - (v < 0);
-}
-
 /* the eight headings, clockwise from east */
 static const point_t deskduck_compass[8] =
 {
@@ -349,7 +344,7 @@ static void deskduck_steer(duck_t *duck, int dx, int dy)
   int to, from;
   int turn;
 
-  to = deskduck_bearing(POINT(deskduck_sign(dx), deskduck_sign(dy)));
+  to = deskduck_bearing(POINT(SIGN(dx), SIGN(dy)));
   if (to < 0 || ++duck->turning < DUCK_TURN)
     return;
   duck->turning = 0;
@@ -404,33 +399,36 @@ static void deskduck_fire(deskduck_t *desk, duck_t *duck, unsigned events)
   }
 }
 
-/* where a duck may stand: the positions it may take */
+/* the positions a duck may take wholly inside the w by h area at x,y */
+static box_t deskduck_room(int x, int y, int w, int h)
+{
+  box_t room;
+
+  room.x0 = x;
+  room.y0 = y;
+  room.x1 = x + w - DUCK_SIZE + 1;
+  room.y1 = y + h - DUCK_SIZE + 1;
+  return room;
+}
+
+/* where a duck may stand */
 static box_t deskduck_land(const deskduck_t *desk)
 {
   size2d_t screen;
-  box_t    land;
 
   screen = wuss_get_screen_size(desk->wuss);
-  land.x0 = 0;
-  land.y0 = 0;
-  land.x1 = screen.w - DUCK_SIZE + 1;
-  land.y1 = screen.h - DUCK_ICONBAR - DUCK_SIZE + 1;
-  return land;
+  return deskduck_room(0, 0, screen.w, screen.h - DUCK_ICONBAR);
 }
 
-/* where a duck may swim: the positions it may take on the pond
+/* where a duck may swim
  * ponytail: a box inside the oval, so a corner can stray onto the bank */
 static box_t deskduck_water(const deskduck_t *desk)
 {
   size2d_t size;
-  box_t    water;
 
-  size     = desk->pond_bitmap->size;
-  water.x0 = desk->pond.x + 8;
-  water.y0 = desk->pond.y - 4;
-  water.x1 = desk->pond.x + size.w - DUCK_SIZE - 8 + 1;
-  water.y1 = desk->pond.y + size.h - DUCK_SIZE - 4 + 1;
-  return water;
+  size = desk->pond_bitmap->size;
+  return deskduck_room(desk->pond.x + 8, desk->pond.y - 4, size.w - 16,
+                       size.h);
 }
 
 /* one pixel step along the heading, when speed (px/s) allows, bouncing off
@@ -618,28 +616,31 @@ static void deskduck_message(deskduck_t *desk, const wuss_message_t *msg)
       msg->size == sizeof(*click))
   {
     click = (const wuss_pinboard_actor_click_t *) msg->data;
-    if (click->owner != desk->delegate || click->id == POND_ACTOR ||
-        ACTOR_DUCK(click->id) >= desk->nducks || desk->paused)
+    if (click->actor.owner != desk->delegate ||
+        click->actor.id == POND_ACTOR ||
+        ACTOR_DUCK(click->actor.id) >= desk->nducks || desk->paused)
       return;
     desk->still = 0; /* so it does not drop straight back to sleep */
-    deskduck_fire(desk, &desk->ducks[ACTOR_DUCK(click->id)], ON_CLICK);
+    deskduck_fire(desk, &desk->ducks[ACTOR_DUCK(click->actor.id)],
+                  ON_CLICK);
   }
   else if (msg->action == wuss_MESSAGE_PINBOARD_ACTOR_DROP &&
            msg->size == sizeof(*drop))
   {
     drop = (const wuss_pinboard_actor_drop_t *) msg->data;
-    if (drop->owner != desk->delegate || drop->cancelled)
+    if (drop->actor.owner != desk->delegate || drop->cancelled)
       return;
     /* Pinboard has already moved it there */
-    if (drop->id == POND_ACTOR)
+    if (drop->actor.id == POND_ACTOR)
     {
       desk->pond = drop->pos;
       for (i = 0; i < desk->nducks; i++) /* those afloat come ashore */
         deskduck_dry(desk, &desk->ducks[i]);
     }
-    else if (drop->id % 2 == 1 && ACTOR_DUCK(drop->id) < desk->nducks)
+    else if (drop->actor.id % 2 == 1 &&
+             ACTOR_DUCK(drop->actor.id) < desk->nducks)
     {
-      duck            = &desk->ducks[ACTOR_DUCK(drop->id)];
+      duck            = &desk->ducks[ACTOR_DUCK(drop->actor.id)];
       duck->pos       = drop->pos;
       duck->shown_pos = drop->pos;
       deskduck_dry(desk, duck);

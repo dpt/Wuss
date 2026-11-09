@@ -810,6 +810,19 @@ static void pinboard_actor_message(pinboard_t                  *pb,
     pinboard_invalidate_actor(pb, i);
 }
 
+/* broadcast an actor event about actor i: ref heads a payload of size
+ * bytes, the rest of it filled in by the caller */
+static void pinboard_actor_send(pinboard_t                *pb,
+                                int                        i,
+                                int                        action,
+                                wuss_pinboard_actor_ref_t *ref,
+                                size_t                     size)
+{
+  ref->owner = pb->actors[i].owner;
+  ref->id    = pb->actors[i].id;
+  (void) wuss_send(pb->wuss, pb->task, NULL, action, ref, size, 0);
+}
+
 /* a SELECT or ADJUST press on actor i: tell its owner */
 static void pinboard_actor_click(pinboard_t   *pb,
                                  int           i,
@@ -818,13 +831,10 @@ static void pinboard_actor_click(pinboard_t   *pb,
 {
   wuss_pinboard_actor_click_t click;
 
-  click.owner  = pb->actors[i].owner;
-  click.id     = pb->actors[i].id;
   click.button = button;
   click.point  = p;
-  (void) wuss_send(pb->wuss, pb->task, NULL,
-                   wuss_MESSAGE_PINBOARD_ACTOR_CLICK, &click, sizeof(click),
-                   0);
+  pinboard_actor_send(pb, i, wuss_MESSAGE_PINBOARD_ACTOR_CLICK,
+                      &click.actor, sizeof(click));
 }
 
 static void pinboard_actor_drag_maybe(pinboard_t *pb, point_t p)
@@ -868,12 +878,10 @@ static void pinboard_actor_drag_end(pinboard_t         *pb,
   }
   pinboard_invalidate_actor(pb, i);
 
-  drop.owner     = pb->actors[i].owner;
-  drop.id        = pb->actors[i].id;
   drop.pos       = pb->actors[i].pos;
   drop.cancelled = event->data.drag_end.cancelled;
-  (void) wuss_send(pb->wuss, pb->task, NULL,
-                   wuss_MESSAGE_PINBOARD_ACTOR_DROP, &drop, sizeof(drop), 0);
+  pinboard_actor_send(pb, i, wuss_MESSAGE_PINBOARD_ACTOR_DROP, &drop.actor,
+                      sizeof(drop));
 }
 
 /* ----------------------------------------------------------------------- */
@@ -1044,6 +1052,13 @@ static result_t pinboard_menu_select(pinboard_t         *pb,
 
 /* ----------------------------------------------------------------------- */
 
+/* forget any press on a pin or an actor: it can no longer become a drag */
+static void pinboard_press_clear(pinboard_t *pb)
+{
+  pb->press       = -1;
+  pb->actor_press = -1;
+}
+
 static result_t pinboard_mouse(pinboard_t *pb, const wuss_event_t *event)
 {
   point_t       p;
@@ -1060,8 +1075,7 @@ static result_t pinboard_mouse(pinboard_t *pb, const wuss_event_t *event)
     /* hover moves carry no button state: only a captured move is a drag */
     if (!wuss_is_capturing(pb->wuss))
     {
-      pb->press       = -1;
-      pb->actor_press = -1;
+      pinboard_press_clear(pb);
     }
     else if (pb->band.active)
     {
@@ -1080,8 +1094,7 @@ static result_t pinboard_mouse(pinboard_t *pb, const wuss_event_t *event)
   case wuss_MOUSE_UP:
     if (pb->band.active)
       pinboard_band_end(pb);
-    pb->press       = -1;
-    pb->actor_press = -1;
+    pinboard_press_clear(pb);
     return result_OK;
 
   default:
@@ -1235,8 +1248,7 @@ static result_t pinboard_handle(wuss_window_t      *window,
     return pinboard_mouse(pb, event);
 
   case wuss_EVENT_POINTER_EXIT:
-    pb->press       = -1;
-    pb->actor_press = -1;
+    pinboard_press_clear(pb);
     return result_OK;
 
   case wuss_EVENT_RELAYOUT:

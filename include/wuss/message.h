@@ -109,30 +109,39 @@ typedef struct
 wuss_pinboard_actor_t;
 
 /**
- * Wire payload for \ref wuss_MESSAGE_PINBOARD_ACTOR_CLICK. Broadcast: a
- * recipient ignores it unless \c owner is itself.
+ * The actor a Pinboard broadcast is about: the first member of each actor
+ * event payload. Broadcast: a recipient ignores the event unless \c owner is
+ * itself.
  */
 typedef struct
 {
-  const wuss_task_t *owner;  /**< Actor's owner. */
-  int                id;     /**< Actor's id. */
-  wuss_button_t      button; /**< wuss_BUTTON_SELECT or _ADJUST. */
-  point_t            point;  /**< Pointer, in screen coordinates. */
+  const wuss_task_t *owner; /**< Actor's owner. */
+  int                id;    /**< Actor's id. */
+}
+wuss_pinboard_actor_ref_t;
+
+/**
+ * Wire payload for \ref wuss_MESSAGE_PINBOARD_ACTOR_CLICK.
+ */
+typedef struct
+{
+  wuss_pinboard_actor_ref_t actor;  /**< The actor clicked. */
+  wuss_button_t             button; /**< wuss_BUTTON_SELECT or _ADJUST. */
+  point_t                   point;  /**< Pointer, in screen coordinates. */
 }
 wuss_pinboard_actor_click_t;
 
 /**
  * Wire payload for \ref wuss_MESSAGE_PINBOARD_ACTOR_DROP. A SELECT drag
  * hides the actor and drags its image; on a drop Pinboard moves the actor to
- * \c pos, on Escape it shows it where it was. Broadcast: a recipient ignores
- * it unless \c owner is itself.
+ * \c pos, on Escape it shows it where it was.
  */
 typedef struct
 {
-  const wuss_task_t *owner;     /**< Actor's owner. */
-  int                id;        /**< Actor's id. */
-  point_t            pos;       /**< Actor's position now. */
-  int                cancelled; /**< Non-zero if Escape cancelled it. */
+  wuss_pinboard_actor_ref_t actor;     /**< The actor dropped. */
+  point_t                   pos;       /**< Actor's position now. */
+  int                       cancelled; /**< Non-zero if Escape cancelled
+                                        *   it. */
 }
 wuss_pinboard_actor_drop_t;
 
