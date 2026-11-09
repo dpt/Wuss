@@ -1,22 +1,22 @@
 #!/usr/bin/env python3
-# gen_deskduck_sprites.py -- draw the DeskDuck task's sprites as PNGs
+# gen_duckling_sprites.py -- draw the Duckling task's sprites as PNGs
 #
 # Each frame is a 16x16 character grid in a small palette, side views facing
 # left.
-# The frames go into one sprite sheet, deskduck_16x16.png, in the task's icon
+# The frames go into one sprite sheet, duckling_16x16.png, in the task's icon
 # pool directory: the top row faces right, the bottom row faces left, as
 # Pinboard draws actors whole with no flipping. The sleep frames' z is laid
 # over after mirroring, so it reads the right way round in both rows. The
-# column order matches DeskDuck's frame enum. The pond it swims on is
-# pond.png. The icon bar uses the shared pool's hand-drawn app_deskduck.png.
+# column order matches Duckling's frame enum. The pond it swims on is
+# pond.png. The icon bar uses the shared pool's hand-drawn app_duckling.png.
 #
-# Usage: tools/gen_deskduck_sprites.py   (from the repo root)
+# Usage: tools/gen_duckling_sprites.py   (from the repo root)
 
 import os
 import struct
 import zlib
 
-OUT = "resources/wuss-tasks/deskduck/iconpool"
+OUT = "resources/wuss-tasks/duckling/iconpool"
 SIZE = 16
 
 PALETTE = {
@@ -209,7 +209,7 @@ def main():
         right[i] = zed(right[i], SIZE - col - len(z[0]), top, z)
     for grid in left + right:
         assert len(grid) == SIZE and all(len(row) == SIZE for row in grid)
-    write_png(os.path.join(OUT, "deskduck_%dx%d.png" % (SIZE, SIZE)),
+    write_png(os.path.join(OUT, "duckling_%dx%d.png" % (SIZE, SIZE)),
               ["".join(rows) for rows in zip(*right)] +
               ["".join(rows) for rows in zip(*left)])
     write_png(os.path.join(OUT, "pond.png"), pond())

@@ -508,10 +508,10 @@ if(BUILD_APPS)
         apps/wuss/tasks/clock/clock.c
         apps/wuss/tasks/configuring/configuring.c
         apps/wuss/tasks/curving/curving.c
-        apps/wuss/tasks/deskduck/deskduck.c
         apps/wuss/tasks/dithering/dithering.c
         apps/wuss/tasks/display/display.c
         apps/wuss/tasks/doughnut/doughnut.c
+        apps/wuss/tasks/duckling/duckling.c
         apps/wuss/tasks/effecting/effecting.c
         apps/wuss/tasks/effecting/effecting-edit.c
         apps/wuss/tasks/filing/filing.c
