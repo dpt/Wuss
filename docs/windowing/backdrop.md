@@ -147,8 +147,8 @@ Pinboard
 ## Actors
 
 An actor is a bitmap that another task shows on the backdrop, such as the
-DeskDuck task's duck. The Pinboard draws actors over the pinned icons and
-behind every window. It holds at most 8 at once.
+DeskDuck task's ducks. The Pinboard draws actors over the pinned icons and
+behind every window. It holds at most 16 at once.
 
 - **Set and remove.** The owner broadcasts `wuss_MESSAGE_PINBOARD_ACTOR` with
   a `wuss_pinboard_actor_t`: an operation, an id that is unique to the

@@ -34,12 +34,17 @@
 #define DUCK_SPEED      24  /* px/s, top waddle speed */
 #define DUCK_SWIM       12  /* px/s, top swim speed */
 #define DUCK_TURN       10  /* ticks per eighth of a turn, chasing */
+#define DUCK_MAX        7   /* ducks: the pond, ducks and bubbles fit
+                             * Pinboard's 16 actor slots */
 
 /* Actor ids. Pinboard draws actors in slot order, and the pond is sent
- * first, so it takes a lower slot and lies under the duck.
- * ponytail: holds only while no other task frees a slot below; give actors
- * a depth if that bites. */
-enum { POND_ACTOR, DUCK_ACTOR, BUBBLE_ACTOR };
+ * first, so it takes a lower slot and lies under the ducks.
+ * ponytail: holds only while no other task frees a slot below, and a bubble
+ * may take a slot under a later duck; give actors a depth if that bites. */
+#define POND_ACTOR      0
+#define DUCK_ACTOR(i)   (1 + 2 * (i))
+#define BUBBLE_ACTOR(i) (2 + 2 * (i))
+#define ACTOR_DUCK(id)  (((id) - 1) / 2) /* the duck a duck or bubble is */
 
 enum /* the columns of deskduck_16x16.png */
 {
@@ -169,10 +174,29 @@ static const deskduck_transition_t deskduck_transitions[] =
 enum
 {
   DUCK_MENU_INFO,
+  DUCK_MENU_ADD,
+  DUCK_MENU_REMOVE,
   DUCK_MENU_PAUSE,
   DUCK_MENU_QUIT,
   DUCK_MENU__LIMIT
 };
+
+typedef struct duck
+{
+  point_t         pos;
+  point_t         heading; /* each -1, 0 or 1 */
+  int             left;    /* faces left */
+  int             state;
+  int             timer;   /* ticks left in the state, 0 for none */
+  int             wet;     /* on the pond last tick */
+  int             ticks;
+  int             stride;  /* px/s summed per tick; a step at 60 */
+  int             turning; /* ticks since the last turn */
+  int             steps;   /* px walked, for the waddle frame */
+  const bitmap_t *shown;   /* the frame last sent, NULL for none */
+  point_t         shown_pos;
+}
+duck_t;
 
 typedef struct deskduck
 {
@@ -185,22 +209,12 @@ typedef struct deskduck
   const bitmap_t      *frames[FRAME__LIMIT][2]; /* facing right, left */
   bitmap_t             bubble; /* "Quack!"; no base if there is no font */
   rng_t                rng;
-  point_t              pos;
-  point_t              heading; /* each -1, 0 or 1 */
-  int                  left;    /* faces left */
-  int                  state;
-  int                  timer;   /* ticks left in the state, 0 for none */
   const bitmap_t      *pond_bitmap;
   point_t              pond;
-  int                  wet;     /* on the pond last tick */
+  duck_t               ducks[DUCK_MAX];
+  int                  nducks;
   int                  still;   /* ticks the pointer has been still */
-  int                  ticks;
-  int                  stride;  /* px/s summed per tick; a step at 60 */
-  int                  turning; /* ticks since the last turn */
-  int                  steps;   /* px walked, for the waddle frame */
   point_t              pointer; /* where the pointer was last tick */
-  const bitmap_t      *shown;   /* the frame last sent, NULL for none */
-  point_t              shown_pos;
   int                  paused;
   int                  quit;    /* destroy the task on the next idle */
 }
@@ -208,7 +222,7 @@ deskduck_t;
 
 /* ----------------------------------------------------------------------- */
 
-static void deskduck_send(deskduck_t     *duck,
+static void deskduck_send(deskduck_t     *desk,
                           int             op,
                           int             id,
                           const bitmap_t *bitmap,
@@ -221,19 +235,31 @@ static void deskduck_send(deskduck_t     *duck,
   actor.id     = id;
   actor.bitmap = bitmap;
   actor.pos    = pos;
-  (void) wuss_send_recorded(duck->wuss, duck->delegate, NULL,
+  (void) wuss_send_recorded(desk->wuss, desk->delegate, NULL,
                             wuss_MESSAGE_PINBOARD_ACTOR, &actor,
                             sizeof(actor), 0, NULL);
 }
 
-static point_t deskduck_bubble_pos(const deskduck_t *duck)
+/* duck's index, for its actor ids */
+static int deskduck_index(const deskduck_t *desk, const duck_t *duck)
 {
-  return POINT(duck->pos.x + DUCK_SIZE / 2 - duck->bubble.size.w / 2,
-               duck->pos.y - duck->bubble.size.h);
+  return (int) (duck - desk->ducks);
+}
+
+/* show duck's bubble, if it has one */
+static void deskduck_bubble_show(deskduck_t *desk, const duck_t *duck)
+{
+  if (desk->bubble.base == NULL)
+    return;
+
+  deskduck_send(desk, wuss_PINBOARD_ACTOR_SET,
+                BUBBLE_ACTOR(deskduck_index(desk, duck)), &desk->bubble,
+                POINT(duck->pos.x + DUCK_SIZE / 2 - desk->bubble.size.w / 2,
+                      duck->pos.y - desk->bubble.size.h));
 }
 
 /* the bubble's bitmap: "Quack!" in the system font on a rounded rectangle */
-static result_t deskduck_bubble_create(deskduck_t *duck)
+static result_t deskduck_bubble_create(deskduck_t *desk)
 {
   result_t       rc;
   bmfont_t      *font;
@@ -244,13 +270,13 @@ static result_t deskduck_bubble_create(deskduck_t *duck)
   screen_t       scr;
   point_t        pos;
 
-  font = wuss_get_font(duck->wuss);
+  font = wuss_get_font(desk->wuss);
   if (font == NULL)
     return result_OK; /* no bubble */
 
   bmfont_get_info(font, NULL, &height, &ascent, NULL);
   width = 0;
-  rc = wuss_text_measure(duck->wuss, 0, "Quack!", 6, INT_MAX, NULL, &width);
+  rc = wuss_text_measure(desk->wuss, 0, "Quack!", 6, INT_MAX, NULL, &width);
   if (rc != result_OK)
     return rc;
 
@@ -259,7 +285,7 @@ static result_t deskduck_bubble_create(deskduck_t *duck)
   if (base == NULL)
     return result_OOM;
 
-  rc = bitmap_init(&duck->bubble, size, pixelfmt_bgra8888, size.w * 4, NULL,
+  rc = bitmap_init(&desk->bubble, size, pixelfmt_bgra8888, size.w * 4, NULL,
                    base);
   if (rc != result_OK)
   {
@@ -267,13 +293,13 @@ static result_t deskduck_bubble_create(deskduck_t *duck)
     return rc;
   }
 
-  bitmap_clear(&duck->bubble, colour_rgba(0, 0, 0, 0));
-  screen_for_bitmap(&scr, &duck->bubble);
+  bitmap_clear(&desk->bubble, colour_rgba(0, 0, 0, 0));
+  screen_for_bitmap(&scr, &desk->bubble);
   screen_fill_rounded_rect(&scr, 0, 0, size, 4, colour_rgb(255, 255, 255));
   screen_draw_rounded_rect(&scr, 0, 0, size, 4, colour_rgb(0, 0, 0));
   pos = POINT(5, 3 + ascent);
 
-  return wuss_text_draw(duck->wuss, 0, &scr, "Quack!", 6,
+  return wuss_text_draw(desk->wuss, 0, &scr, "Quack!", 6,
                         colour_rgb(0, 0, 0), colour_rgba(0, 0, 0, 0), &pos,
                         NULL);
 }
@@ -281,12 +307,12 @@ static result_t deskduck_bubble_create(deskduck_t *duck)
 /* ----------------------------------------------------------------------- */
 
 /* a new random heading, never standing still */
-static void deskduck_wander(deskduck_t *duck)
+static void deskduck_wander(deskduck_t *desk, duck_t *duck)
 {
   do
   {
-    duck->heading.x = rng_range(&duck->rng, 3) - 1;
-    duck->heading.y = rng_range(&duck->rng, 3) - 1;
+    duck->heading.x = rng_range(&desk->rng, 3) - 1;
+    duck->heading.y = rng_range(&desk->rng, 3) - 1;
   }
   while (duck->heading.x == 0 && duck->heading.y == 0);
 }
@@ -318,7 +344,7 @@ static int deskduck_bearing(point_t heading)
 
 /* Turn a compass point towards (dx,dy) every DUCK_TURN ticks, the shorter
  * way round, so it arcs about and shows the front or back view on the way. */
-static void deskduck_steer(deskduck_t *duck, int dx, int dy)
+static void deskduck_steer(duck_t *duck, int dx, int dy)
 {
   int to, from;
   int turn;
@@ -340,7 +366,7 @@ static void deskduck_steer(deskduck_t *duck, int dx, int dy)
     duck->heading = deskduck_compass[(from + (turn <= 4 ? 1 : 7)) % 8];
 }
 
-static void deskduck_enter(deskduck_t *duck, int to)
+static void deskduck_enter(deskduck_t *desk, duck_t *duck, int to)
 {
   const deskduck_state_t *from;
   const deskduck_state_t *state;
@@ -349,22 +375,21 @@ static void deskduck_enter(deskduck_t *duck, int to)
   state = &deskduck_states[to];
 
   if ((from->does & BUBBLES) && !(state->does & BUBBLES))
-    deskduck_send(duck, wuss_PINBOARD_ACTOR_REMOVE, BUBBLE_ACTOR, NULL,
-                  duck->pos);
-  if ((state->does & BUBBLES) && duck->bubble.base != NULL)
-    deskduck_send(duck, wuss_PINBOARD_ACTOR_SET, BUBBLE_ACTOR,
-                  &duck->bubble, deskduck_bubble_pos(duck));
+    deskduck_send(desk, wuss_PINBOARD_ACTOR_REMOVE,
+                  BUBBLE_ACTOR(deskduck_index(desk, duck)), NULL, duck->pos);
+  if (state->does & BUBBLES)
+    deskduck_bubble_show(desk, duck);
 
   duck->state = to;
   duck->timer = state->ticks;
   if (state->spread > 0)
-    duck->timer += rng_range(&duck->rng, state->spread);
+    duck->timer += rng_range(&desk->rng, state->spread);
   if (state->does & ROAMS)
-    deskduck_wander(duck);
+    deskduck_wander(desk, duck);
 }
 
 /* take the first transition the events allow, if any */
-static void deskduck_fire(deskduck_t *duck, unsigned events)
+static void deskduck_fire(deskduck_t *desk, duck_t *duck, unsigned events)
 {
   size_t i;
 
@@ -373,19 +398,19 @@ static void deskduck_fire(deskduck_t *duck, unsigned events)
     if ((deskduck_transitions[i].from & IN(duck->state)) &&
         (deskduck_transitions[i].on & events))
     {
-      deskduck_enter(duck, deskduck_transitions[i].to);
+      deskduck_enter(desk, duck, deskduck_transitions[i].to);
       return;
     }
   }
 }
 
-/* where the duck may stand: the positions it may take */
-static box_t deskduck_land(const deskduck_t *duck)
+/* where a duck may stand: the positions it may take */
+static box_t deskduck_land(const deskduck_t *desk)
 {
   size2d_t screen;
   box_t    land;
 
-  screen = wuss_get_screen_size(duck->wuss);
+  screen = wuss_get_screen_size(desk->wuss);
   land.x0 = 0;
   land.y0 = 0;
   land.x1 = screen.w - DUCK_SIZE + 1;
@@ -393,24 +418,24 @@ static box_t deskduck_land(const deskduck_t *duck)
   return land;
 }
 
-/* where the duck may swim: the positions it may take on the pond
+/* where a duck may swim: the positions it may take on the pond
  * ponytail: a box inside the oval, so a corner can stray onto the bank */
-static box_t deskduck_water(const deskduck_t *duck)
+static box_t deskduck_water(const deskduck_t *desk)
 {
   size2d_t size;
   box_t    water;
 
-  size     = duck->pond_bitmap->size;
-  water.x0 = duck->pond.x + 8;
-  water.y0 = duck->pond.y - 4;
-  water.x1 = duck->pond.x + size.w - DUCK_SIZE - 8 + 1;
-  water.y1 = duck->pond.y + size.h - DUCK_SIZE - 4 + 1;
+  size     = desk->pond_bitmap->size;
+  water.x0 = desk->pond.x + 8;
+  water.y0 = desk->pond.y - 4;
+  water.x1 = desk->pond.x + size.w - DUCK_SIZE - 8 + 1;
+  water.y1 = desk->pond.y + size.h - DUCK_SIZE - 4 + 1;
   return water;
 }
 
 /* one pixel step along the heading, when speed (px/s) allows, bouncing off
  * the edges of bounds */
-static void deskduck_walk(deskduck_t *duck, box_t bounds, int speed)
+static void deskduck_walk(duck_t *duck, box_t bounds, int speed)
 {
   int stride;
 
@@ -437,7 +462,10 @@ static void deskduck_walk(deskduck_t *duck, box_t bounds, int speed)
 }
 
 /* Sense, step the state machine, act, and return the frame to show. */
-static int deskduck_tick(deskduck_t *duck, point_t pointer, int moved)
+static int deskduck_tick(deskduck_t *desk,
+                         duck_t     *duck,
+                         point_t     pointer,
+                         int         moved)
 {
   unsigned                events;
   box_t                   water;
@@ -448,12 +476,12 @@ static int deskduck_tick(deskduck_t *duck, point_t pointer, int moved)
   int                     frame;
 
   events = moved ? ON_MOVED : 0;
-  if (duck->still >= DUCK_SLEEP)
+  if (desk->still >= DUCK_SLEEP)
     events |= ON_STILL;
   if (duck->timer > 0 && --duck->timer == 0)
-    events |= ON_TIMEOUT | (rng_range(&duck->rng, 3) == 0 ? ON_WHIM : 0);
+    events |= ON_TIMEOUT | (rng_range(&desk->rng, 3) == 0 ? ON_WHIM : 0);
 
-  water = deskduck_water(duck);
+  water = deskduck_water(desk);
   wet   = box_contains_point(&water, duck->pos.x, duck->pos.y);
   if (wet)
     events |= ON_WET | (duck->wet ? 0 : ON_SPLASH);
@@ -468,7 +496,7 @@ static int deskduck_tick(deskduck_t *duck, point_t pointer, int moved)
   else
     events |= ON_NEAR;
 
-  deskduck_fire(duck, events);
+  deskduck_fire(desk, duck, events);
 
   state = &deskduck_states[duck->state];
   /* ponytail: eight-way steps, so a chase zigzags towards the pointer */
@@ -479,7 +507,7 @@ static int deskduck_tick(deskduck_t *duck, point_t pointer, int moved)
       POINT(deskduck_sign((water.x0 + water.x1) / 2 - duck->pos.x),
             deskduck_sign((water.y0 + water.y1) / 2 - duck->pos.y));
   if (state->does & WALKS)
-    deskduck_walk(duck, deskduck_land(duck), DUCK_SPEED);
+    deskduck_walk(duck, deskduck_land(desk), DUCK_SPEED);
   if (state->does & SWIMS)
     deskduck_walk(duck, water, DUCK_SWIM);
 
@@ -493,92 +521,156 @@ static int deskduck_tick(deskduck_t *duck, point_t pointer, int moved)
   return frame;
 }
 
-static void deskduck_idle(deskduck_t *duck)
+static void deskduck_idle(deskduck_t *desk)
 {
   point_t         pointer;
   int             moved;
+  int             i;
+  duck_t         *duck;
   const bitmap_t *bitmap;
 
-  if (duck->paused || wuss_is_dragging(duck->wuss))
-    return; /* ponytail: any drag holds the duck, not just one of it */
+  if (desk->paused || wuss_is_dragging(desk->wuss))
+    return; /* ponytail: any drag holds the ducks, not just one of them */
 
-  pointer = wuss_get_pointer(duck->wuss);
-  moved   = pointer.x != duck->pointer.x || pointer.y != duck->pointer.y;
+  pointer = wuss_get_pointer(desk->wuss);
+  moved   = pointer.x != desk->pointer.x || pointer.y != desk->pointer.y;
   if (moved)
-    duck->still = 0;
-  else if (duck->still < DUCK_SLEEP)
-    duck->still++;
-  duck->pointer = pointer;
-  duck->ticks++;
+    desk->still = 0;
+  else if (desk->still < DUCK_SLEEP)
+    desk->still++;
+  desk->pointer = pointer;
 
-  bitmap = duck->frames[deskduck_tick(duck, pointer, moved)][duck->left];
-  if (bitmap == duck->shown &&
-      duck->pos.x == duck->shown_pos.x && duck->pos.y == duck->shown_pos.y)
-    return;
+  for (i = 0; i < desk->nducks; i++)
+  {
+    duck = &desk->ducks[i];
+    duck->ticks++;
 
-  duck->shown     = bitmap;
-  duck->shown_pos = duck->pos;
-  deskduck_send(duck, wuss_PINBOARD_ACTOR_SET, DUCK_ACTOR, bitmap, duck->pos);
+    bitmap = desk->frames[deskduck_tick(desk, duck, pointer, moved)]
+                         [duck->left];
+    if (bitmap == duck->shown &&
+        duck->pos.x == duck->shown_pos.x && duck->pos.y == duck->shown_pos.y)
+      continue;
+
+    duck->shown     = bitmap;
+    duck->shown_pos = duck->pos;
+    deskduck_send(desk, wuss_PINBOARD_ACTOR_SET, DUCK_ACTOR(i), bitmap,
+                  duck->pos);
+  }
 }
 
 /* ----------------------------------------------------------------------- */
 
-static void deskduck_message(deskduck_t *duck, const wuss_message_t *msg)
+/* shade a menu row, or not, in the menu and in it while open */
+static void deskduck_shade(deskduck_t *desk, int row, int disabled)
+{
+  if (disabled)
+    desk->menu_items[row].flags |= wuss_MENU_ITEM_DISABLED;
+  else
+    desk->menu_items[row].flags &=
+      (wuss_menu_item_flags_t) ~wuss_MENU_ITEM_DISABLED;
+
+  wuss_menu_disable_item_live(desk->menu_handle, &desk->menu, row, disabled);
+}
+
+/* shade Add duck at the most ducks and Remove duck at the last one */
+static void deskduck_shade_rows(deskduck_t *desk)
+{
+  deskduck_shade(desk, DUCK_MENU_ADD, desk->nducks == DUCK_MAX);
+  deskduck_shade(desk, DUCK_MENU_REMOVE, desk->nducks <= 1);
+}
+
+/* a new duck somewhere on the backdrop, wandering off */
+static void deskduck_add(deskduck_t *desk)
+{
+  box_t   land;
+  duck_t *duck;
+
+  if (desk->nducks == DUCK_MAX)
+    return;
+
+  land = deskduck_land(desk);
+  duck = &desk->ducks[desk->nducks++];
+  memset(duck, 0, sizeof(*duck));
+  duck->pos = POINT(rng_range(&desk->rng, MAX(land.x1 - 1, 1)),
+                    rng_range(&desk->rng, MAX(land.y1 - 1, 1)));
+  deskduck_enter(desk, duck, WANDER);
+}
+
+/* the last duck, and its bubble, gone */
+static void deskduck_remove(deskduck_t *desk)
+{
+  if (desk->nducks <= 1)
+    return;
+
+  desk->nducks--;
+  deskduck_send(desk, wuss_PINBOARD_ACTOR_REMOVE, DUCK_ACTOR(desk->nducks),
+                NULL, POINT(0, 0));
+  deskduck_send(desk, wuss_PINBOARD_ACTOR_REMOVE, BUBBLE_ACTOR(desk->nducks),
+                NULL, POINT(0, 0));
+}
+
+/* the duck or the pond was dragged */
+static void deskduck_dry(deskduck_t *desk, duck_t *duck)
+{
+  duck->wet = 0; /* so a drop on the pond splashes next tick */
+  deskduck_fire(desk, duck, ON_DRY);
+  if (deskduck_states[duck->state].does & BUBBLES)
+    deskduck_bubble_show(desk, duck);
+}
+
+static void deskduck_message(deskduck_t *desk, const wuss_message_t *msg)
 {
   const wuss_pinboard_actor_click_t *click;
   const wuss_pinboard_actor_drop_t  *drop;
+  int                                i;
+  duck_t                            *duck;
 
   if (msg->action == wuss_MESSAGE_PINBOARD_ACTOR_CLICK &&
       msg->size == sizeof(*click))
   {
     click = (const wuss_pinboard_actor_click_t *) msg->data;
-    if (click->owner != duck->delegate || click->id == POND_ACTOR ||
-        duck->paused)
+    if (click->owner != desk->delegate || click->id == POND_ACTOR ||
+        ACTOR_DUCK(click->id) >= desk->nducks || desk->paused)
       return;
-    duck->still = 0; /* so it does not drop straight back to sleep */
-    deskduck_fire(duck, ON_CLICK);
+    desk->still = 0; /* so it does not drop straight back to sleep */
+    deskduck_fire(desk, &desk->ducks[ACTOR_DUCK(click->id)], ON_CLICK);
   }
   else if (msg->action == wuss_MESSAGE_PINBOARD_ACTOR_DROP &&
            msg->size == sizeof(*drop))
   {
     drop = (const wuss_pinboard_actor_drop_t *) msg->data;
-    if (drop->owner != duck->delegate || drop->cancelled)
+    if (drop->owner != desk->delegate || drop->cancelled)
       return;
     /* Pinboard has already moved it there */
     if (drop->id == POND_ACTOR)
     {
-      duck->pond = drop->pos;
+      desk->pond = drop->pos;
+      for (i = 0; i < desk->nducks; i++) /* those afloat come ashore */
+        deskduck_dry(desk, &desk->ducks[i]);
     }
-    else if (drop->id == DUCK_ACTOR)
+    else if (drop->id % 2 == 1 && ACTOR_DUCK(drop->id) < desk->nducks)
     {
+      duck            = &desk->ducks[ACTOR_DUCK(drop->id)];
       duck->pos       = drop->pos;
       duck->shown_pos = drop->pos;
+      deskduck_dry(desk, duck);
     }
-    else
-    {
-      return;
-    }
-    duck->wet = 0; /* so a drop on the pond splashes next tick */
-    deskduck_fire(duck, ON_DRY);
-    if ((deskduck_states[duck->state].does & BUBBLES) &&
-        duck->bubble.base != NULL)
-      deskduck_send(duck, wuss_PINBOARD_ACTOR_SET, BUBBLE_ACTOR,
-                    &duck->bubble, deskduck_bubble_pos(duck));
   }
 }
 
-static result_t deskduck_menu_open(deskduck_t *duck)
+static result_t deskduck_menu_open(deskduck_t *desk)
 {
   static const wuss_proginfo_desc_t desc =
-    TASK_PROGINFO_DESC("DeskDuck", "A duck that roams the backdrop");
+    TASK_PROGINFO_DESC("DeskDuck", "Ducks that roam the backdrop");
 
   wuss_proginfo_set_desc(&desc);
-  duck->menu_items[DUCK_MENU_INFO].window =
-    wuss_proginfo_window(duck->delegate);
-  wuss_menu_tick_item(&duck->menu, DUCK_MENU_PAUSE, duck->paused);
+  desk->menu_items[DUCK_MENU_INFO].window =
+    wuss_proginfo_window(desk->delegate);
+  wuss_menu_tick_item(&desk->menu, DUCK_MENU_PAUSE, desk->paused);
+  deskduck_shade_rows(desk);
 
-  return wuss_iconbar_menu_open(duck->delegate, &duck->menu,
-                                &duck->menu_handle);
+  return wuss_iconbar_menu_open(desk->delegate, &desk->menu,
+                                &desk->menu_handle);
 }
 
 static result_t deskduck_handle(wuss_window_t      *window,
@@ -586,46 +678,57 @@ static result_t deskduck_handle(wuss_window_t      *window,
                                 void               *task_data)
 {
   result_t    rc;
-  deskduck_t *duck;
+  deskduck_t *desk;
 
-  duck = task_data;
+  desk = task_data;
 
   switch (event->kind)
   {
   case wuss_EVENT_IDLE:
-    if (duck->quit)
+    if (desk->quit)
     {
-      wuss_task_destroy(duck->delegate); /* its QUIT frees duck */
+      wuss_task_destroy(desk->delegate); /* its QUIT frees desk */
       return result_OK;
     }
-    deskduck_idle(duck);
+    deskduck_idle(desk);
     return result_OK;
 
   case wuss_EVENT_ICON:
     if (window == NULL && event->data.iconbar_icon.action == wuss_MOUSE_UP &&
         (event->data.iconbar_icon.button & wuss_BUTTON_MENU))
-      return deskduck_menu_open(duck);
+      return deskduck_menu_open(desk);
     return result_OK;
 
   case wuss_EVENT_MENU_SELECT:
-    if (event->data.menu_select.menu != &duck->menu)
+    if (event->data.menu_select.menu != &desk->menu)
       return result_OK;
-    if (event->data.menu_select.index == DUCK_MENU_PAUSE)
+    switch (event->data.menu_select.index)
     {
-      duck->paused = !duck->paused;
-      wuss_menu_tick_item(&duck->menu, DUCK_MENU_PAUSE, duck->paused);
-      if (duck->menu_handle != NULL)
-        wuss_menu_tick_item_live(duck->menu_handle, &duck->menu,
-                                 DUCK_MENU_PAUSE, duck->paused);
-    }
-    else if (event->data.menu_select.index == DUCK_MENU_QUIT)
-    {
-      duck->quit = 1; /* not from inside the menu's own dispatch */
+    case DUCK_MENU_ADD:
+      deskduck_add(desk);
+      deskduck_shade_rows(desk);
+      break;
+
+    case DUCK_MENU_REMOVE:
+      deskduck_remove(desk);
+      deskduck_shade_rows(desk);
+      break;
+
+    case DUCK_MENU_PAUSE:
+      desk->paused = !desk->paused;
+      wuss_menu_tick_item(&desk->menu, DUCK_MENU_PAUSE, desk->paused);
+      wuss_menu_tick_item_live(desk->menu_handle, &desk->menu,
+                               DUCK_MENU_PAUSE, desk->paused);
+      break;
+
+    case DUCK_MENU_QUIT:
+      desk->quit = 1; /* not from inside the menu's own dispatch */
+      break;
     }
     return result_OK;
 
   case wuss_EVENT_PRE_SHOW:
-    if (window == duck->menu_items[DUCK_MENU_INFO].window)
+    if (window == desk->menu_items[DUCK_MENU_INFO].window)
       rc = wuss_proginfo_handle_pre_show();
     else
       rc = result_OK;
@@ -635,28 +738,28 @@ static result_t deskduck_handle(wuss_window_t      *window,
                                      event->data.pre_show.index);
 
   case wuss_EVENT_MENU_CLOSED:
-    duck->menu_handle = NULL;
+    desk->menu_handle = NULL;
     return result_OK;
 
   case wuss_EVENT_MESSAGE:
-    deskduck_message(duck, event->data.message);
+    deskduck_message(desk, event->data.message);
     return result_OK;
 
   case wuss_EVENT_MESSAGE_BOUNCED:
     if (event->data.message->action == wuss_MESSAGE_PINBOARD_ACTOR &&
-        !duck->quit)
+        !desk->quit)
     {
-      (void) wuss_error_report(duck->wuss, NULL, "DeskDuck",
+      (void) wuss_error_report(desk->wuss, NULL, "DeskDuck",
                                "No pinboard is running",
                                wuss_ERROR_BUTTONS_OK, NULL, NULL);
-      duck->quit = 1;
+      desk->quit = 1;
     }
     return result_OK;
 
   case wuss_EVENT_QUIT:
-    wuss_proginfo_release(duck->delegate);
-    free(duck->bubble.base);
-    free(duck);
+    wuss_proginfo_release(desk->delegate);
+    free(desk->bubble.base);
+    free(desk);
     return result_OK;
 
   default:
@@ -669,41 +772,45 @@ static result_t deskduck_handle(wuss_window_t      *window,
 result_t deskduck_app_create(wuss_t *wuss)
 {
   result_t                 rc;
-  deskduck_t              *duck;
+  deskduck_t              *desk;
   wuss_task_desc_t         desc;
   int                      i;
   size2d_t                 screen;
   wuss_iconbar_icon_spec_t spec;
 
-  duck = calloc(1, sizeof(*duck));
-  if (duck == NULL)
+  desk = calloc(1, sizeof(*desk));
+  if (desk == NULL)
     return result_OOM;
 
-  duck->wuss = wuss;
+  desk->wuss = wuss;
 
-  WUSS_MENU_ITEM_WINDOW(duck->menu_items, DUCK_MENU_INFO, "Info",
+  WUSS_MENU_ITEM_WINDOW(desk->menu_items, DUCK_MENU_INFO, "Info",
                         wuss_MENU_ITEM_BORROWED_SUBMENU |
                         wuss_MENU_ITEM_PRE_OPEN,
                         NULL); /* retargeted at the shared proginfo
                                 * singleton when the menu opens */
-  WUSS_MENU_ITEM(duck->menu_items, DUCK_MENU_PAUSE, "Pause",
+  WUSS_MENU_ITEM(desk->menu_items, DUCK_MENU_ADD, "Add duck",
+                 wuss_MENU_ITEM_DASHED);
+  WUSS_MENU_ITEM(desk->menu_items, DUCK_MENU_REMOVE, "Remove duck",
                  wuss_MENU_ITEM_NONE);
-  WUSS_MENU_ITEM(duck->menu_items, DUCK_MENU_QUIT, "Quit",
+  WUSS_MENU_ITEM(desk->menu_items, DUCK_MENU_PAUSE, "Pause",
+                 wuss_MENU_ITEM_DASHED);
+  WUSS_MENU_ITEM(desk->menu_items, DUCK_MENU_QUIT, "Quit",
                  wuss_MENU_ITEM_NONE);
-  WUSS_MENU_TITLE(duck->menu, "DeskDuck", duck->menu_items,
-                  NELEMS(duck->menu_items));
+  WUSS_MENU_TITLE(desk->menu, "DeskDuck", desk->menu_items,
+                  NELEMS(desk->menu_items));
 
   desc.handle    = deskduck_handle;
-  desc.task_data = duck;
+  desc.task_data = desk;
   desc.name      = "DeskDuck";
-  rc = wuss_task_create(wuss, &desc, &duck->delegate);
+  rc = wuss_task_create(wuss, &desc, &desk->delegate);
   if (rc != result_OK)
   {
-    free(duck); /* nothing registered yet */
+    free(desk); /* nothing registered yet */
     return rc;
   }
 
-  rc = wuss_task_iconpool_load_resource(duck->delegate,
+  rc = wuss_task_iconpool_load_resource(desk->delegate,
                                         wuss_get_resources(wuss));
   if (rc != result_OK)
     goto failure;
@@ -711,54 +818,51 @@ result_t deskduck_app_create(wuss_t *wuss)
   /* one sheet: a row facing right, then the same frames facing left */
   for (i = 0; i < FRAME__LIMIT * 2; i++)
   {
-    duck->frames[i % FRAME__LIMIT][i / FRAME__LIMIT] =
-      wuss_task_iconpool_frame(duck->delegate, "deskduck", i);
-    if (duck->frames[i % FRAME__LIMIT][i / FRAME__LIMIT] == NULL)
+    desk->frames[i % FRAME__LIMIT][i / FRAME__LIMIT] =
+      wuss_task_iconpool_frame(desk->delegate, "deskduck", i);
+    if (desk->frames[i % FRAME__LIMIT][i / FRAME__LIMIT] == NULL)
     {
       rc = result_NOT_FOUND;
       goto failure;
     }
   }
 
-  duck->pond_bitmap = wuss_task_iconpool_find(duck->delegate, "pond");
-  if (duck->pond_bitmap == NULL)
+  desk->pond_bitmap = wuss_task_iconpool_find(desk->delegate, "pond");
+  if (desk->pond_bitmap == NULL)
   {
     rc = result_NOT_FOUND;
     goto failure;
   }
 
-  rc = deskduck_bubble_create(duck);
+  rc = deskduck_bubble_create(desk);
   if (rc != result_OK)
     goto failure;
 
-  rng_seed(&duck->rng, (uint32_t) time(NULL) ^ (uint32_t) (size_t) duck);
+  rng_seed(&desk->rng, (uint32_t) time(NULL) ^ (uint32_t) (size_t) desk);
   screen     = wuss_get_screen_size(wuss);
-  duck->pond = POINT(rng_range(&duck->rng,
-                               MAX(screen.w - duck->pond_bitmap->size.w, 1)),
-                     rng_range(&duck->rng,
+  desk->pond = POINT(rng_range(&desk->rng,
+                               MAX(screen.w - desk->pond_bitmap->size.w, 1)),
+                     rng_range(&desk->rng,
                                MAX(screen.h - DUCK_ICONBAR -
-                                   duck->pond_bitmap->size.h, 1)));
-  deskduck_send(duck, wuss_PINBOARD_ACTOR_SET, POND_ACTOR, duck->pond_bitmap,
-                duck->pond); /* first, so it lies under the duck */
-  duck->pos = POINT(rng_range(&duck->rng, MAX(screen.w - DUCK_SIZE, 1)),
-                    rng_range(&duck->rng,
-                              MAX(screen.h - DUCK_ICONBAR - DUCK_SIZE, 1)));
-  duck->pointer = wuss_get_pointer(wuss);
-  deskduck_enter(duck, WANDER);
+                                   desk->pond_bitmap->size.h, 1)));
+  deskduck_send(desk, wuss_PINBOARD_ACTOR_SET, POND_ACTOR, desk->pond_bitmap,
+                desk->pond); /* first, so it lies under the ducks */
+  desk->pointer = wuss_get_pointer(wuss);
+  deskduck_add(desk);
 
   memset(&spec, 0, sizeof(spec));
   spec.text  = NULL;
   spec.side  = wuss_ICONBAR_RIGHT;
-  spec.image = wuss_task_iconpool_find(duck->delegate, "app_deskduck");
-  rc = wuss_iconbar_icon_create(wuss, duck->delegate, &spec,
-                                &duck->iconbar_icon);
+  spec.image = wuss_task_iconpool_find(desk->delegate, "app_deskduck");
+  rc = wuss_iconbar_icon_create(wuss, desk->delegate, &spec,
+                                &desk->iconbar_icon);
   if (rc != result_OK)
     goto failure;
 
   return result_OK;
 
 failure:
-  wuss_task_destroy(duck->delegate); /* its QUIT frees duck */
+  wuss_task_destroy(desk->delegate); /* its QUIT frees desk */
   return rc;
 }
 

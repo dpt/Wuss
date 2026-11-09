@@ -53,7 +53,7 @@ pin_t;
 
 /* ponytail: a fixed table of actors, slots freed in place so a pending press
  * or drag keeps its index; raise it if more tasks want actors at once */
-#define PINBOARD_MAX_ACTORS 8
+#define PINBOARD_MAX_ACTORS 16
 
 /* a bitmap another task shows on the backdrop; see wuss_pinboard_actor_t */
 typedef struct actor
