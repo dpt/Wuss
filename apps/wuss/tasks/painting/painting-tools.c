@@ -217,8 +217,11 @@ box_t painting_stroke_segment(painting_task_t *pt,
   if (pt->tool == painting_TOOL_WOBBLE)
     return paintingdoc_wobble(pt->doc, a, b, pt->size, pt->edge, pt->wander,
                               painting_stroke_colour(pt), &pt->wobble);
-  if (pt->tool == painting_TOOL_PENCIL)
+  if (pt->tool == painting_TOOL_PENCIL && !pt->perfect)
     return paintingdoc_stroke(pt->doc, a, b, 1, painting_stroke_colour(pt));
+  if (pt->tool == painting_TOOL_PENCIL)
+    return paintingdoc_pencil(pt->doc, a, b, painting_stroke_colour(pt),
+                              &pt->trail);
 
   return paintingdoc_stroke(pt->doc, a, b, pt->size,
                             painting_stroke_colour(pt));

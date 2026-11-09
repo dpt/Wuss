@@ -50,6 +50,8 @@ typedef enum painting_setting
   painting_SETTING_TOLERANCE, /* the wand's colour tolerance, 0..255 */
   painting_SETTING_STABILISE, /* how far a freehand stroke trails the
                                * pointer, in pixels */
+  painting_SETTING_PERFECT,   /* the pencil's pixel-perfect switch, an
+                               * option */
   painting_SETTING__COUNT
 }
 painting_setting_t;
@@ -94,6 +96,7 @@ enum
 {
   PAINTING_MENU_DISPLAY,   /* submenu: dithermenu_t's Display */
   PAINTING_MENU_UNDO,
+  PAINTING_MENU_REDO,
   PAINTING_MENU_SAVE,
   PAINTING_MENU_EDIT,      /* submenu: PAINTING_EDIT_* */
   PAINTING_MENU_SELECTION, /* submenu: PAINTING_SEL_* */
@@ -153,6 +156,7 @@ typedef struct painting_task
                                   * at 100 */
   int                tolerance; /* the wand's colour tolerance, 0..255 */
   int                stabilise; /* the stabiliser's string length, pixels */
+  int                perfect;   /* non-zero: the pencil drops L corners */
   double             steady_x, steady_y; /* the stabilised pointer */
   int                held;      /* button of the stroke in progress, or 0 */
   point_t            anchor;    /* where the stroke began */
@@ -165,6 +169,7 @@ typedef struct painting_task
   int                ants_phase; /* where the ants have marched, 0..7 */
   rng_t              rng;        /* the spray's scatter */
   paintingdoc_wobble_t wobble;   /* the wobbly stroke in progress */
+  paintingdoc_trail_t trail;     /* the pencil stroke in progress */
   paintingdoc_pot_t  pot;        /* the paintbrush stroke's paint, refilled
                                   * as each stroke starts */
   wuss_icon_t       *tool_icons[painting_TOOL__COUNT];
@@ -173,6 +178,8 @@ typedef struct painting_task
                                  * replaces */
   int                nsizebar_icons;
   wuss_icon_t       *nozzle_icon; /* the nozzle button, or NULL if not shown */
+  wuss_icon_t       *perfect_icon; /* the pixel-perfect option, or NULL if not
+                                    * shown */
   wuss_icon_t       *pot_icons[PAINTING_POT_LEVELS]; /* the pot gauge's
                                  * images, empty to full, all but one hidden;
                                  * [0] NULL if not shown */

@@ -66,8 +66,13 @@ painting_settings[painting_SETTING__COUNT] =
   [painting_SETTING_WANDER]    = { "Wander", 0, 200, "%d%%" },
   [painting_SETTING_TOLERANCE] = { "Tolerance", 0, 255, NULL },
   [painting_SETTING_STABILISE] = { "Stabilise", 0, PAINTING_STABILISE_MAX,
-                                   NULL }
+                                   NULL },
+  [painting_SETTING_PERFECT]   = { "Pixel-perfect", 0, 0, NULL }
 };
+
+/* whether the setting is a slider, rather than a button or an option */
+#define IS_SLIDER(s) ((s) != painting_SETTING_NOZZLE && \
+                      (s) != painting_SETTING_PERFECT)
 
 #define SETTING(s) (1u << painting_SETTING_##s)
 
@@ -75,7 +80,7 @@ painting_settings[painting_SETTING__COUNT] =
  * pixel and a filled shape has no outline, so neither has a size */
 static const unsigned int painting_tool_settings[painting_TOOL__COUNT] =
 {
-  [painting_TOOL_PENCIL]     = SETTING(STABILISE),
+  [painting_TOOL_PENCIL]     = SETTING(STABILISE) | SETTING(PERFECT),
   [painting_TOOL_PAINTBRUSH] = SETTING(SIZE) | SETTING(NOZZLE) |
                                SETTING(DRY) | SETTING(STABILISE),
   [painting_TOOL_WOBBLE]     = SETTING(SIZE) | SETTING(EDGE) |
@@ -205,6 +210,7 @@ static result_t painting_sizebar_build(painting_task_t *pt)
     wuss_icon_delete(pt->sizebar, pt->sizebar_icons[i]);
   pt->nsizebar_icons = 0;
   pt->nozzle_icon    = NULL;
+  pt->perfect_icon   = NULL;
   pt->pot_icons[0]   = NULL;
 
   settings = painting_tool_settings[pt->tool];
@@ -217,6 +223,19 @@ static result_t painting_sizebar_build(painting_task_t *pt)
   {
     if ((settings & (1u << s)) == 0)
       continue;
+
+    /* an option carries its own label, after its tick box */
+    if (s == painting_SETTING_PERFECT)
+    {
+      label = painting_settings[s].label;
+      w     = wuss_STD_GLYPH_SIZE + task_text_width(pt->base.wuss, label) + 8;
+      at[s] = n;
+      wuss_icon_spec_option(&specs[n++],
+                            (box_t) BOX_POS_SIZE(x, SB_MARGIN, w, row_h),
+                            label);
+      x += w + SB_SETTING_GAP;
+      continue;
+    }
 
     /* a glyph's ink can overrun its advance, as Density's y does, so pad the
      * label's box to have it all cleared when a tool change deletes it */
@@ -311,12 +330,21 @@ static result_t painting_sizebar_build(painting_task_t *pt)
       continue;
 
     if (s == painting_SETTING_NOZZLE)
+    {
       pt->nozzle_icon = icons[at[s]];
+    }
+    else if (s == painting_SETTING_PERFECT)
+    {
+      pt->perfect_icon = icons[at[s]];
+      wuss_icon_set_selected(pt->sizebar, pt->perfect_icon, pt->perfect);
+    }
     else
+    {
       wuss_slider_row_bind(&pt->rows[s], icons[at[s]], icons[at[s] + 1],
                            painting_settings[s].fmt,
                            painting_settings[s].min,
                            painting_settings[s].max, 0);
+    }
   }
 
   return result_OK;
@@ -552,7 +580,7 @@ result_t painting_toolbar_icon(painting_task_t    *pt,
   settings = painting_tool_settings[pt->tool];
   for (s = 0; s < painting_SETTING__COUNT; s++)
   {
-    if (s == painting_SETTING_NOZZLE || (settings & (1u << s)) == 0)
+    if (!IS_SLIDER(s) || (settings & (1u << s)) == 0)
       continue;
 
     if (wuss_slider_row_event(pt->sizebar, &pt->rows[s], event, &value))
@@ -575,6 +603,13 @@ result_t painting_toolbar_icon(painting_task_t    *pt,
                              ((event->data.icon.button & wuss_BUTTON_ADJUST) ?
                               paintingdoc_NOZZLE__COUNT - 1 : 1)) %
                             paintingdoc_NOZZLE__COUNT);
+    return result_OK;
+  }
+
+  /* the option has already toggled itself */
+  if (icon != NULL && icon == pt->perfect_icon)
+  {
+    pt->perfect = wuss_icon_get_selected(icon);
     return result_OK;
   }
 

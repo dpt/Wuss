@@ -111,6 +111,7 @@ Menu shortcuts (fire when the task has the focus):
 | 1-4           | Choose light    | orbing                                                                                                                                                                |
 | C M           | Light colour, Mutate | orbing                                                                                                                                                           |
 | F8            | Undo            | painting                                                                                                                                                              |
+| F9            | Redo            | painting                                                                                                                                                              |
 | Ctrl-A Z I    | Select all, Clear selection, Invert | painting                                                                                                                                          |
 | F Delete      | Fill, Clear selection (foreground, background) | painting                                                                                                                               |
 | N             | Next nozzle     | painting                                                                                                                                                              |
@@ -196,7 +197,7 @@ Rules for the proposals below:
 4. Never use F12, Shift-F12, Ctrl-F12 or Ctrl-Shift-F12. RISC OS owns them.
 5. Shift modifies a function key into a related action. Ctrl gives an unrelated one.
 
-Taken today by existing tasks: F3 (Save) F8 (painting Undo) Ctrl-R P M U; Escape; Return. Ctrl-P and Ctrl-M (zxtask) are safe: the guide uses the Print key and does not define Ctrl-P or Ctrl-M.
+Taken today by existing tasks: F3 (Save) F8 (painting Undo) F9 (painting Redo) Ctrl-R P M U; Escape; Return. Ctrl-P and Ctrl-M (zxtask) are safe: the guide uses the Print key and does not define Ctrl-P or Ctrl-M.
 
 ## Standard keys: RISC OS style
 
@@ -218,7 +219,7 @@ Adopt all of these as defined by the guide. Keys marked "new" have no code today
 | F9         | Redo                                     |
 | F7 F10 F11 | Free for apps and the system (see below) |
 
-Done: F3 is the Save shortcut on every task with a Save row (Ctrl-S is gone), and painting Undo is F8. The other keys need a function no task has yet: Help (F1), Load (F2), Insert (Shift-F2), Find (F4), Go to (F5), Sort (F6) and Redo (F9). Wire each when a task gains the function: give its menu row the shortcut label and the shortcut dispatcher does the rest.
+Done: F3 is the Save shortcut on every task with a Save row (Ctrl-S is gone), painting Undo is F8 and painting Redo is F9. The other keys need a function no task has yet: Help (F1), Load (F2), Insert (Shift-F2), Find (F4), Go to (F5) and Sort (F6). Wire each when a task gains the function: give its menu row the shortcut label and the shortcut dispatcher does the rest.
 
 ### Ctrl keys
 
@@ -315,7 +316,7 @@ The guide is silent on these, so macOS chords lead. Each has a function-key fall
   | Zoom out             | Shift-F2 | Ctrl--        |
   | Quit Wuss            | F4       | Ctrl-Shift-Q  |
 
-- painting: Undo moved from Ctrl-Z to F8. Ctrl-Z is now Clear selection; Escape also drops the selection. Redo on F9 waits until painting has a redo.
+- painting: Undo moved from Ctrl-Z to F8. Ctrl-Z is now Clear selection; Escape also drops the selection. Redo is on F9.
 - Wuss menu shortcut labels use the guide's symbols: `^` for Ctrl and `WUSS_MENU_SHIFT` for Shift. Function key labels show plain, such as `F8`.
 
 ## Dispatch changes

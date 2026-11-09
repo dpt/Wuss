@@ -155,6 +155,26 @@ box_t paintingdoc_wobble(paintingdoc_t        *doc,
                          colour_t              colour,
                          paintingdoc_wobble_t *wobble);
 
+/* a pencil stroke's last two pixels, carried from one segment to the next.
+ * set n to 0 before the first segment */
+typedef struct paintingdoc_trail
+{
+  int      n;     /* pixels held in p, 0..2 */
+  point_t  p[2];  /* the pixel before last, then the last */
+  uint32_t under; /* what p[n - 1] covered before the stroke set it */
+}
+paintingdoc_trail_t;
+
+/* draw a pixel-perfect stroke segment a to b one pixel wide: where a step
+ * turns a corner, leaving an L of three pixels, the corner pixel is put back
+ * as it was, so diagonals stay one pixel thin. the caller takes the
+ * checkpoint, as for paintingdoc_stroke */
+box_t paintingdoc_pencil(paintingdoc_t       *doc,
+                         point_t              a,
+                         point_t              b,
+                         colour_t             colour,
+                         paintingdoc_trail_t *trail);
+
 /* scatter dots of colour over the disc of the given radius in pixels centred
  * on p. each call aims a dot at density percent of the disc's pixels, so
  * repeat it to build up. the caller takes the checkpoint, as for
@@ -296,9 +316,16 @@ void paintingdoc_drop(paintingdoc_t *doc);
 /* non-zero if there is a step to undo */
 int paintingdoc_can_undo(const paintingdoc_t *doc);
 
-/* restore the canvas to the last checkpoint, discarding it. returns the box
+/* restore the canvas to the last checkpoint, keeping the canvas it replaces
+ * for paintingdoc_redo. a new checkpoint drops those. returns the box
  * that changed (the whole canvas), or an empty box if there was nothing to
  * undo or the step could not be decompressed */
 box_t paintingdoc_undo(paintingdoc_t *doc);
+
+/* non-zero if there is an undone step to redo */
+int paintingdoc_can_redo(const paintingdoc_t *doc);
+
+/* restore the canvas to the step last undone. returns as paintingdoc_undo */
+box_t paintingdoc_redo(paintingdoc_t *doc);
 
 #endif /* TASKS_PAINTING_DOC_H */

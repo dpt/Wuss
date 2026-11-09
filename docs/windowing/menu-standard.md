@@ -96,6 +96,7 @@ These keys are reserved. Don't use them for anything else in a window.
 | Save ⇒          | `F3`    |
 | Pause           | `Space` |
 | Undo            | `F8`    |
+| Redo            | `F9`    |
 | Select all      | `^A`    |
 | Clear selection | `^Z`    |
 | Randomise       | `^R`    |

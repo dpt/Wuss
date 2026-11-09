@@ -66,12 +66,19 @@ makes an instance of its own.
 - Menu > Selection has Select all, Clear selection and Invert. `Esc` also
   clears the selection. Menu > Edit has Fill (`F`), which paints the selected
   pixels with the foreground colour, and Clear (`Delete`), which paints them
-  with the background colour, each as one undo step. Clear selection, Fill, Clear and Undo are shaded when they do
+  with the background colour, each as one undo step. Clear selection, Fill, Clear, Undo and Redo are shaded when they do
   not apply, and update while the menu stays open. With nothing selected `F`
   picks the Fill tool instead.
 - Line and rect show a rubber band while the button is down. They draw into
   the canvas when it is released.
-- `F8` or Menu > Undo steps back. There are 20 levels and no redo.
+- The pencil draws pixel-perfect lines one pixel wide: where a stroke turns
+  a corner, leaving an L of three pixels, it puts the corner pixel back, so
+  freehand diagonals stay one pixel thin. Untick **Pixel-perfect** on the
+  size bar to keep every pixel.
+- `F8` or Menu > Undo steps back, and `F9` or Menu > Redo steps forward
+  again. There are 20 levels. A new edit drops the steps left to redo.
+- The view zooms up to 3200%. From 600% up a grey grid outlines each
+  canvas pixel.
 - Menu > Save (`F3`) opens the Save As dialogue.
 - Drop a PNG on the canvas window or on the Painting icon to load it.
 

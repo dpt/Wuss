@@ -22,9 +22,12 @@ struct paintingdoc
 {
   bitmap_t bm;
   screen_t scr;
-  /* RLE-compressed copies of bm, oldest first */
+  /* RLE-compressed copies of bm, oldest first: the steps to undo, and those
+   * undone, which a new checkpoint drops */
   bitmap_t undo[PAINTINGDOC_UNDO_MAX];
   int      nundo;
+  bitmap_t redo[PAINTINGDOC_UNDO_MAX];
+  int      nredo;
   /* the selection, or NULL for none, and its boundary pixels for the ants.
    * pre is a raw copy of the canvas as of the last checkpoint, kept while
    * there is a selection so drawing outside it can be put back */
@@ -95,15 +98,22 @@ result_t paintingdoc_create_filled(size2d_t        size,
   return result_OK;
 }
 
-/* drop every undo step */
-static void undo_clear(paintingdoc_t *doc)
+/* drop every step of a stack */
+static void steps_clear(bitmap_t *steps, int *n)
 {
   int i;
 
-  for (i = 0; i < doc->nundo; i++)
-    free(doc->undo[i].base);
+  for (i = 0; i < *n; i++)
+    free(steps[i].base);
 
-  doc->nundo = 0;
+  *n = 0;
+}
+
+/* drop every undo and redo step */
+static void undo_clear(paintingdoc_t *doc)
+{
+  steps_clear(doc->undo, &doc->nundo);
+  steps_clear(doc->redo, &doc->nredo);
 }
 
 void paintingdoc_destroy(paintingdoc_t *doc)
@@ -363,30 +373,25 @@ static void sel_clip(paintingdoc_t *doc, box_t dirty)
 
 /* ----------------------------------------------------------------------- */
 
-result_t paintingdoc_checkpoint(paintingdoc_t *doc)
+/* the canvas's bytes */
+static size_t canvas_bytes(const paintingdoc_t *doc)
+{
+  return (size_t) doc->bm.rowbytes * (size_t) doc->bm.size.h;
+}
+
+/* push an RLE-compressed copy of the canvas onto a stack of steps, dropping
+ * its oldest step if full */
+static result_t steps_push(paintingdoc_t *doc, bitmap_t *steps, int *n)
 {
   result_t rc;
-  size_t   n;
   void    *pixels;
   bitmap_t snap;
 
-  n = (size_t) doc->bm.rowbytes * (size_t) doc->bm.size.h;
-
-  if (doc->sel != NULL)
-  {
-    if (doc->pre == NULL)
-      doc->pre = malloc(n);
-    if (doc->pre != NULL)
-      memcpy(doc->pre, doc->bm.base, n);
-    else
-      logf_warning("painting: no memory to clip drawing to the selection");
-  }
-
-  pixels = malloc(n);
+  pixels = malloc(canvas_bytes(doc));
   if (pixels == NULL)
     return result_OOM;
 
-  memcpy(pixels, doc->bm.base, n);
+  memcpy(pixels, doc->bm.base, canvas_bytes(doc));
 
   rc = bitmap_init(&snap, doc->bm.size, pixelfmt_bgra8888, doc->bm.rowbytes,
                    NULL, pixels);
@@ -398,16 +403,56 @@ result_t paintingdoc_checkpoint(paintingdoc_t *doc)
     return rc;
   }
 
-  if (doc->nundo == PAINTINGDOC_UNDO_MAX)
+  if (*n == PAINTINGDOC_UNDO_MAX)
   {
-    free(doc->undo[0].base);
-    memmove(&doc->undo[0], &doc->undo[1],
-            (PAINTINGDOC_UNDO_MAX - 1) * sizeof(doc->undo[0]));
-    doc->nundo--;
+    free(steps[0].base);
+    memmove(&steps[0], &steps[1],
+            (PAINTINGDOC_UNDO_MAX - 1) * sizeof(steps[0]));
+    (*n)--;
   }
 
-  doc->undo[doc->nundo++] = snap;
+  steps[(*n)++] = snap;
   return result_OK;
+}
+
+/* put the canvas back to the top step of a stack, popping it. returns the
+ * box that changed, or an empty box if it could not be decompressed */
+static box_t steps_pop(paintingdoc_t *doc, bitmap_t *steps, int *n)
+{
+  bitmap_t *snap;
+
+  snap = &steps[*n - 1];
+  if (bitmap_decompress(snap) != result_OK)
+    return (box_t) BOX_INIT;
+
+  memcpy(doc->bm.base, snap->base, canvas_bytes(doc));
+
+  free(snap->base);
+  (*n)--;
+  doc->edited = 1;
+
+  return canvas_box(doc);
+}
+
+result_t paintingdoc_checkpoint(paintingdoc_t *doc)
+{
+  result_t rc;
+
+  if (doc->sel != NULL)
+  {
+    if (doc->pre == NULL)
+      doc->pre = malloc(canvas_bytes(doc));
+    if (doc->pre != NULL)
+      memcpy(doc->pre, doc->bm.base, canvas_bytes(doc));
+    else
+      logf_warning("painting: no memory to clip drawing to the selection");
+  }
+
+  rc = steps_push(doc, doc->undo, &doc->nundo);
+  if (rc == result_OK)
+    steps_clear(doc->redo, &doc->nredo); /* a new edit forks the history */
+
+  return rc;
 }
 
 /* a drawing operation that takes its own checkpoint, but still draws if it
@@ -425,24 +470,30 @@ int paintingdoc_can_undo(const paintingdoc_t *doc)
 
 box_t paintingdoc_undo(paintingdoc_t *doc)
 {
-  bitmap_t *snap;
-  size_t    n;
-
   if (doc->nundo == 0)
     return (box_t) BOX_INIT;
 
-  snap = &doc->undo[doc->nundo - 1];
-  if (bitmap_decompress(snap) != result_OK)
+  /* ponytail: no memory to keep the redo step undoes all the same */
+  if (steps_push(doc, doc->redo, &doc->nredo) != result_OK)
+    logf_warning("painting: no memory for a redo step");
+
+  return steps_pop(doc, doc->undo, &doc->nundo);
+}
+
+int paintingdoc_can_redo(const paintingdoc_t *doc)
+{
+  return doc->nredo > 0;
+}
+
+box_t paintingdoc_redo(paintingdoc_t *doc)
+{
+  if (doc->nredo == 0)
     return (box_t) BOX_INIT;
 
-  n = (size_t) doc->bm.rowbytes * (size_t) doc->bm.size.h;
-  memcpy(doc->bm.base, snap->base, n);
+  if (steps_push(doc, doc->undo, &doc->nundo) != result_OK)
+    logf_warning("painting: no memory for an undo step");
 
-  free(snap->base);
-  doc->nundo--;
-  doc->edited = 1;
-
-  return canvas_box(doc);
+  return steps_pop(doc, doc->redo, &doc->nredo);
 }
 
 /* ----------------------------------------------------------------------- */
@@ -849,6 +900,91 @@ static uint32_t *pixel_row(const paintingdoc_t *doc, int y)
 {
   return (uint32_t *) ((uint8_t *) doc->bm.base +
                        (size_t) y * doc->bm.rowbytes);
+}
+
+/* plot p as the pencil's next pixel, dropping the last one if it is the
+ * corner of an L */
+static void pencil_plot(paintingdoc_t       *doc,
+                        point_t              p,
+                        colour_t             colour,
+                        paintingdoc_trail_t *trail)
+{
+  point_t  *last;
+  uint32_t *px;
+
+  last = &trail->p[MAX(trail->n - 1, 0)];
+  if (trail->n > 0 && last->x == p.x && last->y == p.y)
+    return;
+
+  if (p.x < 0 || p.y < 0 || p.x >= doc->bm.size.w || p.y >= doc->bm.size.h)
+  {
+    trail->n = 0; /* off the canvas: start afresh on coming back */
+    return;
+  }
+
+  px = &pixel_row(doc, p.y)[p.x];
+
+  /* the pixel before last and p touch diagonally, so the last is a corner */
+  if (trail->n == 2 &&
+      abs(p.x - trail->p[0].x) == 1 && abs(p.y - trail->p[0].y) == 1)
+  {
+    pixel_row(doc, last->y)[last->x] = trail->under;
+    trail->n = 1;
+  }
+
+  if (trail->n == 2)
+    trail->p[0] = trail->p[1];
+  else
+    trail->n++;
+  trail->p[trail->n - 1] = p;
+  trail->under           = *px;
+
+  screen_set_pixel(&doc->scr, p.x, p.y, colour);
+}
+
+box_t paintingdoc_pencil(paintingdoc_t       *doc,
+                         point_t              a,
+                         point_t              b,
+                         colour_t             colour,
+                         paintingdoc_trail_t *trail)
+{
+  box_t   dirty;
+  point_t start;
+  int     dx, dy, sx, sy, err, e2;
+
+  start = a;
+
+  /* Bresenham, so each step lands on a neighbour of the last */
+  dx  = abs(b.x - a.x);
+  dy  = -abs(b.y - a.y);
+  sx  = a.x < b.x ? 1 : -1;
+  sy  = a.y < b.y ? 1 : -1;
+  err = dx + dy;
+
+  for (;;)
+  {
+    pencil_plot(doc, a, colour, trail);
+    if (a.x == b.x && a.y == b.y)
+      break;
+
+    e2 = 2 * err;
+    if (e2 >= dy)
+    {
+      err += dy;
+      a.x += sx;
+    }
+    if (e2 <= dx)
+    {
+      err += dx;
+      a.y += sy;
+    }
+  }
+
+  /* a dropped corner is a neighbour of the segment's start */
+  dirty = clipped_box(doc, start, b, 1);
+  sel_clip(doc, dirty);
+
+  return dirty;
 }
 
 box_t paintingdoc_fill(paintingdoc_t *doc, point_t p, colour_t colour)

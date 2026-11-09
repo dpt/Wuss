@@ -27,6 +27,7 @@
 #define PAINTING_VIEW_H   300
 
 #define PAINTING_ANTS_IDLES 6 /* idles between steps of the marching ants */
+#define PAINTING_GRID_ZOOM  6 /* least zoom showing the pixel grid */
 
 /* point the option bar swatches at the desktop palette, which wuss owns and
  * wuss_set_palette may move */
@@ -163,6 +164,7 @@ static result_t painting_build(painting_task_t            *task,
   task->edge      = 100;
   task->wander    = 100;
   task->tolerance = 16;
+  task->perfect   = 1;
   task->dithering = screen_DITHER_NEAREST; /* painted colours stay exact */
   task->zoom      = 1;
 
@@ -275,9 +277,11 @@ static result_t painting_build(painting_task_t            *task,
 
   WUSS_MENU_ITEM_SHORTCUT(task->menu_items, PAINTING_MENU_UNDO, "Undo",
                           wuss_MENU_ITEM_DASHED, "F8");
+  WUSS_MENU_ITEM_SHORTCUT(task->menu_items, PAINTING_MENU_REDO, "Redo",
+                          wuss_MENU_ITEM_NONE, "F9");
 
   taskapp_save_row(&task->base, task->menu_items, PAINTING_MENU_SAVE,
-                   wuss_MENU_ITEM_NONE);
+                   wuss_MENU_ITEM_DASHED);
 
   WUSS_MENU_ITEM_SHORTCUT(task->edit_items, PAINTING_EDIT_FILL, "Fill",
                           wuss_MENU_ITEM_NONE, "F");
@@ -451,6 +455,34 @@ static void painting_redraw_stage(painting_task_t *pt,
   }
 }
 
+/* a line along each edge between canvas pixels, zoomed by z, that falls in
+ * bounds */
+static void painting_draw_grid(screen_t    *scr,
+                               const box_t *bounds,
+                               const box_t *canvas,
+                               int          z)
+{
+  colour_t grey;
+  box_t    clip;
+  int      i, i0, i1;
+
+  grey = colour_rgb(0x80, 0x80, 0x80);
+  if (box_intersection(bounds, canvas, &clip))
+    return; /* none of the canvas is in bounds */
+
+  i0 = (clip.x0 - canvas->x0 + z - 1) / z;
+  i1 = (clip.x1 - 1 - canvas->x0) / z;
+  for (i = MAX(i0, 1); i <= i1; i++)
+    screen_draw_line(scr, canvas->x0 + i * z, clip.y0,
+                     canvas->x0 + i * z, clip.y1 - 1, grey);
+
+  i0 = (clip.y0 - canvas->y0 + z - 1) / z;
+  i1 = (clip.y1 - 1 - canvas->y0) / z;
+  for (i = MAX(i0, 1); i <= i1; i++)
+    screen_draw_line(scr, clip.x0, canvas->y0 + i * z,
+                     clip.x1 - 1, canvas->y0 + i * z, grey);
+}
+
 static result_t painting_redraw(painting_task_t    *pt,
                                 const wuss_event_t *event)
 {
@@ -485,6 +517,9 @@ static result_t painting_redraw(painting_task_t    *pt,
   scale.xdiv = scale.ydiv = 1;
   rc = screen_copy_bitmap_scaled_dithered(scr, &canvas, bm, &scale,
                                           pt->dithering);
+
+  if (z >= PAINTING_GRID_ZOOM)
+    painting_draw_grid(scr, bounds, &canvas, z);
 
   /* ponytail: the overlays are drawn at window resolution through zoomed
    * pixel centres, so zoomed they only approximate the result's edges */
@@ -631,6 +666,7 @@ static result_t painting_mouse(painting_task_t    *pt,
       }
       pt->wobble.seed = rng_xorshift32(&pt->rng); /* a fresh wobble */
       pt->wobble.step = 0;
+      pt->trail.n     = 0;
       pt->pot.seed    = rng_xorshift32(&pt->rng); /* a refilled pot */
       pt->pot.load    = pt->dry ? PAINTING_POT_STAMPS / pt->dry : 0;
       pt->pot.left    = pt->pot.load;
@@ -743,19 +779,24 @@ static result_t painting_mouse(painting_task_t    *pt,
   return result_OK;
 }
 
-/* shade Undo when there is nothing to undo and Clear selection, Fill and Clear
- * when nothing is selected, also on the menu if it is open (an ADJUST pick keeps it
- * open). A shaded Fill lets its F shortcut through to pick the Fill tool */
+/* shade Undo and Redo when there is nothing to undo or redo and Clear
+ * selection, Fill and Clear when nothing is selected, also on the menu if it
+ * is open (an ADJUST pick keeps it open). A shaded Fill lets its F shortcut
+ * through to pick the Fill tool */
 static void painting_menu_shade(painting_task_t *pt)
 {
-  int no_undo, no_sel;
+  int no_undo, no_redo, no_sel;
 
   no_undo = !paintingdoc_can_undo(pt->doc);
+  no_redo = !paintingdoc_can_redo(pt->doc);
   no_sel  = !paintingdoc_has_selection(pt->doc);
 
   pt->menu_items[PAINTING_MENU_UNDO].flags = wuss_MENU_ITEM_DASHED |
                                           (no_undo ? wuss_MENU_ITEM_DISABLED :
                                                      wuss_MENU_ITEM_NONE);
+  pt->menu_items[PAINTING_MENU_REDO].flags = no_redo ?
+                                          wuss_MENU_ITEM_DISABLED :
+                                          wuss_MENU_ITEM_NONE;
   pt->sel_items[PAINTING_SEL_NONE].flags   = no_sel ?
                                           wuss_MENU_ITEM_DISABLED :
                                           wuss_MENU_ITEM_NONE;
@@ -768,6 +809,8 @@ static void painting_menu_shade(painting_task_t *pt)
 
   wuss_menu_disable_item_live(pt->base.menu_handle, &pt->base.menu,
                               PAINTING_MENU_UNDO, no_undo);
+  wuss_menu_disable_item_live(pt->base.menu_handle, &pt->base.menu,
+                              PAINTING_MENU_REDO, no_redo);
   wuss_menu_disable_item_live(pt->base.menu_handle, &pt->sel_menu, PAINTING_SEL_NONE,
                               no_sel);
   wuss_menu_disable_item_live(pt->base.menu_handle, &pt->edit_menu,
@@ -776,13 +819,14 @@ static void painting_menu_shade(painting_task_t *pt)
                               PAINTING_EDIT_CLEAR, no_sel);
 }
 
-static result_t painting_undo(painting_task_t *pt)
+/* undo, or if redo, redo the last step undone */
+static result_t painting_undo(painting_task_t *pt, int redo)
 {
   box_t dirty;
 
   pt->held = 0; /* abandon any stroke in progress */
 
-  dirty = paintingdoc_undo(pt->doc);
+  dirty = redo ? paintingdoc_redo(pt->doc) : paintingdoc_undo(pt->doc);
   painting_invalidate_box(pt, &dirty);
 
   painting_menu_shade(pt);
@@ -791,7 +835,7 @@ static result_t painting_undo(painting_task_t *pt)
   return result_OK;
 }
 
-#define PAINTING_ZOOM_MAX 8
+#define PAINTING_ZOOM_MAX 32
 
 /* Set the zoom. A stroke in progress is abandoned, as its points are in the
  * old zoom's canvas. */
@@ -810,7 +854,7 @@ static result_t painting_set_zoom(painting_task_t *pt, int zoom)
 /* Step the zoom by step levels, or to 1:1 if step is 0 */
 static result_t painting_zoom(painting_task_t *pt, int step)
 {
-  static const int zooms[] = { 1, 2, 3, 4, 6, 8 };
+  static const int zooms[] = { 1, 2, 3, 4, 6, 8, 12, 16, 24, 32 };
 
   int i;
 
@@ -1064,8 +1108,10 @@ static result_t painting_handle(wuss_window_t      *window,
       wuss_window_invalidate_visible(pt->base.window);
       return result_OK;
     }
-    if (event->data.menu_select.index == PAINTING_MENU_UNDO)
-      return painting_undo(pt);
+    if (event->data.menu_select.index == PAINTING_MENU_UNDO ||
+        event->data.menu_select.index == PAINTING_MENU_REDO)
+      return painting_undo(pt, event->data.menu_select.index ==
+                               PAINTING_MENU_REDO);
     if (event->data.menu_select.index == PAINTING_MENU_NOZZLE)
     {
       painting_set_nozzle(pt, (pt->nozzle + 1) % paintingdoc_NOZZLE__COUNT);
