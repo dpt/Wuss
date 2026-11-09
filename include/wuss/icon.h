@@ -184,8 +184,10 @@ typedef enum wuss_icon_flags
   wuss_ICON_FLAGS_NONE          = 0,
   /** Not drawn, not hit-tested. */
   wuss_ICON_FLAGS_HIDDEN        = 1 << 0,
-  /** Drawn greyed; clicks fall through to the task as wuss_EVENT_MOUSE rather
-   *  than raising wuss_EVENT_ICON. */
+  /** Drawn greyed, a bitmap (wuss_ICON_TYPE_BITMAP, DRAGGABLE or a radio or
+   *  option glyph from the icon set) faded half way toward its ground;
+   *  clicks fall through to the task as wuss_EVENT_MOUSE rather than raising
+   *  wuss_EVENT_ICON. */
   wuss_ICON_FLAGS_DISABLED      = 1 << 1,
   /** wuss_ICON_TYPE_LABEL: left-align the text in the bounding box. This is
    *  the default (value 0); named for call sites that want to state the
@@ -612,7 +614,9 @@ void wuss_icon_set_hidden(wuss_window_t *window,
 
 /**
  * Shade or unshade an icon, toggling wuss_ICON_FLAGS_DISABLED. A shaded icon
- * ignores clicks. Invalidates the icon's bounding box.
+ * ignores clicks, and its bitmap (BITMAP, DRAGGABLE or a radio or option
+ * glyph from the icon set) fades toward its ground. Invalidates the icon's
+ * bounding box.
  *
  * \param[in] window   Window the icon belongs to.
  * \param[in] icon     Icon to change.

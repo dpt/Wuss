@@ -540,6 +540,40 @@ result_t wuss_icon_draw_test(const char *resources)
     wuss_icon_delete(env.window, icon);
   }
 
+  printf("test: disabled bitmap fades toward its ground\n");
+
+  {
+    static pixelfmt_rgba8888_t black_px;
+    bitmap_t                   black_bm;
+
+    black_px = colour_rgb(0, 0, 0).primary;
+    bitmap_init(&black_bm, SIZE2D(1, 1), pixelfmt_rgba8888,
+                (int) sizeof(black_px), NULL, &black_px);
+
+    /* the window is the ground: a bitmap's bg (black here, as a zeroed spec
+     * leaves it) is drawn only when latched, so must not be faded toward */
+    rc = wuss_window_set_background(env.window,
+                                    wuss_BACKDROP_COLOUR(wuss_COLOUR_WHITE));
+    if (rc != result_OK) goto Failure;
+
+    memset(&spec, 0, sizeof(spec));
+    spec.type           = wuss_ICON_TYPE_BITMAP;
+    spec.u.bitmap.image = &black_bm;
+    spec.bbox           = (box_t) { 0, 0, 8, 8 };
+    spec.bg             = wuss_COLOUR_BLACK;
+    rc = draw(&env, &spec, &icon, &b);
+    if (rc != result_OK) goto Failure;
+    if (px(&env, b.x0, b.y0) != pixel_of(&env, colour_rgb(0, 0, 0)))
+      FAIL("enabled bitmap");
+
+    /* half way from black to the white ground */
+    icon->spec.flags |= wuss_ICON_FLAGS_DISABLED;
+    redraw(&env, icon);
+    if (px(&env, b.x0, b.y0) != pixel_of(&env, colour_rgb(127, 127, 127)))
+      FAIL("disabled bitmap not faded");
+    wuss_icon_delete(env.window, icon);
+  }
+
   printf("test: radio from the icon set\n");
 
   {
@@ -564,6 +598,31 @@ result_t wuss_icon_draw_test(const char *resources)
       if (count(&env, &glyph, WIPE) == (glyph.x1 - glyph.x0) * (b.y1 - b.y0) ||
           count(&env, &label, fg) == 0)
         FAIL("glyph from the set");
+
+      /* disabled: the glyph fades, so its pixels change */
+      {
+        static pixelfmt_any_t before[64 * 64];
+        int                   x, y, n, changed;
+
+        if (bm->size.w > 64 || b.y1 - b.y0 > 64) FAIL("glyph too big");
+
+        n = 0;
+        for (y = glyph.y0; y < glyph.y1; y++)
+          for (x = glyph.x0; x < glyph.x1; x++)
+            before[n++] = px(&env, x, y);
+
+        icon->spec.flags |= wuss_ICON_FLAGS_DISABLED;
+        redraw(&env, icon);
+
+        n       = 0;
+        changed = 0;
+        for (y = glyph.y0; y < glyph.y1; y++)
+          for (x = glyph.x0; x < glyph.x1; x++)
+            if (px(&env, x, y) != before[n++])
+              changed++;
+        if (changed == 0)
+          FAIL("disabled glyph not faded");
+      }
     }
     wuss_icon_delete(env.window, icon);
   }

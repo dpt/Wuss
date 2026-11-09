@@ -83,6 +83,19 @@ static void icon_draw_divider_border(screen_t    *scr,
   screen_draw_bevel_edge(scr, &ring, light, divider);
 }
 
+/* The window's ground under an icon: its fill colour, or a pattern's ground
+ * colour, else "fallback". */
+static colour_t wuss__icon_window_ground(const icon_draw_ctx_t *c,
+                                         colour_t               fallback)
+{
+  if (c->window->bg.fill.colour != wuss_NO_BACKGROUND)
+    return (c->window->bg.fill.pattern != screen_PATTERN_SOLID)
+         ? c->wuss->palette[c->window->bg.fill.pattern_bg]
+         : c->wuss->palette[c->window->bg.fill.colour];
+
+  return fallback;
+}
+
 colour_t wuss__icon_blend_ground(const icon_draw_ctx_t *c, colour_t fallback)
 {
   const wuss_icon_spec_t *icon = &c->icon->spec;
@@ -90,12 +103,7 @@ colour_t wuss__icon_blend_ground(const icon_draw_ctx_t *c, colour_t fallback)
   if (icon->bg != wuss_NO_BACKGROUND)
     return c->wuss->palette[icon->bg];
 
-  if (c->window->bg.fill.colour != wuss_NO_BACKGROUND)
-    return (c->window->bg.fill.pattern != screen_PATTERN_SOLID)
-         ? c->wuss->palette[c->window->bg.fill.pattern_bg]
-         : c->wuss->palette[c->window->bg.fill.colour];
-
-  return fallback;
+  return wuss__icon_window_ground(c, fallback);
 }
 
 /* ----------------------------------------------------------------------- */
@@ -330,6 +338,30 @@ static void wuss__icon_draw_button(const icon_draw_ctx_t *c)
 
 /* ----------------------------------------------------------------------- */
 
+/* How far a disabled icon's bitmap fades toward its ground, in 256ths. */
+#define WUSS_ICON_DISABLED_FADE 128
+
+/* Blit "bm" at (x, y), faded toward "ground" when the icon is disabled. A
+ * faded blit that fails draws the image unfaded instead. */
+static result_t wuss__icon_copy_bitmap(const icon_draw_ctx_t *c,
+                                       screen_t              *scr,
+                                       int                    x,
+                                       int                    y,
+                                       const bitmap_t        *bm,
+                                       colour_t               ground)
+{
+  if ((c->icon->spec.flags & wuss_ICON_FLAGS_DISABLED) == 0)
+    return screen_copy_bitmap(scr, x, y, bm);
+
+  if (screen_copy_bitmap_faded(scr, x, y, bm, ground,
+                               WUSS_ICON_DISABLED_FADE) == result_OK)
+    return result_OK;
+
+  return screen_copy_bitmap(scr, x, y, bm);
+}
+
+/* ----------------------------------------------------------------------- */
+
 /* The icon-set bitmap for a radio/option's current state, or NULL when the set
  * is absent or lacks that entry (see wuss__icon_radio_option_name). */
 static const bitmap_t *wuss__icon_radio_option_bitmap(const icon_draw_ctx_t *c)
@@ -392,7 +424,7 @@ static void wuss__icon_draw_radio_option(const icon_draw_ctx_t *c)
 
   if (bm != NULL)
   {
-    screen_copy_bitmap(c->scr, g.x0, g.y0, bm);
+    wuss__icon_copy_bitmap(c, c->scr, g.x0, g.y0, bm, bg);
   }
   else if (icon->type == wuss_ICON_TYPE_RADIO)
   {
@@ -455,6 +487,7 @@ static void wuss__icon_draw_bitmap(const icon_draw_ctx_t *c)
   const bitmap_t *bm;
   screen_t        clipped;
   colour_t        light, dark;
+  colour_t        ground;
   box_t           ring;
   int             x, y, raised;
 
@@ -464,21 +497,28 @@ static void wuss__icon_draw_bitmap(const icon_draw_ctx_t *c)
   if (bm == NULL)
     bm = c->icon->spec.u.bitmap.image;
 
+  /* a disabled image fades toward what lies under it: the window, as a
+   * bitmap's bg is drawn only when latched (below). bevel_light stands in
+   * for a window with no fill, so a disabled image always looks disabled. */
+  light  = c->wuss->palette[c->wuss->bevel.light];
+  ground = wuss__icon_window_ground(c, light);
+
   /* a bevel (sunk when latched), with the image centred inside it */
   x = b->x0;
   y = b->y0;
   if (c->icon->spec.type == wuss_ICON_TYPE_BITMAP &&
       c->icon->spec.u.bitmap.border != wuss_ICON_BORDER_NONE)
   {
-    light  = c->wuss->palette[c->wuss->bevel.light];
     dark   = c->wuss->palette[c->wuss->bevel.dark];
     raised = (c->icon->spec.u.bitmap.border == wuss_ICON_BORDER_RIDGE) !=
              wuss__icon_selected(c->icon);
     ring   = *b;
 
     if (wuss__icon_selected(c->icon) && c->icon->spec.bg != wuss_NO_BACKGROUND)
-      wuss__fill_colour(c->wuss, c->scr, b,
-                        c->wuss->palette[c->icon->spec.bg], c->origin);
+    {
+      ground = c->wuss->palette[c->icon->spec.bg];
+      wuss__fill_colour(c->wuss, c->scr, b, ground, c->origin);
+    }
 
     screen_draw_bevel_edge(c->scr, &ring, raised ? light : dark,
                            raised ? dark : light);
@@ -499,7 +539,7 @@ static void wuss__icon_draw_bitmap(const icon_draw_ctx_t *c)
 
   /* a missing bitmap or a failed blit leaves a red box in its place */
   if (bm == NULL ||
-      screen_copy_bitmap(&clipped, x, y, bm) != result_OK)
+      wuss__icon_copy_bitmap(c, &clipped, x, y, bm, ground) != result_OK)
     screen_fill_rect(&clipped, b->x0, b->y0, box_size(b),
                      colour_rgb(255, 0, 0));
 }

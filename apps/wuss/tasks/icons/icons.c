@@ -77,7 +77,7 @@ enum
   ICONS_N_INTRO   = 3, /* heading, counter button, counter label */
   ICONS_N_BUTTONS = 5, /* frame + 2x2 grid: default/normal x plain/disabled */
   ICONS_N_RADIOS  = 8, /* frame + 3 radios + option + state label + 2 justified labels */
-  ICONS_N_BITMAPS = 3, /* frame + decorative + interactive bitmap */
+  ICONS_N_BITMAPS = 4, /* frame + decorative + interactive + disabled bitmap */
   ICONS_N_ICONSET = 5, /* frame + opton + optoff + radon + radoff from the loaded set */
   ICONS_N_PATTERN = 2, /* frame + one PATTERN swatch */
   ICONS_N_BORDERS = 6, /* frame + GROOVE + RIDGE + ACTION + DIVIDER + PLAIN labels */
@@ -216,8 +216,9 @@ static void icons_add_radios(icons_layout_t *lay, int *opt, int *state)
   lay->y = top + 190;
 }
 
-/* A grouping frame captioned "Bitmaps", holding a decorative sprite and (to
- * its right) an interactive one that bumps the counter -- only laid out if
+/* A grouping frame captioned "Bitmaps", holding a decorative sprite, (to
+ * its right) an interactive one that bumps the counter and a disabled one
+ * faded toward the window ground -- only laid out if
  * the sprite loaded. Returns the interactive icon's index via *hotspot, or
  * leaves it unset if sprite is NULL. */
 static void icons_add_bitmaps(icons_layout_t *lay,
@@ -250,6 +251,15 @@ static void icons_add_bitmaps(icons_layout_t *lay,
   s->u.bitmap.image = sprite;
   s->flags  = wuss_ICON_FLAGS_INTERACTIVE;
   *hotspot  = lay->n;
+  lay->n++;
+
+  /* disabled: the image fades toward the window ground */
+  s         = &lay->specs[lay->n];
+  s->bbox   = (box_t) BOX_POS_SIZE(ICONS_MARGIN + 30 + 2 * sprite->size.w,
+                                   top + 20, sprite->size.w, sprite->size.h);
+  s->type   = wuss_ICON_TYPE_BITMAP;
+  s->u.bitmap.image = sprite;
+  s->flags  = wuss_ICON_FLAGS_DISABLED;
   lay->n++;
 
   lay->y = top + sprite->size.h + 50;
