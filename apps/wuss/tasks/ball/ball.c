@@ -245,10 +245,6 @@ static void ball_set_title(ball_task_t *bc)
     bc->grabbed = -1;
 
   /* Clear has nothing to do while only the first ball remains */
-  if (bc->nballs > 1)
-    bc->menu_items[BALL_MENU_CLEAR].flags &= ~wuss_MENU_ITEM_DISABLED;
-  else
-    bc->menu_items[BALL_MENU_CLEAR].flags |= wuss_MENU_ITEM_DISABLED;
   wuss_menu_disable_item_live(bc->base.menu_handle, &bc->base.menu, BALL_MENU_CLEAR,
                               bc->nballs <= 1);
 }

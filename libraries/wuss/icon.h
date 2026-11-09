@@ -337,12 +337,14 @@ struct wuss_iconpool; /* core/impl.h */
  * wuss_destroy for the shared pool and by wuss_task_destroy for a task's. */
 void wuss__iconpool_clear(wuss_t *wuss, struct wuss_iconpool *pool);
 
-/* The pool bitmap called "name": "task"'s private pool first, then the shared
- * pool. "task" may be NULL for the shared pool alone. NULL if neither has it.
- * Valid until the pool holding it is reloaded or freed. */
+/* Frame "frame" of the pool bitmap called "name": "task"'s private pool
+ * first, then the shared pool. "task" may be NULL for the shared pool alone.
+ * NULL if neither has it or the frame is out of range. Valid until the pool
+ * holding it is reloaded or freed. */
 const bitmap_t *wuss__iconpool_find(const wuss_t      *wuss,
                                     const wuss_task_t *task,
-                                    const char        *name);
+                                    const char        *name,
+                                    int                frame);
 
 /* Byte-swap every loaded icon pool (shared and per-task), in place, into the channel order the
  * current screen format blits (see icons_order_for). Called by wuss_resize

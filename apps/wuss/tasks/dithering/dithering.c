@@ -312,12 +312,7 @@ static int dithering_colours(int pos)
 
 static void dithering_free_dithered(dithering_task_t *dt)
 {
-  if (dt->dithered == NULL)
-    return;
-
-  free(dt->dithered->base);
-  free(dt->dithered->palette);
-  free(dt->dithered);
+  bitmap_destroy(dt->dithered);
   dt->dithered = NULL;
 }
 

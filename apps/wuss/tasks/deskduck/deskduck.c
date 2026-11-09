@@ -559,23 +559,13 @@ static void deskduck_idle(deskduck_t *desk)
 
 /* ----------------------------------------------------------------------- */
 
-/* shade a menu row, or not, in the menu and in it while open */
-static void deskduck_shade(deskduck_t *desk, int row, int disabled)
-{
-  if (disabled)
-    desk->menu_items[row].flags |= wuss_MENU_ITEM_DISABLED;
-  else
-    desk->menu_items[row].flags &=
-      (wuss_menu_item_flags_t) ~wuss_MENU_ITEM_DISABLED;
-
-  wuss_menu_disable_item_live(desk->menu_handle, &desk->menu, row, disabled);
-}
-
 /* shade Add duck at the most ducks and Remove duck at the last one */
 static void deskduck_shade_rows(deskduck_t *desk)
 {
-  deskduck_shade(desk, DUCK_MENU_ADD, desk->nducks == DUCK_MAX);
-  deskduck_shade(desk, DUCK_MENU_REMOVE, desk->nducks <= 1);
+  wuss_menu_disable_item_live(desk->menu_handle, &desk->menu, DUCK_MENU_ADD,
+                              desk->nducks == DUCK_MAX);
+  wuss_menu_disable_item_live(desk->menu_handle, &desk->menu,
+                              DUCK_MENU_REMOVE, desk->nducks <= 1);
 }
 
 /* a new duck somewhere on the backdrop, wandering off */
@@ -715,7 +705,6 @@ static result_t deskduck_handle(wuss_window_t      *window,
 
     case DUCK_MENU_PAUSE:
       desk->paused = !desk->paused;
-      wuss_menu_tick_item(&desk->menu, DUCK_MENU_PAUSE, desk->paused);
       wuss_menu_tick_item_live(desk->menu_handle, &desk->menu,
                                DUCK_MENU_PAUSE, desk->paused);
       break;

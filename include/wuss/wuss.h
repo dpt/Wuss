@@ -852,6 +852,18 @@ result_t wuss_set_config(wuss_t *wuss, const wuss_config_t *config);
 void wuss_get_config(const wuss_t *wuss, wuss_config_t *config);
 
 /**
+ * Whether the pointer has moved far enough from a press to start a drag: at
+ * least wuss_config_t::mouse.drag_threshold_px from it.
+ *
+ * \param[in] wuss Window manager.
+ * \param[in] from Where the button went down.
+ * \param[in] to   Where the pointer is now.
+ *
+ * \return Non-zero once to is past the drag threshold from from.
+ */
+int wuss_drag_past_threshold(const wuss_t *wuss, point_t from, point_t to);
+
+/**
  * Tell wuss the current time, for double-click detection. The frontend calls
  * this once per frame before wuss_mouse_click (SDL: SDL_GetTicks; RISC OS: a
  * monotonic millisecond clock). The epoch is arbitrary and fixed by the

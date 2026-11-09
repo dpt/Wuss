@@ -866,16 +866,9 @@ static result_t minesweeping_key(minesweeping_task_t *ms, int code)
  * open menu, if any, so an ADJUST pick shows it at once. */
 static void minesweeping_menu_update(minesweeping_task_t *ms)
 {
-  wuss_menu_item_t *give_up;
-  bool              disabled;
+  bool disabled;
 
-  give_up  = &ms->menu_items[MINESWEEPING_MENU_GIVE_UP];
   disabled = !(ms->placed && !ms->dead && !ms->won);
-  if (disabled)
-    give_up->flags |= wuss_MENU_ITEM_DISABLED;
-  else
-    give_up->flags &= ~wuss_MENU_ITEM_DISABLED;
-
   wuss_menu_disable_item_live(ms->base.menu_handle, &ms->base.menu,
                               MINESWEEPING_MENU_GIVE_UP, disabled);
 }

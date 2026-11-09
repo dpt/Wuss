@@ -806,29 +806,13 @@ const bitmap_t *wuss_iconpool_bitmap(const wuss_t *wuss, int index);
  *
  * \param[in] wuss  Window manager.
  * \param[in] index 0-based index, 0..\ref wuss_iconpool_count -1.
- * \param[in] frame 0-based frame, 0..\ref wuss_iconpool_frames -1.
+ * \param[in] frame 0-based frame.
  * \return The bitmap, owned and valid as for \ref wuss_iconpool_bitmap, or
  *         NULL if \p index or \p frame is out of range.
  */
 const bitmap_t *wuss_iconpool_frame(const wuss_t *wuss,
                                     int           index,
                                     int           frame);
-
-/**
- * Give an icon-set entry's frame grid: 1 x 1 for a plain PNG.
- *
- * \param[in]  wuss  Window manager.
- * \param[in]  index 0-based index, 0..\ref wuss_iconpool_count -1.
- * \param[out] cols  Columns in the grid, if not NULL. Unset if \p index is
- *                   out of range.
- * \param[out] rows  Rows in the grid, if not NULL. Unset if \p index is out
- *                   of range.
- * \return The frame count (cols x rows), or 0 if \p index is out of range.
- */
-int wuss_iconpool_frames(const wuss_t *wuss,
-                         int           index,
-                         int          *cols,
-                         int          *rows);
 
 /**
  * Fetch an icon set entry's name.

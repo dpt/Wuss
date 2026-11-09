@@ -309,9 +309,7 @@ result_t script_save_png(const bitmap_t *bm, const char *filename)
     if (rc == result_OK)
     {
       rc = bitmap_save_png(deep, filename);
-      free(deep->base);
-      free(deep->palette);
-      free(deep);
+      bitmap_destroy(deep);
     }
   }
 

@@ -298,7 +298,7 @@ result_t wuss_iconpool_test(const char *resources)
   printf("test: wuss_iconpool_load splits sprite sheets into frames\n");
 
   {
-    int idx, f, cols, rows;
+    int idx, f;
 
     rc = wuss_iconpool_load(wuss, pathf("%s/resources/test/wuss/sheets",
                                      resources));
@@ -312,8 +312,7 @@ result_t wuss_iconpool_test(const char *resources)
 
     /* 3x2 cells, row-major, each its own grey; frame 0 is the bitmap */
     idx = wuss_iconpool_lookup(wuss, "grid");
-    if (idx < 0 || wuss_iconpool_frames(wuss, idx, &cols, &rows) != 6 ||
-        cols != 3 || rows != 2)
+    if (idx < 0)
       goto Failure;
     for (f = 0; f < 6; f++)
       if (wuss_iconpool_frame(wuss, idx, f)->size.w != 4 ||
@@ -325,26 +324,24 @@ result_t wuss_iconpool_test(const char *resources)
     if (wuss_iconpool_frame(wuss, idx, 0) != wuss_iconpool_bitmap(wuss, idx) ||
         wuss_iconpool_frame(wuss, idx, 6) != NULL ||
         wuss_iconpool_frame(wuss, idx, -1) != NULL ||
-        wuss_iconpool_frames(wuss, -1, NULL, NULL) != 0)
+        wuss_iconpool_frame(wuss, -1, 0) != NULL)
       goto Failure;
 
     /* 10x9 at 4x4 keeps the whole 2x2 cells */
     idx = wuss_iconpool_lookup(wuss, "ragged");
-    if (idx < 0 || wuss_iconpool_frames(wuss, idx, &cols, &rows) != 4 ||
-        cols != 2 || rows != 2 ||
+    if (idx < 0 || wuss_iconpool_frame(wuss, idx, 4) != NULL ||
         iconpool_test_grey(wuss_iconpool_frame(wuss, idx, 3), 0, 0) != 100)
       goto Failure;
 
     /* the plain dup.png wins: one 2x2 frame */
     idx = wuss_iconpool_lookup(wuss, "dup");
-    if (idx < 0 || wuss_iconpool_frames(wuss, idx, NULL, NULL) != 1 ||
+    if (idx < 0 || wuss_iconpool_frame(wuss, idx, 1) != NULL ||
         wuss_iconpool_bitmap(wuss, idx)->size.w != 2)
       goto Failure;
 
     /* a leading zero is not a sheet suffix */
     idx = wuss_iconpool_lookup(wuss, "plain_04x4");
-    if (idx < 0 || wuss_iconpool_frames(wuss, idx, &cols, &rows) != 1 ||
-        cols != 1 || rows != 1)
+    if (idx < 0 || wuss_iconpool_frame(wuss, idx, 1) != NULL)
       goto Failure;
 
     rc = wuss_iconpool_load_resource(wuss, resources);
@@ -394,8 +391,8 @@ result_t wuss_iconpool_test(const char *resources)
     /* frames by name: private first, a plain entry has one, unknown none */
     if (wuss_task_iconpool_frame(delegate_pp, "rgba", 0) != priv ||
         wuss_task_iconpool_frame(delegate_pp, "rgba", 1) != NULL ||
-        wuss_task_iconpool_frames(delegate_pp, "opton", NULL, NULL) != 1 ||
-        wuss_task_iconpool_frames(delegate_pp, "nonesuch", NULL, NULL) != 0)
+        wuss_task_iconpool_frame(delegate_pp, "opton", 1) != NULL ||
+        wuss_task_iconpool_frame(delegate_pp, "nonesuch", 0) != NULL)
       goto Failure;
 
     /* icons in the task's windows resolve names privately first */

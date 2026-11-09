@@ -1421,8 +1421,11 @@ QuitFail:
     wuss_menu_tick_set_live(h, &tk_menu, 4);
     wuss_menu_disable_item_live(h, &tk_menu, 1, 1);
     if (!(wuss__menu_level_icon(level, 1)->spec.flags &
-          wuss_ICON_FLAGS_DISABLED))
+          wuss_ICON_FLAGS_DISABLED) ||
+        !(tk_items[1].flags & wuss_MENU_ITEM_DISABLED))
       goto TickCheckFail;
+    wuss_menu_disable_item_live(NULL, &tk_menu, 1, 0);
+    if (tk_items[1].flags & wuss_MENU_ITEM_DISABLED)      goto TickCheckFail;
     wuss_menu_set_item_text_live(h, &tk_menu, 1, "Uno");
     if (strcmp(wuss_icon_get_text(wuss__menu_level_icon(level, 1)), "Uno"))
       goto TickCheckFail;

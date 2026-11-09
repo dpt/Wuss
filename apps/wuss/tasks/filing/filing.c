@@ -796,11 +796,6 @@ static int filing_download_selection(const filing_window_t *fw, int download)
 /* shade or unshade a menu row, on screen too if the menu is open */
 static void filing_menu_enable(filing_task_t *task, int row, int enabled)
 {
-  if (enabled)
-    task->menu_items[row].flags &= ~wuss_MENU_ITEM_DISABLED;
-  else
-    task->menu_items[row].flags |= wuss_MENU_ITEM_DISABLED;
-
   wuss_menu_disable_item_live(task->menu_handle, &task->menu, row, !enabled);
 }
 

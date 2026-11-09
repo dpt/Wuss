@@ -153,7 +153,6 @@ typedef struct pinboard
   wuss_colour_t      label_fg;
   wuss_colour_t      label_bg;
   wuss_colour_t      label_accent; /* a selected label's text */
-  int                threshold;
 
   const bitmap_t    *glyph_dir;
 
@@ -446,11 +445,7 @@ static void pinboard_reveal_selection(pinboard_t *pb)
 
 static void pinboard_drop_scaled(pinboard_t *pb)
 {
-  if (pb->scaled == NULL)
-    return;
-
-  free(pb->scaled->base);
-  free(pb->scaled);
+  bitmap_destroy(pb->scaled);
   pb->scaled = NULL;
 }
 
@@ -646,14 +641,11 @@ static void pinboard_band_end(pinboard_t *pb)
 static void pinboard_drag_maybe(pinboard_t *pb, point_t p)
 {
   result_t        rc;
-  int             dx, dy;
   const pin_t    *pin;
   const bitmap_t *glyph;
   point_t         at;
 
-  dx = p.x - pb->press_point.x;
-  dy = p.y - pb->press_point.y;
-  if (dx * dx + dy * dy < pb->threshold * pb->threshold)
+  if (!wuss_drag_past_threshold(pb->wuss, pb->press_point, p))
     return;
 
   pin         = &pb->pins[pb->press];
@@ -837,13 +829,10 @@ static void pinboard_actor_click(pinboard_t   *pb,
 
 static void pinboard_actor_drag_maybe(pinboard_t *pb, point_t p)
 {
-  int            dx, dy;
   int            i;
   const actor_t *a;
 
-  dx = p.x - pb->press_point.x;
-  dy = p.y - pb->press_point.y;
-  if (dx * dx + dy * dy < pb->threshold * pb->threshold)
+  if (!wuss_drag_past_threshold(pb->wuss, pb->press_point, p))
     return;
 
   i               = pb->actor_press;
@@ -903,65 +892,40 @@ static int pinboard_selected_image(const pinboard_t *pb)
   return -1;
 }
 
-static void pinboard_menu_flag(wuss_menu_item_t      *item,
-                               wuss_menu_item_flags_t flag,
-                               int                    set)
-{
-  if (set)
-    item->flags |= flag;
-  else
-    item->flags &= (wuss_menu_item_flags_t) ~flag;
-}
-
-static void pinboard_menu_shade(pinboard_t       *pb,
-                                wuss_menu_item_t *items,
-                                wuss_menu_t      *menu,
-                                int               index,
-                                int               set)
-{
-  pinboard_menu_flag(&items[index], wuss_MENU_ITEM_DISABLED, set);
-  wuss_menu_disable_item_live(pb->menu_handle, menu, index, set);
-}
-
 /* shade and tick the rows to match the Pinboard, in the descriptions for the
  * next open and in place on any level now open, as an ADJUST pick leaves
  * the menu open */
 static void pinboard_menu_update(pinboard_t *pb)
 {
-  int i, set, no_image;
+  wuss_menu_handle_t h;
+  int                i, set, no_image;
 
+  h   = pb->menu_handle;
   set = pb->npins == 0;
-  pinboard_menu_shade(pb, pb->menu_items, &pb->menu,
-                      PINBOARD_MENU_SELECT_ALL, set);
-  pinboard_menu_shade(pb, pb->menu_items, &pb->menu, PINBOARD_MENU_TIDY, set);
+  wuss_menu_disable_item_live(h, &pb->menu, PINBOARD_MENU_SELECT_ALL, set);
+  wuss_menu_disable_item_live(h, &pb->menu, PINBOARD_MENU_TIDY, set);
 
   set = pinboard_nselected(pb) == 0;
-  pinboard_menu_shade(pb, pb->menu_items, &pb->menu,
-                      PINBOARD_MENU_SELECTION, set);
-  pinboard_menu_shade(pb, pb->menu_items, &pb->menu,
-                      PINBOARD_MENU_CLEAR_SELECTION, set);
+  wuss_menu_disable_item_live(h, &pb->menu, PINBOARD_MENU_SELECTION, set);
+  wuss_menu_disable_item_live(h, &pb->menu, PINBOARD_MENU_CLEAR_SELECTION,
+                              set);
   for (i = 0; i < PINBOARD_SEL__LIMIT; i++)
-    pinboard_menu_shade(pb, pb->sel_items, &pb->sel_menu, i, set);
+    wuss_menu_disable_item_live(h, &pb->sel_menu, i, set);
 
-  pinboard_menu_shade(pb, pb->bd_items, &pb->bd_menu, PINBOARD_BD_CLEAR,
-                      pb->image_mode == PINBOARD_IMAGE_NONE);
+  wuss_menu_disable_item_live(h, &pb->bd_menu, PINBOARD_BD_CLEAR,
+                              pb->image_mode == PINBOARD_IMAGE_NONE);
 
   for (i = 0; i < (int) NELEMS(pinboard_patterns); i++)
-  {
-    set = pb->backdrop.fill.pattern == pinboard_patterns[i].pattern;
-    pinboard_menu_flag(&pb->pattern_items[i], wuss_MENU_ITEM_TICKED, set);
-    wuss_menu_tick_item_live(pb->menu_handle, &pb->pattern_menu, i, set);
-  }
+    wuss_menu_tick_item_live(h, &pb->pattern_menu, i,
+                             pb->backdrop.fill.pattern ==
+                             pinboard_patterns[i].pattern);
 
   no_image = !pb->have_image && pinboard_selected_image(pb) < 0;
   for (i = 0; i < PINBOARD_IMAGE__LIMIT; i++)
   {
-    set = i == pb->image_mode;
-    pinboard_menu_flag(&pb->image_items[i], wuss_MENU_ITEM_TICKED, set);
-    wuss_menu_tick_item_live(pb->menu_handle, &pb->image_menu, i, set);
-
-    pinboard_menu_shade(pb, pb->image_items, &pb->image_menu, i,
-                        i != PINBOARD_IMAGE_NONE && no_image);
+    wuss_menu_tick_item_live(h, &pb->image_menu, i, i == pb->image_mode);
+    wuss_menu_disable_item_live(h, &pb->image_menu, i,
+                                i != PINBOARD_IMAGE_NONE && no_image);
   }
 }
 
@@ -1410,8 +1374,6 @@ result_t pinboard_app_create(wuss_t *wuss)
   pb->label_fg     = config.button.fg;
   pb->label_bg     = config.body.window;
   pb->label_accent = config.accent.colour;
-  pb->threshold    = config.mouse.drag_threshold_px > 0
-                   ? config.mouse.drag_threshold_px : 4;
   pb->dithering    = screen_DITHER_BLUE_NOISE;
 
   pinboard_menus(pb);

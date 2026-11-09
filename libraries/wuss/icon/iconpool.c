@@ -583,27 +583,6 @@ static const bitmap_t *icons_frame(const struct wuss_iconpool *pool,
   return &pool->bitmaps[e->first + frame];
 }
 
-/* The frame count of entry "index" in pool, or 0 if out of range. Sets
- * *cols and *rows when not NULL. */
-static int icons_frames(const struct wuss_iconpool *pool,
-                        int                         index,
-                        int                        *cols,
-                        int                        *rows)
-{
-  const struct wuss_iconpool_entry *e;
-
-  if (index < 0 || index >= pool->nentries)
-    return 0;
-
-  e = &pool->entries[index];
-  if (cols != NULL)
-    *cols = e->cols;
-  if (rows != NULL)
-    *rows = e->rows;
-
-  return e->cols * e->rows;
-}
-
 int wuss_iconpool_count(const wuss_t *wuss)
 {
   assert(wuss != NULL);
@@ -629,13 +608,6 @@ const bitmap_t *wuss_iconpool_frame(const wuss_t *wuss, int index, int frame)
   assert(wuss != NULL);
 
   return icons_frame(&wuss->icon, index, frame);
-}
-
-int wuss_iconpool_frames(const wuss_t *wuss, int index, int *cols, int *rows)
-{
-  assert(wuss != NULL);
-
-  return icons_frames(&wuss->icon, index, cols, rows);
 }
 
 const char *wuss_iconpool_name(const wuss_t *wuss, int index)
@@ -690,38 +662,23 @@ result_t wuss_task_iconpool_load_resource(wuss_task_t *task,
   return wuss_task_iconpool_load(task, dir);
 }
 
-/* The pool holding "name" -- task's private pool first, if task is given,
- * then the shared pool -- setting *index to its index there. NULL if neither
- * has it. */
-static const struct wuss_iconpool *icons_locate(const wuss_t      *wuss,
-                                                const wuss_task_t *task,
-                                                const char        *name,
-                                                int               *index)
-{
-  if (task != NULL)
-  {
-    *index = icons_find(&task->iconpool, name);
-    if (*index >= 0)
-      return &task->iconpool;
-  }
-
-  *index = icons_find(&wuss->icon, name);
-
-  return (*index >= 0) ? &wuss->icon : NULL;
-}
-
 const bitmap_t *wuss__iconpool_find(const wuss_t      *wuss,
                                     const wuss_task_t *task,
-                                    const char        *name)
+                                    const char        *name,
+                                    int                frame)
 {
-  const struct wuss_iconpool *pool;
-  int                         idx;
+  int idx;
 
   assert(wuss != NULL);
 
-  pool = icons_locate(wuss, task, name, &idx);
+  if (task != NULL)
+  {
+    idx = icons_find(&task->iconpool, name);
+    if (idx >= 0)
+      return icons_frame(&task->iconpool, idx, frame);
+  }
 
-  return (pool != NULL) ? icons_frame(pool, idx, 0) : NULL;
+  return icons_frame(&wuss->icon, icons_find(&wuss->icon, name), frame);
 }
 
 const bitmap_t *wuss_task_iconpool_find(const wuss_task_t *task,
@@ -729,36 +686,16 @@ const bitmap_t *wuss_task_iconpool_find(const wuss_task_t *task,
 {
   assert(task != NULL);
 
-  return wuss__iconpool_find(task->wuss, task, name);
+  return wuss__iconpool_find(task->wuss, task, name, 0);
 }
 
 const bitmap_t *wuss_task_iconpool_frame(const wuss_task_t *task,
                                          const char        *name,
                                          int                frame)
 {
-  const struct wuss_iconpool *pool;
-  int                         idx;
-
   assert(task != NULL);
 
-  pool = icons_locate(task->wuss, task, name, &idx);
-
-  return (pool != NULL) ? icons_frame(pool, idx, frame) : NULL;
-}
-
-int wuss_task_iconpool_frames(const wuss_task_t *task,
-                              const char        *name,
-                              int               *cols,
-                              int               *rows)
-{
-  const struct wuss_iconpool *pool;
-  int                         idx;
-
-  assert(task != NULL);
-
-  pool = icons_locate(task->wuss, task, name, &idx);
-
-  return (pool != NULL) ? icons_frames(pool, idx, cols, rows) : 0;
+  return wuss__iconpool_find(task->wuss, task, name, frame);
 }
 
 #endif /* WUSS_ICONS */

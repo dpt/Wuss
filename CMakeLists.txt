@@ -185,6 +185,7 @@ set(WUSS_CORE_SOURCES
     libraries/wuss/core/scroll.c
     libraries/wuss/core/scroll-step.c
     libraries/wuss/core/get-config.c
+    libraries/wuss/core/drag-past-threshold.c
     libraries/wuss/core/set-backdrop.c
     libraries/wuss/core/set-colour-fill.c
     libraries/wuss/core/set-config.c

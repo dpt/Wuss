@@ -668,12 +668,6 @@ static result_t effecting_redraw(const wuss_event_t *event, void *task_data)
 
 static void effecting_menu_enable(effecting_task_t *ec, int row, int enabled)
 {
-  if (enabled)
-    ec->menu_items[row].flags &=
-      (wuss_menu_item_flags_t) ~wuss_MENU_ITEM_DISABLED;
-  else
-    ec->menu_items[row].flags |= wuss_MENU_ITEM_DISABLED;
-
   wuss_menu_disable_item_live(ec->base.menu_handle, &ec->base.menu, row, !enabled);
 }
 

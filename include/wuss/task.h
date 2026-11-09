@@ -730,21 +730,6 @@ const bitmap_t *wuss_task_iconpool_frame(const wuss_task_t *task,
                                          const char        *name,
                                          int                frame);
 
-/**
- * Give an icon's frame grid by name, searching as \ref
- * wuss_task_iconpool_find does: 1 x 1 for a plain PNG.
- *
- * \param[in]  task Task whose private pool to search first.
- * \param[in]  name Entry name.
- * \param[out] cols Columns in the grid, if not NULL. Unset if not found.
- * \param[out] rows Rows in the grid, if not NULL. Unset if not found.
- * \return The frame count (cols x rows), or 0 if neither pool has \p name.
- */
-int wuss_task_iconpool_frames(const wuss_task_t *task,
-                              const char        *name,
-                              int               *cols,
-                              int               *rows);
-
 #endif /* WUSS_ICONS */
 
 #ifdef __cplusplus

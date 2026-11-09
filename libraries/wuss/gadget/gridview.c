@@ -262,14 +262,7 @@ static void gridview_free_smalls(wuss_gridview_t *gv)
   int i;
 
   for (i = 0; i < gv->nsmalls; i++)
-  {
-    if (gv->smalls[i].small == NULL)
-      continue;
-
-    /* as bitmap_resize allocated them */
-    free(gv->smalls[i].small->base);
-    free(gv->smalls[i].small);
-  }
+    bitmap_destroy(gv->smalls[i].small);
 
   gv->nsmalls = 0;
 }
@@ -308,11 +301,7 @@ static const bitmap_t *gridview_small_glyph(wuss_gridview_t *gv,
                         bitmap_resample_BOX, 1, &small) != result_OK)
         small = NULL;
     }
-    if (deep != NULL)
-    {
-      free(deep->base);
-      free(deep);
-    }
+    bitmap_destroy(deep);
     free(raw.base);
     free(raw.palette);
   }
@@ -577,19 +566,13 @@ static void gridview_drag_maybe(wuss_gridview_t *gv, point_t point)
   point_t              at;
   size2d_t             drawn;
   point_t              hotspot;
-  int                  threshold;
   int                  index;
-  int                  dx;
-  int                  dy;
 
   if (gv->press_index < 0)
     return;
 
-  wuss      = gv->window->task->wuss;
-  threshold = wuss->input.drag_threshold_px;
-  dx        = point.x - gv->press_point.x;
-  dy        = point.y - gv->press_point.y;
-  if (dx * dx + dy * dy < threshold * threshold)
+  wuss = gv->window->task->wuss;
+  if (!wuss_drag_past_threshold(wuss, gv->press_point, point))
     return;
 
   index           = gv->press_index;

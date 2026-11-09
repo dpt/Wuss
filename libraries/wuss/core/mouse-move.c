@@ -176,13 +176,10 @@ static result_t mouse_move(wuss_t *wuss, point_t p, wuss_window_t **hit)
         wuss->pressed.icon->spec.type == wuss_ICON_TYPE_DRAGGABLE)
     {
       wuss_icon_t *icon;
-      int          dx, dy;
 
       icon = wuss->pressed.icon;
-      dx   = x - wuss->pressed.point.x;
-      dy   = y - wuss->pressed.point.y;
 
-      if (dx * dx + dy * dy >= wuss->input.drag_threshold_px * wuss->input.drag_threshold_px)
+      if (wuss_drag_past_threshold(wuss, wuss->pressed.point, POINT(x, y)))
       {
         box_t    box;
         size2d_t size;

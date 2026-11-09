@@ -160,8 +160,20 @@ void wuss_menu_disable_item_live(wuss_menu_handle_t handle,
                                  int                index,
                                  int                disabled)
 {
+  wuss_menu_item_t  *item;
   struct wuss__menu *node;
   wuss_icon_t       *icon;
+
+  assert(menu != NULL);
+
+  if (index < 0 || index >= menu->nitems)
+    return;
+
+  item = (wuss_menu_item_t *) &menu->items[index];
+  if (disabled)
+    item->flags |= wuss_MENU_ITEM_DISABLED;
+  else
+    item->flags &= ~(wuss_menu_item_flags_t) wuss_MENU_ITEM_DISABLED;
 
   icon = wuss__menu_live_icon(handle, menu, index, &node);
   if (icon != NULL)

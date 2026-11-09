@@ -99,12 +99,7 @@ static const char *const resizing_scale_names[RESIZING_NSCALES] =
 
 static void resizing_free_resized(resizing_task_t *rt)
 {
-  if (rt->resized == NULL)
-    return;
-
-  free(rt->resized->base);
-  free(rt->resized->palette);
-  free(rt->resized);
+  bitmap_destroy(rt->resized);
   rt->resized = NULL;
 }
 
