@@ -23,6 +23,7 @@ result_t wuss_idle(wuss_t *wuss)
   wuss__iconbar_scroll_tick(wuss);
   wuss__iconbar_pop_tick(wuss);
 #endif
+  wuss__toolbar_scroll_tick(wuss);
 
   if (wuss->drag.window != NULL)
     wuss__drag_tick(wuss);

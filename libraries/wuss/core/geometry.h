@@ -20,6 +20,14 @@ static inline int wuss__iconbar_height(const wuss_t *wuss)
 point_t wuss__scroll_clamp(const wuss_window_t *window, point_t desired);
 void    wuss__scroll_step(wuss_window_t *window, point_t delta);
 
+/* A toolbar or pane whose document overruns its content box scrolls, as the
+ * icon bar does, while the pointer rests within WUSS_TOOLBAR_SCROLL_ZONE
+ * pixels of either end of an overrun axis that has no scrollbar: each idle
+ * moves it WUSS_TOOLBAR_SCROLL_STEP pixels. Called from wuss_idle. */
+#define WUSS_TOOLBAR_SCROLL_ZONE 16
+#define WUSS_TOOLBAR_SCROLL_STEP 6
+void    wuss__toolbar_scroll_tick(wuss_t *wuss);
+
 #ifdef WUSS_FURNITURE
 void            wuss__titlebar_box(const wuss_window_t *window, box_t *out);
 void            wuss__title_hit_box(const wuss_window_t *window, box_t *out);

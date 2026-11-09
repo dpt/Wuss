@@ -120,3 +120,83 @@ result_t wuss_scroll(wuss_t *wuss, point_t p, int delta, wuss_window_t **hit)
     return wuss__deliver(win->task, win, &event);
   }
 }
+
+/* ----------------------------------------------------------------------- */
+
+/* The step to scroll by along one axis of a toolbar's content, lo to hi,
+ * with the pointer at p: back near the start, on near the end, else none. */
+static int wuss__toolbar_scroll_delta(int p, int lo, int hi)
+{
+  if (p < lo + WUSS_TOOLBAR_SCROLL_ZONE)
+    return -WUSS_TOOLBAR_SCROLL_STEP;
+  if (p >= hi - WUSS_TOOLBAR_SCROLL_ZONE)
+    return WUSS_TOOLBAR_SCROLL_STEP;
+  return 0;
+}
+
+/* The extent of a toolbar's content: its shown icons, with a trailing margin
+ * matching the leading one, so a document left wider than what is in it
+ * gives no blank space to scroll into. Without icons, the document. */
+static size2d_t wuss__toolbar_extent(const wuss_window_t *win)
+{
+#ifdef WUSS_ICONS
+  box_t u = BOX_INIT;
+  int   i;
+
+  for (i = 0; i < win->nicons; i++)
+    if (!(win->icons[i]->spec.flags & wuss_ICON_FLAGS_HIDDEN))
+      box_union(&u, &win->icons[i]->spec.bbox, &u);
+
+  if (!box_is_empty(&u))
+    return SIZE2D(MIN(win->doc.w, u.x1 + MAX(u.x0, 0)),
+                  MIN(win->doc.h, u.y1 + MAX(u.y0, 0)));
+#endif
+
+  return win->doc;
+}
+
+void wuss__toolbar_scroll_tick(wuss_t *wuss)
+{
+  wuss_window_t *win;
+  box_t          content;
+  point_t        p;
+  point_t        scroll;
+  size2d_t       extent;
+
+  /* a press in progress owns the pointer: a slider being dragged must not
+   * slide away under it */
+  if (wuss->capture != NULL || wuss->drag.window != NULL)
+    return;
+#ifdef WUSS_ICONS
+  if (wuss->pressed.icon != NULL)
+    return;
+#endif
+#ifdef WUSS_FURNITURE
+  if (wuss->furniture.dragging != NULL)
+    return;
+#endif
+
+  p   = wuss->pointer;
+  win = wuss__window_at(wuss, p);
+  if (win == NULL || win->toolbar.parent == NULL)
+    return;
+
+  /* an axis with a scrollbar scrolls by that instead. an overrun shrunk away
+   * since the last scroll springs back once the pointer is over it */
+  wuss__content_box(win, &content);
+  scroll = win->scroll;
+  extent = wuss__toolbar_extent(win);
+  if (!(win->flags & wuss_WINDOW_HSCROLL))
+    scroll.x = CLAMP(scroll.x + wuss__toolbar_scroll_delta(p.x, content.x0,
+                                                           content.x1),
+                     0, MAX(extent.w - (content.x1 - content.x0), 0));
+  if (!(win->flags & wuss_WINDOW_VSCROLL))
+    scroll.y = CLAMP(scroll.y + wuss__toolbar_scroll_delta(p.y, content.y0,
+                                                           content.y1),
+                     0, MAX(extent.h - (content.y1 - content.y0), 0));
+  if (scroll.x == win->scroll.x && scroll.y == win->scroll.y)
+    return;
+
+  wuss_window_set_scroll(win, scroll);
+  wuss__scroll_rehover(wuss, win, p);
+}
