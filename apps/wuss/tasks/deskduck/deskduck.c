@@ -33,7 +33,7 @@
 #define DUCK_SLEEP      (30 * 60) /* the pointer is still this long */
 #define DUCK_SPEED      24  /* px/s, top waddle speed */
 #define DUCK_SWIM       12  /* px/s, top swim speed */
-#define DUCK_TURN       10  /* ticks per eighth of a turn, chasing */
+#define DUCK_TURN       10  /* ticks per eighth of a turn, steering */
 #define DUCK_MAX        7   /* ducks: the pond, ducks and bubbles fit
                              * Pinboard's 16 actor slots */
 
@@ -503,9 +503,8 @@ static int deskduck_tick(deskduck_t *desk,
   if (state->does & STEERS)
     deskduck_steer(duck, dx, dy);
   if (state->does & HOMES)
-    duck->heading =
-      POINT(deskduck_sign((water.x0 + water.x1) / 2 - duck->pos.x),
-            deskduck_sign((water.y0 + water.y1) / 2 - duck->pos.y));
+    deskduck_steer(duck, (water.x0 + water.x1) / 2 - duck->pos.x,
+                   (water.y0 + water.y1) / 2 - duck->pos.y);
   if (state->does & WALKS)
     deskduck_walk(duck, deskduck_land(desk), DUCK_SPEED);
   if (state->does & SWIMS)
