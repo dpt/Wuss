@@ -33,6 +33,7 @@
 #define DUCK_SLEEP      (30 * 60) /* the pointer is still this long */
 #define DUCK_SPEED      24  /* px/s, top waddle speed */
 #define DUCK_SWIM       12  /* px/s, top swim speed */
+#define DUCK_TURN       10  /* ticks per eighth of a turn, chasing */
 
 /* Actor ids. Pinboard draws actors in slot order, and the pond is sent
  * first, so it takes a lower slot and lies under the duck.
@@ -195,6 +196,7 @@ typedef struct deskduck
   int                  still;   /* ticks the pointer has been still */
   int                  ticks;
   int                  stride;  /* px/s summed per tick; a step at 60 */
+  int                  turning; /* ticks since the last turn */
   int                  steps;   /* px walked, for the waddle frame */
   point_t              pointer; /* where the pointer was last tick */
   const bitmap_t      *shown;   /* the frame last sent, NULL for none */
@@ -292,6 +294,50 @@ static void deskduck_wander(deskduck_t *duck)
 static int deskduck_sign(int v)
 {
   return (v > 0) - (v < 0);
+}
+
+/* the eight headings, clockwise from east */
+static const point_t deskduck_compass[8] =
+{
+  { 1, 0 }, { 1, 1 }, { 0, 1 }, { -1, 1 },
+  { -1, 0 }, { -1, -1 }, { 0, -1 }, { 1, -1 }
+};
+
+/* heading's index in deskduck_compass, or -1 if it is standing still */
+static int deskduck_bearing(point_t heading)
+{
+  int i;
+
+  for (i = 0; i < 8; i++)
+    if (deskduck_compass[i].x == heading.x &&
+        deskduck_compass[i].y == heading.y)
+      return i;
+
+  return -1;
+}
+
+/* Turn a compass point towards (dx,dy) every DUCK_TURN ticks, the shorter
+ * way round, so it arcs about and shows the front or back view on the way. */
+static void deskduck_steer(deskduck_t *duck, int dx, int dy)
+{
+  int to, from;
+  int turn;
+
+  to = deskduck_bearing(POINT(deskduck_sign(dx), deskduck_sign(dy)));
+  if (to < 0 || ++duck->turning < DUCK_TURN)
+    return;
+  duck->turning = 0;
+
+  from = deskduck_bearing(duck->heading);
+  if (from < 0)
+  {
+    duck->heading = deskduck_compass[to];
+    return;
+  }
+
+  turn = (to - from + 8) % 8;
+  if (turn != 0)
+    duck->heading = deskduck_compass[(from + (turn <= 4 ? 1 : 7)) % 8];
 }
 
 static void deskduck_enter(deskduck_t *duck, int to)
@@ -427,7 +473,7 @@ static int deskduck_tick(deskduck_t *duck, point_t pointer, int moved)
   state = &deskduck_states[duck->state];
   /* ponytail: eight-way steps, so a chase zigzags towards the pointer */
   if (state->does & STEERS)
-    duck->heading = POINT(deskduck_sign(dx), deskduck_sign(dy));
+    deskduck_steer(duck, dx, dy);
   if (state->does & HOMES)
     duck->heading =
       POINT(deskduck_sign((water.x0 + water.x1) / 2 - duck->pos.x),
