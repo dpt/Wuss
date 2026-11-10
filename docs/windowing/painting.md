@@ -100,7 +100,7 @@ makes an instance of its own.
   to the freehand tools, spray, line, shapes, paths and fill, each drawing as
   one undo step. The gradient and the selection tools ignore them, and a fill
   stops at the canvas's edge.
-- The view zooms up to 3200%. From 600% up a grey grid outlines each
+- The view zooms up to 6400%. From 600% up a grey grid outlines each
   canvas pixel.
 - The layers bar on the canvas's right edge lists the layers, the top one
   first. Its buttons add a layer above the current one, delete the current

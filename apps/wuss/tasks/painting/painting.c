@@ -1073,7 +1073,7 @@ static result_t painting_resize_accept(const paintingnew_params_t *params,
   return painting_changed(pt, was, &dirty);
 }
 
-#define PAINTING_ZOOM_MAX 32
+#define PAINTING_ZOOM_MAX 64
 
 /* Set the zoom. A stroke in progress is abandoned, as its points are in the
  * old zoom's canvas. */
@@ -1119,7 +1119,7 @@ static result_t painting_toggle_symmetry(painting_task_t *pt, int row)
 /* Step the zoom by step levels, or to 1:1 if step is 0 */
 static result_t painting_zoom(painting_task_t *pt, int step)
 {
-  static const int zooms[] = { 1, 2, 3, 4, 6, 8, 12, 16, 24, 32 };
+  static const int zooms[] = { 1, 2, 3, 4, 6, 8, 12, 16, 24, 32, 48, 64 };
 
   int i;
 
