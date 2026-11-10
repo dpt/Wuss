@@ -85,8 +85,8 @@ makes an instance of its own.
   size bar to keep every pixel. Raise its **Size** and it stamps the
   paintbrush's nozzle instead, in paint that never runs dry. The pencil keeps
   its own size, starting at 1; the other tools share theirs.
-- `F8` or Menu > Undo steps back, and `F9` or Menu > Redo steps forward
-  again. There are 20 levels. A new edit drops the steps left to redo.
+- `F8` or Menu > Edit > Undo steps back, and `F9` or Menu > Edit > Redo
+  steps forward again. There are 20 levels. A new edit drops the steps left to redo.
 - Menu > Transform flips the whole canvas horizontally or vertically, or
   rotates it right, left or by 180°. Rotating right or left swaps the
   canvas's width and height; Undo puts the old size back. With a selection

@@ -348,16 +348,15 @@ static result_t painting_build(painting_task_t            *task,
   WUSS_MENU_ITEM_MENU(task->menu_items, PAINTING_MENU_DISPLAY, "Display",
                       wuss_MENU_ITEM_NONE, &task->dither.display);
 
-  WUSS_MENU_ITEM_SHORTCUT(task->menu_items, PAINTING_MENU_UNDO, "Undo",
-                          wuss_MENU_ITEM_DASHED, "F8");
-  WUSS_MENU_ITEM_SHORTCUT(task->menu_items, PAINTING_MENU_REDO, "Redo",
-                          wuss_MENU_ITEM_NONE, "F9");
-
   taskapp_save_row(&task->base, task->menu_items, PAINTING_MENU_SAVE,
                    wuss_MENU_ITEM_DASHED);
 
+  WUSS_MENU_ITEM_SHORTCUT(task->edit_items, PAINTING_EDIT_UNDO, "Undo",
+                          wuss_MENU_ITEM_NONE, "F8");
+  WUSS_MENU_ITEM_SHORTCUT(task->edit_items, PAINTING_EDIT_REDO, "Redo",
+                          wuss_MENU_ITEM_NONE, "F9");
   WUSS_MENU_ITEM_SHORTCUT(task->edit_items, PAINTING_EDIT_CUT, "Cut",
-                          wuss_MENU_ITEM_NONE, "^X");
+                          wuss_MENU_ITEM_DASHED, "^X");
   WUSS_MENU_ITEM_SHORTCUT(task->edit_items, PAINTING_EDIT_COPY, "Copy",
                           wuss_MENU_ITEM_NONE, "^C");
   WUSS_MENU_ITEM_SHORTCUT(task->edit_items, PAINTING_EDIT_PASTE, "Paste",
@@ -964,7 +963,7 @@ static result_t painting_mouse(painting_task_t    *pt,
   return result_OK;
 }
 
-/* shade Undo and Redo when there is nothing to undo or redo, Clear
+/* shade Edit's Undo and Redo when there is nothing to undo or redo, Clear
  * selection, Cut, Copy, Fill and Clear when nothing is selected and Paste
  * when nothing is copied, also on the menu if it is open (an ADJUST pick
  * keeps it open). A shaded Fill lets its F shortcut through to pick the Fill
@@ -994,43 +993,34 @@ static void painting_palette_shade(painting_task_t *pt)
 
 static void painting_menu_shade(painting_task_t *pt)
 {
-  int      no_undo, no_redo, no_sel, no_clip, i;
+  int      no_sel;
+  int      disable[PAINTING_EDIT__COUNT];
+  int      i;
   size2d_t size;
   int      big;
 
-  no_undo = !paintingdoc_can_undo(pt->doc);
-  no_redo = !paintingdoc_can_redo(pt->doc);
-  no_sel  = !paintingdoc_has_selection(pt->doc);
-  no_clip = painting_clip.mask == NULL;
+  no_sel = !paintingdoc_has_selection(pt->doc);
 
-  pt->menu_items[PAINTING_MENU_UNDO].flags = wuss_MENU_ITEM_DASHED |
-                                          (no_undo ? wuss_MENU_ITEM_DISABLED :
-                                                     wuss_MENU_ITEM_NONE);
-  pt->menu_items[PAINTING_MENU_REDO].flags = no_redo ?
-                                          wuss_MENU_ITEM_DISABLED :
-                                          wuss_MENU_ITEM_NONE;
-  pt->sel_items[PAINTING_SEL_NONE].flags   = no_sel ?
-                                          wuss_MENU_ITEM_DISABLED :
-                                          wuss_MENU_ITEM_NONE;
-  for (i = PAINTING_EDIT_CUT; i < PAINTING_EDIT__COUNT; i++)
+  disable[PAINTING_EDIT_UNDO]  = !paintingdoc_can_undo(pt->doc);
+  disable[PAINTING_EDIT_REDO]  = !paintingdoc_can_redo(pt->doc);
+  disable[PAINTING_EDIT_CUT]   = no_sel;
+  disable[PAINTING_EDIT_COPY]  = no_sel;
+  disable[PAINTING_EDIT_PASTE] = painting_clip.mask == NULL;
+  disable[PAINTING_EDIT_FILL]  = no_sel;
+  disable[PAINTING_EDIT_CLEAR] = no_sel;
+
+  for (i = 0; i < PAINTING_EDIT__COUNT; i++)
   {
-    if (i == PAINTING_EDIT_PASTE)
-      continue;
-    pt->edit_items[i].flags = no_sel ? wuss_MENU_ITEM_DISABLED :
-                                       wuss_MENU_ITEM_NONE;
+    pt->edit_items[i].flags = (pt->edit_items[i].flags &
+                               wuss_MENU_ITEM_DASHED) |
+                              (disable[i] ? wuss_MENU_ITEM_DISABLED :
+                                            wuss_MENU_ITEM_NONE);
     wuss_menu_disable_item_live(pt->base.menu_handle, &pt->edit_menu, i,
-                                no_sel);
+                                disable[i]);
   }
-  pt->edit_items[PAINTING_EDIT_PASTE].flags = wuss_MENU_ITEM_DASHED |
-                                          (no_clip ? wuss_MENU_ITEM_DISABLED :
-                                                     wuss_MENU_ITEM_NONE);
-  wuss_menu_disable_item_live(pt->base.menu_handle, &pt->edit_menu,
-                              PAINTING_EDIT_PASTE, no_clip);
 
-  wuss_menu_disable_item_live(pt->base.menu_handle, &pt->base.menu,
-                              PAINTING_MENU_UNDO, no_undo);
-  wuss_menu_disable_item_live(pt->base.menu_handle, &pt->base.menu,
-                              PAINTING_MENU_REDO, no_redo);
+  pt->sel_items[PAINTING_SEL_NONE].flags = no_sel ? wuss_MENU_ITEM_DISABLED :
+                                                    wuss_MENU_ITEM_NONE;
   wuss_menu_disable_item_live(pt->base.menu_handle, &pt->sel_menu, PAINTING_SEL_NONE,
                               no_sel);
   pt->xform_items[PAINTING_XFORM_CROP].flags = wuss_MENU_ITEM_DASHED |
@@ -1512,6 +1502,10 @@ static result_t painting_handle(wuss_window_t      *window,
   case wuss_EVENT_MENU_SELECT:
     if (event->data.menu_select.menu == &pt->edit_menu)
     {
+      if (event->data.menu_select.index == PAINTING_EDIT_UNDO ||
+          event->data.menu_select.index == PAINTING_EDIT_REDO)
+        return painting_undo(pt, event->data.menu_select.index ==
+                                 PAINTING_EDIT_REDO);
       painting_edit(pt, event->data.menu_select.index);
       return result_OK;
     }
@@ -1560,10 +1554,6 @@ static result_t painting_handle(wuss_window_t      *window,
       wuss_window_invalidate_visible(pt->base.window);
       return result_OK;
     }
-    if (event->data.menu_select.index == PAINTING_MENU_UNDO ||
-        event->data.menu_select.index == PAINTING_MENU_REDO)
-      return painting_undo(pt, event->data.menu_select.index ==
-                               PAINTING_MENU_REDO);
     if (event->data.menu_select.index == PAINTING_MENU_NOZZLE)
     {
       painting_set_nozzle(pt, (pt->nozzle + 1) % paintingdoc_NOZZLE__COUNT);

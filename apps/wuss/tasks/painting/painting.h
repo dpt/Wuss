@@ -95,8 +95,6 @@ painting_tool_t;
 enum
 {
   PAINTING_MENU_DISPLAY,   /* submenu: dithermenu_t's Display */
-  PAINTING_MENU_UNDO,
-  PAINTING_MENU_REDO,
   PAINTING_MENU_SAVE,
   PAINTING_MENU_EDIT,      /* submenu: PAINTING_EDIT_* */
   PAINTING_MENU_SELECTION, /* submenu: PAINTING_SEL_* */
@@ -155,6 +153,8 @@ enum
 /* the Edit submenu's rows */
 enum
 {
+  PAINTING_EDIT_UNDO,  /* step back through the history */
+  PAINTING_EDIT_REDO,  /* step forward through the history */
   PAINTING_EDIT_CUT,   /* copy the selection, then clear it */
   PAINTING_EDIT_COPY,  /* copy the selection to the pixel clipboard */
   PAINTING_EDIT_PASTE, /* paste the pixel clipboard, floating */
