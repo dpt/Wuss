@@ -100,9 +100,18 @@ enum
   PAINTING_MENU_SAVE,
   PAINTING_MENU_EDIT,      /* submenu: PAINTING_EDIT_* */
   PAINTING_MENU_SELECTION, /* submenu: PAINTING_SEL_* */
-  PAINTING_MENU_TRANSFORM, /* submenu: one row per paintingdoc_xform_t */
+  PAINTING_MENU_TRANSFORM, /* submenu: PAINTING_XFORM_* */
   PAINTING_MENU_NOZZLE,    /* submenu: one row per paintingdoc_nozzle_t */
   PAINTING_MENU__COUNT
+};
+
+/* the Transform submenu's rows: one per paintingdoc_xform_t, then these */
+enum
+{
+  PAINTING_XFORM_CROP = paintingdoc_XFORM__COUNT, /* crop to the selection's
+                                                   * bounds */
+  PAINTING_XFORM_SIZE, /* leaf: the Canvas size dialogue */
+  PAINTING_XFORM__COUNT
 };
 
 /* the Edit submenu's rows */
@@ -195,8 +204,9 @@ typedef struct painting_task
   wuss_menu_t        edit_menu;
   wuss_menu_item_t   sel_items[PAINTING_SEL__COUNT];
   wuss_menu_t        sel_menu;
-  wuss_menu_item_t   xform_items[paintingdoc_XFORM__COUNT];
+  wuss_menu_item_t   xform_items[PAINTING_XFORM__COUNT];
   wuss_menu_t        xform_menu;
+  paintingnew_t     *resize;    /* owned: Transform's "Canvas size" leaf */
   wuss_menu_item_t   nozzle_items[paintingdoc_NOZZLE__COUNT];
   wuss_menu_t        nozzle_menu;
   dithermenu_t       dither;

@@ -738,6 +738,43 @@ result_t paintingdoc_test(const char *resources)
   CHECK(px(doc, 1, 3) == BLACK);
   paintingdoc_destroy(doc);
 
+  printf("test: resize crops within the canvas and grows it beyond, "
+         "filling\n");
+
+  /* a 4x4 white canvas, red at 2,1 */
+  CHECK(paintingdoc_create(SIZE2D(4, 4), &doc) == result_OK);
+  paintingdoc_stroke(doc, POINT(2, 1), POINT(2, 1), 1, red());
+
+  CHECK(paintingdoc_select_rect(doc, (box_t) { 2, 1, 4, 3 },
+                                paintingdoc_SELOP_REPLACE) == result_OK);
+  dirty = paintingdoc_resize(doc, paintingdoc_selection_bounds(doc),
+                             black());
+  CHECK(!paintingdoc_has_selection(doc));
+  CHECK(dirty.x1 == 2 && dirty.y1 == 2);
+  CHECK(paintingdoc_bitmap(doc)->size.w == 2);
+  CHECK(px(doc, 0, 0) == RED && px(doc, 1, 1) == WHITE);
+
+  /* a border of one pixel all round, filled */
+  paintingdoc_resize(doc, (box_t) { -1, -1, 3, 3 }, clear());
+  CHECK(paintingdoc_bitmap(doc)->size.w == 4);
+  CHECK(px(doc, 0, 0) == CLEAR && px(doc, 3, 3) == CLEAR);
+  CHECK(px(doc, 1, 1) == RED && px(doc, 2, 2) == WHITE);
+
+  /* wholly off the old canvas: all fill */
+  paintingdoc_resize(doc, (box_t) { 10, 10, 12, 11 }, red());
+  CHECK(px(doc, 0, 0) == RED && px(doc, 1, 0) == RED);
+
+  /* an empty box changes nothing */
+  dirty = paintingdoc_resize(doc, (box_t) { 0, 0, 0, 5 }, red());
+  CHECK(box_is_empty(&dirty) && paintingdoc_bitmap(doc)->size.w == 2);
+
+  paintingdoc_undo(doc);
+  paintingdoc_undo(doc);
+  CHECK(paintingdoc_bitmap(doc)->size.w == 2);
+  paintingdoc_undo(doc);
+  CHECK(paintingdoc_bitmap(doc)->size.w == 4 && px(doc, 2, 1) == RED);
+  paintingdoc_destroy(doc);
+
   printf("test: a brush runs dry: solid while over half full, then thinning, "
          "then nothing\n");
 

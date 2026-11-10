@@ -80,6 +80,9 @@ makes an instance of its own.
 - Menu > Transform flips the whole canvas horizontally or vertically, or
   rotates it right, left or by 180°. It drops the selection. Rotating right
   or left swaps the canvas's width and height; Undo puts the old size back.
+  Crop to selection cuts the canvas down to the selection's bounds. Canvas
+  size opens a dialogue that grows or shrinks the canvas about its centre,
+  filling any new area with the chosen background.
 - The view zooms up to 3200%. From 600% up a grey grid outlines each
   canvas pixel.
 - Menu > Save (`F3`) opens the Save As dialogue.

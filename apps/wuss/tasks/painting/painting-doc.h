@@ -360,6 +360,13 @@ paintingdoc_xform_t;
  * new size), or an empty box, the canvas left as it was, if out of memory */
 box_t paintingdoc_transform(paintingdoc_t *doc, paintingdoc_xform_t xform);
 
+/* make the canvas the area box (x1/y1 exclusive) of the canvas, dropping the
+ * selection: inside the canvas it crops, and beyond it the canvas grows,
+ * filled with fill. so box (-1,-1)-(w+1,h+1) adds a one-pixel border, and the
+ * selection's bounds crop to it. takes its own checkpoint. returns as
+ * paintingdoc_transform; also an empty box if box is */
+box_t paintingdoc_resize(paintingdoc_t *doc, box_t box, colour_t fill);
+
 /* non-zero if there is a step to undo */
 int paintingdoc_can_undo(const paintingdoc_t *doc);
 

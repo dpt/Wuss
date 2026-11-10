@@ -1432,3 +1432,40 @@ box_t paintingdoc_transform(paintingdoc_t *doc, paintingdoc_xform_t xform)
 
   return canvas_box(doc);
 }
+
+box_t paintingdoc_resize(paintingdoc_t *doc, box_t box, colour_t fill)
+{
+  size2d_t size;
+  bitmap_t next;
+  box_t    canvas;
+  box_t    keep;
+  int      y;
+  uint8_t *row;
+
+  size = SIZE2D(box.x1 - box.x0, box.y1 - box.y0);
+  if (size.w <= 0 || size.h <= 0 ||
+      canvas_make(size, fill, &next) != result_OK)
+  {
+    logf_warning("painting: no memory to resize the canvas");
+    return (box_t) BOX_INIT;
+  }
+
+  /* copy across the part of the old canvas that box covers */
+  canvas = canvas_box(doc);
+  if (!box_intersection(&box, &canvas, &keep))
+  {
+    for (y = keep.y0; y < keep.y1; y++)
+    {
+      row = (uint8_t *) next.base + (size_t) (y - box.y0) * next.rowbytes;
+      memcpy(row + (size_t) (keep.x0 - box.x0) * 4,
+             pixel_row(doc, y) + keep.x0,
+             (size_t) (keep.x1 - keep.x0) * 4);
+    }
+  }
+
+  paintingdoc_select_none(doc);
+  checkpoint_or_warn(doc);
+  canvas_replace(doc, &next);
+
+  return canvas_box(doc);
+}

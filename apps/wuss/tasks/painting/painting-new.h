@@ -30,18 +30,31 @@ typedef result_t (paintingnew_accept_fn_t)(
 
 typedef struct paintingnew paintingnew_t;
 
-/* create the dialogue, hidden, on a task of its own; that task is freed, and
- * *slot cleared, when it is destroyed, which happens with its parent task if
- * the caller set one (see wuss_set_task_parent). Width and height start at
- * the usual 640 x 480 on white and then keep what was last asked for */
+/* create the dialogue, hidden, on a task of its own, titled title, with
+ * action the accepting button's text; that task is freed, and *slot cleared,
+ * when it is destroyed, which happens with its parent task if the caller set
+ * one (see wuss_set_task_parent). Width and height start at the usual 640 x
+ * 480 on white and then keep what was last asked for. The strings must
+ * outlive the dialogue */
 result_t paintingnew_create(paintingnew_t          **slot,
                             wuss_t                  *wuss,
+                            const char              *title,
+                            const char              *action,
                             paintingnew_accept_fn_t *accept,
                             void                    *opaque);
+
+/* close the dialogue and free it, clearing *slot. pn may be NULL */
+void paintingnew_destroy(paintingnew_t *pn);
 
 /* show the dialogue centred on the pointer, as a menu of its own, with the
  * caret in the width field */
 result_t paintingnew_open(paintingnew_t *pn);
+
+/* put size in the width and height fields */
+void paintingnew_set_size(paintingnew_t *pn, size2d_t size);
+
+/* the dialogue's window, to hang as a menu leaf */
+wuss_window_t *paintingnew_window(const paintingnew_t *pn);
 
 #endif /* WUSS_APP */
 

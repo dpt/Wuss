@@ -141,6 +141,7 @@ static result_t painting_load(painting_task_t *pt, const char *path)
 }
 
 static wuss_scaleview_choice_fn_t painting_scaleview_choice;
+static paintingnew_accept_fn_t    painting_resize_accept;
 
 /* the Transform submenu's rows, in paintingdoc_xform_t order */
 static const char *const painting_xform_names[paintingdoc_XFORM__COUNT] =
@@ -325,9 +326,19 @@ static result_t painting_build(painting_task_t            *task,
   WUSS_MENU_ITEM_MENU(task->menu_items, PAINTING_MENU_SELECTION, "Selection",
                       wuss_MENU_ITEM_NONE, &task->sel_menu);
 
+  rc = paintingnew_create(&task->resize, task->base.wuss, "Canvas size",
+                          "Resize", painting_resize_accept, task);
+  if (rc != result_OK)
+    return rc;
+
   for (i = 0; i < paintingdoc_XFORM__COUNT; i++)
     WUSS_MENU_ITEM(task->xform_items, i, painting_xform_names[i],
                    wuss_MENU_ITEM_NONE);
+  WUSS_MENU_ITEM(task->xform_items, PAINTING_XFORM_CROP, "Crop to selection",
+                 wuss_MENU_ITEM_DASHED);
+  WUSS_MENU_ITEM_WINDOW(task->xform_items, PAINTING_XFORM_SIZE, "Canvas size",
+                        wuss_MENU_ITEM_PRE_OPEN,
+                        paintingnew_window(task->resize));
   WUSS_MENU_TITLE(task->xform_menu, "Transform", task->xform_items,
                   NELEMS(task->xform_items));
   WUSS_MENU_ITEM_MENU(task->menu_items, PAINTING_MENU_TRANSFORM, "Transform",
@@ -438,7 +449,8 @@ static result_t painting_new_dialogue(wuss_t *wuss)
 
   if (g.painting_new == NULL)
   {
-    rc = paintingnew_create(&g.painting_new, wuss, painting_accept_new, wuss);
+    rc = paintingnew_create(&g.painting_new, wuss, "New Painting", "Create",
+                            painting_accept_new, wuss);
     if (rc != result_OK)
       return rc;
   }
@@ -853,6 +865,11 @@ static void painting_menu_shade(painting_task_t *pt)
                               PAINTING_MENU_REDO, no_redo);
   wuss_menu_disable_item_live(pt->base.menu_handle, &pt->sel_menu, PAINTING_SEL_NONE,
                               no_sel);
+  pt->xform_items[PAINTING_XFORM_CROP].flags = wuss_MENU_ITEM_DASHED |
+                                          (no_sel ? wuss_MENU_ITEM_DISABLED :
+                                                    wuss_MENU_ITEM_NONE);
+  wuss_menu_disable_item_live(pt->base.menu_handle, &pt->xform_menu,
+                              PAINTING_XFORM_CROP, no_sel);
 }
 
 /* redraw dirty after a change that may have resized the canvas from was,
@@ -904,8 +921,40 @@ static result_t painting_transform(painting_task_t *pt, int xform)
 
   pt->held = 0; /* abandon any stroke in progress */
 
-  was   = paintingdoc_bitmap(pt->doc)->size;
-  dirty = paintingdoc_transform(pt->doc, (paintingdoc_xform_t) xform);
+  was = paintingdoc_bitmap(pt->doc)->size;
+  if (xform == PAINTING_XFORM_SIZE)
+    return result_OK; /* the leaf's own row: its dialogue does the work */
+  if (xform == PAINTING_XFORM_CROP)
+    dirty = paintingdoc_resize(pt->doc, paintingdoc_selection_bounds(pt->doc),
+                               pt->bg);
+  else
+    dirty = paintingdoc_transform(pt->doc, (paintingdoc_xform_t) xform);
+
+  return painting_changed(pt, was, &dirty);
+}
+
+/* paintingnew_accept_fn_t: opaque is the painting_task_t. the canvas grows
+ * or shrinks about its centre, any new area taking the chosen background */
+static result_t painting_resize_accept(const paintingnew_params_t *params,
+                                       void                       *opaque)
+{
+  painting_task_t *pt;
+  size2d_t         was;
+  box_t            box;
+  box_t            dirty;
+
+  pt = opaque;
+  if (pt->doc == NULL)
+    return result_OK;
+
+  pt->held = 0;
+
+  was    = paintingdoc_bitmap(pt->doc)->size;
+  box.x0 = (was.w - params->size.w) / 2;
+  box.y0 = (was.h - params->size.h) / 2;
+  box.x1 = box.x0 + params->size.w;
+  box.y1 = box.y0 + params->size.h;
+  dirty  = paintingdoc_resize(pt->doc, box, params->bg);
 
   return painting_changed(pt, was, &dirty);
 }
@@ -1145,6 +1194,7 @@ static result_t painting_menu_open(painting_task_t *pt)
   result_t rc;
 
   painting_menu_shade(pt);
+  paintingnew_set_size(pt->resize, paintingdoc_bitmap(pt->doc)->size);
 
   rc = wuss_scaleview_set_percent(pt->scaleview, pt->zoom * 100);
   if (rc != result_OK)
@@ -1291,6 +1341,7 @@ static result_t painting_handle(wuss_window_t      *window,
   case wuss_EVENT_QUIT:
     wuss_colourpicker_destroy(pt->picker);
     wuss_scaleview_destroy(pt->scaleview);
+    paintingnew_destroy(pt->resize);
     free(pt->lasso);
     if (pt->doc != NULL && --painting_docs == 0)
       paintingdoc_clip_free(&painting_clip);

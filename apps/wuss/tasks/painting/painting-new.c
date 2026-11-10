@@ -132,7 +132,10 @@ struct paintingnew
   wuss_dialogue_t       *dialogue;
   paintingnew_accept_fn_t  *accept;
   void                  *opaque;
-  wuss_menu_handle_t     menu_handle; /* live only while shown */
+  const char            *action;      /* the accepting button's text */
+  wuss_menu_handle_t     menu_handle; /* live only while shown on its own */
+  wuss_menu_handle_t     leaf_handle; /* level showing it as a menu leaf;
+                                       * live only while so shown */
   wuss_icon_t           *icons[PN_ICON__COUNT];
 };
 
@@ -194,10 +197,16 @@ static int paintingnew_read_bg(const paintingnew_t *pn)
   return PN_BG_WHITE;
 }
 
+/* close whichever chain shows the dialogue: its own, or the one it is a leaf
+ * of */
 static void paintingnew_dismiss(paintingnew_t *pn)
 {
-  wuss_menu_close(pn->menu_handle);
+  if (pn->menu_handle != NULL)
+    wuss_menu_close(pn->menu_handle);
+  else
+    wuss_menu_dismiss(pn->leaf_handle);
   pn->menu_handle = NULL;
+  pn->leaf_handle = NULL;
 }
 
 static result_t paintingnew_action_cancel(void *opaque, wuss_button_t button)
@@ -234,6 +243,7 @@ static result_t paintingnew_action_create(void *opaque, wuss_button_t button)
 
 /* solve the layout: the window size, and a box for every item */
 static result_t paintingnew_layout(const wuss_t *wuss,
+                                   const char   *action,
                                    size2d_t     *size,
                                    box_t         boxes[PN_ST__LIMIT])
 {
@@ -275,7 +285,7 @@ static result_t paintingnew_layout(const wuss_t *wuss,
   items[PN_ST_CANCEL].axis_size =
     task_button_width(wuss, "Cancel", wuss_STD_SECONDARY_BUTTON_BORDER);
   items[PN_ST_CREATE].axis_size =
-    task_button_width(wuss, "Create", wuss_STD_PRIMARY_BUTTON_BORDER);
+    task_button_width(wuss, action, wuss_STD_PRIMARY_BUTTON_BORDER);
 
   rc = stack_smallest(items, NELEMS(items), size);
   if (rc != result_OK)
@@ -319,7 +329,7 @@ static result_t paintingnew_build_icons(paintingnew_t *pn,
   wuss_icon_spec_action(&specs[PN_ICON_CANCEL], boxes[PN_ST_CANCEL],
                         "Cancel", 0);
   wuss_icon_spec_action(&specs[PN_ICON_CREATE], boxes[PN_ST_CREATE],
-                        "Create", 1);
+                        pn->action, 1);
 
   rc = wuss_icon_create_array(wuss_dialogue_window(pn->dialogue), specs,
                               PN_ICON__COUNT, pn->icons);
@@ -347,7 +357,7 @@ static result_t paintingnew_relayout(paintingnew_t *pn)
   wuss_window_t *window;
   int            i;
 
-  rc = paintingnew_layout(pn->wuss, &size, boxes);
+  rc = paintingnew_layout(pn->wuss, pn->action, &size, boxes);
   if (rc != result_OK)
     return rc;
 
@@ -395,12 +405,25 @@ static result_t paintingnew_handle(wuss_window_t      *window,
     pn->menu_handle = NULL; /* wuss closed the chain under us */
     return result_OK;
 
+  case wuss_EVENT_PRE_SHOW:
+    if (event->data.pre_show.handle == NULL)
+      return result_OK; /* shown by paintingnew_open */
+    pn->leaf_handle = event->data.pre_show.handle;
+    return wuss_menu_open_window_now(event->data.pre_show.handle,
+                                     event->data.pre_show.index);
+
+  case wuss_EVENT_SHOW:
+    /* not on PRE_SHOW: a still-hidden window cannot take the focus */
+    (void) wuss_icon_set_caret(window, pn->icons[PN_ICON_WIDTH], -1);
+    return result_OK;
+
   case wuss_EVENT_RELAYOUT:
     return paintingnew_relayout(pn);
 
   case wuss_EVENT_QUIT:
     wuss_dialogue_destroy(pn->dialogue);
-    *pn->slot = NULL;
+    if (pn->slot != NULL)
+      *pn->slot = NULL;
     free(pn);
     return result_OK;
 
@@ -411,6 +434,8 @@ static result_t paintingnew_handle(wuss_window_t      *window,
 
 result_t paintingnew_create(paintingnew_t          **slot,
                             wuss_t                  *wuss,
+                            const char              *title,
+                            const char              *action,
                             paintingnew_accept_fn_t *accept,
                             void                    *opaque)
 {
@@ -428,6 +453,7 @@ result_t paintingnew_create(paintingnew_t          **slot,
   pn->wuss   = wuss;
   pn->accept = accept;
   pn->opaque = opaque;
+  pn->action = action;
 
   desc.handle    = paintingnew_handle;
   desc.task_data = pn;
@@ -439,9 +465,9 @@ result_t paintingnew_create(paintingnew_t          **slot,
     return rc;
   }
 
-  rc = paintingnew_layout(wuss, &size, boxes);
+  rc = paintingnew_layout(wuss, action, &size, boxes);
   if (rc == result_OK)
-    rc = wuss_dialogue_create(&pn->dialogue, pn->task, size, "New Painting", NULL, pn);
+    rc = wuss_dialogue_create(&pn->dialogue, pn->task, size, title, NULL, pn);
   if (rc == result_OK)
     rc = paintingnew_build_icons(pn, boxes);
   if (rc != result_OK)
@@ -475,6 +501,38 @@ result_t paintingnew_open(paintingnew_t *pn)
   (void) wuss_icon_set_caret(win, pn->icons[PN_ICON_WIDTH], -1);
 
   return result_OK;
+}
+
+void paintingnew_destroy(paintingnew_t *pn)
+{
+  if (pn == NULL)
+    return;
+
+  /* the slot's owner may be freed before the task's QUIT arrives, as when
+   * wuss itself shuts down, so clear it now */
+  *pn->slot = NULL;
+  pn->slot  = NULL;
+
+  paintingnew_dismiss(pn);
+  wuss_task_destroy(pn->task); /* its QUIT frees pn */
+}
+
+void paintingnew_set_size(paintingnew_t *pn, size2d_t size)
+{
+  wuss_window_t *win;
+  char           text[PN_DIGITS + 2];
+
+  win = wuss_dialogue_window(pn->dialogue);
+
+  snprintf(text, sizeof(text), "%d", size.w);
+  (void) wuss_icon_set_text(win, pn->icons[PN_ICON_WIDTH], text);
+  snprintf(text, sizeof(text), "%d", size.h);
+  (void) wuss_icon_set_text(win, pn->icons[PN_ICON_HEIGHT], text);
+}
+
+wuss_window_t *paintingnew_window(const paintingnew_t *pn)
+{
+  return wuss_dialogue_window(pn->dialogue);
 }
 
 #endif /* WUSS_APP */
