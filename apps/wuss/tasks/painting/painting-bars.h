@@ -59,13 +59,13 @@
  * first, each its show box, its thumbnail and its opacity bar. Drawn by
  * painting_layerbar_redraw, not icons */
 #define LB_MARGIN   4
-#define LB_BUTTON   16 /* the buttons' size */
+#define LB_BUTTON   22 /* the buttons' size, as their images */
 #define LB_BUTTONS  4
 #define LB_GAP      4  /* between the parts of a row */
 #define LB_ROW      28 /* a layer's row */
 #define LB_EYE      12 /* the show box */
 #define LB_THUMB    24 /* the thumbnail's longer side */
-#define LB_BAR_W    40 /* the opacity bar */
+#define LB_BAR_W    56 /* the opacity bar, so rows span the buttons */
 #define LB_BAR_H    8
 #define LB_EYE_X    LB_MARGIN
 #define LB_THUMB_X  (LB_EYE_X + LB_EYE + LB_GAP)

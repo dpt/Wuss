@@ -889,26 +889,34 @@ static int painting_layer_can(int n, int cur, int i)
   }
 }
 
-/* button i at (x, y): a plus, a minus or a chevron, grey when off */
-static void painting_layer_button(screen_t *scr, int x, int y, int i, int on)
+/* the buttons' images, in the task's icon pool, indexed by LB_* */
+static const char *painting_layer_names[LB_BUTTONS] =
 {
-  colour_t ink;
-  int      c, d;
+  "layer-add",
+  "layer-delete",
+  "layer-raise",
+  "layer-lower"
+};
 
-  ink = on ? colour_rgb(0x00, 0x00, 0x00) : colour_rgb(0x99, 0x99, 0x99);
-  c   = (LB_BUTTON - 1) / 2;
-  d   = (i == LB_RAISE) ? 2 : -2;
+/* button i at (x, y), faded toward ground when off */
+static result_t painting_layer_button(painting_task_t *pt,
+                                      screen_t        *scr,
+                                      int              x,
+                                      int              y,
+                                      int              i,
+                                      int              on,
+                                      colour_t         ground)
+{
+  const bitmap_t *bm;
 
-  screen_draw_rect(scr, x, y, SIZE2D(LB_BUTTON, LB_BUTTON), ink);
-  if (i == LB_ADD || i == LB_DELETE)
-    screen_draw_line(scr, x + c - 3, y + c, x + c + 3, y + c, ink);
-  if (i == LB_ADD)
-    screen_draw_line(scr, x + c, y + c - 3, x + c, y + c + 3, ink);
-  if (i == LB_RAISE || i == LB_LOWER)
-  {
-    screen_draw_line(scr, x + c - 4, y + c + d, x + c, y + c - d, ink);
-    screen_draw_line(scr, x + c, y + c - d, x + c + 4, y + c + d, ink);
-  }
+  bm = wuss_task_iconpool_find(pt->base.delegate, painting_layer_names[i]);
+  if (bm == NULL)
+    return result_OK;
+
+  if (on)
+    return screen_copy_bitmap(scr, x, y, bm);
+
+  return screen_copy_bitmap_faded(scr, x, y, bm, ground, 128);
 }
 
 result_t painting_layerbar_redraw(painting_task_t    *pt,
@@ -920,6 +928,8 @@ result_t painting_layerbar_redraw(painting_task_t    *pt,
   colour_t                   black;
   int                        ox, oy;
   int                        n, cur;
+  wuss_config_t              config;
+  colour_t                   ground;
   int                        i, r, y;
   const paintingdoc_layer_t *layer;
   int                        m, tw, th;
@@ -934,9 +944,18 @@ result_t painting_layerbar_redraw(painting_task_t    *pt,
   n      = paintingdoc_layers(pt->doc);
   cur    = paintingdoc_layer(pt->doc);
 
+  wuss_get_config(pt->base.wuss, &config);
+  ground = wuss_get_palette(pt->base.wuss, NULL)[config.body.window];
+
   for (i = 0; i < LB_BUTTONS; i++)
-    painting_layer_button(scr, ox + LB_MARGIN + i * (LB_BUTTON + LB_GAP),
-                          oy + LB_MARGIN, i, painting_layer_can(n, cur, i));
+  {
+    rc = painting_layer_button(pt, scr,
+                               ox + LB_MARGIN + i * (LB_BUTTON + LB_GAP),
+                               oy + LB_MARGIN, i, painting_layer_can(n, cur, i),
+                               ground);
+    if (rc != result_OK)
+      return rc;
+  }
 
   /* a row per layer, the top one first */
   for (r = 0; r < n; r++)
