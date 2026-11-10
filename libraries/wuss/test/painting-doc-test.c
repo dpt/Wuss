@@ -648,6 +648,52 @@ result_t paintingdoc_test(const char *resources)
 
   paintingdoc_destroy(doc);
 
+  printf("test: pasted pixels float: moving them leaves the canvas beneath "
+         "as it was\n");
+
+  CHECK(paintingdoc_create(SIZE2D(8, 8), &doc) == result_OK);
+  {
+    paintingdoc_clip_t clip = { 0 };
+
+    CHECK(paintingdoc_copy(doc, &clip) == result_BAD_ARG);
+
+    paintingdoc_rect(doc, POINT(0, 0), POINT(1, 1), 1, 1, red());
+    CHECK(paintingdoc_select_rect(doc, (box_t) { 0, 0, 2, 2 },
+                                  paintingdoc_SELOP_REPLACE) == result_OK);
+    CHECK(paintingdoc_copy(doc, &clip) == result_OK);
+    CHECK(clip.at.x == 0 && clip.at.y == 0);
+    CHECK(clip.bm.size.w == 2 && clip.bm.size.h == 2);
+
+    dirty = paintingdoc_paste(doc, &clip, POINT(4, 4));
+    CHECK(dirty.x0 == 4 && dirty.y0 == 4 && dirty.x1 == 6 && dirty.y1 == 6);
+    CHECK(px(doc, 4, 4) == RED && px(doc, 5, 5) == RED);
+
+    /* floating: no hole is left, whatever colour is given */
+    leave = black();
+    CHECK(paintingdoc_lift(doc) == result_OK);
+    paintingdoc_place(doc, 2, 0, &leave);
+    paintingdoc_drop(doc);
+    CHECK(px(doc, 4, 4) == WHITE && px(doc, 6, 4) == RED);
+
+    /* still floating after a drop, and kept while dragged off the canvas */
+    CHECK(paintingdoc_lift(doc) == result_OK);
+    paintingdoc_place(doc, 10, 0, &leave);
+    paintingdoc_drop(doc);
+    CHECK(!paintingdoc_has_selection(doc) && px(doc, 6, 4) == WHITE);
+    CHECK(paintingdoc_lift(doc) == result_OK);
+    paintingdoc_place(doc, -10, 2, &leave);
+    paintingdoc_drop(doc);
+    CHECK(px(doc, 6, 6) == RED && px(doc, 7, 7) == RED);
+    CHECK(px(doc, 6, 4) == WHITE);
+
+    /* the paste and its moves are one undo step */
+    paintingdoc_undo(doc);
+    CHECK(px(doc, 6, 6) == WHITE && px(doc, 0, 0) == RED);
+
+    paintingdoc_clip_free(&clip);
+  }
+  paintingdoc_destroy(doc);
+
   printf("test: a brush runs dry: solid while over half full, then thinning, "
          "then nothing\n");
 

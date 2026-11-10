@@ -9,6 +9,7 @@
 #include "framebuf/screen.h"
 #include "geom/box.h"
 #include "geom/point.h"
+#include "geom/region.h"
 #include "geom/size.h"
 #include "utils/rng.h"
 
@@ -310,8 +311,36 @@ box_t paintingdoc_place(paintingdoc_t  *doc,
                         int             dy,
                         const colour_t *leave);
 
-/* drop the lifted pixels where they were last placed */
+/* drop the lifted pixels where they were last placed. pasted pixels stay
+ * lifted, floating, until something else changes the canvas */
 void paintingdoc_drop(paintingdoc_t *doc);
+
+/* the clipboard: copied pixels, with no canvas of their own */
+typedef struct paintingdoc_clip
+{
+  bitmap_t  bm;   /* the pixels in the copied selection's bounds; base NULL
+                   * while empty */
+  region_t *mask; /* the copied pixels, relative to bm's top left */
+  point_t   at;   /* where bm's top left was copied from */
+}
+paintingdoc_clip_t;
+
+/* copy the selected pixels into *clip, replacing what it held. fails with
+ * result_BAD_ARG if there is no selection, or result_OOM, leaving *clip as
+ * it was */
+result_t paintingdoc_copy(const paintingdoc_t *doc,
+                          paintingdoc_clip_t  *clip);
+
+/* empty *clip */
+void paintingdoc_clip_free(paintingdoc_clip_t *clip);
+
+/* paste clip with its top left at p, as the selection, its pixels floating:
+ * lifted as by paintingdoc_lift, but a move leaves the canvas they cover as
+ * it was, until something else changes the canvas. takes its own
+ * checkpoint. does nothing if clip is empty or lands wholly off the canvas */
+box_t paintingdoc_paste(paintingdoc_t            *doc,
+                        const paintingdoc_clip_t *clip,
+                        point_t                   p);
 
 /* non-zero if there is a step to undo */
 int paintingdoc_can_undo(const paintingdoc_t *doc);

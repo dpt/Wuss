@@ -38,6 +38,12 @@ struct paintingdoc
   /* the selection as paintingdoc_lift found it, or NULL if not lifted. its
    * pixels are in pre */
   region_t *lifted;
+  /* pasted pixels, or base NULL if none: while set they float, lifted
+   * from here rather than pre, with their top left at origin as lifted. d
+   * is how far the last place moved them */
+  bitmap_t  floating;
+  point_t   origin;
+  point_t   d;
   /* changed since the last load or paintingdoc_set_saved */
   int       edited;
 };
@@ -220,9 +226,18 @@ static box_t clipped_box(const paintingdoc_t *doc,
 
 /* ----------------------------------------------------------------------- */
 
+/* end a lift, floating pixels included, leaving them where last placed */
+static void lift_end(paintingdoc_t *doc)
+{
+  region_destroy(doc->lifted);
+  free(doc->floating.base);
+  doc->lifted        = NULL;
+  doc->floating.base = NULL;
+}
+
 void paintingdoc_select_none(paintingdoc_t *doc)
 {
-  paintingdoc_drop(doc);
+  lift_end(doc);
   region_destroy(doc->sel);
   free(doc->outline);
   free(doc->pre);
@@ -438,6 +453,9 @@ result_t paintingdoc_checkpoint(paintingdoc_t *doc)
 {
   result_t rc;
 
+  /* pre is about to move on, so a lift or float must end on it */
+  lift_end(doc);
+
   if (doc->sel != NULL)
   {
     if (doc->pre == NULL)
@@ -473,6 +491,8 @@ box_t paintingdoc_undo(paintingdoc_t *doc)
   if (doc->nundo == 0)
     return (box_t) BOX_INIT;
 
+  lift_end(doc);
+
   /* ponytail: no memory to keep the redo step undoes all the same */
   if (steps_push(doc, doc->redo, &doc->nredo) != result_OK)
     logf_warning("painting: no memory for a redo step");
@@ -489,6 +509,8 @@ box_t paintingdoc_redo(paintingdoc_t *doc)
 {
   if (doc->nredo == 0)
     return (box_t) BOX_INIT;
+
+  lift_end(doc);
 
   if (steps_push(doc, doc->undo, &doc->nundo) != result_OK)
     logf_warning("painting: no memory for an undo step");
@@ -1096,17 +1118,25 @@ int paintingdoc_pick(const paintingdoc_t *doc, point_t p, colour_t *colour)
 
 /* ----------------------------------------------------------------------- */
 
+/* far enough to keep floating pixels anywhere they can be dragged, off the
+ * canvas included */
+static const box_t unbounded = { -0x1000000, -0x1000000,
+                                 0x1000000, 0x1000000 };
+
 result_t paintingdoc_lift(paintingdoc_t *doc)
 {
   result_t rc;
   box_t    canvas;
 
+  /* floating pixels are lifted already */
+  if (doc->floating.base != NULL)
+    return result_OK;
+
   if (doc->sel == NULL)
     return result_BAD_ARG;
 
-  paintingdoc_drop(doc);
-
-  /* the checkpoint copies the canvas, the lifted pixels included, into pre */
+  /* the checkpoint copies the canvas, the lifted pixels included, into pre,
+   * and ends any lift before */
   rc = paintingdoc_checkpoint(doc);
   if (rc != result_OK)
     return rc;
@@ -1132,12 +1162,31 @@ box_t paintingdoc_place(paintingdoc_t  *doc,
   const int      *runs;
   uint32_t       *row;
   int             x;
+  const uint8_t  *base;
+  size_t          rowbytes;
+  point_t         o;
   const uint32_t *src;
   int             x0, x1;
 
   dirty = (box_t) BOX_INIT;
   if (doc->lifted == NULL)
     return dirty;
+
+  /* floating pixels leave nothing behind and come from their own bitmap */
+  if (doc->floating.base != NULL)
+  {
+    leave    = NULL;
+    base     = doc->floating.base;
+    rowbytes = (size_t) doc->floating.rowbytes;
+    o        = doc->origin;
+  }
+  else
+  {
+    base     = doc->pre;
+    rowbytes = (size_t) doc->bm.rowbytes;
+    o        = POINT(0, 0);
+  }
+  doc->d = POINT(dx, dy);
 
   canvas = canvas_box(doc);
   if (region_translate(doc->lifted, dx, dy, &canvas, &moved) != result_OK)
@@ -1152,6 +1201,8 @@ box_t paintingdoc_place(paintingdoc_t  *doc,
   was  = region_bounds(doc->sel);
   box_union(&from, &to, &dirty);
   box_union(&dirty, &was, &dirty);
+  if (box_intersection(&dirty, &canvas, &dirty))
+    dirty = (box_t) BOX_INIT;
 
   memcpy(doc->bm.base, doc->pre,
          (size_t) doc->bm.rowbytes * (size_t) doc->bm.size.h);
@@ -1176,13 +1227,13 @@ box_t paintingdoc_place(paintingdoc_t  *doc,
   {
     n   = region_row(moved, y, &runs);
     row = pixel_row(doc, y);
-    src = (const uint32_t *) (doc->pre +
-                              (size_t) (y - dy) * doc->bm.rowbytes);
+    src = (const uint32_t *) (base + (size_t) (y - dy - o.y) * rowbytes);
     for (i = 0; i < n; i++)
     {
       x0 = runs[i * 2];
       x1 = runs[i * 2 + 1];
-      memcpy(row + x0, src + x0 - dx, (size_t) (x1 - x0) * sizeof(*row));
+      memcpy(row + x0, src + (x0 - dx - o.x),
+             (size_t) (x1 - x0) * sizeof(*row));
     }
   }
 
@@ -1195,6 +1246,119 @@ box_t paintingdoc_place(paintingdoc_t  *doc,
 
 void paintingdoc_drop(paintingdoc_t *doc)
 {
-  region_destroy(doc->lifted);
-  doc->lifted = NULL;
+  region_t *moved;
+
+  /* floating pixels stay lifted, from where they were placed */
+  if (doc->floating.base != NULL &&
+      region_translate(doc->lifted, doc->d.x, doc->d.y, &unbounded,
+                       &moved) == result_OK)
+  {
+    region_destroy(doc->lifted);
+    doc->lifted    = moved;
+    doc->origin.x += doc->d.x;
+    doc->origin.y += doc->d.y;
+    doc->d         = POINT(0, 0);
+    return;
+  }
+
+  lift_end(doc);
+}
+
+/* ----------------------------------------------------------------------- */
+
+void paintingdoc_clip_free(paintingdoc_clip_t *clip)
+{
+  free(clip->bm.base);
+  region_destroy(clip->mask);
+  clip->bm.base = NULL;
+  clip->mask    = NULL;
+}
+
+result_t paintingdoc_copy(const paintingdoc_t *doc, paintingdoc_clip_t *clip)
+{
+  result_t  rc;
+  box_t     b;
+  box_t     to;
+  size2d_t  size;
+  uint8_t  *pixels;
+  region_t *mask;
+  bitmap_t  bm;
+  int       y;
+
+  if (doc->sel == NULL)
+    return result_BAD_ARG;
+
+  b      = region_bounds(doc->sel);
+  size   = SIZE2D(b.x1 - b.x0, b.y1 - b.y0);
+  to     = (box_t) BOX_POS_SIZE(0, 0, size.w, size.h);
+  pixels = malloc((size_t) size.w * (size_t) size.h * 4);
+  if (pixels == NULL)
+    return result_OOM;
+
+  rc = region_translate(doc->sel, -b.x0, -b.y0, &to, &mask);
+  if (rc == result_OK)
+    rc = bitmap_init(&bm, size, pixelfmt_bgra8888, size.w * 4, NULL,
+                     pixels);
+  if (rc != result_OK)
+  {
+    region_destroy(mask);
+    free(pixels);
+    return rc;
+  }
+
+  for (y = 0; y < size.h; y++)
+    memcpy(pixels + (size_t) y * size.w * 4, pixel_row(doc, b.y0 + y) + b.x0,
+           (size_t) size.w * 4);
+
+  paintingdoc_clip_free(clip);
+  clip->bm   = bm;
+  clip->mask = mask;
+  clip->at   = POINT(b.x0, b.y0);
+
+  return result_OK;
+}
+
+box_t paintingdoc_paste(paintingdoc_t            *doc,
+                        const paintingdoc_clip_t *clip,
+                        point_t                   p)
+{
+  box_t     canvas;
+  region_t *lifted;
+  region_t *sel;
+  size_t    bytes;
+  void     *pixels;
+
+  if (clip->mask == NULL)
+    return (box_t) BOX_INIT;
+
+  /* the pasted pixels become the selection, so the checkpoint keeps the
+   * canvas beneath them in pre */
+  canvas = canvas_box(doc);
+  if (region_translate(clip->mask, p.x, p.y, &canvas, &sel) != result_OK ||
+      sel == NULL)
+    return (box_t) BOX_INIT;
+
+  paintingdoc_select_none(doc);
+  if (sel_replace(doc, sel) != result_OK)
+    return (box_t) BOX_INIT;
+  checkpoint_or_warn(doc);
+
+  bytes  = (size_t) clip->bm.rowbytes * (size_t) clip->bm.size.h;
+  pixels = malloc(bytes);
+  if (doc->pre == NULL || pixels == NULL ||
+      region_translate(clip->mask, p.x, p.y, &unbounded, &lifted) !=
+      result_OK)
+  {
+    free(pixels);
+    logf_warning("painting: no memory to paste");
+    return (box_t) BOX_INIT;
+  }
+
+  memcpy(pixels, clip->bm.base, bytes);
+  doc->floating      = clip->bm;
+  doc->floating.base = pixels;
+  doc->origin        = p;
+  doc->lifted        = lifted;
+
+  return paintingdoc_place(doc, 0, 0, NULL);
 }

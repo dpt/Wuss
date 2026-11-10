@@ -142,6 +142,11 @@ static result_t painting_load(painting_task_t *pt, const char *path)
 
 static wuss_scaleview_choice_fn_t painting_scaleview_choice;
 
+/* the pixel clipboard, shared by every canvas so pixels copy between them,
+ * and the number of canvases, the last of which empties it */
+static paintingdoc_clip_t painting_clip;
+static int                painting_docs;
+
 /* build the canvas and its windows; on failure the caller reaps the task */
 static result_t painting_build(painting_task_t            *task,
                                const paintingnew_params_t *params)
@@ -179,6 +184,7 @@ static result_t painting_build(painting_task_t            *task,
   rc = paintingdoc_create_filled(params->size, params->bg, &task->doc);
   if (rc != result_OK)
     return rc;
+  painting_docs++;
 
   stageconfig_init(&task->stagecfg);
   task->stagecfg.pasteboard_min = 128;
@@ -283,6 +289,12 @@ static result_t painting_build(painting_task_t            *task,
   taskapp_save_row(&task->base, task->menu_items, PAINTING_MENU_SAVE,
                    wuss_MENU_ITEM_DASHED);
 
+  WUSS_MENU_ITEM_SHORTCUT(task->edit_items, PAINTING_EDIT_CUT, "Cut",
+                          wuss_MENU_ITEM_NONE, "^X");
+  WUSS_MENU_ITEM_SHORTCUT(task->edit_items, PAINTING_EDIT_COPY, "Copy",
+                          wuss_MENU_ITEM_NONE, "^C");
+  WUSS_MENU_ITEM_SHORTCUT(task->edit_items, PAINTING_EDIT_PASTE, "Paste",
+                          wuss_MENU_ITEM_DASHED, "^V");
   WUSS_MENU_ITEM_SHORTCUT(task->edit_items, PAINTING_EDIT_FILL, "Fill",
                           wuss_MENU_ITEM_NONE, "F");
   WUSS_MENU_ITEM_SHORTCUT(task->edit_items, PAINTING_EDIT_CLEAR, "Clear",
@@ -779,17 +791,19 @@ static result_t painting_mouse(painting_task_t    *pt,
   return result_OK;
 }
 
-/* shade Undo and Redo when there is nothing to undo or redo and Clear
- * selection, Fill and Clear when nothing is selected, also on the menu if it
- * is open (an ADJUST pick keeps it open). A shaded Fill lets its F shortcut
- * through to pick the Fill tool */
+/* shade Undo and Redo when there is nothing to undo or redo, Clear
+ * selection, Cut, Copy, Fill and Clear when nothing is selected and Paste
+ * when nothing is copied, also on the menu if it is open (an ADJUST pick
+ * keeps it open). A shaded Fill lets its F shortcut through to pick the Fill
+ * tool */
 static void painting_menu_shade(painting_task_t *pt)
 {
-  int no_undo, no_redo, no_sel;
+  int no_undo, no_redo, no_sel, no_clip, i;
 
   no_undo = !paintingdoc_can_undo(pt->doc);
   no_redo = !paintingdoc_can_redo(pt->doc);
   no_sel  = !paintingdoc_has_selection(pt->doc);
+  no_clip = painting_clip.mask == NULL;
 
   pt->menu_items[PAINTING_MENU_UNDO].flags = wuss_MENU_ITEM_DASHED |
                                           (no_undo ? wuss_MENU_ITEM_DISABLED :
@@ -800,12 +814,20 @@ static void painting_menu_shade(painting_task_t *pt)
   pt->sel_items[PAINTING_SEL_NONE].flags   = no_sel ?
                                           wuss_MENU_ITEM_DISABLED :
                                           wuss_MENU_ITEM_NONE;
-  pt->edit_items[PAINTING_EDIT_FILL].flags  = no_sel ?
-                                          wuss_MENU_ITEM_DISABLED :
-                                          wuss_MENU_ITEM_NONE;
-  pt->edit_items[PAINTING_EDIT_CLEAR].flags = no_sel ?
-                                          wuss_MENU_ITEM_DISABLED :
-                                          wuss_MENU_ITEM_NONE;
+  for (i = PAINTING_EDIT_CUT; i < PAINTING_EDIT__COUNT; i++)
+  {
+    if (i == PAINTING_EDIT_PASTE)
+      continue;
+    pt->edit_items[i].flags = no_sel ? wuss_MENU_ITEM_DISABLED :
+                                       wuss_MENU_ITEM_NONE;
+    wuss_menu_disable_item_live(pt->base.menu_handle, &pt->edit_menu, i,
+                                no_sel);
+  }
+  pt->edit_items[PAINTING_EDIT_PASTE].flags = wuss_MENU_ITEM_DASHED |
+                                          (no_clip ? wuss_MENU_ITEM_DISABLED :
+                                                     wuss_MENU_ITEM_NONE);
+  wuss_menu_disable_item_live(pt->base.menu_handle, &pt->edit_menu,
+                              PAINTING_EDIT_PASTE, no_clip);
 
   wuss_menu_disable_item_live(pt->base.menu_handle, &pt->base.menu,
                               PAINTING_MENU_UNDO, no_undo);
@@ -813,10 +835,6 @@ static void painting_menu_shade(painting_task_t *pt)
                               PAINTING_MENU_REDO, no_redo);
   wuss_menu_disable_item_live(pt->base.menu_handle, &pt->sel_menu, PAINTING_SEL_NONE,
                               no_sel);
-  wuss_menu_disable_item_live(pt->base.menu_handle, &pt->edit_menu,
-                              PAINTING_EDIT_FILL, no_sel);
-  wuss_menu_disable_item_live(pt->base.menu_handle, &pt->edit_menu,
-                              PAINTING_EDIT_CLEAR, no_sel);
 }
 
 /* undo, or if redo, redo the last step undone */
@@ -997,6 +1015,46 @@ static void painting_selection_fill(painting_task_t *pt, colour_t colour)
   painting_title(pt);
 }
 
+/* apply an Edit menu row. a paste lands where its pixels were copied from,
+ * kept on the canvas, and picks the Move tool to drag it into place */
+static void painting_edit(painting_task_t *pt, int op)
+{
+  size2d_t size;
+  point_t  p;
+  box_t    old;
+  box_t    now;
+
+  switch (op)
+  {
+  case PAINTING_EDIT_CUT:
+  case PAINTING_EDIT_COPY:
+    if (paintingdoc_copy(pt->doc, &painting_clip) == result_OK &&
+        op == PAINTING_EDIT_CUT)
+      painting_selection_fill(pt, pt->bg);
+    break;
+
+  case PAINTING_EDIT_PASTE:
+    size = paintingdoc_bitmap(pt->doc)->size;
+    p.x  = CLAMP(painting_clip.at.x, 0,
+                 MAX(size.w - painting_clip.bm.size.w, 0));
+    p.y  = CLAMP(painting_clip.at.y, 0,
+                 MAX(size.h - painting_clip.bm.size.h, 0));
+    old  = paintingdoc_selection_bounds(pt->doc);
+    now  = paintingdoc_paste(pt->doc, &painting_clip, p);
+    painting_invalidate_box(pt, &old);
+    painting_invalidate_box(pt, &now);
+    painting_title(pt);
+    (void) painting_set_tool(pt, painting_TOOL_MOVE);
+    break;
+
+  default:
+    painting_selection_fill(pt, op == PAINTING_EDIT_FILL ? pt->fg : pt->bg);
+    break;
+  }
+
+  painting_menu_shade(pt);
+}
+
 /* apply a Selection menu row, redrawing where the selection was and is */
 static result_t painting_selection_op(painting_task_t *pt, int op)
 {
@@ -1089,9 +1147,7 @@ static result_t painting_handle(wuss_window_t      *window,
   case wuss_EVENT_MENU_SELECT:
     if (event->data.menu_select.menu == &pt->edit_menu)
     {
-      painting_selection_fill(pt, event->data.menu_select.index ==
-                                  PAINTING_EDIT_FILL ? pt->fg : pt->bg);
-      painting_menu_shade(pt);
+      painting_edit(pt, event->data.menu_select.index);
       return result_OK;
     }
     if (event->data.menu_select.menu == &pt->sel_menu)
@@ -1177,6 +1233,8 @@ static result_t painting_handle(wuss_window_t      *window,
     wuss_colourpicker_destroy(pt->picker);
     wuss_scaleview_destroy(pt->scaleview);
     free(pt->lasso);
+    if (pt->doc != NULL && --painting_docs == 0)
+      paintingdoc_clip_free(&painting_clip);
     paintingdoc_destroy(pt->doc);
     return result_OK;
 

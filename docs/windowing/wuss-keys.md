@@ -112,6 +112,7 @@ Menu shortcuts (fire when the task has the focus):
 | C M           | Light colour, Mutate | orbing                                                                                                                                                           |
 | F8            | Undo            | painting                                                                                                                                                              |
 | F9            | Redo            | painting                                                                                                                                                              |
+| Ctrl-X C V    | Cut, Copy, Paste (pixels) | painting                                                                                                                                                    |
 | Ctrl-A Z I    | Select all, Clear selection, Invert | painting                                                                                                                                          |
 | F Delete      | Fill, Clear selection (foreground, background) | painting                                                                                                                               |
 | N             | Next nozzle     | painting                                                                                                                                                              |

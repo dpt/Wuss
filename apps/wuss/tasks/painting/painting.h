@@ -107,6 +107,9 @@ enum
 /* the Edit submenu's rows */
 enum
 {
+  PAINTING_EDIT_CUT,   /* copy the selection, then clear it */
+  PAINTING_EDIT_COPY,  /* copy the selection to the pixel clipboard */
+  PAINTING_EDIT_PASTE, /* paste the pixel clipboard, floating */
   PAINTING_EDIT_FILL,  /* fill the selection with the foreground colour */
   PAINTING_EDIT_CLEAR, /* fill the selection with the background colour */
   PAINTING_EDIT__COUNT
