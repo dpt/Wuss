@@ -97,20 +97,23 @@ makes an instance of its own.
   Crop to selection cuts the canvas down to the selection's bounds. Canvas
   size opens a dialogue that grows or shrinks the canvas about its centre,
   filling any new area with the chosen background.
-- Menu > Symmetry mirrors drawing about the canvas's centre: Horizontal
-  copies it left to right, Vertical top to bottom, and both make four copies.
-  Tiled shows the canvas with a copy on every side, and drawing that runs
-  over an edge carries on from the far side, for seamless tiles. Both apply
+- The size bar's two Symmetry buttons mirror drawing about the canvas's
+  centre: the first copies it left to right, the second top to bottom, and
+  both make four copies. Menu > View > Tiled shows the canvas with a copy on every
+  side, and drawing that runs over an edge carries on from the far side, for
+  seamless tiles. Both apply
   to the freehand tools, spray, line, shapes, paths and fill, each drawing as
   one undo step. The gradient and the selection tools ignore them, and a fill
   stops at the canvas's edge.
 - The view zooms up to 6400%. From 600% up a grey grid outlines each
-  canvas pixel.
+  canvas pixel. Hold Space and drag with SELECT to pan the view.
 - The layers bar on the canvas's right edge lists the layers, the top one
   first. Its buttons add a layer above the current one, delete the current
   one, and raise or lower it. In a layer's row, click the box to show or hide
   it, the bar to set its opacity, or elsewhere to make it current. Drawing
   goes on the current layer; transforms and resizes act on every layer.
+  Menu > View hides or shows each bar: the toolbox, size bar, option bar
+  and layers bar. Menu > View > Display picks the dithering and the zoom.
 - Menu > Save (`F3`) opens the Save As dialogue. The PNG holds the layers
   flattened.
 - Drop a PNG on the canvas window or on the Painting icon to load it.

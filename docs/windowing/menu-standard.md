@@ -8,58 +8,65 @@ The icon bar menu is not covered here. `taskapp` builds it (Info, New or New...,
 Hide, Quit). Help and Choices... will join it when wuss has help text and a
 choices system.
 
-## Order
+A window menu is laid out in two steps. First build the logical layout from
+the top-level entries below. Then reduce it to the physical layout the user
+sees.
 
-A window menu is titled with the app's name. Its rows come in these groups,
-top to bottom. Leave out any group the app has nothing for.
+## Logical layout
 
-0. **Display ⇒** — if the app has a screen dithering choice, the top row is
-   `Display ⇒` (`dithermenu_t`'s `display`), whose `Dithering ⇒` picks it.
-1. **First item** — one row:
-   - `File ⇒` if the app has a document (Info on it, and other
-     document-wide items), as in PrivateEye;
-   - otherwise the app's main action, such as `Pause`, `New game` or `Undo`.
-     If there are two candidates, the one used more often goes here and the
-     other goes in Settings.
-2. **Save** — `Save ⇒`.
-3. **Edit** — Undo (if not first), `Selection ⇒`, and so on. Keep these flat.
-   Fold them into an `Edit ⇒` submenu once there are more than about four.
-4. **Settings** — the app's own options: `Model ⇒`, `Shape ⇒`, `Gravity` and
-   the like.
-5. **Display** — how the content is shown: `Colours ⇒`, scale, zoom,
-   `Double size`.
-6. **Generate** — `Mutate`, `Randomise`, `Reset`.
+A window menu is titled with the app's name. Its top-level entries come in
+this order. Leave out any entry the app has nothing for.
+
+1. **`File ⇒`** — document-wide operations: Info, Save, Print.
+2. **`Edit ⇒`** — Undo, Redo, Cut, Copy, Paste, Delete, `Select all`,
+   `Clear selection`, Find.
+3. **`View ⇒`** — how the document is shown, not what it holds: new view,
+   view options, grids, scale and zoom, `Display ⇒` with its
+   `Dithering ⇒` (`dithermenu_t`'s `display`).
+4. **`<Object> ⇒`** — operations on one type of document object, named for
+   that type: `Text` in a text editor. An app with several object types has
+   one entry for each, such as `Text`, `Style` and `Page`, or `Selection`,
+   `Shapes` and `Layer`. An app's own settings (`Model ⇒`, `Gravity`) and
+   generators (`Randomise`, `Reset`) go under the object they act on.
+5. **`Utils ⇒`** — whatever is left.
+
+If the app has a single object type (a ball game, say) and its entry holds
+only a handful of rows, put those rows straight in the main menu, between
+dividers, in place of the `<Object> ⇒` entry.
+
+## Physical layout
+
+The logical layout is then reduced:
+
+- A submenu of one or two rows is replaced by those rows. `File ⇒` holding
+  only `Save ⇒` becomes `Save ⇒`; `Edit ⇒` holding only Undo and Redo becomes
+  `Undo` and `Redo`.
 
 ## Dividers
 
 A divider marks a change in the kind of row, as in Ovation Pro. It is not
 there to break up length.
 
-- For dividing, the groups merge into five blocks:
-  - **Display ⇒**, a one-row block at the top;
-  - **actions** — first item and Save;
-  - **Edit**;
-  - **options** — Settings and Display;
-  - **Generate**.
-- Put a divider between each pair of neighbouring blocks, never inside one.
-- A one-row block may stand alone only at the top or bottom of the menu
-  (Ovation Pro's Info and Find). In the middle, it joins the neighbour closer
-  in kind.
+- Rows put in the main menu by reduction, or a single object's rows, form a
+  group. Divide each group from its neighbours, never inside it.
+- Submenu rows (`Save ⇒`, `Edit ⇒`, `View ⇒`, `<Object> ⇒`) sit together
+  with no dividers between them, even when reduction put them there.
 - A menu of three rows or fewer has no dividers.
 - In a submenu, divide commands from a list of choices (Ovation Pro's
   `Edit style, Remove` above its list of styles).
 
-For example, Sofa:
+For example, Sofa. Logically it has `File ⇒` (Save), `View ⇒` (Colours) and
+one object, the simulation (Pause, Model, Auto-cycle, Randomise, Reset).
+Reduced, it becomes:
 
 ```
 Sofa
-  Pause          Space
   Save         ⇒ F3
-  ----------------------
-  Model        ⇒
-  Auto-cycle
   Colours      ⇒
   ----------------------
+  Pause          Space
+  Model        ⇒
+  Auto-cycle
   Randomise      ^R
   Reset          R
 ```

@@ -69,35 +69,52 @@ painting_settings[painting_SETTING__COUNT] =
   [painting_SETTING_TOLERANCE] = { "Tolerance", 0, 255, NULL },
   [painting_SETTING_STABILISE] = { "Stabilise", 0, PAINTING_STABILISE_MAX,
                                    NULL },
-  [painting_SETTING_PERFECT]   = { "Pixel-perfect", 0, 0, NULL }
+  [painting_SETTING_PERFECT]   = { "Pixel-perfect", 0, 0, NULL },
+  [painting_SETTING_SYMMETRY]  = { "Symmetry", 0, 0, NULL }
 };
 
-/* whether the setting is a slider, rather than a button or an option */
-#define IS_SLIDER(s) ((s) != painting_SETTING_NOZZLE && \
-                      (s) != painting_SETTING_PERFECT)
+/* the symmetry setting's buttons' images, by PAINTING_SYM_* */
+static const char *const painting_sym_names[PAINTING_SYM_TILED] =
+{
+  "mirror-h", "mirror-v"
+};
+
+/* whether the setting is a slider, rather than a button or options */
+#define IS_SLIDER(s) ((s) != painting_SETTING_NOZZLE  && \
+                      (s) != painting_SETTING_PERFECT && \
+                      (s) != painting_SETTING_SYMMETRY)
 
 #define SETTING(s) (1u << painting_SETTING_##s)
 
 /* the settings each tool shows on the size bar. a filled shape has no
- * outline, so no size */
+ * outline, so no size. the tools that paint copies show the symmetry */
 static const unsigned int painting_tool_settings[painting_TOOL__COUNT] =
 {
-  [painting_TOOL_PENCIL]     = SETTING(SIZE) | SETTING(NOZZLE) |
-                               SETTING(STABILISE) | SETTING(PERFECT),
-  [painting_TOOL_PAINTBRUSH] = SETTING(SIZE) | SETTING(NOZZLE) |
-                               SETTING(DRY) | SETTING(STABILISE),
-  [painting_TOOL_WOBBLE]     = SETTING(SIZE) | SETTING(EDGE) |
-                               SETTING(WANDER) | SETTING(STABILISE),
-  [painting_TOOL_ERASER]     = SETTING(SIZE) | SETTING(STABILISE),
-  [painting_TOOL_LINE]       = SETTING(SIZE),
-  [painting_TOOL_RECT]       = SETTING(SIZE),
-  [painting_TOOL_ELLIPSE]    = SETTING(SIZE),
-  [painting_TOOL_PATH]       = SETTING(SIZE) | SETTING(STABILISE),
-  [painting_TOOL_PATH_FILL]  = SETTING(STABILISE),
-  [painting_TOOL_SPRAY]      = SETTING(SIZE) | SETTING(DENSITY) |
-                               SETTING(RATE) | SETTING(STABILISE),
-  [painting_TOOL_LASSO]      = SETTING(STABILISE),
-  [painting_TOOL_WAND]       = SETTING(TOLERANCE)
+  [painting_TOOL_PENCIL]       = SETTING(SIZE) | SETTING(NOZZLE) |
+                                 SETTING(STABILISE) | SETTING(PERFECT) |
+                                 SETTING(SYMMETRY),
+  [painting_TOOL_PAINTBRUSH]   = SETTING(SIZE) | SETTING(NOZZLE) |
+                                 SETTING(DRY) | SETTING(STABILISE) |
+                                 SETTING(SYMMETRY),
+  [painting_TOOL_WOBBLE]       = SETTING(SIZE) | SETTING(EDGE) |
+                                 SETTING(WANDER) | SETTING(STABILISE) |
+                                 SETTING(SYMMETRY),
+  [painting_TOOL_ERASER]       = SETTING(SIZE) | SETTING(STABILISE) |
+                                 SETTING(SYMMETRY),
+  [painting_TOOL_LINE]         = SETTING(SIZE) | SETTING(SYMMETRY),
+  [painting_TOOL_RECT]         = SETTING(SIZE) | SETTING(SYMMETRY),
+  [painting_TOOL_RECT_FILL]    = SETTING(SYMMETRY),
+  [painting_TOOL_ELLIPSE]      = SETTING(SIZE) | SETTING(SYMMETRY),
+  [painting_TOOL_ELLIPSE_FILL] = SETTING(SYMMETRY),
+  [painting_TOOL_PATH]         = SETTING(SIZE) | SETTING(STABILISE) |
+                                 SETTING(SYMMETRY),
+  [painting_TOOL_PATH_FILL]    = SETTING(STABILISE) | SETTING(SYMMETRY),
+  [painting_TOOL_FILL]         = SETTING(SYMMETRY),
+  [painting_TOOL_SPRAY]        = SETTING(SIZE) | SETTING(DENSITY) |
+                                 SETTING(RATE) | SETTING(STABILISE) |
+                                 SETTING(SYMMETRY),
+  [painting_TOOL_LASSO]        = SETTING(STABILISE),
+  [painting_TOOL_WAND]         = SETTING(TOLERANCE)
 };
 
 #undef SETTING
@@ -219,6 +236,8 @@ static result_t painting_sizebar_build(painting_task_t *pt)
   pt->nozzle_icon    = NULL;
   pt->perfect_icon   = NULL;
   pt->pot_icons[0]   = NULL;
+  for (i = 0; i < PAINTING_SYM_TILED; i++)
+    pt->sym_icons[i] = NULL;
 
   settings = painting_tool_settings[pt->tool];
   memset(specs, 0, sizeof(specs));
@@ -261,6 +280,23 @@ static result_t painting_sizebar_build(painting_task_t *pt)
       wuss_icon_spec_action(&specs[n++], control,
                             painting_nozzle_names[pt->nozzle], 0);
       x += nozzle_w;
+    }
+    else if (s == painting_SETTING_SYMMETRY)
+    {
+      /* a latching button per mirror, each in a group of its own so they
+       * latch independently. painting_toolbar_icon unlatches them */
+      for (i = 0; i < PAINTING_SYM_TILED; i++)
+      {
+        specs[n].bbox            = (box_t) BOX_POS_SIZE(x, SB_MARGIN,
+                                                        line_h, line_h);
+        specs[n].type            = wuss_ICON_TYPE_BITMAP;
+        specs[n].flags           = wuss_ICON_FLAGS_INTERACTIVE;
+        specs[n].u.bitmap.border = wuss_ICON_BORDER_RIDGE;
+        specs[n].u.bitmap.group  = 1 + i;
+        specs[n].bg              = wuss_COLOUR_BUTTON_PRESSED;
+        specs[n++].u.bitmap.name = painting_sym_names[i];
+        x += line_h + 2;
+      }
     }
     else
     {
@@ -343,6 +379,15 @@ static result_t painting_sizebar_build(painting_task_t *pt)
     {
       pt->perfect_icon = icons[at[s]];
       wuss_icon_set_selected(pt->sizebar, pt->perfect_icon, pt->perfect);
+    }
+    else if (s == painting_SETTING_SYMMETRY)
+    {
+      for (i = 0; i < PAINTING_SYM_TILED; i++)
+      {
+        pt->sym_icons[i] = icons[at[s] + i];
+        wuss_icon_set_selected(pt->sizebar, pt->sym_icons[i],
+                               (pt->symmetry >> i) & 1);
+      }
     }
     else
     {
@@ -684,8 +729,7 @@ result_t painting_set_tool(painting_task_t *pt, painting_tool_t tool)
   return painting_sizebar_build(pt);
 }
 
-/* pick the paintbrush's nozzle, keeping the size bar button and the menu, if
- * open, in step */
+/* pick the paintbrush's nozzle, keeping the size bar button in step */
 void painting_set_nozzle(painting_task_t *pt, int nozzle)
 {
   pt->nozzle = (paintingdoc_nozzle_t) nozzle;
@@ -693,8 +737,6 @@ void painting_set_nozzle(painting_task_t *pt, int nozzle)
   if (pt->nozzle_icon != NULL)
     (void) wuss_icon_set_text(pt->sizebar, pt->nozzle_icon,
                               painting_nozzle_names[pt->nozzle]);
-  wuss_menu_tick_exclusive_live(pt->base.menu_handle, &pt->nozzle_menu,
-                                pt->nozzle);
 }
 
 void painting_pot_gauge(painting_task_t *pt)
@@ -755,6 +797,18 @@ result_t painting_toolbar_icon(painting_task_t    *pt,
     return result_OK;
   }
 
+  /* a click has latched the mirror button on, so flip the mirror and match
+   * the button to it */
+  for (i = 0; i < PAINTING_SYM_TILED; i++)
+  {
+    if (icon != NULL && icon == pt->sym_icons[i])
+    {
+      pt->symmetry ^= 1u << i;
+      wuss_icon_set_selected(pt->sizebar, icon, (pt->symmetry >> i) & 1);
+      return result_OK;
+    }
+  }
+
   for (i = 0; i < painting_TOOL__COUNT; i++)
   {
     if (icon == pt->tool_icons[i])
@@ -774,14 +828,18 @@ void painting_step_size(painting_task_t *pt, int delta)
                                pt->size);
 }
 
-/* refit the size bar's height to the font, re-drop the toolbox to sit below
- * it and rebuild the settings */
+/* refit the size bar's height to the font, re-drop the toolbox and layers
+ * bar to sit below it, or at the top if it is hidden, and rebuild the
+ * settings */
 result_t painting_sizebar_relayout(painting_task_t *pt)
 {
   result_t rc;
   size2d_t size;
+  int      drop;
 
   size = SIZE2D(SB_W, SB_H(pt->base.wuss));
+  drop = (pt->hidden_bars & (1u << PAINTING_VIEW_SIZEBAR)) ?
+         0 : SB_H(pt->base.wuss) + 1;
 
   rc = wuss_window_set_doc(pt->sizebar, size);
   if (rc == result_OK)
@@ -791,12 +849,12 @@ result_t painting_sizebar_relayout(painting_task_t *pt)
 
   wuss_window_detach(pt->toolbox);
   rc = wuss_window_attach(pt->toolbox, pt->base.window, wuss_EDGE_LEFT,
-                          wuss_ALIGN_TOP, SB_H(pt->base.wuss) + 1);
+                          wuss_ALIGN_TOP, drop);
   if (rc == result_OK && pt->layerbar != NULL)
   {
     wuss_window_detach(pt->layerbar);
     rc = wuss_window_attach(pt->layerbar, pt->base.window, wuss_EDGE_RIGHT,
-                            wuss_ALIGN_TOP, SB_H(pt->base.wuss) + 1);
+                            wuss_ALIGN_TOP, drop);
   }
   if (rc != result_OK)
     return rc;

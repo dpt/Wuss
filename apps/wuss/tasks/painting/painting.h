@@ -52,6 +52,7 @@ typedef enum painting_setting
                                * pointer, in pixels */
   painting_SETTING_PERFECT,   /* the pencil's pixel-perfect switch, an
                                * option */
+  painting_SETTING_SYMMETRY,  /* a label, then an option per mirror */
   painting_SETTING__COUNT
 }
 painting_setting_t;
@@ -91,22 +92,35 @@ typedef enum painting_tool
 }
 painting_tool_t;
 
-/* the MENU click menu's rows */
+/* the MENU click menu's rows, laid out by menu-standard.md: File reduced to
+ * Save, then Edit, View and the object menus */
 enum
 {
-  PAINTING_MENU_DISPLAY,   /* submenu: dithermenu_t's Display */
   PAINTING_MENU_SAVE,
   PAINTING_MENU_EDIT,      /* submenu: PAINTING_EDIT_* */
+  PAINTING_MENU_VIEW,      /* submenu: PAINTING_VIEW_* */
   PAINTING_MENU_SELECTION, /* submenu: PAINTING_SEL_* */
   PAINTING_MENU_TRANSFORM, /* submenu: PAINTING_XFORM_* */
   PAINTING_MENU_PALETTE,   /* submenu: PAINTING_PAL_* */
-  PAINTING_MENU_NOZZLE,   /* submenu: one row per paintingdoc_nozzle_t */
-  PAINTING_MENU_SYMMETRY, /* submenu: PAINTING_SYM_* */
-  PAINTING_MENU_GRID,     /* submenu: one row per painting_grid_sizes entry */
   PAINTING_MENU__COUNT
 };
 
-/* the Symmetry submenu's rows, each toggling bit 1 << row of symmetry */
+/* the View submenu's rows: bars, each ticked while it shows, then the grid,
+ * tiling and the display */
+enum
+{
+  PAINTING_VIEW_TOOLBOX,   /* the tools, on the left */
+  PAINTING_VIEW_SIZEBAR,   /* the tool's settings, across the top */
+  PAINTING_VIEW_OPTIONBAR, /* the colours, along the bottom */
+  PAINTING_VIEW_LAYERBAR,  /* the layers, on the right */
+  PAINTING_VIEW_GRID,      /* submenu: one row per painting_grid_sizes entry */
+  PAINTING_VIEW_TILED,     /* ticked while PAINTING_SYM_TILED is on */
+  PAINTING_VIEW_DISPLAY,   /* submenu: dithermenu_t's Display */
+  PAINTING_VIEW__COUNT
+};
+
+/* the symmetry's bits, each set in symmetry by 1 << this. the mirrors are
+ * size bar options, tiling a View row */
 enum
 {
   PAINTING_SYM_HORIZONTAL, /* mirror left and right */
@@ -217,6 +231,10 @@ typedef struct painting_task
   point_t            anchor;    /* where the stroke began */
   point_t            last;      /* where the stroke last reached */
   wuss_key_modifiers_t mods;    /* keys held as the stroke last reached */
+  int                space;     /* non-zero: Space is down, so a drag pans */
+  int                panning;   /* non-zero: a Space drag is panning */
+  point_t            pan;       /* the content point the pan holds under the
+                                 * pointer */
   point_t           *lasso;     /* points dragged out so far by the lasso or
                                  * path */
   int                nlasso, caplasso;
@@ -240,6 +258,8 @@ typedef struct painting_task
   wuss_icon_t       *nozzle_icon; /* the nozzle button, or NULL if not shown */
   wuss_icon_t       *perfect_icon; /* the pixel-perfect option, or NULL if not
                                     * shown */
+  wuss_icon_t       *sym_icons[PAINTING_SYM_TILED]; /* the mirror options by
+                                 * PAINTING_SYM_*, or NULL if not shown */
   wuss_icon_t       *pot_icons[PAINTING_POT_LEVELS]; /* the pot gauge's
                                  * images, empty to full, all but one hidden;
                                  * [0] NULL if not shown */
@@ -247,6 +267,10 @@ typedef struct painting_task
   wuss_slider_row_t  rows[painting_SETTING__COUNT]; /* live only for the
                                  * slider settings the current tool shows */
   wuss_menu_item_t   menu_items[PAINTING_MENU__COUNT];
+  wuss_menu_item_t   view_items[PAINTING_VIEW__COUNT];
+  wuss_menu_t        view_menu;
+  unsigned int       hidden_bars; /* bit 1 << PAINTING_VIEW_* set when that
+                                   * bar is hidden */
   wuss_menu_item_t   edit_items[PAINTING_EDIT__COUNT];
   wuss_menu_t        edit_menu;
   wuss_menu_item_t   sel_items[PAINTING_SEL__COUNT];
@@ -262,10 +286,6 @@ typedef struct painting_task
   colour_t           palette[PAINTING_PALETTE_MAX]; /* the document's own
                                  * palette, which the swatches show */
   int                npalette;
-  wuss_menu_item_t   nozzle_items[paintingdoc_NOZZLE__COUNT];
-  wuss_menu_t        nozzle_menu;
-  wuss_menu_item_t   sym_items[PAINTING_SYM__COUNT];
-  wuss_menu_t        sym_menu;
   wuss_menu_item_t   grid_items[PAINTING_GRID__COUNT];
   wuss_menu_t        grid_menu;
   int                grid;      /* the user grid's cell in canvas pixels, or 0

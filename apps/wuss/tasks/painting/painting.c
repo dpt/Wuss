@@ -172,6 +172,12 @@ static const char *const painting_grid_names[PAINTING_GRID__COUNT] =
 };
 static const int painting_grid_sizes[PAINTING_GRID__COUNT] = { 0, 8, 16, 32 };
 
+/* the View submenu's bar rows */
+static const char *const painting_view_names[PAINTING_VIEW_GRID] =
+{
+  "Toolbox", "Size bar", "Option bar", "Layers bar"
+};
+
 /* the Scale submenu's rows, as a percentage */
 static const char *const painting_scale_names[PAINTING_SCALE__COUNT] =
 {
@@ -345,11 +351,29 @@ static result_t painting_build(painting_task_t            *task,
 
   dithermenu_init(&task->dither, task->dithering);
   dithermenu_add_scale(&task->dither, wuss_scaleview_window(task->scaleview));
-  WUSS_MENU_ITEM_MENU(task->menu_items, PAINTING_MENU_DISPLAY, "Display",
+
+  for (i = 0; i < PAINTING_VIEW_GRID; i++)
+    WUSS_MENU_ITEM(task->view_items, i, painting_view_names[i],
+                   wuss_MENU_ITEM_TICKED);
+  for (i = 0; i < PAINTING_GRID__COUNT; i++)
+    WUSS_MENU_ITEM(task->grid_items, i, painting_grid_names[i],
+                   wuss_MENU_ITEM_NONE);
+  WUSS_MENU_TITLE(task->grid_menu, "Grid", task->grid_items,
+                  NELEMS(task->grid_items));
+  wuss_menu_tick_exclusive(&task->grid_menu, 0);
+  WUSS_MENU_ITEM_MENU(task->view_items, PAINTING_VIEW_GRID, "Grid",
+                      wuss_MENU_ITEM_DASHED, &task->grid_menu);
+  WUSS_MENU_ITEM(task->view_items, PAINTING_VIEW_TILED, "Tiled",
+                 wuss_MENU_ITEM_NONE);
+  WUSS_MENU_ITEM_MENU(task->view_items, PAINTING_VIEW_DISPLAY, "Display",
                       wuss_MENU_ITEM_NONE, &task->dither.display);
+  WUSS_MENU_TITLE(task->view_menu, "View", task->view_items,
+                  NELEMS(task->view_items));
+  WUSS_MENU_ITEM_MENU(task->menu_items, PAINTING_MENU_VIEW, "View",
+                      wuss_MENU_ITEM_NONE, &task->view_menu);
 
   taskapp_save_row(&task->base, task->menu_items, PAINTING_MENU_SAVE,
-                   wuss_MENU_ITEM_DASHED);
+                   wuss_MENU_ITEM_NONE);
 
   WUSS_MENU_ITEM_SHORTCUT(task->edit_items, PAINTING_EDIT_UNDO, "Undo",
                           wuss_MENU_ITEM_NONE, "F8");
@@ -429,36 +453,6 @@ static result_t painting_build(painting_task_t            *task,
                   NELEMS(task->pal_items));
   WUSS_MENU_ITEM_MENU(task->menu_items, PAINTING_MENU_PALETTE, "Palette",
                       wuss_MENU_ITEM_NONE, &task->pal_menu);
-
-  for (i = 0; i < paintingdoc_NOZZLE__COUNT; i++)
-    WUSS_MENU_ITEM(task->nozzle_items, i, painting_nozzle_names[i],
-                   wuss_MENU_ITEM_NONE);
-  WUSS_MENU_TITLE(task->nozzle_menu, "Nozzle", task->nozzle_items,
-                  NELEMS(task->nozzle_items));
-  WUSS_MENU_ITEM_MENU(task->menu_items, PAINTING_MENU_NOZZLE, "Nozzle",
-                      wuss_MENU_ITEM_DASHED, &task->nozzle_menu);
-  /* the shortcut, or a click on the row, steps to the next nozzle */
-  task->menu_items[PAINTING_MENU_NOZZLE].shortcut = "N";
-
-  WUSS_MENU_ITEM(task->sym_items, PAINTING_SYM_HORIZONTAL, "Horizontal",
-                 wuss_MENU_ITEM_NONE);
-  WUSS_MENU_ITEM(task->sym_items, PAINTING_SYM_VERTICAL, "Vertical",
-                 wuss_MENU_ITEM_NONE);
-  WUSS_MENU_ITEM(task->sym_items, PAINTING_SYM_TILED, "Tiled",
-                 wuss_MENU_ITEM_DASHED);
-  WUSS_MENU_TITLE(task->sym_menu, "Symmetry", task->sym_items,
-                  NELEMS(task->sym_items));
-  WUSS_MENU_ITEM_MENU(task->menu_items, PAINTING_MENU_SYMMETRY, "Symmetry",
-                      wuss_MENU_ITEM_NONE, &task->sym_menu);
-
-  for (i = 0; i < PAINTING_GRID__COUNT; i++)
-    WUSS_MENU_ITEM(task->grid_items, i, painting_grid_names[i],
-                   wuss_MENU_ITEM_NONE);
-  WUSS_MENU_TITLE(task->grid_menu, "Grid", task->grid_items,
-                  NELEMS(task->grid_items));
-  wuss_menu_tick_exclusive(&task->grid_menu, 0);
-  WUSS_MENU_ITEM_MENU(task->menu_items, PAINTING_MENU_GRID, "Grid",
-                      wuss_MENU_ITEM_NONE, &task->grid_menu);
 
   WUSS_MENU_TITLE(task->base.menu, "Painting", task->menu_items,
                   NELEMS(task->menu_items));
@@ -1153,18 +1147,17 @@ static result_t painting_set_zoom(painting_task_t *pt, int zoom)
   return painting_fit(pt);
 }
 
-/* Toggle a Symmetry row. Tiling changes the stage, so as for a zoom a stroke
- * in progress is abandoned. */
-static result_t painting_toggle_symmetry(painting_task_t *pt, int row)
+/* Toggle the View menu's Tiled row. Tiling changes the stage, so as for a
+ * zoom a stroke in progress is abandoned. */
+static result_t painting_toggle_tiled(painting_task_t *pt)
 {
   result_t rc;
   point_t  was;
 
-  pt->symmetry ^= 1u << row;
-  wuss_menu_tick_item_live(pt->base.menu_handle, &pt->sym_menu, row,
-                           (pt->symmetry >> row) & 1);
-  if (row != PAINTING_SYM_TILED)
-    return result_OK;
+  pt->symmetry ^= 1u << PAINTING_SYM_TILED;
+  wuss_menu_tick_item_live(pt->base.menu_handle, &pt->view_menu,
+                           PAINTING_VIEW_TILED,
+                           (pt->symmetry >> PAINTING_SYM_TILED) & 1);
 
   pt->held = 0;
   was      = pt->page;
@@ -1292,8 +1285,8 @@ static result_t painting_nudge(painting_task_t *pt, int code, int mods)
 
 /* B, H, E, L, R, X, C, D, N, M, F, G, P, S, O, W and I pick the matching
  * tool, [ and ] step the size down and up, + and - zoom, 1 returns to
- * actual size, Escape drops the selection and the arrow keys nudge it.
- * Anything else is passed back unclaimed */
+ * actual size, Space held lets a drag pan, Escape drops the selection and
+ * the arrow keys nudge it. Anything else is passed back unclaimed */
 static result_t painting_key(painting_task_t *pt, int code, int mods)
 {
   painting_tool_t tool;
@@ -1325,6 +1318,7 @@ static result_t painting_key(painting_task_t *pt, int code, int mods)
   case '=': case '+': return painting_zoom(pt, +1);
   case '-':           return painting_zoom(pt, -1);
   case '1':           return painting_zoom(pt, 0);
+  case ' ':           pt->space = 1;                     return result_OK;
   case wuss_KEY_ESCAPE:
     box = paintingdoc_selection_bounds(pt->doc);
     paintingdoc_select_none(pt->doc);
@@ -1421,6 +1415,72 @@ static result_t painting_selection_op(painting_task_t *pt, int op)
   return rc;
 }
 
+/* hide or show a View menu row's bar, flipping its tick. the toolbox and
+ * layers bar drop below the size bar only while it shows */
+static result_t painting_view_toggle(painting_task_t *pt, int row)
+{
+  result_t       rc;
+  wuss_window_t *bar;
+  int            shown;
+
+  switch (row)
+  {
+  case PAINTING_VIEW_TOOLBOX:   bar = pt->toolbox;   break;
+  case PAINTING_VIEW_SIZEBAR:   bar = pt->sizebar;   break;
+  case PAINTING_VIEW_OPTIONBAR: bar = pt->optionbar; break;
+  case PAINTING_VIEW_LAYERBAR:  bar = pt->layerbar;  break;
+  default:                      return result_OK;
+  }
+  if (bar == NULL)
+    return result_OK;
+
+  pt->hidden_bars ^= 1u << row;
+  shown            = !(pt->hidden_bars & (1u << row));
+  wuss_menu_tick_item_live(pt->base.menu_handle, &pt->view_menu, row, shown);
+  rc = wuss_window_set_hidden(bar, !shown);
+  if (rc == result_OK && row == PAINTING_VIEW_SIZEBAR)
+    rc = painting_sizebar_relayout(pt);
+
+  return rc;
+}
+
+/* with Space down a SELECT drag pans the canvas, scrolling so the content
+ * point pressed stays under the pointer. returns non-zero if it took the
+ * event */
+static int painting_pan(painting_task_t *pt, const wuss_event_t *event)
+{
+  point_t p;
+
+  p = event->data.mouse.point;
+
+  switch (event->data.mouse.action)
+  {
+  case wuss_MOUSE_DOWN:
+    if (!pt->space || pt->held ||
+        !(event->data.mouse.button & wuss_BUTTON_SELECT))
+      return 0;
+    pt->panning = 1;
+    pt->pan     = p;
+    return 1;
+
+  case wuss_MOUSE_MOVE:
+    if (!pt->panning)
+      return 0;
+    wuss_window_scroll_by(pt->base.window,
+                          POINT(pt->pan.x - p.x, pt->pan.y - p.y));
+    return 1;
+
+  case wuss_MOUSE_UP:
+    if (!pt->panning)
+      return 0;
+    pt->panning = 0;
+    return 1;
+
+  default:
+    return 0;
+  }
+}
+
 /* a MENU click on the canvas opens the menu, with Undo greyed out when
  * there is nothing to undo and Clear selection when there is nothing
  * selected */
@@ -1434,8 +1494,6 @@ static result_t painting_menu_open(painting_task_t *pt)
   rc = wuss_scaleview_set_percent(pt->scaleview, pt->zoom * 100);
   if (rc != result_OK)
     return rc;
-
-  wuss_menu_tick_exclusive(&pt->nozzle_menu, pt->nozzle);
 
   return wuss_menu_open_at_pointer(pt->base.delegate, &pt->base.menu,
                                    &pt->base.menu_handle);
@@ -1477,6 +1535,8 @@ static result_t painting_handle(wuss_window_t      *window,
     }
     if (window == pt->toolbox || window == pt->sizebar)
       return result_OK; /* between the buttons */
+    if (painting_pan(pt, event))
+      return result_OK;
     return painting_mouse(pt, event);
 
   case wuss_EVENT_ICON:
@@ -1498,6 +1558,15 @@ static result_t painting_handle(wuss_window_t      *window,
     return painting_key(pt, event->data.key.code,
                         event->data.key.modifiers);
   }
+
+  case wuss_EVENT_KEY_UP:
+    if (event->data.key.code == ' ')
+      pt->space = 0;
+    return result_OK;
+
+  case wuss_EVENT_LOSE_FOCUS:
+    pt->space = 0; /* its release goes to the new focus */
+    return result_OK;
 
   case wuss_EVENT_MENU_SELECT:
     if (event->data.menu_select.menu == &pt->edit_menu)
@@ -1521,13 +1590,6 @@ static result_t painting_handle(wuss_window_t      *window,
       painting_palette_shade(pt);
       return rc;
     }
-    if (event->data.menu_select.menu == &pt->nozzle_menu)
-    {
-      painting_set_nozzle(pt, event->data.menu_select.index);
-      return result_OK;
-    }
-    if (event->data.menu_select.menu == &pt->sym_menu)
-      return painting_toggle_symmetry(pt, event->data.menu_select.index);
     if (event->data.menu_select.menu == &pt->scale_menu)
     {
       size2d_t was;
@@ -1554,11 +1616,11 @@ static result_t painting_handle(wuss_window_t      *window,
       wuss_window_invalidate_visible(pt->base.window);
       return result_OK;
     }
-    if (event->data.menu_select.index == PAINTING_MENU_NOZZLE)
-    {
-      painting_set_nozzle(pt, (pt->nozzle + 1) % paintingdoc_NOZZLE__COUNT);
-      return result_OK;
-    }
+    if (event->data.menu_select.menu == &pt->view_menu &&
+        event->data.menu_select.index == PAINTING_VIEW_TILED)
+      return painting_toggle_tiled(pt);
+    if (event->data.menu_select.menu == &pt->view_menu)
+      return painting_view_toggle(pt, event->data.menu_select.index);
     return result_OK;
 
   case wuss_EVENT_MESSAGE:

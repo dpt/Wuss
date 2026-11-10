@@ -48,7 +48,7 @@
 #define SB_SETTING_GAP 10  /* between settings */
 #define SB_SLIDER_W    58
 #define SB_POT         16  /* the pot gauge's images */
-#define SB_W           580 /* wide enough for the widest tool's settings */
+#define SB_W           740 /* wide enough for the widest tool's settings */
 /* the row: tall enough for an option's tick box, which does not scale with
  * the font; the other controls are centred in it */
 #define SB_LINE_H(wuss) MAX(SB_ROW_H(wuss), wuss_STD_GLYPH_SIZE)
@@ -123,7 +123,7 @@ result_t painting_palette_op(painting_task_t *pt, int op);
 /* switch tool, showing its settings on the size bar */
 result_t painting_set_tool(painting_task_t *pt, painting_tool_t tool);
 
-/* pick the paintbrush's nozzle, keeping the size bar and menu in step */
+/* pick the paintbrush's nozzle, keeping the size bar in step */
 void painting_set_nozzle(painting_task_t *pt, int nozzle);
 
 /* show on the pot gauge how full the paintbrush's pot is */

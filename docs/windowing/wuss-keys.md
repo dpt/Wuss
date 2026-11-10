@@ -115,7 +115,6 @@ Menu shortcuts (fire when the task has the focus):
 | Ctrl-X C V    | Cut, Copy, Paste (pixels) | painting                                                                                                                                                    |
 | Ctrl-A Z I    | Select all, Clear selection, Invert | painting                                                                                                                                          |
 | F Delete      | Fill, Clear selection (foreground, background) | painting                                                                                                                               |
-| N             | Next nozzle     | painting                                                                                                                                                              |
 | Shift-H V     | Flip horizontally, vertically | painting                                                                                                                                                |
 | Shift-R L     | Rotate right, left | painting                                                                                                                                                           |
 | R             | Restart         | sudoku                                                                                                                                                                |
@@ -129,7 +128,7 @@ Menu shortcuts (fire when the task has the focus):
 | Ctrl-] Ctrl-[ | Faster, Slower  | zxtask                                                                                                                                                                |
 | Ctrl-M        | Monochromatic   | zxtask                                                                                                                                                                |
 
-Two labels never fire. System F7 (next window) runs ahead of Tagging's F7 (Sort by count). Painting's N (next nozzle) runs ahead of its direct N (Path tool). Painting's F fills the selection while there is one; with nothing selected the row is shaded and F picks the Fill tool.
+One label never fires. System F7 (next window) runs ahead of Tagging's F7 (Sort by count). Painting's F fills the selection while there is one; with nothing selected the row is shaded and F picks the Fill tool.
 
 Direct keys:
 
@@ -161,7 +160,7 @@ Direct keys:
 | orbing                              | O                   | Toggle the current light                                |
 | painting                            | B H K E             | Pencil, Paintbrush, Wobbly brush, Eraser                |
 | painting                            | L R X               | Line, Rectangle, Filled rectangle                       |
-| painting                            | C D M               | Ellipse, Filled ellipse, Filled path                    |
+| painting                            | C D N M             | Ellipse, Filled ellipse, Path, Filled path              |
 | painting                            | F G P               | Fill, Gradient, Spray                                   |
 | painting                            | S O W               | Select, Lasso, Magic wand                               |
 | painting                            | I V                 | Pick colour, Move                                       |
@@ -170,6 +169,7 @@ Direct keys:
 | painting                            | `1`                 | Actual size                                             |
 | painting                            | Escape              | Drop selection                                          |
 | painting                            | Arrows              | Nudge selection (Shift = 8 pixels)                      |
+| painting                            | Space + drag        | Pan the view                                            |
 | saturn                              | Left / Right        | Previous / next seed                                    |
 | sofa                                | Left / Right        | Previous / next model                                   |
 | sofa                                | Up / Down           | Step rotation (paused only)                             |
