@@ -694,6 +694,50 @@ result_t paintingdoc_test(const char *resources)
   }
   paintingdoc_destroy(doc);
 
+  printf("test: transforms flip and turn the canvas; undo restores its "
+         "size\n");
+
+  /* a 4x2 canvas, red at its top left */
+  CHECK(paintingdoc_create(SIZE2D(4, 2), &doc) == result_OK);
+  paintingdoc_stroke(doc, POINT(0, 0), POINT(0, 0), 1, red());
+
+  paintingdoc_transform(doc, paintingdoc_XFORM_FLIP_H);
+  CHECK(px(doc, 3, 0) == RED && px(doc, 0, 0) == WHITE);
+  paintingdoc_transform(doc, paintingdoc_XFORM_FLIP_V);
+  CHECK(px(doc, 3, 1) == RED && px(doc, 3, 0) == WHITE);
+  paintingdoc_transform(doc, paintingdoc_XFORM_ROTATE_180);
+  CHECK(px(doc, 0, 0) == RED);
+
+  CHECK(paintingdoc_select_all(doc) == result_OK);
+  dirty = paintingdoc_transform(doc, paintingdoc_XFORM_ROTATE_CW);
+  CHECK(!paintingdoc_has_selection(doc));
+  CHECK(paintingdoc_bitmap(doc)->size.w == 2);
+  CHECK(paintingdoc_bitmap(doc)->size.h == 4);
+  CHECK(dirty.x1 == 2 && dirty.y1 == 4);
+  CHECK(px(doc, 1, 0) == RED && px(doc, 0, 0) == WHITE);
+
+  paintingdoc_transform(doc, paintingdoc_XFORM_ROTATE_CCW);
+  paintingdoc_transform(doc, paintingdoc_XFORM_ROTATE_CCW);
+  CHECK(paintingdoc_bitmap(doc)->size.w == 2);
+  CHECK(px(doc, 0, 3) == RED);
+
+  /* back through the turns, then forward again */
+  paintingdoc_undo(doc);
+  paintingdoc_undo(doc);
+  CHECK(paintingdoc_bitmap(doc)->size.w == 2);
+  CHECK(px(doc, 1, 0) == RED);
+  paintingdoc_undo(doc);
+  CHECK(paintingdoc_bitmap(doc)->size.w == 4);
+  CHECK(px(doc, 0, 0) == RED);
+  paintingdoc_redo(doc);
+  CHECK(paintingdoc_bitmap(doc)->size.h == 4);
+  CHECK(px(doc, 1, 0) == RED);
+
+  /* drawing still reaches the whole of the turned canvas */
+  paintingdoc_stroke(doc, POINT(1, 3), POINT(1, 3), 1, black());
+  CHECK(px(doc, 1, 3) == BLACK);
+  paintingdoc_destroy(doc);
+
   printf("test: a brush runs dry: solid while over half full, then thinning, "
          "then nothing\n");
 

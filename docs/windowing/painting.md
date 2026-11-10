@@ -77,6 +77,9 @@ makes an instance of its own.
   size bar to keep every pixel.
 - `F8` or Menu > Undo steps back, and `F9` or Menu > Redo steps forward
   again. There are 20 levels. A new edit drops the steps left to redo.
+- Menu > Transform flips the whole canvas horizontally or vertically, or
+  rotates it right, left or by 180°. It drops the selection. Rotating right
+  or left swaps the canvas's width and height; Undo puts the old size back.
 - The view zooms up to 3200%. From 600% up a grey grid outlines each
   canvas pixel.
 - Menu > Save (`F3`) opens the Save As dialogue.

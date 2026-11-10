@@ -430,8 +430,22 @@ static result_t steps_push(paintingdoc_t *doc, bitmap_t *steps, int *n)
   return result_OK;
 }
 
-/* put the canvas back to the top step of a stack, popping it. returns the
- * box that changed, or an empty box if it could not be decompressed */
+/* make bm, which has its own pixel store, the canvas, freeing the old one */
+static void canvas_replace(paintingdoc_t *doc, const bitmap_t *bm)
+{
+  /* the selection and pre fit only a canvas of the same size */
+  if (bm->size.w != doc->bm.size.w || bm->size.h != doc->bm.size.h)
+    paintingdoc_select_none(doc);
+
+  free(doc->bm.base);
+  doc->bm = *bm;
+  screen_for_bitmap(&doc->scr, &doc->bm);
+  doc->edited = 1;
+}
+
+/* put the canvas back to the top step of a stack, popping it, at the step's
+ * size. returns the box that changed, or an empty box if it could not be
+ * decompressed */
 static box_t steps_pop(paintingdoc_t *doc, bitmap_t *steps, int *n)
 {
   bitmap_t *snap;
@@ -440,11 +454,8 @@ static box_t steps_pop(paintingdoc_t *doc, bitmap_t *steps, int *n)
   if (bitmap_decompress(snap) != result_OK)
     return (box_t) BOX_INIT;
 
-  memcpy(doc->bm.base, snap->base, canvas_bytes(doc));
-
-  free(snap->base);
+  canvas_replace(doc, snap);
   (*n)--;
-  doc->edited = 1;
 
   return canvas_box(doc);
 }
@@ -1361,4 +1372,63 @@ box_t paintingdoc_paste(paintingdoc_t            *doc,
   doc->lifted        = lifted;
 
   return paintingdoc_place(doc, 0, 0, NULL);
+}
+
+/* ----------------------------------------------------------------------- */
+
+box_t paintingdoc_transform(paintingdoc_t *doc, paintingdoc_xform_t xform)
+{
+  result_t  rc;
+  int       w, h;
+  int       turn;
+  size2d_t  size;
+  uint32_t *pixels;
+  bitmap_t  next;
+  int       x, y;
+  int       sx, sy;
+  uint32_t *out;
+
+  w    = doc->bm.size.w;
+  h    = doc->bm.size.h;
+  turn = xform == paintingdoc_XFORM_ROTATE_CW ||
+         xform == paintingdoc_XFORM_ROTATE_CCW;
+  size = turn ? SIZE2D(h, w) : SIZE2D(w, h);
+
+  pixels = malloc((size_t) w * (size_t) h * 4);
+  if (pixels == NULL)
+  {
+    logf_warning("painting: no memory to transform the canvas");
+    return (box_t) BOX_INIT;
+  }
+
+  rc = bitmap_init(&next, size, pixelfmt_bgra8888, size.w * 4, NULL, pixels);
+  if (rc != result_OK)
+  {
+    free(pixels);
+    return (box_t) BOX_INIT;
+  }
+
+  /* each new pixel x,y takes the old pixel sx,sy */
+  out = pixels;
+  for (y = 0; y < size.h; y++)
+  {
+    for (x = 0; x < size.w; x++)
+    {
+      switch (xform)
+      {
+      case paintingdoc_XFORM_FLIP_H:     sx = w - 1 - x; sy = y;         break;
+      case paintingdoc_XFORM_FLIP_V:     sx = x;         sy = h - 1 - y; break;
+      case paintingdoc_XFORM_ROTATE_CW:  sx = y;         sy = h - 1 - x; break;
+      case paintingdoc_XFORM_ROTATE_CCW: sx = w - 1 - y; sy = x;         break;
+      default:                           sx = w - 1 - x; sy = h - 1 - y; break;
+      }
+      *out++ = pixel_row(doc, sy)[sx];
+    }
+  }
+
+  paintingdoc_select_none(doc);
+  checkpoint_or_warn(doc);
+  canvas_replace(doc, &next);
+
+  return canvas_box(doc);
 }

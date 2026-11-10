@@ -100,6 +100,7 @@ enum
   PAINTING_MENU_SAVE,
   PAINTING_MENU_EDIT,      /* submenu: PAINTING_EDIT_* */
   PAINTING_MENU_SELECTION, /* submenu: PAINTING_SEL_* */
+  PAINTING_MENU_TRANSFORM, /* submenu: one row per paintingdoc_xform_t */
   PAINTING_MENU_NOZZLE,    /* submenu: one row per paintingdoc_nozzle_t */
   PAINTING_MENU__COUNT
 };
@@ -194,6 +195,8 @@ typedef struct painting_task
   wuss_menu_t        edit_menu;
   wuss_menu_item_t   sel_items[PAINTING_SEL__COUNT];
   wuss_menu_t        sel_menu;
+  wuss_menu_item_t   xform_items[paintingdoc_XFORM__COUNT];
+  wuss_menu_t        xform_menu;
   wuss_menu_item_t   nozzle_items[paintingdoc_NOZZLE__COUNT];
   wuss_menu_t        nozzle_menu;
   dithermenu_t       dither;

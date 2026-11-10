@@ -142,6 +142,16 @@ static result_t painting_load(painting_task_t *pt, const char *path)
 
 static wuss_scaleview_choice_fn_t painting_scaleview_choice;
 
+/* the Transform submenu's rows, in paintingdoc_xform_t order */
+static const char *const painting_xform_names[paintingdoc_XFORM__COUNT] =
+{
+  "Flip horizontally",
+  "Flip vertically",
+  "Rotate right",
+  "Rotate left",
+  "Rotate 180"
+};
+
 /* the pixel clipboard, shared by every canvas so pixels copy between them,
  * and the number of canvases, the last of which empties it */
 static paintingdoc_clip_t painting_clip;
@@ -314,6 +324,14 @@ static result_t painting_build(painting_task_t            *task,
                   NELEMS(task->sel_items));
   WUSS_MENU_ITEM_MENU(task->menu_items, PAINTING_MENU_SELECTION, "Selection",
                       wuss_MENU_ITEM_NONE, &task->sel_menu);
+
+  for (i = 0; i < paintingdoc_XFORM__COUNT; i++)
+    WUSS_MENU_ITEM(task->xform_items, i, painting_xform_names[i],
+                   wuss_MENU_ITEM_NONE);
+  WUSS_MENU_TITLE(task->xform_menu, "Transform", task->xform_items,
+                  NELEMS(task->xform_items));
+  WUSS_MENU_ITEM_MENU(task->menu_items, PAINTING_MENU_TRANSFORM, "Transform",
+                      wuss_MENU_ITEM_NONE, &task->xform_menu);
 
   for (i = 0; i < paintingdoc_NOZZLE__COUNT; i++)
     WUSS_MENU_ITEM(task->nozzle_items, i, painting_nozzle_names[i],
@@ -837,20 +855,59 @@ static void painting_menu_shade(painting_task_t *pt)
                               no_sel);
 }
 
-/* undo, or if redo, redo the last step undone */
-static result_t painting_undo(painting_task_t *pt, int redo)
+/* redraw dirty after a change that may have resized the canvas from was,
+ * refitting the window to the new size if so */
+static result_t painting_changed(painting_task_t *pt,
+                                 size2d_t         was,
+                                 box_t           *dirty)
 {
-  box_t dirty;
+  result_t rc;
+  size2d_t now;
 
-  pt->held = 0; /* abandon any stroke in progress */
-
-  dirty = redo ? paintingdoc_redo(pt->doc) : paintingdoc_undo(pt->doc);
-  painting_invalidate_box(pt, &dirty);
+  rc  = result_OK;
+  now = paintingdoc_bitmap(pt->doc)->size;
+  if (now.w != was.w || now.h != was.h)
+  {
+    rc = painting_fit(pt);
+    wuss_window_invalidate_visible(pt->base.window);
+  }
+  else
+  {
+    painting_invalidate_box(pt, dirty);
+  }
 
   painting_menu_shade(pt);
   painting_title(pt);
 
-  return result_OK;
+  return rc;
+}
+
+/* undo, or if redo, redo the last step undone */
+static result_t painting_undo(painting_task_t *pt, int redo)
+{
+  size2d_t was;
+  box_t    dirty;
+
+  pt->held = 0; /* abandon any stroke in progress */
+
+  was   = paintingdoc_bitmap(pt->doc)->size;
+  dirty = redo ? paintingdoc_redo(pt->doc) : paintingdoc_undo(pt->doc);
+
+  return painting_changed(pt, was, &dirty);
+}
+
+/* flip or turn the whole canvas */
+static result_t painting_transform(painting_task_t *pt, int xform)
+{
+  size2d_t was;
+  box_t    dirty;
+
+  pt->held = 0; /* abandon any stroke in progress */
+
+  was   = paintingdoc_bitmap(pt->doc)->size;
+  dirty = paintingdoc_transform(pt->doc, (paintingdoc_xform_t) xform);
+
+  return painting_changed(pt, was, &dirty);
 }
 
 #define PAINTING_ZOOM_MAX 32
@@ -1152,6 +1209,8 @@ static result_t painting_handle(wuss_window_t      *window,
     }
     if (event->data.menu_select.menu == &pt->sel_menu)
       return painting_selection_op(pt, event->data.menu_select.index);
+    if (event->data.menu_select.menu == &pt->xform_menu)
+      return painting_transform(pt, event->data.menu_select.index);
     if (event->data.menu_select.menu == &pt->nozzle_menu)
     {
       painting_set_nozzle(pt, event->data.menu_select.index);
