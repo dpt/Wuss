@@ -513,7 +513,9 @@ void paintingnew_destroy(paintingnew_t *pn)
   *pn->slot = NULL;
   pn->slot  = NULL;
 
-  paintingnew_dismiss(pn);
+  /* not paintingnew_dismiss: wuss does not tell us when a chain we are a leaf
+   * of closes, so leaf_handle may be freed by now, as at wuss_destroy */
+  wuss_menu_close(pn->menu_handle);
   wuss_task_destroy(pn->task); /* its QUIT frees pn */
 }
 
