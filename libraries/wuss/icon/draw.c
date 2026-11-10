@@ -250,7 +250,11 @@ static void wuss__icon_draw_frame(const icon_draw_ctx_t *c)
   bmfont_width_t          cap_w;
   int                     len;
   box_t                   frame;
-  colour_t                bg;
+  box_t                   bands[4];
+  int                     nbands;
+  box_t                   cap;
+  int                     i;
+  screen_t                clipped;
   point_t                 pos;
 
   light   = c->wuss->palette[c->wuss->bevel.light];
@@ -270,15 +274,32 @@ static void wuss__icon_draw_frame(const icon_draw_ctx_t *c)
   frame    = c->b;
   frame.y0 += c->have_font ? MAX(c->font_height / 2 - 1, 0)
                            : WUSS_FRAME_CAPTION_TOP;
-  icon_draw_divider_border(c->scr, &frame, light, divider);
+  /* the caption is drawn transparently, so clip the border around its cell
+   * rather than relying on an opaque text background to knock it out */
+  bands[0] = c->scr->clip;
+  nbands   = 1;
+  if (cap_w > 0)
+  {
+    cap.x0 = b->x0 + WUSS_FRAME_CAPTION_INSET;
+    cap.y0 = b->y0;
+    cap.x1 = cap.x0 + (int) cap_w;
+    cap.y1 = b->y0 + c->font_height;
+    nbands = box_subtract(&c->scr->clip, &cap, bands);
+  }
+
+  for (i = 0; i < nbands; i++)
+  {
+    clipped      = *c->scr;
+    clipped.clip = bands[i];
+    icon_draw_divider_border(&clipped, &frame, light, divider);
+  }
 
   if (cap_w > 0)
   {
-    bg = wuss__icon_text_ground(c, wuss__icon_blend_ground(c, c->fg));
-    pos.x = b->x0 + WUSS_FRAME_CAPTION_INSET;
+    pos.x = cap.x0;
     pos.y = b->y0 + c->font_ascent;
-    wuss__text_draw(c->wuss, c->font, c->scr, spec->text, len, c->fg, bg,
-                    &pos, NULL);
+    wuss__text_draw(c->wuss, c->font, c->scr, spec->text, len, c->fg,
+                    colour_rgba(0, 0, 0, 0), &pos, NULL);
   }
 }
 
