@@ -615,7 +615,7 @@ static void configuring_label_widths(const wuss_t *wuss, stack_item_t *items)
 
   /* fields fit "65535"; a name display lines up with the swatch rows
    * unless its name needs more */
-  field_w  = task_button_width(wuss, "99999", 0);
+  field_w  = task_field_width(wuss, "99999");
   choose_w = task_button_width(wuss, "Choose", wuss_STD_SECONDARY_BUTTON_BORDER);
   name_w   = CONFIGURING_GRID_COLS * CONFIGURING_CELL - choose_w - 4;
   font_name = wuss_get_font_name_n(wuss, 0);
@@ -627,9 +627,9 @@ static void configuring_label_widths(const wuss_t *wuss, stack_item_t *items)
   items[CONFIGURING_ST_FONT_BUTTON].axis_size   = choose_w;
   items[CONFIGURING_ST_THEME_BUTTON].axis_size  = choose_w;
   items[CONFIGURING_ST_FONT_NAME].axis_size =
-    MAX(name_w, task_button_width(wuss, font_name ? font_name : "", 0));
+    MAX(name_w, task_field_width(wuss, font_name ? font_name : ""));
   items[CONFIGURING_ST_THEME_NAME].axis_size =
-    MAX(name_w, task_button_width(wuss, theme_current(), 0));
+    MAX(name_w, task_field_width(wuss, theme_current()));
 
   items[CONFIGURING_ST_SWAP].cross_size = wuss_STD_GLYPH_SIZE + wuss_STD_GAP +
     task_text_width(wuss, "Swap right/middle mouse buttons");

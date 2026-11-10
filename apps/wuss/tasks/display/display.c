@@ -314,7 +314,7 @@ static result_t display_layout(const wuss_t *wuss,
                              NELEMS(g_display_resolution_labels)));
   set_w = MAX(set_w, display_widest(wuss, g_display_zoom_labels,
                                     NELEMS(g_display_zoom_labels)));
-  set_w = task_button_width(wuss, "", 0) + set_w + wuss_STD_GAP + row_h;
+  set_w = task_field_width(wuss, "") + set_w + wuss_STD_GAP + row_h;
   items[DISPLAY_ST_COLOURS].min    = set_w;
   items[DISPLAY_ST_RESOLUTION].min = set_w;
   items[DISPLAY_ST_ZOOM].min       = set_w;

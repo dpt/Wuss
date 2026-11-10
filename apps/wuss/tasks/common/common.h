@@ -227,13 +227,20 @@ static inline int task_image_name(const char *path, char *name, size_t cap)
 }
 
 /* smallest width of a button labelled text inside a border of the given
- * width: the text plus a space either side */
+ * width: the text plus two spaces either side */
 static inline int task_button_width(const wuss_t *wuss,
                                     const char   *text,
                                     int           border)
 {
-  return task_text_width(wuss, text) + 2 * task_text_width(wuss, " ") +
+  return task_text_width(wuss, text) + 4 * task_text_width(wuss, " ") +
          2 * border;
+}
+
+/* smallest width of a field or display holding text: the text plus a space
+ * either side */
+static inline int task_field_width(const wuss_t *wuss, const char *text)
+{
+  return task_text_width(wuss, text) + 2 * task_text_width(wuss, " ");
 }
 
 /* resize a dialogue to a newly solved layout: min size, doc and visible

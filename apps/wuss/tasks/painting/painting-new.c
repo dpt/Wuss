@@ -232,7 +232,7 @@ static result_t paintingnew_layout(const wuss_t *wuss,
 
   /* each label's natural width; the size group widens the others to match.
    * a field fits PN_DIGITS + 1 digits with a space either side */
-  field_w = task_button_width(wuss, "99999", 0);
+  field_w = task_field_width(wuss, "99999");
   items[PN_ST_DIM_LABEL].axis_size    = task_text_width(wuss, "Dimensions");
   items[PN_ST_WIDTH].axis_size        = field_w;
   items[PN_ST_X_LABEL].axis_size      = task_text_width(wuss, "x");

@@ -61,5 +61,5 @@ int wuss__button_width(const wuss_t *wuss, const char *text, int border)
   font = wuss_get_font(wuss);
 
   return (int) (wuss__text_width(font, text) +
-                2 * wuss__text_width(font, " ")) + 2 * border;
+                4 * wuss__text_width(font, " ")) + 2 * border;
 }

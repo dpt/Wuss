@@ -353,7 +353,7 @@ const bitmap_t *wuss__iconpool_find(const wuss_t      *wuss,
 result_t wuss__iconpool_match_screen(wuss_t *wuss);
 
 /* Width of an action button labelled "text" in the system font: the text,
- * a space either side and "border" (wuss_STD_*_BUTTON_BORDER) each side. */
+ * two spaces either side and "border" (wuss_STD_*_BUTTON_BORDER) each side. */
 int wuss__button_width(const wuss_t *wuss, const char *text, int border);
 
 #endif /* WUSS_ICONS */
