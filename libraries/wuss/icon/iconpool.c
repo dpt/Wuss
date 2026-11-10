@@ -163,6 +163,9 @@ static int icons_parse_sheet(char *name, size2d_t *cell)
   char       *us;
   const char *p;
 
+  *cell = SIZE2D(0, 0); /* set on every path, for compilers that cannot see
+                         * the result */
+
   us = strrchr(name, '_');
   if (us == NULL || us == name)
     return 0;

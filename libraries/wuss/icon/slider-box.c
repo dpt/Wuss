@@ -94,6 +94,8 @@ static int slider_detent_for_point(const wuss_icon_t *icon,
   int                       i;
   int                       detent, position, distance;
 
+  *value = lo; /* set on every path, for compilers that cannot see found */
+
   orientation = icon->spec.u.slider.orientation;
   extent      = slider_last_px(groove, orientation);
   span        = hi - lo;
