@@ -78,11 +78,12 @@ painting_settings[painting_SETTING__COUNT] =
 
 #define SETTING(s) (1u << painting_SETTING_##s)
 
-/* the settings each tool shows on the size bar. the pencil is always one
- * pixel and a filled shape has no outline, so neither has a size */
+/* the settings each tool shows on the size bar. a filled shape has no
+ * outline, so no size */
 static const unsigned int painting_tool_settings[painting_TOOL__COUNT] =
 {
-  [painting_TOOL_PENCIL]     = SETTING(STABILISE) | SETTING(PERFECT),
+  [painting_TOOL_PENCIL]     = SETTING(SIZE) | SETTING(NOZZLE) |
+                               SETTING(STABILISE) | SETTING(PERFECT),
   [painting_TOOL_PAINTBRUSH] = SETTING(SIZE) | SETTING(NOZZLE) |
                                SETTING(DRY) | SETTING(STABILISE),
   [painting_TOOL_WOBBLE]     = SETTING(SIZE) | SETTING(EDGE) |
@@ -668,6 +669,10 @@ result_t painting_palette_op(painting_task_t *pt, int op)
 result_t painting_set_tool(painting_task_t *pt, painting_tool_t tool)
 {
   unsigned int was;
+
+  /* the pencil keeps a size of its own, as it is mostly one pixel */
+  if ((tool == painting_TOOL_PENCIL) != (pt->tool == painting_TOOL_PENCIL))
+    SWAP(pt->size, pt->other_size);
 
   was      = painting_tool_settings[pt->tool];
   pt->tool = tool;

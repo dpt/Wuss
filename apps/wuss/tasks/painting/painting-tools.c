@@ -299,6 +299,11 @@ static box_t painting_segment_copy(painting_task_t *pt,
   if (pt->tool == painting_TOOL_WOBBLE)
     return paintingdoc_wobble(pt->doc, a, b, pt->size, pt->edge, pt->wander,
                               painting_stroke_colour(pt), &pt->wobble);
+  /* pixel-perfect only means anything one pixel wide. wider, the pencil
+   * stamps the nozzle with paint that never runs out */
+  if (pt->tool == painting_TOOL_PENCIL && pt->size > 1)
+    return paintingdoc_brush(pt->doc, a, b, pt->nozzle, pt->size,
+                             painting_stroke_colour(pt), NULL);
   if (pt->tool == painting_TOOL_PENCIL && !pt->perfect)
     return paintingdoc_stroke(pt->doc, a, b, 1, painting_stroke_colour(pt));
   if (pt->tool == painting_TOOL_PENCIL)

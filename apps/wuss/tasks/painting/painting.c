@@ -179,7 +179,8 @@ static result_t painting_build(painting_task_t            *task,
   task->bg   = params->bg;
   task->tool = painting_TOOL_PENCIL;
   rng_seed(&task->rng, 1);
-  task->size      = 3;
+  task->size       = 1; /* the pencil's */
+  task->other_size = 3;
   task->density   = 20; /* about the old fixed dusting */
   task->rate      = 100;
   task->edge      = 100;

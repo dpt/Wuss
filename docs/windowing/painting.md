@@ -82,7 +82,9 @@ makes an instance of its own.
 - The pencil draws pixel-perfect lines one pixel wide: where a stroke turns
   a corner, leaving an L of three pixels, it puts the corner pixel back, so
   freehand diagonals stay one pixel thin. Untick **Pixel-perfect** on the
-  size bar to keep every pixel.
+  size bar to keep every pixel. Raise its **Size** and it stamps the
+  paintbrush's nozzle instead, in paint that never runs dry. The pencil keeps
+  its own size, starting at 1; the other tools share theirs.
 - `F8` or Menu > Undo steps back, and `F9` or Menu > Redo steps forward
   again. There are 20 levels. A new edit drops the steps left to redo.
 - Menu > Transform flips the whole canvas horizontally or vertically, or

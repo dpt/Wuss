@@ -67,7 +67,7 @@ painting_setting_t;
 /* the toolbox's radio buttons, in this order */
 typedef enum painting_tool
 {
-  painting_TOOL_PENCIL,     /* a freehand line one pixel wide */
+  painting_TOOL_PENCIL,     /* a freehand line, one pixel wide by default */
   painting_TOOL_PAINTBRUSH, /* stamp the chosen nozzle along the stroke */
   painting_TOOL_WOBBLE,     /* a freehand stroke with wobbly edges */
   painting_TOOL_ERASER,
@@ -187,8 +187,11 @@ typedef struct painting_task
                                             * loaded or saved */
   colour_t           fg, bg;
   painting_tool_t    tool;
-  paintingdoc_nozzle_t nozzle;  /* the paintbrush's current nozzle */
+  paintingdoc_nozzle_t nozzle;  /* the paintbrush and pencil's nozzle */
   int                size;      /* brush and outline width in pixels */
+  int                other_size; /* the pencil's size while another tool is
+                                  * current, or the others' while the pencil
+                                  * is */
   int                dry;       /* how soon the paintbrush runs dry, percent;
                                  * 0 never */
   int                density;   /* the spray's density, percent */
