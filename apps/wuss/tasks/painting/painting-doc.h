@@ -433,6 +433,12 @@ box_t paintingdoc_transform_selection(paintingdoc_t      *doc,
  * paintingdoc_transform; also an empty box if box is */
 box_t paintingdoc_resize(paintingdoc_t *doc, box_t box, colour_t fill);
 
+/* the bounds of the canvas's content, for a trim: the bottom layer's pixels
+ * that differ from its top left one, and the other layers' pixels that are
+ * not wholly transparent, hidden layers included. an empty box if there are
+ * none */
+box_t paintingdoc_trim_bounds(const paintingdoc_t *doc);
+
 /* non-zero if there is a step to undo */
 int paintingdoc_can_undo(const paintingdoc_t *doc);
 

@@ -125,6 +125,7 @@ enum
 {
   PAINTING_XFORM_CROP = paintingdoc_XFORM__COUNT, /* crop to the selection's
                                                    * bounds */
+  PAINTING_XFORM_TRIM, /* crop to the content's bounds */
   PAINTING_XFORM_SIZE, /* leaf: the Canvas size dialogue */
   PAINTING_XFORM__COUNT
 };

@@ -800,6 +800,29 @@ result_t paintingdoc_test(const char *resources)
   CHECK(paintingdoc_bitmap(doc)->size.w == 4 && px(doc, 2, 1) == RED);
   paintingdoc_destroy(doc);
 
+  printf("test: trim bounds cover the bottom layer's pixels unlike its "
+         "corner and the opaque pixels above\n");
+
+  CHECK(paintingdoc_create(SIZE2D(8, 8), &doc) == result_OK);
+  dirty = paintingdoc_trim_bounds(doc);
+  CHECK(box_is_empty(&dirty));
+
+  paintingdoc_stroke(doc, POINT(2, 3), POINT(2, 3), 1, red());
+  dirty = paintingdoc_trim_bounds(doc);
+  CHECK(dirty.x0 == 2 && dirty.y0 == 3 && dirty.x1 == 3 && dirty.y1 == 4);
+
+  CHECK(paintingdoc_layer_add(doc) == result_OK);
+  paintingdoc_stroke(doc, POINT(5, 1), POINT(5, 1), 1, red());
+  dirty = paintingdoc_trim_bounds(doc);
+  CHECK(dirty.x0 == 2 && dirty.y0 == 1 && dirty.x1 == 6 && dirty.y1 == 4);
+
+  paintingdoc_resize(doc, dirty, red());
+  CHECK(paintingdoc_bitmap(doc)->size.w == 4);
+  CHECK(paintingdoc_bitmap(doc)->size.h == 3);
+  CHECK(px(doc, 0, 2) == RED && px(doc, 3, 0) == RED);
+  CHECK(px(doc, 0, 0) == WHITE);
+  paintingdoc_destroy(doc);
+
   printf("test: a brush runs dry: solid while over half full, then thinning, "
          "then nothing\n");
 

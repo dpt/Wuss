@@ -368,6 +368,8 @@ static result_t painting_build(painting_task_t            *task,
                             wuss_MENU_ITEM_NONE, painting_xform_keys[i]);
   WUSS_MENU_ITEM(task->xform_items, PAINTING_XFORM_CROP, "Crop to selection",
                  wuss_MENU_ITEM_DASHED);
+  WUSS_MENU_ITEM(task->xform_items, PAINTING_XFORM_TRIM, "Trim",
+                 wuss_MENU_ITEM_NONE);
   WUSS_MENU_ITEM_WINDOW(task->xform_items, PAINTING_XFORM_SIZE, "Canvas size",
                         wuss_MENU_ITEM_PRE_OPEN,
                         paintingnew_window(task->resize));
@@ -1050,6 +1052,9 @@ static result_t painting_transform(painting_task_t *pt, int xform)
     return result_OK; /* the leaf's own row: its dialogue does the work */
   if (xform == PAINTING_XFORM_CROP)
     dirty = paintingdoc_resize(pt->doc, paintingdoc_selection_bounds(pt->doc),
+                               pt->bg);
+  else if (xform == PAINTING_XFORM_TRIM)
+    dirty = paintingdoc_resize(pt->doc, paintingdoc_trim_bounds(pt->doc),
                                pt->bg);
   else if (paintingdoc_has_selection(pt->doc))
     dirty = paintingdoc_transform_selection(pt->doc,
