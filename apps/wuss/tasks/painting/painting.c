@@ -1041,6 +1041,10 @@ static result_t painting_transform(painting_task_t *pt, int xform)
   if (xform == PAINTING_XFORM_CROP)
     dirty = paintingdoc_resize(pt->doc, paintingdoc_selection_bounds(pt->doc),
                                pt->bg);
+  else if (paintingdoc_has_selection(pt->doc))
+    dirty = paintingdoc_transform_selection(pt->doc,
+                                            (paintingdoc_xform_t) xform,
+                                            pt->bg);
   else
     dirty = paintingdoc_transform(pt->doc, (paintingdoc_xform_t) xform);
 

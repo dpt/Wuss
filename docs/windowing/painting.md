@@ -88,8 +88,12 @@ makes an instance of its own.
 - `F8` or Menu > Undo steps back, and `F9` or Menu > Redo steps forward
   again. There are 20 levels. A new edit drops the steps left to redo.
 - Menu > Transform flips the whole canvas horizontally or vertically, or
-  rotates it right, left or by 180°. It drops the selection. Rotating right
-  or left swaps the canvas's width and height; Undo puts the old size back.
+  rotates it right, left or by 180°. Rotating right or left swaps the
+  canvas's width and height; Undo puts the old size back. With a selection
+  it flips or rotates the selected pixels instead, about the centre of the
+  selection's bounds, leaving the background colour where they were. They
+  float, as pasted pixels do, so further flips and turns join the same undo
+  step.
   Crop to selection cuts the canvas down to the selection's bounds. Canvas
   size opens a dialogue that grows or shrinks the canvas about its centre,
   filling any new area with the chosen background.

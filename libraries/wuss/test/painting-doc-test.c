@@ -738,6 +738,31 @@ result_t paintingdoc_test(const char *resources)
   CHECK(px(doc, 1, 3) == BLACK);
   paintingdoc_destroy(doc);
 
+  printf("test: transforms turn the selection about its centre, leaving a "
+         "colour behind\n");
+
+  /* a 3x2 selection at 1,1, red at its top left */
+  CHECK(paintingdoc_create(SIZE2D(8, 8), &doc) == result_OK);
+  paintingdoc_stroke(doc, POINT(1, 1), POINT(1, 1), 1, red());
+  CHECK(paintingdoc_select_rect(doc, (box_t) { 1, 1, 4, 3 },
+                                paintingdoc_SELOP_REPLACE) == result_OK);
+
+  dirty = paintingdoc_transform_selection(doc, paintingdoc_XFORM_ROTATE_CW,
+                                          black());
+  CHECK(!box_is_empty(&dirty));
+  CHECK(paintingdoc_bitmap(doc)->size.w == 8);
+  dirty = paintingdoc_selection_bounds(doc);
+  CHECK(dirty.x0 == 1 && dirty.y0 == 1 && dirty.x1 == 3 && dirty.y1 == 4);
+  CHECK(px(doc, 2, 1) == RED && px(doc, 1, 1) == WHITE);
+  CHECK(px(doc, 3, 1) == BLACK);
+
+  /* floating already: a flip joins the turn's undo step */
+  paintingdoc_transform_selection(doc, paintingdoc_XFORM_FLIP_H, black());
+  CHECK(px(doc, 1, 1) == RED && px(doc, 2, 1) == WHITE);
+  paintingdoc_undo(doc);
+  CHECK(px(doc, 1, 1) == RED && px(doc, 3, 1) == WHITE);
+  paintingdoc_destroy(doc);
+
   printf("test: resize crops within the canvas and grows it beyond, "
          "filling\n");
 

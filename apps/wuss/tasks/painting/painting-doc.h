@@ -397,7 +397,7 @@ box_t paintingdoc_paste(paintingdoc_t            *doc,
                         const paintingdoc_clip_t *clip,
                         point_t                   p);
 
-/* the ways the whole canvas can be flipped or turned */
+/* the ways the canvas or the selection can be flipped or turned */
 typedef enum paintingdoc_xform
 {
   paintingdoc_XFORM_FLIP_H,     /* mirror left to right */
@@ -414,6 +414,16 @@ paintingdoc_xform_t;
  * its own checkpoint. returns the box that changed (the whole canvas, at its
  * new size), or an empty box, the canvas left as it was, if out of memory */
 box_t paintingdoc_transform(paintingdoc_t *doc, paintingdoc_xform_t xform);
+
+/* flip or turn the selected pixels about the centre of the selection's
+ * bounds, leaving the colour leave where they were. they float, as pasted
+ * pixels do, and the selection turns with them. takes its own checkpoint,
+ * unless they float already, when it joins the step that floated them.
+ * returns the box that changed, or an empty box if there is no selection or
+ * no memory */
+box_t paintingdoc_transform_selection(paintingdoc_t      *doc,
+                                      paintingdoc_xform_t xform,
+                                      colour_t            leave);
 
 /* make the canvas the area box (x1/y1 exclusive) of the canvas, dropping the
  * selection: inside the canvas it crops, and beyond it the canvas grows,
