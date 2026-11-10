@@ -559,6 +559,8 @@ struct wuss_window
     wuss_edge_t       edge;
     wuss_align_t      align;
     int               offset; /* along the edge, after aligning */
+    int               thick;  /* a pane's own thickness, which layout may
+                               * thin while its parent lacks the room */
   }
   toolbar;
   box_t               panes;  /* room the visible panes take in from each

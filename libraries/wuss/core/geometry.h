@@ -28,6 +28,13 @@ void    wuss__scroll_step(wuss_window_t *window, point_t delta);
 #define WUSS_TOOLBAR_SCROLL_STEP 6
 void    wuss__toolbar_scroll_tick(wuss_t *wuss);
 
+/* "desired" clamped as wuss__scroll_clamp does, and further so that a
+ * toolbar's shown icons, not its whole document, bound an axis without a
+ * scrollbar: once they fit the content box, no blank space stays scrolled
+ * into view. Defined in scroll.c. */
+point_t wuss__toolbar_scroll_clamp(const wuss_window_t *window,
+                                   point_t              desired);
+
 #ifdef WUSS_FURNITURE
 void            wuss__titlebar_box(const wuss_window_t *window, box_t *out);
 void            wuss__title_hit_box(const wuss_window_t *window, box_t *out);
@@ -63,6 +70,17 @@ static inline void wuss__content_box(const wuss_window_t *window, box_t *out)
 static inline int wuss__window_is_pane(const wuss_window_t *window)
 {
   return (window->state & wuss_WINDOW_STATE_PANE) != 0;
+}
+
+/* The thickness "pane" has now across "edge": its width on a side edge, its
+ * height on the top or bottom. */
+static inline int wuss__pane_thickness(const wuss_window_t *pane,
+                                       wuss_edge_t          edge)
+{
+  if (edge == wuss_EDGE_LEFT || edge == wuss_EDGE_RIGHT)
+    return pane->visible.x1 - pane->visible.x0;
+
+  return pane->visible.y1 - pane->visible.y0;
 }
 
 /* The first window from "tb" on along a parent's toolbar list that is a

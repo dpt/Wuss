@@ -155,13 +155,30 @@ static size2d_t wuss__toolbar_extent(const wuss_window_t *win)
   return win->doc;
 }
 
+point_t wuss__toolbar_scroll_clamp(const wuss_window_t *window,
+                                   point_t              desired)
+{
+  point_t  p;
+  box_t    content;
+  size2d_t extent;
+
+  p = wuss__scroll_clamp(window, desired);
+  wuss__content_box(window, &content);
+  extent = wuss__toolbar_extent(window);
+  if (!(window->flags & wuss_WINDOW_HSCROLL))
+    p.x = CLAMP(p.x, 0, MAX(extent.w - (content.x1 - content.x0), 0));
+  if (!(window->flags & wuss_WINDOW_VSCROLL))
+    p.y = CLAMP(p.y, 0, MAX(extent.h - (content.y1 - content.y0), 0));
+
+  return p;
+}
+
 void wuss__toolbar_scroll_tick(wuss_t *wuss)
 {
   wuss_window_t *win;
   box_t          content;
   point_t        p;
   point_t        scroll;
-  size2d_t       extent;
 
   /* a press in progress owns the pointer: a slider being dragged must not
    * slide away under it */
@@ -185,15 +202,11 @@ void wuss__toolbar_scroll_tick(wuss_t *wuss)
    * since the last scroll springs back once the pointer is over it */
   wuss__content_box(win, &content);
   scroll = win->scroll;
-  extent = wuss__toolbar_extent(win);
   if (!(win->flags & wuss_WINDOW_HSCROLL))
-    scroll.x = CLAMP(scroll.x + wuss__toolbar_scroll_delta(p.x, content.x0,
-                                                           content.x1),
-                     0, MAX(extent.w - (content.x1 - content.x0), 0));
+    scroll.x += wuss__toolbar_scroll_delta(p.x, content.x0, content.x1);
   if (!(win->flags & wuss_WINDOW_VSCROLL))
-    scroll.y = CLAMP(scroll.y + wuss__toolbar_scroll_delta(p.y, content.y0,
-                                                           content.y1),
-                     0, MAX(extent.h - (content.y1 - content.y0), 0));
+    scroll.y += wuss__toolbar_scroll_delta(p.y, content.y0, content.y1);
+  scroll = wuss__toolbar_scroll_clamp(win, scroll);
   if (scroll.x == win->scroll.x && scroll.y == win->scroll.y)
     return;
 

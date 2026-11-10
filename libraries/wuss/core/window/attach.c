@@ -195,7 +195,7 @@ static void place_pane(wuss_window_t *parent,
   }
 
   pane->visible = *box;
-  pane->scroll  = wuss__scroll_clamp(pane, pane->scroll);
+  pane->scroll  = wuss__toolbar_scroll_clamp(pane, pane->scroll);
   wuss__chrome_invalidate_layout(pane);
   wuss__notify_open(pane);
 
@@ -236,14 +236,13 @@ static void layout_panes(wuss_window_t *parent, wuss_window_t *reveal)
     horizontal = (pane->toolbar.edge == wuss_EDGE_LEFT ||
                   pane->toolbar.edge == wuss_EDGE_RIGHT);
 
-    /* ponytail: a pane grown or shown in a parent too small for it is
-     * thinned so that the content keeps its minimum, and stays thinned;
-     * remember the asked-for thickness if that bites */
+    /* a pane in a parent too small for it is thinned so that the content
+     * keeps its minimum, and regains its own thickness once there is room */
     if (horizontal)
-      thick = MIN(pane->visible.x1 - pane->visible.x0,
+      thick = MIN(pane->toolbar.thick,
                   rest.x1 - rest.x0 - WUSS__PANE_DIVIDER_PX - min.w);
     else
-      thick = MIN(pane->visible.y1 - pane->visible.y0,
+      thick = MIN(pane->toolbar.thick,
                   rest.y1 - rest.y0 - WUSS__PANE_DIVIDER_PX - min.h);
     thick = MAX(thick, 1);
 
@@ -432,7 +431,8 @@ result_t wuss_window_attach_pane(wuss_window_t *pane,
   if (room < WUSS__PANE_DIVIDER_PX)
     return result_WUSS_TOO_SMALL;
 
-  pane->state |= wuss_WINDOW_STATE_PANE;
+  pane->state         |= wuss_WINDOW_STATE_PANE;
+  pane->toolbar.thick  = wuss__pane_thickness(pane, edge);
   attach(pane, parent, edge, wuss_ALIGN_CENTRE, 0);
 
   return result_OK;
