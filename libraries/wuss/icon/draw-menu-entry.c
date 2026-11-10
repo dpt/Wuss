@@ -46,7 +46,7 @@ static int wuss__draw_symbol_glyph(const wuss_t *wuss,
   bmfont_get_info(font, &font_width, &font_height, &font_ascent, NULL);
   pos.x = centre.x - font_width / 2;
   pos.y = centre.y - font_height / 2 + font_ascent;
-  bmfont_draw(font, scr, utf8, len, ink, ground, NULL, &pos, NULL);
+  wuss__text_draw(wuss, font, scr, utf8, len, ink, ground, &pos, NULL);
   return 1;
 }
 
@@ -56,7 +56,7 @@ void wuss__icon_draw_menu_entry(const icon_draw_ctx_t *c)
 {
   const wuss_icon_spec_t *icon = &c->icon->spec;
   const box_t            *b    = &c->b;
-  colour_t                ink, ground, text_ink, text_ground, tmp;
+  colour_t                ground, glyph_ground, ink, text_ink, text_ground;
   int                     disabled, highlit, pad, text_x0, text_x1;
   bmfont_width_t          space_w;
 
@@ -65,18 +65,18 @@ void wuss__icon_draw_menu_entry(const icon_draw_ctx_t *c)
   pad      = WUSS_MENU_ENTRY_PAD;
 
   /* resolve the row's own ink over its own/inherited ground */
-  ground = wuss__icon_blend_ground(c, c->fg);
-  ink = disabled ? c->wuss->palette[c->wuss->bevel.dark] : c->fg;
+  ground       = wuss__icon_blend_ground(c, c->fg);
+  glyph_ground = wuss__icon_text_ground(c, ground);
+  ink          = disabled ? c->wuss->palette[c->wuss->bevel.dark] : c->fg;
 
   /* the highlight only swaps fg/bg over the text column -- the tick and
    * submenu-arrow gutters keep the row's normal ink/ground throughout */
   text_ink    = ink;
-  text_ground = ground;
+  text_ground = glyph_ground;
   if (highlit)
   {
-    tmp         = text_ink;
-    text_ink    = text_ground;
-    text_ground = tmp;
+    text_ink    = ground;
+    text_ground = ink;
   }
 
   /* past the tick gutter; short of the arrow gutter, whether or not this
@@ -153,7 +153,7 @@ void wuss__icon_draw_menu_entry(const icon_draw_ctx_t *c)
     centre.x = cx + h / 2;
     centre.y = cy + h / 2;
     if (!wuss__draw_symbol_glyph(c->wuss, c->scr, centre,
-                                 WUSS_GLYPH_TICK, ink, ground))
+                                 WUSS_GLYPH_TICK, ink, glyph_ground))
     {
       screen_draw_line(c->scr, cx, cy + h / 2, cx + h / 2 - 1, cy + h - 2, ink);
       screen_draw_line(c->scr, cx + h / 2 - 1, cy + h - 2, cx + h - 2, cy, ink);
@@ -172,7 +172,7 @@ void wuss__icon_draw_menu_entry(const icon_draw_ctx_t *c)
     centre.x = ax + r / 2;
     centre.y = ay;
     if (!wuss__draw_symbol_glyph(c->wuss, c->scr, centre,
-                                 WUSS_GLYPH_SUBMENU, ink, ground))
+                                 WUSS_GLYPH_SUBMENU, ink, glyph_ground))
     {
       for (dy = -r; dy <= r; dy++)
         screen_draw_line(c->scr, ax, ay + dy,
@@ -192,8 +192,8 @@ void wuss__icon_draw_menu_entry(const icon_draw_ctx_t *c)
     if (icon->flags & wuss_ICON_FLAGS_SWATCH)
       pos.x += wuss__menu_entry_swatch_width(c->font_height);
     pos.y = wuss__icon_text_baseline_y(c, b);
-    wuss__text_draw_str(c->font, c->scr, icon->text, text_ink, text_ground,
-                        &pos, NULL);
+    wuss__text_draw_str(c->wuss, c->font, c->scr, icon->text, text_ink,
+                        text_ground, &pos, NULL);
 
     /* shortcut: bold, knocked out of a solid rounded keycap right-aligned
      * against the same one-space inset at text_x1, sharing the label's

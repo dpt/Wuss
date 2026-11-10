@@ -47,6 +47,11 @@ int wuss__icon_text_baseline_y(const icon_draw_ctx_t *c, const box_t *b);
 colour_t wuss__icon_blend_ground(const icon_draw_ctx_t *c,
                                  colour_t               fallback);
 
+/* The text background for an icon over "ground" (as from
+ * wuss__icon_blend_ground): transparent when the icon has no bg of its own
+ * and its window's fill is absent or patterned, else "ground". */
+colour_t wuss__icon_text_ground(const icon_draw_ctx_t *c, colour_t ground);
+
 /* Draw a wuss_ICON_TYPE_MENU_ENTRY icon. Defined in draw-menu-entry.c. */
 void wuss__icon_draw_menu_entry(const icon_draw_ctx_t *c);
 

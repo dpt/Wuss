@@ -12,7 +12,8 @@
 #include "../core/impl.h"
 #include "font.h"
 
-result_t wuss__text_draw_str(bmfont_t      *font,
+result_t wuss__text_draw_str(const wuss_t  *wuss,
+                             bmfont_t      *font,
                              screen_t      *scr,
                              const char    *text,
                              colour_t       fg,
@@ -20,8 +21,8 @@ result_t wuss__text_draw_str(bmfont_t      *font,
                              const point_t *pos,
                              point_t       *end_pos)
 {
-  return wuss__text_draw(font, scr, text, (int) strlen(text), fg, bg, pos,
-                         end_pos);
+  return wuss__text_draw(wuss, font, scr, text, (int) strlen(text), fg, bg,
+                         pos, end_pos);
 }
 
 bmfont_width_t wuss__text_width(bmfont_t *font, const char *text)
@@ -49,7 +50,8 @@ result_t wuss__text_measure(bmfont_t       *font,
                         actual_width);
 }
 
-result_t wuss__text_draw(bmfont_t      *font,
+result_t wuss__text_draw(const wuss_t  *wuss,
+                         bmfont_t      *font,
                          screen_t      *scr,
                          const char    *text,
                          int            len,
@@ -58,7 +60,8 @@ result_t wuss__text_draw(bmfont_t      *font,
                          const point_t *pos,
                          point_t       *end_pos)
 {
-  return bmfont_draw(font, scr, text, len, fg, bg, NULL, pos, end_pos);
+  return bmfont_draw(font, scr, text, len, fg, wuss__text_ground(wuss, bg),
+                     NULL, pos, end_pos);
 }
 
 /* ----------------------------------------------------------------------- */
@@ -122,7 +125,7 @@ static bmfont_width_t shortcut_runs(const wuss_t  *wuss,
     w = 0;
     wuss__text_measure(font, run, len, INT_MAX, NULL, &w);
     if (scr != NULL)
-      wuss__text_draw(font, scr, run, len, fg, bg, &at, NULL);
+      wuss__text_draw(wuss, font, scr, run, len, fg, bg, &at, NULL);
     at.x  += (int) w;
     total += w;
     run   += len;
@@ -185,5 +188,5 @@ result_t wuss_text_draw(const wuss_t  *wuss,
   if (font == NULL)
     return result_WUSS_BAD_INDEX;
 
-  return wuss__text_draw(font, scr, text, len, fg, bg, pos, end_pos);
+  return wuss__text_draw(wuss, font, scr, text, len, fg, bg, pos, end_pos);
 }

@@ -1022,7 +1022,9 @@ result_t wuss_text_measure(const wuss_t   *wuss,
  * Draw a run of text in one of wuss's configured fonts (see
  * wuss_get_font_n). Equivalent to bmfont_draw, kept alongside
  * wuss_text_measure so tasks need not include framebuf/bmfont.h themselves
- * for simple text.
+ * for simple text. Where \p bg is a desktop palette colour that wuss fills
+ * with a pattern or dither, the text is drawn with a transparent background
+ * so the glyph cells do not blot out the fill.
  *
  * \param[in]  wuss    Window manager.
  * \param[in]  index   Font slot, 0..\ref wuss_MAX_FONTS - 1.
@@ -1030,8 +1032,8 @@ result_t wuss_text_measure(const wuss_t   *wuss,
  * \param[in]  text    Text to draw.
  * \param[in]  len     Number of characters to consider.
  * \param[in]  fg      Foreground (ink) colour.
- * \param[in]  bg      Background colour, or \ref colour_NONE for
- *                     transparent.
+ * \param[in]  bg      Background colour, or a colour with alpha below 255
+ *                     for transparent.
  * \param[in]  pos     Baseline position to start drawing at.
  * \param[out] end_pos Baseline position after the drawn text, or NULL if not
  *                     wanted.

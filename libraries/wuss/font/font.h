@@ -78,17 +78,19 @@ void wuss__shortcut_draw(const wuss_t  *wuss,
                          colour_t       bg,
                          const point_t *pos);
 
-/* Centralised text rendering. wuss__text_draw is a plain pass-through to
- * bmfont_draw (pos/end_pos are baseline positions, per bmfont_draw's
- * contract), kept alongside wuss__text_measure for a single point of
- * policy. */
+/* Centralised text rendering. wuss__text_draw passes through to bmfont_draw
+ * (pos/end_pos are baseline positions, per bmfont_draw's contract), but
+ * draws with a transparent background where "bg" would be filled with a
+ * pattern or dither (see wuss__text_ground). Kept alongside
+ * wuss__text_measure for a single point of policy. */
 result_t wuss__text_measure(bmfont_t       *font,
                             const char     *text,
                             int             len,
                             bmfont_width_t  target_width,
                             int            *split_point,
                             bmfont_width_t *actual_width);
-result_t wuss__text_draw(bmfont_t      *font,
+result_t wuss__text_draw(const wuss_t  *wuss,
+                         bmfont_t      *font,
                          screen_t      *scr,
                          const char    *text,
                          int            len,
@@ -103,7 +105,8 @@ result_t wuss__text_draw(bmfont_t      *font,
 bmfont_width_t wuss__text_width(bmfont_t *font, const char *text);
 
 /* wuss__text_draw for the whole NUL-terminated "text". */
-result_t wuss__text_draw_str(bmfont_t      *font,
+result_t wuss__text_draw_str(const wuss_t  *wuss,
+                             bmfont_t      *font,
                              screen_t      *scr,
                              const char    *text,
                              colour_t       fg,

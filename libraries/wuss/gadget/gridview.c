@@ -847,8 +847,8 @@ static void gridview_draw_cell(wuss_gridview_t    *gv,
       {
         pos.x = info_x;
         pos.y = screen_box.y0 + (gv->cell.h - height) / 2 + ascent;
-        (void) wuss__text_draw_str(font, &clipped, item.info[j], cell_fg,
-                                   cell_bg, &pos, NULL);
+        (void) wuss__text_draw_str(wuss, font, &clipped, item.info[j],
+                                   cell_fg, cell_bg, &pos, NULL);
       }
       info_x += gv->info_w[j];
     }
@@ -905,7 +905,7 @@ static void gridview_draw_cell(wuss_gridview_t    *gv,
 
     pos.x = label_x + end_w;
     pos.y = label_y + ascent;
-    wuss__text_draw(font, &clipped, buf, len, fg, bg, &pos, NULL);
+    wuss__text_draw(wuss, font, &clipped, buf, len, fg, bg, &pos, NULL);
   }
 }
 

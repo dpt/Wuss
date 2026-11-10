@@ -292,7 +292,8 @@ static void iconbar_draw_icon(wuss_t                    *wuss,
 
     pos.x = icon_box->x0 + ((icon_box->x1 - icon_box->x0) - (int) width) / 2;
     pos.y = icon_box->y1 + WUSS_ICONBAR_TEXT_PAD + ascent;
-    wuss__text_draw_str(font, wuss->scr, icon->spec.text, ink, bg, &pos, NULL);
+    wuss__text_draw_str(wuss, font, wuss->scr, icon->spec.text, ink, bg, &pos,
+                        NULL);
   }
 }
 

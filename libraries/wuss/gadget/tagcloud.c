@@ -315,15 +315,17 @@ static void tagcloud_draw_entry(wuss_tagcloud_t        *tc,
   bmfont_get_info(font, NULL, NULL, &ascent, NULL);
   pos.x = screen_box.x0;
   pos.y = screen_box.y0 + ascent;
-  wuss__text_draw(font, &clipped, e->name, e->length, fg, bg, &pos, &pos);
+  wuss__text_draw(wuss, font, &clipped, e->name, e->length, fg, bg, &pos,
+                  &pos);
 
   if (e->index == tc->hover)
     screen_fill_hline(&clipped, screen_box.x0, screen_box.y0 + ascent + 1,
                       e->box.x1 - e->box.x0, fg);
 
   if (e->separator)
-    wuss__text_draw_str(wuss->fonts.fonts[0], &clipped, TAGCLOUD_SEPARATOR,
-                        wuss->palette[wuss->button.fg], bg, &pos, NULL);
+    wuss__text_draw_str(wuss, wuss->fonts.fonts[0], &clipped,
+                        TAGCLOUD_SEPARATOR, wuss->palette[wuss->button.fg],
+                        bg, &pos, NULL);
 }
 
 static void tagcloud_set_hover(wuss_tagcloud_t *tc, int index)

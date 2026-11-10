@@ -106,6 +106,21 @@ colour_t wuss__icon_blend_ground(const icon_draw_ctx_t *c, colour_t fallback)
   return wuss__icon_window_ground(c, fallback);
 }
 
+colour_t wuss__icon_text_ground(const icon_draw_ctx_t *c, colour_t ground)
+{
+  const wuss_fill_t *fill = &c->window->bg.fill;
+
+  /* an icon with no bg of its own shows its window's ground: unknown when the
+   * window has no fill, and only stood in for by "ground" when it is a
+   * pattern, so draw the text over it transparently */
+  if (c->icon->spec.bg == wuss_NO_BACKGROUND &&
+      (fill->colour == wuss_NO_BACKGROUND ||
+       fill->pattern != screen_PATTERN_SOLID))
+    return colour_rgba(0, 0, 0, 0);
+
+  return ground;
+}
+
 /* ----------------------------------------------------------------------- */
 
 static void wuss__icon_draw_pattern(const icon_draw_ctx_t *c)
@@ -221,7 +236,8 @@ static void wuss__icon_draw_label(const icon_draw_ctx_t *c)
 
   pos.y = wuss__icon_text_baseline_y(c, b);
 
-  wuss__text_draw_str(c->font, c->scr, icon->text, c->fg, bg, &pos, NULL);
+  wuss__text_draw_str(c->wuss, c->font, c->scr, icon->text, c->fg,
+                      wuss__icon_text_ground(c, bg), &pos, NULL);
 }
 
 /* ----------------------------------------------------------------------- */
@@ -258,10 +274,11 @@ static void wuss__icon_draw_frame(const icon_draw_ctx_t *c)
 
   if (cap_w > 0)
   {
-    bg = wuss__icon_blend_ground(c, c->fg);
+    bg = wuss__icon_text_ground(c, wuss__icon_blend_ground(c, c->fg));
     pos.x = b->x0 + WUSS_FRAME_CAPTION_INSET;
     pos.y = b->y0 + c->font_ascent;
-    wuss__text_draw(c->font, c->scr, spec->text, len, c->fg, bg, &pos, NULL);
+    wuss__text_draw(c->wuss, c->font, c->scr, spec->text, len, c->fg, bg,
+                    &pos, NULL);
   }
 }
 
@@ -331,8 +348,8 @@ static void wuss__icon_draw_button(const icon_draw_ctx_t *c)
       pos.y += 1;
     }
 
-    wuss__text_draw(c->font, c->scr, icon->text, len, label, base, &pos,
-                    NULL);
+    wuss__text_draw(c->wuss, c->font, c->scr, icon->text, len, label, base,
+                    &pos, NULL);
   }
 }
 
@@ -475,7 +492,8 @@ static void wuss__icon_draw_radio_option(const icon_draw_ctx_t *c)
     if (icon->flags & wuss_ICON_FLAGS_JUSTIFY_RIGHT)
       pos.x = MAX(g.x0 - 4 - (int) width, tx); /* flush against the glyph */
     pos.y = wuss__icon_text_baseline_y(c, b);
-    wuss__text_draw(c->font, c->scr, icon->text, len, glyph, bg, &pos, NULL);
+    wuss__text_draw(c->wuss, c->font, c->scr, icon->text, len, glyph,
+                    wuss__icon_text_ground(c, bg), &pos, NULL);
   }
 }
 
@@ -643,8 +661,8 @@ static void wuss__icon_draw_writable(const icon_draw_ctx_t *c)
   bmfont_get_info(c->font, NULL, NULL, &ascent, NULL);
   pos.x = b->x0 + wuss__writable_text_x(c->wuss, icon);
   pos.y = b->y0 + (b->y1 - b->y0 - ascent) / 2 + ascent;
-  wuss__text_draw_str(c->font, &clipped, icon->spec.text, ink, bg, &pos,
-                      NULL);
+  wuss__text_draw_str(c->wuss, c->font, &clipped, icon->spec.text, ink,
+                      wuss__icon_text_ground(c, bg), &pos, NULL);
 
   if (c->wuss->caret.icon == icon
       && c->wuss->caret.anchor != c->wuss->caret.index)
@@ -660,8 +678,8 @@ static void wuss__icon_draw_writable(const icon_draw_ctx_t *c)
       selscr      = clipped;
       selscr.clip = sel_clip;
       wuss__fill_colour(c->wuss, &selscr, &sel, ink, c->origin);
-      wuss__text_draw_str(c->font, &selscr, icon->spec.text, bg, ink, &pos,
-                          NULL);
+      wuss__text_draw_str(c->wuss, c->font, &selscr, icon->spec.text, bg, ink,
+                          &pos, NULL);
     }
   }
 
