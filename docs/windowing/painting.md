@@ -91,6 +91,13 @@ makes an instance of its own.
   Crop to selection cuts the canvas down to the selection's bounds. Canvas
   size opens a dialogue that grows or shrinks the canvas about its centre,
   filling any new area with the chosen background.
+- Menu > Symmetry mirrors drawing about the canvas's centre: Horizontal
+  copies it left to right, Vertical top to bottom, and both make four copies.
+  Tiled shows the canvas with a copy on every side, and drawing that runs
+  over an edge carries on from the far side, for seamless tiles. Both apply
+  to the freehand tools, spray, line, shapes, paths and fill, each drawing as
+  one undo step. The gradient and the selection tools ignore them, and a fill
+  stops at the canvas's edge.
 - The view zooms up to 3200%. From 600% up a grey grid outlines each
   canvas pixel.
 - Menu > Save (`F3`) opens the Save As dialogue.
@@ -114,7 +121,9 @@ and `region_subtract`.
 
 Undo keeps RLE-compressed copies of the whole canvas. A stroke takes one
 `paintingdoc_checkpoint` when the button goes down. `paintingdoc_rect` and
-`paintingdoc_fill` take their own.
+`paintingdoc_fill` take their own. Symmetry repeats an operation with mirrored
+or shifted points inside `paintingdoc_hold`, so only the first copy takes its
+checkpoint.
 
 ## Loading
 

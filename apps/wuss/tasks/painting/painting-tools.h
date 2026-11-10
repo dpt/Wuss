@@ -42,6 +42,12 @@ colour_t painting_stroke_colour(const painting_task_t *pt);
 box_t painting_stroke_segment(painting_task_t *pt, point_t a, point_t b);
 box_t painting_spray(painting_task_t *pt, point_t p);
 
+/* flood fill at p, or draw the path through the lasso's points, returning
+ * the dirty box. these, the freehand tools and the rubber band's shapes and
+ * line paint every copy that symmetry has on */
+box_t painting_fill(painting_task_t *pt, point_t p);
+box_t painting_path_commit(painting_task_t *pt);
+
 /* the canvas boxes the rubber band, and the lasso or path's points, cover */
 box_t painting_band_box(const painting_task_t *pt);
 box_t painting_points_box(const painting_task_t *pt);

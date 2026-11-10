@@ -61,6 +61,10 @@ const bitmap_t *paintingdoc_bitmap(const paintingdoc_t *doc);
  * with result_OOM, leaving the history as it was */
 result_t paintingdoc_checkpoint(paintingdoc_t *doc);
 
+/* while held, of the operations that take their own checkpoint only the first
+ * does, so several draw as one undo step: symmetry and tiling's copies */
+void paintingdoc_hold(paintingdoc_t *doc, int hold);
+
 /* draw a stroke, rect or ellipse as paintingdoc_stroke, paintingdoc_rect and
  * paintingdoc_ellipse do, but onto any screen, for a rubber-band preview over
  * the canvas: the canvas, its undo history and the dirty box are not

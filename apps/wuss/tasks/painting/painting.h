@@ -103,8 +103,22 @@ enum
   PAINTING_MENU_TRANSFORM, /* submenu: PAINTING_XFORM_* */
   PAINTING_MENU_PALETTE,   /* submenu: PAINTING_PAL_* */
   PAINTING_MENU_NOZZLE,   /* submenu: one row per paintingdoc_nozzle_t */
+  PAINTING_MENU_SYMMETRY, /* submenu: PAINTING_SYM_* */
   PAINTING_MENU__COUNT
 };
+
+/* the Symmetry submenu's rows, each toggling bit 1 << row of symmetry */
+enum
+{
+  PAINTING_SYM_HORIZONTAL, /* mirror left and right */
+  PAINTING_SYM_VERTICAL,   /* mirror top and bottom */
+  PAINTING_SYM_TILED,      /* show the canvas tiled and paint across its
+                            * edges onto the far side */
+  PAINTING_SYM__COUNT
+};
+
+/* the copies an op paints: four mirrorings by nine tilings */
+#define PAINTING_COPIES (4 * 9)
 
 /* the Transform submenu's rows: one per paintingdoc_xform_t, then these */
 enum
@@ -197,7 +211,12 @@ typedef struct painting_task
   int                ants_phase; /* where the ants have marched, 0..7 */
   rng_t              rng;        /* the spray's scatter */
   paintingdoc_wobble_t wobble;   /* the wobbly stroke in progress */
-  paintingdoc_trail_t trail;     /* the pencil stroke in progress */
+  paintingdoc_trail_t trail[PAINTING_COPIES]; /* the pencil stroke in
+                                  * progress, one per copy */
+  unsigned int       symmetry;   /* bit 1 << PAINTING_SYM_* set when on */
+  point_t            wrap;       /* tiled: the whole canvases the stroke's
+                                  * press lay off the canvas, taken off its
+                                  * every point */
   paintingdoc_pot_t  pot;        /* the paintbrush stroke's paint, refilled
                                   * as each stroke starts */
   wuss_icon_t       *tool_icons[painting_TOOL__COUNT];
@@ -230,6 +249,8 @@ typedef struct painting_task
   int                npalette;
   wuss_menu_item_t   nozzle_items[paintingdoc_NOZZLE__COUNT];
   wuss_menu_t        nozzle_menu;
+  wuss_menu_item_t   sym_items[PAINTING_SYM__COUNT];
+  wuss_menu_t        sym_menu;
   dithermenu_t       dither;
   wuss_scaleview_t  *scaleview; /* owned: "Display"'s "Scale view" leaf */
   screen_dither_t    dithering; /* how the canvas is blitted */

@@ -37,13 +37,18 @@ static size2d_t painting_stage(painting_task_t *pt,
                                size_t          *nboxes)
 {
   const bitmap_t *bm;
+  int             n, w, h;
   size2d_t        sz;
 
+  /* tiled, the content is the canvas with a copy on every side */
   bm = paintingdoc_bitmap(pt->doc);
-  stage_generate(&pt->stagecfg, 0, 0,
-                 bm->size.w * pt->zoom, bm->size.h * pt->zoom,
+  n  = (pt->symmetry & (1u << PAINTING_SYM_TILED)) ? 3 : 1;
+  w  = bm->size.w * pt->zoom;
+  h  = bm->size.h * pt->zoom;
+  stage_generate(&pt->stagecfg, 0, 0, w * n, h * n,
                  &sz.w, &sz.h, boxes, nboxes);
-  pt->page = POINT(boxes[0].box.x0, sz.h - boxes[0].box.y1); /* content */
+  pt->page = POINT(boxes[0].box.x0 + w * (n / 2),
+                   sz.h - boxes[0].box.y1 + h * (n / 2)); /* content */
 
   return sz;
 }
@@ -374,6 +379,17 @@ static result_t painting_build(painting_task_t            *task,
   /* the shortcut, or a click on the row, steps to the next nozzle */
   task->menu_items[PAINTING_MENU_NOZZLE].shortcut = "N";
 
+  WUSS_MENU_ITEM(task->sym_items, PAINTING_SYM_HORIZONTAL, "Horizontal",
+                 wuss_MENU_ITEM_NONE);
+  WUSS_MENU_ITEM(task->sym_items, PAINTING_SYM_VERTICAL, "Vertical",
+                 wuss_MENU_ITEM_NONE);
+  WUSS_MENU_ITEM(task->sym_items, PAINTING_SYM_TILED, "Tiled",
+                 wuss_MENU_ITEM_DASHED);
+  WUSS_MENU_TITLE(task->sym_menu, "Symmetry", task->sym_items,
+                  NELEMS(task->sym_items));
+  WUSS_MENU_ITEM_MENU(task->menu_items, PAINTING_MENU_SYMMETRY, "Symmetry",
+                      wuss_MENU_ITEM_NONE, &task->sym_menu);
+
   WUSS_MENU_TITLE(task->base.menu, "Painting", task->menu_items,
                   NELEMS(task->menu_items));
 
@@ -553,8 +569,9 @@ static result_t painting_redraw(painting_task_t    *pt,
   screen_t       *scr;
   int             i, ox, oy, z, c;
   const bitmap_t *bm;
-  box_t           canvas;
   screen_scale_t  scale;
+  int             t, tx, ty;
+  box_t           canvas;
   point_t         a, b;
   int             size;
 
@@ -571,14 +588,27 @@ static result_t painting_redraw(painting_task_t    *pt,
   z      = pt->zoom;
   c      = z / 2; /* a canvas pixel's centre, zoomed */
   bm     = paintingdoc_bitmap(pt->doc);
-  canvas = (box_t) BOX_POS_SIZE(ox, oy, bm->size.w * z, bm->size.h * z);
-
-  /* the checks show through wherever the canvas is transparent */
-  task_draw_checks(scr, &canvas, POINT(ox, oy));
   scale.xmul = scale.ymul = z;
   scale.xdiv = scale.ydiv = 1;
-  rc = screen_copy_bitmap_scaled_dithered(scr, &canvas, bm, &scale,
-                                          pt->dithering);
+
+  /* the canvas, and tiled its copy on every side. the checks show through
+   * wherever the canvas is transparent */
+  for (t = 0; t < 9; t++)
+  {
+    if (t != 4 && !(pt->symmetry & (1u << PAINTING_SYM_TILED)))
+      continue;
+
+    tx     = ox + (t % 3 - 1) * bm->size.w * z;
+    ty     = oy + (t / 3 - 1) * bm->size.h * z;
+    canvas = (box_t) BOX_POS_SIZE(tx, ty, bm->size.w * z, bm->size.h * z);
+    task_draw_checks(scr, &canvas, POINT(tx, ty));
+    rc = screen_copy_bitmap_scaled_dithered(scr, &canvas, bm, &scale,
+                                            pt->dithering);
+    if (rc != result_OK)
+      return rc;
+  }
+
+  canvas = (box_t) BOX_POS_SIZE(ox, oy, bm->size.w * z, bm->size.h * z);
 
   if (z >= PAINTING_GRID_ZOOM)
     painting_draw_grid(scr, bounds, &canvas, z);
@@ -624,14 +654,26 @@ static result_t painting_redraw(painting_task_t    *pt,
 
   painting_draw_ants(pt, scr, ox, oy);
 
-  return rc;
+  return result_OK;
 }
 
-/* the canvas pixel a window offset from the canvas's origin falls in,
- * rounding down either side of it */
-static int painting_unzoom(const painting_task_t *pt, int v)
+/* v / d, rounding down either side of 0 */
+static int painting_floor_div(int v, int d)
 {
-  return v >= 0 ? v / pt->zoom : -((pt->zoom - 1 - v) / pt->zoom);
+  return v >= 0 ? v / d : -((d - 1 - v) / d);
+}
+
+/* tiled, how far p lies off the canvas in whole canvases, else nothing */
+static point_t painting_wrap(const painting_task_t *pt, point_t p)
+{
+  const bitmap_t *bm;
+
+  if (!(pt->symmetry & (1u << PAINTING_SYM_TILED)))
+    return POINT(0, 0);
+
+  bm = paintingdoc_bitmap(pt->doc);
+  return POINT(painting_floor_div(p.x, bm->size.w) * bm->size.w,
+               painting_floor_div(p.y, bm->size.h) * bm->size.h);
 }
 
 /* a MOVE always reports the SELECT button, hovering or not, so a stroke in
@@ -643,9 +685,18 @@ static result_t painting_mouse(painting_task_t    *pt,
   box_t    old;
   point_t  p;
   colour_t colour;
+  int      i;
 
-  p = POINT(painting_unzoom(pt, event->data.mouse.point.x - pt->page.x),
-            painting_unzoom(pt, event->data.mouse.point.y - pt->page.y));
+  p = POINT(painting_floor_div(event->data.mouse.point.x - pt->page.x,
+                               pt->zoom),
+            painting_floor_div(event->data.mouse.point.y - pt->page.y,
+                               pt->zoom));
+
+  /* tiled, a stroke pressed on a copy of the canvas lands on the canvas, and
+   * keeps the same shift as it runs on over the edges */
+  if (event->data.mouse.action == wuss_MOUSE_DOWN && !pt->held)
+    pt->wrap = painting_wrap(pt, p);
+  p = POINT(p.x - pt->wrap.x, p.y - pt->wrap.y);
 
   switch (event->data.mouse.action)
   {
@@ -694,9 +745,8 @@ static result_t painting_mouse(painting_task_t    *pt,
       return result_OK;
 
     case painting_TOOL_FILL:
-      colour   = painting_stroke_colour(pt);
+      dirty    = painting_fill(pt, p);
       pt->held = 0; /* a click, not a stroke */
-      dirty    = paintingdoc_fill(pt->doc, p, colour);
       break;
 
     case painting_TOOL_LASSO:
@@ -728,7 +778,8 @@ static result_t painting_mouse(painting_task_t    *pt,
       }
       pt->wobble.seed = rng_xorshift32(&pt->rng); /* a fresh wobble */
       pt->wobble.step = 0;
-      pt->trail.n     = 0;
+      for (i = 0; i < PAINTING_COPIES; i++)
+        pt->trail[i].n = 0;
       pt->pot.seed    = rng_xorshift32(&pt->rng); /* a refilled pot */
       pt->pot.load    = pt->dry ? PAINTING_POT_STAMPS / pt->dry : 0;
       pt->pot.left    = pt->pot.load;
@@ -811,9 +862,7 @@ static result_t painting_mouse(painting_task_t    *pt,
       old = painting_points_box(pt);
       painting_invalidate_box(pt, &old);
 
-      dirty = paintingdoc_path(pt->doc, pt->lasso, pt->nlasso, pt->size,
-                               pt->tool == painting_TOOL_PATH_FILL,
-                               painting_stroke_colour(pt));
+      dirty      = painting_path_commit(pt);
       pt->nlasso = 0;
     }
     else if (painting_is_rubber_band(pt))
@@ -1018,6 +1067,33 @@ static result_t painting_set_zoom(painting_task_t *pt, int zoom)
   pt->zoom = zoom;
   wuss_window_invalidate_visible(pt->base.window);
   return painting_fit(pt);
+}
+
+/* Toggle a Symmetry row. Tiling changes the stage, so as for a zoom a stroke
+ * in progress is abandoned. */
+static result_t painting_toggle_symmetry(painting_task_t *pt, int row)
+{
+  result_t rc;
+  point_t  was;
+
+  pt->symmetry ^= 1u << row;
+  wuss_menu_tick_item_live(pt->base.menu_handle, &pt->sym_menu, row,
+                           (pt->symmetry >> row) & 1);
+  if (row != PAINTING_SYM_TILED)
+    return result_OK;
+
+  pt->held = 0;
+  was      = pt->page;
+  wuss_window_invalidate_visible(pt->base.window);
+  rc = wuss_window_set_doc(pt->base.window, painting_stage_size(pt));
+  if (rc != result_OK)
+    return rc;
+
+  /* keep the canvas where it was in the window */
+  wuss_window_scroll_by(pt->base.window,
+                        POINT(pt->page.x - was.x, pt->page.y - was.y));
+
+  return result_OK;
 }
 
 /* Step the zoom by step levels, or to 1:1 if step is 0 */
@@ -1319,6 +1395,8 @@ static result_t painting_handle(wuss_window_t      *window,
       painting_set_nozzle(pt, event->data.menu_select.index);
       return result_OK;
     }
+    if (event->data.menu_select.menu == &pt->sym_menu)
+      return painting_toggle_symmetry(pt, event->data.menu_select.index);
     if (event->data.menu_select.menu == &pt->dither.menu)
     {
       pt->dithering = dithermenu_select(&pt->dither, pt->base.menu_handle,

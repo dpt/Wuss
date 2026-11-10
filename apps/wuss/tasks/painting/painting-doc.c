@@ -46,6 +46,8 @@ struct paintingdoc
   point_t   d;
   /* changed since the last load or paintingdoc_set_saved */
   int       edited;
+  /* paintingdoc_hold: 0 not held, 1 held, 2 held with its checkpoint taken */
+  int       hold;
 };
 
 /* ----------------------------------------------------------------------- */
@@ -488,8 +490,18 @@ result_t paintingdoc_checkpoint(paintingdoc_t *doc)
  * cannot: no undo for that step beats losing the user's edit */
 static void checkpoint_or_warn(paintingdoc_t *doc)
 {
+  if (doc->hold == 2)
+    return;
+  if (doc->hold == 1)
+    doc->hold = 2;
+
   if (paintingdoc_checkpoint(doc) != result_OK)
     logf_warning("painting: no memory for an undo step");
+}
+
+void paintingdoc_hold(paintingdoc_t *doc, int hold)
+{
+  doc->hold = hold ? MAX(doc->hold, 1) : 0;
 }
 
 int paintingdoc_can_undo(const paintingdoc_t *doc)
