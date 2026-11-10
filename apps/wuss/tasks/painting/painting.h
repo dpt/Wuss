@@ -177,6 +177,7 @@ typedef struct painting_task
   wuss_window_t     *optionbar; /* the colours and options toolbar; NULL once
                                  * closed */
   wuss_window_t     *sizebar;   /* the tool settings pane; NULL once closed */
+  wuss_window_t     *layerbar;  /* the layers toolbar; NULL once closed */
   paintingdoc_t     *doc;
   stageconfig_t      stagecfg;  /* the pasteboard, border and shadow around
                                  * the canvas */

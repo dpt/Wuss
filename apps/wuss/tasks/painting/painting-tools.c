@@ -198,6 +198,8 @@ void painting_invalidate_box(painting_task_t *pt, const box_t *box)
                    (box->y1 + dy) * pt->zoom + pt->page.y };
     wuss_window_invalidate(pt->base.window, &b);
   }
+
+  painting_layer_thumb_changed(pt);
 }
 
 /* the colour a stroke in progress paints: the eraser always wipes to

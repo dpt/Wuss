@@ -787,10 +787,235 @@ result_t painting_sizebar_relayout(painting_task_t *pt)
   wuss_window_detach(pt->toolbox);
   rc = wuss_window_attach(pt->toolbox, pt->base.window, wuss_EDGE_LEFT,
                           wuss_ALIGN_TOP, SB_H(pt->base.wuss) + 1);
+  if (rc == result_OK && pt->layerbar != NULL)
+  {
+    wuss_window_detach(pt->layerbar);
+    rc = wuss_window_attach(pt->layerbar, pt->base.window, wuss_EDGE_RIGHT,
+                            wuss_ALIGN_TOP, SB_H(pt->base.wuss) + 1);
+  }
   if (rc != result_OK)
     return rc;
 
   return painting_sizebar_build(pt);
+}
+
+/* ----------------------------------------------------------------------- */
+
+/* the layers bar's buttons, in order across its top */
+enum
+{
+  LB_ADD,
+  LB_DELETE,
+  LB_RAISE,
+  LB_LOWER
+};
+
+/* whether button i applies to n layers with cur current */
+static int painting_layer_can(int n, int cur, int i)
+{
+  switch (i)
+  {
+  case LB_ADD:
+    return n < PAINTINGDOC_LAYERS_MAX;
+  case LB_DELETE:
+    return n > 1;
+  case LB_RAISE:
+    return cur < n - 1;
+  default:
+    return cur > 0;
+  }
+}
+
+/* button i at (x, y): a plus, a minus or a chevron, grey when off */
+static void painting_layer_button(screen_t *scr, int x, int y, int i, int on)
+{
+  colour_t ink;
+  int      c, d;
+
+  ink = on ? colour_rgb(0x00, 0x00, 0x00) : colour_rgb(0x99, 0x99, 0x99);
+  c   = (LB_BUTTON - 1) / 2;
+  d   = (i == LB_RAISE) ? 2 : -2;
+
+  screen_draw_rect(scr, x, y, SIZE2D(LB_BUTTON, LB_BUTTON), ink);
+  if (i == LB_ADD || i == LB_DELETE)
+    screen_draw_line(scr, x + c - 3, y + c, x + c + 3, y + c, ink);
+  if (i == LB_ADD)
+    screen_draw_line(scr, x + c, y + c - 3, x + c, y + c + 3, ink);
+  if (i == LB_RAISE || i == LB_LOWER)
+  {
+    screen_draw_line(scr, x + c - 4, y + c + d, x + c, y + c - d, ink);
+    screen_draw_line(scr, x + c, y + c - d, x + c + 4, y + c + d, ink);
+  }
+}
+
+result_t painting_layerbar_redraw(painting_task_t    *pt,
+                                  const wuss_event_t *event)
+{
+  result_t                   rc;
+  screen_t                  *scr;
+  const box_t               *bounds;
+  colour_t                   black;
+  int                        ox, oy;
+  int                        n, cur;
+  int                        i, r, y;
+  const paintingdoc_layer_t *layer;
+  int                        m, tw, th;
+  screen_scale_t             scale;
+  box_t                      thumb;
+
+  scr    = event->data.redraw.scr;
+  bounds = event->data.redraw.bounds;
+  black  = colour_rgb(0x00, 0x00, 0x00);
+  ox     = bounds->x0 - event->data.redraw.scroll.x;
+  oy     = bounds->y0 - event->data.redraw.scroll.y;
+  n      = paintingdoc_layers(pt->doc);
+  cur    = paintingdoc_layer(pt->doc);
+
+  for (i = 0; i < LB_BUTTONS; i++)
+    painting_layer_button(scr, ox + LB_MARGIN + i * (LB_BUTTON + LB_GAP),
+                          oy + LB_MARGIN, i, painting_layer_can(n, cur, i));
+
+  /* a row per layer, the top one first */
+  for (r = 0; r < n; r++)
+  {
+    i     = n - 1 - r;
+    y     = oy + LB_ROWS_Y + r * LB_ROW;
+    layer = paintingdoc_layer_get(pt->doc, i);
+
+    if (i == cur)
+      screen_fill_rect(scr, ox, y, SIZE2D(LB_W, LB_ROW),
+                       colour_rgb(0xFF, 0xFF, 0xFF));
+
+    /* the show box, filled when shown */
+    if (layer->visible)
+      screen_fill_rect(scr, ox + LB_EYE_X + 2, y + (LB_ROW - LB_EYE) / 2 + 2,
+                       SIZE2D(LB_EYE - 4, LB_EYE - 4), black);
+    screen_draw_rect(scr, ox + LB_EYE_X, y + (LB_ROW - LB_EYE) / 2,
+                     SIZE2D(LB_EYE, LB_EYE), black);
+
+    /* the thumbnail, fitted into a square over the checks */
+    m           = MAX(layer->bm.size.w, layer->bm.size.h);
+    tw          = MAX(layer->bm.size.w * LB_THUMB / m, 1);
+    th          = MAX(layer->bm.size.h * LB_THUMB / m, 1);
+    scale.xmul  = scale.ymul = LB_THUMB;
+    scale.xdiv  = scale.ydiv = m;
+    thumb       = (box_t) BOX_POS_SIZE(ox + LB_THUMB_X + (LB_THUMB - tw) / 2,
+                                       y + (LB_ROW - th) / 2, tw, th);
+    task_draw_checks(scr, &thumb, POINT(thumb.x0, thumb.y0));
+    rc = screen_copy_bitmap_scaled_dithered(scr, &thumb, &layer->bm, &scale,
+                                            pt->dithering);
+    if (rc != result_OK)
+      return rc;
+    screen_draw_rect(scr, thumb.x0 - 1, thumb.y0 - 1,
+                     SIZE2D(tw + 2, th + 2), black);
+
+    /* the opacity bar, filled in proportion */
+    y += (LB_ROW - LB_BAR_H) / 2;
+    if (layer->opacity > 0)
+      screen_fill_rect(scr, ox + LB_BAR_X, y,
+                       SIZE2D(layer->opacity * LB_BAR_W / 255, LB_BAR_H),
+                       colour_rgb(0x66, 0x66, 0x99));
+    screen_draw_rect(scr, ox + LB_BAR_X, y, SIZE2D(LB_BAR_W, LB_BAR_H),
+                     black);
+  }
+
+  return result_OK;
+}
+
+/* SELECT on a button runs it. on a layer's row: on its show box shows or
+ * hides it, on its opacity bar sets its opacity, elsewhere makes it
+ * current. dirty is set to the canvas if it changed, else empty */
+result_t painting_layerbar_mouse(painting_task_t    *pt,
+                                 const wuss_event_t *event,
+                                 box_t              *dirty)
+{
+  result_t                   rc;
+  point_t                    p;
+  int                        n, cur;
+  int                        i;
+  const paintingdoc_layer_t *layer;
+
+  *dirty = (box_t) BOX_INIT;
+
+  if (event->data.mouse.action != wuss_MOUSE_DOWN ||
+      (event->data.mouse.button & wuss_BUTTON_SELECT) == 0)
+    return result_OK;
+
+  rc  = result_OK;
+  p   = event->data.mouse.point;
+  n   = paintingdoc_layers(pt->doc);
+  cur = paintingdoc_layer(pt->doc);
+
+  if (p.y < LB_ROWS_Y)
+  {
+    if (p.x < LB_MARGIN)
+      return result_OK;
+    i = (p.x - LB_MARGIN) / (LB_BUTTON + LB_GAP);
+    if (i >= LB_BUTTONS || !painting_layer_can(n, cur, i))
+      return result_OK;
+
+    switch (i)
+    {
+    case LB_ADD:
+      rc = paintingdoc_layer_add(pt->doc);
+      break;
+    case LB_DELETE:
+      rc = paintingdoc_layer_delete(pt->doc);
+      break;
+    default:
+      rc = paintingdoc_layer_move(pt->doc, i == LB_RAISE ? 1 : -1);
+      break;
+    }
+  }
+  else
+  {
+    i = n - 1 - (p.y - LB_ROWS_Y) / LB_ROW;
+    if (i < 0)
+      return result_OK;
+
+    layer = paintingdoc_layer_get(pt->doc, i);
+    if (p.x >= LB_EYE_X && p.x < LB_EYE_X + LB_EYE)
+      paintingdoc_layer_show(pt->doc, i, !layer->visible, layer->opacity);
+    else if (p.x >= LB_BAR_X && p.x < LB_BAR_X + LB_BAR_W)
+      paintingdoc_layer_show(pt->doc, i, layer->visible,
+                             CLAMP((p.x - LB_BAR_X) * 255 / (LB_BAR_W - 1),
+                                   0, 255));
+    else
+      paintingdoc_layer_select(pt->doc, i);
+  }
+
+  layer  = paintingdoc_layer_get(pt->doc, 0);
+  *dirty = (box_t) BOX_POS_SIZE(0, 0, layer->bm.size.w, layer->bm.size.h);
+
+  return rc;
+}
+
+/* the extent is kept to the visible size, so the bar never scrolls */
+void painting_layers_changed(painting_task_t *pt)
+{
+  size2d_t size;
+
+  if (pt->layerbar == NULL)
+    return;
+
+  size = SIZE2D(LB_W, LB_H(paintingdoc_layers(pt->doc)));
+  (void) wuss_window_set_doc(pt->layerbar, size);
+  (void) wuss_window_resize(pt->layerbar, size);
+  wuss_window_invalidate_visible(pt->layerbar);
+}
+
+void painting_layer_thumb_changed(painting_task_t *pt)
+{
+  box_t row;
+  int   r;
+
+  if (pt->layerbar == NULL)
+    return;
+
+  r   = paintingdoc_layers(pt->doc) - 1 - paintingdoc_layer(pt->doc);
+  row = (box_t) BOX_POS_SIZE(LB_THUMB_X - 1, LB_ROWS_Y + r * LB_ROW,
+                             LB_THUMB + 2, LB_ROW);
+  wuss_window_invalidate(pt->layerbar, &row);
 }
 
 #endif /* WUSS_APP */

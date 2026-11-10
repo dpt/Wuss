@@ -137,6 +137,7 @@ static result_t painting_load(painting_task_t *pt, const char *path)
 
   painting_set_path(pt, path);
   painting_title(pt);
+  painting_layers_changed(pt);
 
   return painting_fit(pt);
 }
@@ -210,6 +211,7 @@ static result_t painting_build(painting_task_t            *task,
    * the canvas's outline */
   place          = task_place;
   place.extra.x0 = TB_W + 1;
+  place.extra.x1 = LB_W + 1;
   place.extra.y1 = OB_H + 1;
   /* painting_redraw draws the stage and the canvas on it over the whole
    * content area */
@@ -257,6 +259,22 @@ static result_t painting_build(painting_task_t            *task,
   if (rc == result_OK)
     rc = wuss_window_attach(task->optionbar, task->base.window,
                             wuss_EDGE_BOTTOM, wuss_ALIGN_LEFT, 0);
+  /* the layers bar on the right edge, dropped as the toolbox is. Its size
+   * and extent fit the layers there are */
+  if (rc == result_OK)
+    rc = wuss_window_create_at(delegate,
+                               &place,
+                               SIZE2D(LB_W, LB_H(1)),
+                               NULL,
+                               wuss_WINDOW_NO_TITLEBAR,
+                               wuss_BACKDROP_COLOUR(wuss_COLOUR_WINDOW),
+                               SIZE2D(LB_W, LB_H(1)),
+                               SIZE2D(0, 0),
+                               &task->layerbar);
+  if (rc == result_OK)
+    rc = wuss_window_attach(task->layerbar, task->base.window,
+                            wuss_EDGE_RIGHT, wuss_ALIGN_TOP,
+                            SB_H(task->base.wuss) + 1);
   /* the size bar is a pane across the top of the canvas, which is then
    * resized so that the view keeps its size below it */
   if (rc == result_OK)
@@ -987,6 +1005,7 @@ static result_t painting_changed(painting_task_t *pt,
     painting_invalidate_box(pt, dirty);
   }
 
+  painting_layers_changed(pt);
   painting_menu_shade(pt);
   painting_title(pt);
 
@@ -1340,6 +1359,8 @@ static result_t painting_handle(wuss_window_t      *window,
   case wuss_EVENT_REDRAW:
     if (window == pt->optionbar)
       return painting_optionbar_redraw(pt, event);
+    if (window == pt->layerbar)
+      return painting_layerbar_redraw(pt, event);
     return painting_redraw(pt, event);
 
   case wuss_EVENT_MOUSE:
@@ -1349,6 +1370,16 @@ static result_t painting_handle(wuss_window_t      *window,
 
     if (window == pt->optionbar)
       return painting_optionbar_mouse(pt, event);
+    if (window == pt->layerbar)
+    {
+      result_t rc;
+      box_t    dirty;
+
+      rc = painting_layerbar_mouse(pt, event, &dirty);
+      if (rc == result_OK && !box_is_empty(&dirty))
+        rc = painting_changed(pt, paintingdoc_bitmap(pt->doc)->size, &dirty);
+      return rc;
+    }
     if (window == pt->toolbox || window == pt->sizebar)
       return result_OK; /* between the buttons */
     return painting_mouse(pt, event);
@@ -1459,6 +1490,7 @@ static result_t painting_handle(wuss_window_t      *window,
     pt->toolbox     = NULL;
     pt->optionbar   = NULL;
     pt->sizebar     = NULL;
+    pt->layerbar    = NULL;
     /* the picker is on a task of its own, so would outlive the canvas */
     wuss_colourpicker_destroy(pt->picker);
     pt->picker      = NULL;

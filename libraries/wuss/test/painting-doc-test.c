@@ -38,7 +38,7 @@
   } \
   while (0)
 
-static uint32_t px(const paintingdoc_t *doc, int x, int y)
+static uint32_t px(paintingdoc_t *doc, int x, int y)
 {
   const bitmap_t *bm;
 
@@ -811,6 +811,53 @@ result_t paintingdoc_test(const char *resources)
                       paintingdoc_NOZZLE_SQUARE, 5, black(), NULL);
     CHECK(px(doc, 99, 4) == BLACK);
   }
+  paintingdoc_destroy(doc);
+
+  printf("test: layers draw on the current one, composite at their "
+         "opacity, move, hide and undo\n");
+
+  /* white below, red at 1,0 on a layer above */
+  CHECK(paintingdoc_create(SIZE2D(3, 1), &doc) == result_OK);
+  CHECK(paintingdoc_layer_add(doc) == result_OK);
+  CHECK(paintingdoc_layers(doc) == 2 && paintingdoc_layer(doc) == 1);
+  CHECK(px(doc, 1, 0) == WHITE);
+  CHECK(paintingdoc_checkpoint(doc) == result_OK);
+  paintingdoc_stroke(doc, POINT(1, 0), POINT(1, 0), 1, red());
+  CHECK(px(doc, 0, 0) == WHITE && px(doc, 1, 0) == RED);
+
+  /* half opacity mixes; hidden shows the white below */
+  paintingdoc_layer_show(doc, 1, 1, 128);
+  CHECK(px(doc, 1, 0) == 0xFFFF7F7Fu);
+  paintingdoc_layer_show(doc, 1, 0, 255);
+  CHECK(px(doc, 1, 0) == WHITE);
+  paintingdoc_layer_show(doc, 1, 1, 255);
+
+  /* moved below, the white layer covers it */
+  CHECK(paintingdoc_layer_move(doc, 1) == result_BAD_ARG);
+  CHECK(paintingdoc_layer_move(doc, -1) == result_OK);
+  CHECK(paintingdoc_layer(doc) == 0 && px(doc, 1, 0) == WHITE);
+
+  /* flips take every layer with them */
+  paintingdoc_transform(doc, paintingdoc_XFORM_FLIP_H);
+  paintingdoc_layer_move(doc, 1);
+  CHECK(px(doc, 1, 0) == RED);
+
+  /* undo the move, the flip and the move back, then the stroke */
+  paintingdoc_undo(doc);
+  paintingdoc_undo(doc);
+  paintingdoc_undo(doc);
+  CHECK(paintingdoc_layer(doc) == 1 && px(doc, 1, 0) == RED);
+  paintingdoc_undo(doc);
+  CHECK(px(doc, 1, 0) == WHITE);
+  paintingdoc_redo(doc);
+  CHECK(px(doc, 1, 0) == RED);
+
+  /* deleting the last layer fails; deleting the red one leaves white */
+  CHECK(paintingdoc_layer_delete(doc) == result_OK);
+  CHECK(paintingdoc_layers(doc) == 1 && px(doc, 1, 0) == WHITE);
+  CHECK(paintingdoc_layer_delete(doc) == result_BAD_ARG);
+  paintingdoc_undo(doc);
+  CHECK(paintingdoc_layers(doc) == 2 && px(doc, 1, 0) == RED);
   paintingdoc_destroy(doc);
 
   printf("paintingdoc: all tests passed\n");

@@ -18,15 +18,34 @@
 
 /* ----------------------------------------------------------------------- */
 
+/* an undo step: RLE-compressed copies of one layer, or of them all */
+typedef struct step
+{
+  paintingdoc_layer_t *layers;
+  int                  n;     /* layers held */
+  int                  layer; /* the one layer held, or -1 for every layer */
+  int                  cur;   /* the current layer when taken */
+}
+step_t;
+
 struct paintingdoc
 {
+  /* the layers, bottom first, and the current one */
+  paintingdoc_layer_t layers[PAINTINGDOC_LAYERS_MAX];
+  int                 nlayers;
+  int                 cur;
+  /* the current layer's bitmap, sharing its pixels, and a screen on it. every
+   * drawing operation works on these */
   bitmap_t bm;
   screen_t scr;
-  /* RLE-compressed copies of bm, oldest first: the steps to undo, and those
-   * undone, which a new checkpoint drops */
-  bitmap_t undo[PAINTINGDOC_UNDO_MAX];
+  /* the visible layers composited, and the box of it out of date */
+  bitmap_t flat;
+  box_t    stale;
+  /* the steps to undo, oldest first, and those undone, which a new
+   * checkpoint drops */
+  step_t   undo[PAINTINGDOC_UNDO_MAX];
   int      nundo;
-  bitmap_t redo[PAINTINGDOC_UNDO_MAX];
+  step_t   redo[PAINTINGDOC_UNDO_MAX];
   int      nredo;
   /* the selection, or NULL for none, and its boundary pixels for the ants.
    * pre is a raw copy of the canvas as of the last checkpoint, kept while
@@ -74,6 +93,40 @@ static result_t canvas_make(size2d_t size, colour_t colour, bitmap_t *bm)
   return result_OK;
 }
 
+/* point bm and scr at the current layer, after it or its pixels change */
+static void layer_sync(paintingdoc_t *doc)
+{
+  doc->bm = doc->layers[doc->cur].bm;
+  screen_for_bitmap(&doc->scr, &doc->bm);
+}
+
+/* the canvas box */
+static box_t canvas_box(const paintingdoc_t *doc)
+{
+  box_t box = BOX_POS_SIZE(0, 0, doc->bm.size.w, doc->bm.size.h);
+
+  return box;
+}
+
+/* the canvas's bytes, per layer */
+static size_t canvas_bytes(const paintingdoc_t *doc)
+{
+  return (size_t) doc->bm.rowbytes * (size_t) doc->bm.size.h;
+}
+
+/* row y of a bgra8888 bitmap */
+static uint32_t *row_of(const bitmap_t *bm, int y)
+{
+  return (uint32_t *) ((uint8_t *) bm->base + (size_t) y * bm->rowbytes);
+}
+
+/* note that box of the canvas changed, to recomposite it */
+static void touch(paintingdoc_t *doc, box_t box)
+{
+  doc->edited = 1;
+  box_union(&doc->stale, &box, &doc->stale);
+}
+
 result_t paintingdoc_create(size2d_t size, paintingdoc_t **doc)
 {
   return paintingdoc_create_filled(size, colour_rgb(255, 255, 255), doc);
@@ -93,26 +146,42 @@ result_t paintingdoc_create_filled(size2d_t        size,
   if (d == NULL)
     return result_OOM;
 
-  rc = canvas_make(size, colour, &d->bm);
+  rc = canvas_make(size, colour, &d->layers[0].bm);
   if (rc != result_OK)
   {
     free(d);
     return rc;
   }
 
-  screen_for_bitmap(&d->scr, &d->bm);
+  d->layers[0].visible = 1;
+  d->layers[0].opacity = 255;
+  d->nlayers           = 1;
+  d->stale             = (box_t) BOX_INIT;
+  layer_sync(d);
 
   *doc = d;
   return result_OK;
 }
 
+/* free n layers' pixels */
+static void layers_free(paintingdoc_layer_t *layers, int n)
+{
+  int i;
+
+  for (i = 0; i < n; i++)
+    free(layers[i].bm.base);
+}
+
 /* drop every step of a stack */
-static void steps_clear(bitmap_t *steps, int *n)
+static void steps_clear(step_t *steps, int *n)
 {
   int i;
 
   for (i = 0; i < *n; i++)
-    free(steps[i].base);
+  {
+    layers_free(steps[i].layers, steps[i].n);
+    free(steps[i].layers);
+  }
 
   *n = 0;
 }
@@ -131,7 +200,8 @@ void paintingdoc_destroy(paintingdoc_t *doc)
 
   undo_clear(doc);
   paintingdoc_select_none(doc);
-  free(doc->bm.base);
+  layers_free(doc->layers, doc->nlayers);
+  free(doc->flat.base);
   free(doc);
 }
 
@@ -171,9 +241,14 @@ result_t paintingdoc_load(paintingdoc_t *doc, const char *path)
 
   undo_clear(doc);
   paintingdoc_select_none(doc);
-  free(doc->bm.base);
-  doc->bm = next;
-  screen_for_bitmap(&doc->scr, &doc->bm);
+  layers_free(doc->layers, doc->nlayers);
+  doc->layers[0].bm      = next;
+  doc->layers[0].visible = 1;
+  doc->layers[0].opacity = 255;
+  doc->nlayers           = 1;
+  doc->cur               = 0;
+  layer_sync(doc);
+  touch(doc, canvas_box(doc));
   doc->edited = 0;
 
   return result_OK;
@@ -189,20 +264,97 @@ void paintingdoc_set_saved(paintingdoc_t *doc)
   doc->edited = 0;
 }
 
-const bitmap_t *paintingdoc_bitmap(const paintingdoc_t *doc)
+/* x / 255 rounded, for x up to 255 * 255 */
+#define DIV255(x) (((x) + 128 + (((x) + 128) >> 8)) >> 8)
+
+/* straight-alpha pixel s, its alpha scaled by opacity (0..255), over d */
+static uint32_t over(uint32_t d, uint32_t s, unsigned int opacity)
 {
-  return &doc->bm;
+  unsigned int sa, da, oa;
+  uint32_t     out;
+  unsigned int i;
+  unsigned int c;
+
+  sa = DIV255((s >> 24) * opacity);
+  da = d >> 24;
+  if (sa == 0)
+    return d;
+  if (sa == 255 || da == 0)
+    return (s & 0xFFFFFFu) | ((uint32_t) sa << 24);
+
+  da  = DIV255(da * (255 - sa)); /* what shows of d */
+  oa  = sa + da;
+  out = (uint32_t) oa << 24;
+  for (i = 0; i < 24; i += 8)
+  {
+    c = ((s >> i) & 0xFF) * sa + ((d >> i) & 0xFF) * da;
+    /* ponytail: a divide per channel where d is partly transparent; opaque
+     * below, the common case, takes the shift */
+    c = oa == 255 ? DIV255(c) : (c + oa / 2) / oa;
+    out |= (uint32_t) c << i;
+  }
+
+  return out;
+}
+
+const bitmap_t *paintingdoc_bitmap(paintingdoc_t *doc)
+{
+  const paintingdoc_layer_t *l;
+  box_t                      b;
+  box_t                      canvas;
+  void                      *pixels;
+  int                        i;
+  int                        x, y;
+  uint32_t                  *out;
+  const uint32_t            *in;
+
+  /* one opaque layer is the image as it stands */
+  l = &doc->layers[0];
+  if (doc->nlayers == 1 && l->visible && l->opacity == 255)
+    return &doc->bm;
+
+  canvas = canvas_box(doc);
+  if (doc->flat.base == NULL || doc->flat.size.w != doc->bm.size.w ||
+      doc->flat.size.h != doc->bm.size.h)
+  {
+    pixels = malloc(canvas_bytes(doc));
+    if (pixels == NULL)
+    {
+      logf_warning("painting: no memory to composite the layers");
+      return &doc->bm;
+    }
+    free(doc->flat.base);
+    doc->flat      = doc->bm;
+    doc->flat.base = pixels;
+    doc->stale     = canvas;
+  }
+
+  if (box_intersection(&doc->stale, &canvas, &b))
+    return &doc->flat;
+  doc->stale = (box_t) BOX_INIT;
+
+  for (y = b.y0; y < b.y1; y++)
+    memset(row_of(&doc->flat, y) + b.x0, 0, (size_t) (b.x1 - b.x0) * 4);
+
+  for (i = 0; i < doc->nlayers; i++)
+  {
+    l = &doc->layers[i];
+    if (!l->visible || l->opacity == 0)
+      continue;
+
+    for (y = b.y0; y < b.y1; y++)
+    {
+      out = row_of(&doc->flat, y);
+      in  = row_of(&l->bm, y);
+      for (x = b.x0; x < b.x1; x++)
+        out[x] = over(out[x], in[x], (unsigned int) l->opacity);
+    }
+  }
+
+  return &doc->flat;
 }
 
 /* ----------------------------------------------------------------------- */
-
-/* the canvas box */
-static box_t canvas_box(const paintingdoc_t *doc)
-{
-  box_t box = BOX_POS_SIZE(0, 0, doc->bm.size.w, doc->bm.size.h);
-
-  return box;
-}
 
 /* box covering a and b, grown by margin, clipped to the canvas */
 static box_t clipped_box(const paintingdoc_t *doc,
@@ -378,7 +530,7 @@ static void sel_clip(paintingdoc_t *doc, box_t dirty)
 {
   bitmap_t pre;
 
-  doc->edited = 1;
+  touch(doc, dirty);
 
   if (doc->sel == NULL || doc->pre == NULL)
     return;
@@ -390,79 +542,118 @@ static void sel_clip(paintingdoc_t *doc, box_t dirty)
 
 /* ----------------------------------------------------------------------- */
 
-/* the canvas's bytes */
-static size_t canvas_bytes(const paintingdoc_t *doc)
-{
-  return (size_t) doc->bm.rowbytes * (size_t) doc->bm.size.h;
-}
-
-/* push an RLE-compressed copy of the canvas onto a stack of steps, dropping
- * its oldest step if full */
-static result_t steps_push(paintingdoc_t *doc, bitmap_t *steps, int *n)
+/* an RLE-compressed copy of a layer, with its own pixel store */
+static result_t layer_snap(const paintingdoc_layer_t *l,
+                           paintingdoc_layer_t       *snap)
 {
   result_t rc;
+  size_t   bytes;
   void    *pixels;
-  bitmap_t snap;
 
-  pixels = malloc(canvas_bytes(doc));
+  bytes  = (size_t) l->bm.rowbytes * (size_t) l->bm.size.h;
+  pixels = malloc(bytes);
   if (pixels == NULL)
     return result_OOM;
 
-  memcpy(pixels, doc->bm.base, canvas_bytes(doc));
+  memcpy(pixels, l->bm.base, bytes);
 
-  rc = bitmap_init(&snap, doc->bm.size, pixelfmt_bgra8888, doc->bm.rowbytes,
-                   NULL, pixels);
+  *snap = *l;
+  rc    = bitmap_init(&snap->bm, l->bm.size, pixelfmt_bgra8888,
+                      l->bm.rowbytes, NULL, pixels);
   if (rc == result_OK)
-    rc = bitmap_compress(&snap);
+    rc = bitmap_compress(&snap->bm);
   if (rc != result_OK)
-  {
     free(pixels);
-    return rc;
+
+  return rc;
+}
+
+/* push a copy of layer `layer`, or of every layer if -1, onto a stack of
+ * steps, dropping its oldest step if full */
+static result_t steps_push(paintingdoc_t *doc,
+                           step_t        *steps,
+                           int           *n,
+                           int            layer)
+{
+  result_t rc;
+  step_t   step;
+  int      first;
+  int      i;
+
+  first      = MAX(layer, 0);
+  step.n     = layer < 0 ? doc->nlayers : 1;
+  step.layer = layer;
+  step.cur   = doc->cur;
+  step.layers = malloc((size_t) step.n * sizeof(*step.layers));
+  if (step.layers == NULL)
+    return result_OOM;
+
+  for (i = 0; i < step.n; i++)
+  {
+    rc = layer_snap(&doc->layers[first + i], &step.layers[i]);
+    if (rc != result_OK)
+    {
+      layers_free(step.layers, i);
+      free(step.layers);
+      return rc;
+    }
   }
 
   if (*n == PAINTINGDOC_UNDO_MAX)
   {
-    free(steps[0].base);
+    layers_free(steps[0].layers, steps[0].n);
+    free(steps[0].layers);
     memmove(&steps[0], &steps[1],
             (PAINTINGDOC_UNDO_MAX - 1) * sizeof(steps[0]));
     (*n)--;
   }
 
-  steps[(*n)++] = snap;
+  steps[(*n)++] = step;
   return result_OK;
 }
 
-/* make bm, which has its own pixel store, the canvas, freeing the old one */
-static void canvas_replace(paintingdoc_t *doc, const bitmap_t *bm)
-{
-  /* the selection and pre fit only a canvas of the same size */
-  if (bm->size.w != doc->bm.size.w || bm->size.h != doc->bm.size.h)
-    paintingdoc_select_none(doc);
-
-  free(doc->bm.base);
-  doc->bm = *bm;
-  screen_for_bitmap(&doc->scr, &doc->bm);
-  doc->edited = 1;
-}
-
-/* put the canvas back to the top step of a stack, popping it, at the step's
+/* put the layers back to the top step of a stack, popping it, at the step's
  * size. returns the box that changed, or an empty box if it could not be
  * decompressed */
-static box_t steps_pop(paintingdoc_t *doc, bitmap_t *steps, int *n)
+static box_t steps_pop(paintingdoc_t *doc, step_t *steps, int *n)
 {
-  bitmap_t *snap;
+  step_t *step;
+  int     i;
 
-  snap = &steps[*n - 1];
-  if (bitmap_decompress(snap) != result_OK)
-    return (box_t) BOX_INIT;
+  step = &steps[*n - 1];
+  for (i = 0; i < step->n; i++)
+    if (bitmap_decompress(&step->layers[i].bm) != result_OK)
+      return (box_t) BOX_INIT;
 
-  canvas_replace(doc, snap);
+  /* the selection and pre fit only a canvas of the same size */
+  if (step->layers[0].bm.size.w != doc->bm.size.w ||
+      step->layers[0].bm.size.h != doc->bm.size.h)
+    paintingdoc_select_none(doc);
+
+  /* the layer gets back its pixels alone: its look is not undone */
+  if (step->layer >= 0)
+  {
+    free(doc->layers[step->layer].bm.base);
+    doc->layers[step->layer].bm = step->layers[0].bm;
+    doc->cur                    = step->layer;
+  }
+  else
+  {
+    layers_free(doc->layers, doc->nlayers);
+    memcpy(doc->layers, step->layers, (size_t) step->n * sizeof(*step->layers));
+    doc->nlayers = step->n;
+    doc->cur     = step->cur;
+  }
+  free(step->layers);
   (*n)--;
 
+  layer_sync(doc);
+  touch(doc, canvas_box(doc));
   return canvas_box(doc);
 }
 
-result_t paintingdoc_checkpoint(paintingdoc_t *doc)
+/* save layer `layer`, or every layer if -1, as an undo step */
+static result_t checkpoint(paintingdoc_t *doc, int layer)
 {
   result_t rc;
 
@@ -479,11 +670,23 @@ result_t paintingdoc_checkpoint(paintingdoc_t *doc)
       logf_warning("painting: no memory to clip drawing to the selection");
   }
 
-  rc = steps_push(doc, doc->undo, &doc->nundo);
+  rc = steps_push(doc, doc->undo, &doc->nundo, layer);
   if (rc == result_OK)
     steps_clear(doc->redo, &doc->nredo); /* a new edit forks the history */
 
   return rc;
+}
+
+result_t paintingdoc_checkpoint(paintingdoc_t *doc)
+{
+  return checkpoint(doc, doc->cur);
+}
+
+/* as checkpoint_or_warn, for an operation on every layer */
+static void checkpoint_all(paintingdoc_t *doc)
+{
+  if (checkpoint(doc, -1) != result_OK)
+    logf_warning("painting: no memory for an undo step");
 }
 
 /* a drawing operation that takes its own checkpoint, but still draws if it
@@ -517,7 +720,8 @@ box_t paintingdoc_undo(paintingdoc_t *doc)
   lift_end(doc);
 
   /* ponytail: no memory to keep the redo step undoes all the same */
-  if (steps_push(doc, doc->redo, &doc->nredo) != result_OK)
+  if (steps_push(doc, doc->redo, &doc->nredo,
+                 doc->undo[doc->nundo - 1].layer) != result_OK)
     logf_warning("painting: no memory for a redo step");
 
   return steps_pop(doc, doc->undo, &doc->nundo);
@@ -535,7 +739,8 @@ box_t paintingdoc_redo(paintingdoc_t *doc)
 
   lift_end(doc);
 
-  if (steps_push(doc, doc->undo, &doc->nundo) != result_OK)
+  if (steps_push(doc, doc->undo, &doc->nundo,
+                 doc->redo[doc->nredo - 1].layer) != result_OK)
     logf_warning("painting: no memory for an undo step");
 
   return steps_pop(doc, doc->redo, &doc->nredo);
@@ -943,8 +1148,7 @@ box_t paintingdoc_path(paintingdoc_t *doc,
 
 static uint32_t *pixel_row(const paintingdoc_t *doc, int y)
 {
-  return (uint32_t *) ((uint8_t *) doc->bm.base +
-                       (size_t) y * doc->bm.rowbytes);
+  return row_of(&doc->bm, y);
 }
 
 /* plot p as the pencil's next pixel, dropping the last one if it is the
@@ -1263,7 +1467,7 @@ box_t paintingdoc_place(paintingdoc_t  *doc,
   if (sel_replace(doc, moved) != result_OK)
     logf_warning("painting: no memory to outline the selection");
 
-  doc->edited = 1;
+  touch(doc, dirty);
   return dirty;
 }
 
@@ -1388,36 +1592,51 @@ box_t paintingdoc_paste(paintingdoc_t            *doc,
 
 /* ----------------------------------------------------------------------- */
 
-box_t paintingdoc_transform(paintingdoc_t *doc, paintingdoc_xform_t xform)
+/* replace every layer's pixels with next's, which have their own stores */
+static box_t layers_replace(paintingdoc_t *doc, const bitmap_t *next)
+{
+  int i;
+
+  for (i = 0; i < doc->nlayers; i++)
+  {
+    free(doc->layers[i].bm.base);
+    doc->layers[i].bm = next[i];
+  }
+
+  layer_sync(doc);
+  touch(doc, canvas_box(doc));
+  return canvas_box(doc);
+}
+
+/* a flipped or turned copy of src into *next, with its own pixel store */
+static result_t layer_transform(const bitmap_t     *src,
+                                paintingdoc_xform_t xform,
+                                bitmap_t           *next)
 {
   result_t  rc;
   int       w, h;
   int       turn;
   size2d_t  size;
   uint32_t *pixels;
-  bitmap_t  next;
   int       x, y;
   int       sx, sy;
   uint32_t *out;
 
-  w    = doc->bm.size.w;
-  h    = doc->bm.size.h;
+  w    = src->size.w;
+  h    = src->size.h;
   turn = xform == paintingdoc_XFORM_ROTATE_CW ||
          xform == paintingdoc_XFORM_ROTATE_CCW;
   size = turn ? SIZE2D(h, w) : SIZE2D(w, h);
 
   pixels = malloc((size_t) w * (size_t) h * 4);
   if (pixels == NULL)
-  {
-    logf_warning("painting: no memory to transform the canvas");
-    return (box_t) BOX_INIT;
-  }
+    return result_OOM;
 
-  rc = bitmap_init(&next, size, pixelfmt_bgra8888, size.w * 4, NULL, pixels);
+  rc = bitmap_init(next, size, pixelfmt_bgra8888, size.w * 4, NULL, pixels);
   if (rc != result_OK)
   {
     free(pixels);
-    return (box_t) BOX_INIT;
+    return rc;
   }
 
   /* each new pixel x,y takes the old pixel sx,sy */
@@ -1434,50 +1653,205 @@ box_t paintingdoc_transform(paintingdoc_t *doc, paintingdoc_xform_t xform)
       case paintingdoc_XFORM_ROTATE_CCW: sx = w - 1 - y; sy = x;         break;
       default:                           sx = w - 1 - x; sy = h - 1 - y; break;
       }
-      *out++ = pixel_row(doc, sy)[sx];
+      *out++ = row_of(src, sy)[sx];
+    }
+  }
+
+  return result_OK;
+}
+
+/* the area box of src into *next, with its own pixel store, filled with fill
+ * where box lies beyond src */
+static result_t layer_resize(const bitmap_t *src,
+                             box_t           box,
+                             colour_t        fill,
+                             bitmap_t       *next)
+{
+  result_t rc;
+  box_t    canvas;
+  box_t    keep;
+  int      y;
+
+  rc = canvas_make(SIZE2D(box.x1 - box.x0, box.y1 - box.y0), fill, next);
+  if (rc != result_OK)
+    return rc;
+
+  /* copy across the part of src that box covers */
+  canvas = (box_t) BOX_POS_SIZE(0, 0, src->size.w, src->size.h);
+  if (!box_intersection(&box, &canvas, &keep))
+    for (y = keep.y0; y < keep.y1; y++)
+      memcpy(row_of(next, y - box.y0) + (keep.x0 - box.x0),
+             row_of(src, y) + keep.x0,
+             (size_t) (keep.x1 - keep.x0) * 4);
+
+  return result_OK;
+}
+
+box_t paintingdoc_transform(paintingdoc_t *doc, paintingdoc_xform_t xform)
+{
+  bitmap_t next[PAINTINGDOC_LAYERS_MAX];
+  int      i, j;
+
+  for (i = 0; i < doc->nlayers; i++)
+  {
+    if (layer_transform(&doc->layers[i].bm, xform, &next[i]) != result_OK)
+    {
+      for (j = 0; j < i; j++)
+        free(next[j].base);
+      logf_warning("painting: no memory to transform the canvas");
+      return (box_t) BOX_INIT;
     }
   }
 
   paintingdoc_select_none(doc);
-  checkpoint_or_warn(doc);
-  canvas_replace(doc, &next);
-
-  return canvas_box(doc);
+  checkpoint_all(doc);
+  return layers_replace(doc, next);
 }
 
 box_t paintingdoc_resize(paintingdoc_t *doc, box_t box, colour_t fill)
 {
-  size2d_t size;
-  bitmap_t next;
-  box_t    canvas;
-  box_t    keep;
-  int      y;
-  uint8_t *row;
+  bitmap_t next[PAINTINGDOC_LAYERS_MAX];
+  int      i, j;
 
-  size = SIZE2D(box.x1 - box.x0, box.y1 - box.y0);
-  if (size.w <= 0 || size.h <= 0 ||
-      canvas_make(size, fill, &next) != result_OK)
-  {
-    logf_warning("painting: no memory to resize the canvas");
+  if (box.x1 <= box.x0 || box.y1 <= box.y0)
     return (box_t) BOX_INIT;
-  }
 
-  /* copy across the part of the old canvas that box covers */
-  canvas = canvas_box(doc);
-  if (!box_intersection(&box, &canvas, &keep))
+  /* the bottom layer takes fill; those above stay clear */
+  for (i = 0; i < doc->nlayers; i++)
   {
-    for (y = keep.y0; y < keep.y1; y++)
+    if (layer_resize(&doc->layers[i].bm, box,
+                     i == 0 ? fill : colour_rgba(0, 0, 0, 0),
+                     &next[i]) != result_OK)
     {
-      row = (uint8_t *) next.base + (size_t) (y - box.y0) * next.rowbytes;
-      memcpy(row + (size_t) (keep.x0 - box.x0) * 4,
-             pixel_row(doc, y) + keep.x0,
-             (size_t) (keep.x1 - keep.x0) * 4);
+      for (j = 0; j < i; j++)
+        free(next[j].base);
+      logf_warning("painting: no memory to resize the canvas");
+      return (box_t) BOX_INIT;
     }
   }
 
   paintingdoc_select_none(doc);
-  checkpoint_or_warn(doc);
-  canvas_replace(doc, &next);
+  checkpoint_all(doc);
+  return layers_replace(doc, next);
+}
+
+/* ----------------------------------------------------------------------- */
+
+int paintingdoc_layers(const paintingdoc_t *doc)
+{
+  return doc->nlayers;
+}
+
+int paintingdoc_layer(const paintingdoc_t *doc)
+{
+  return doc->cur;
+}
+
+const paintingdoc_layer_t *paintingdoc_layer_get(const paintingdoc_t *doc,
+                                                 int                  i)
+{
+  return &doc->layers[i];
+}
+
+void paintingdoc_layer_select(paintingdoc_t *doc, int i)
+{
+  if (i < 0 || i >= doc->nlayers)
+    return;
+
+  lift_end(doc);
+  doc->cur = i;
+  layer_sync(doc);
+}
+
+result_t paintingdoc_layer_add(paintingdoc_t *doc)
+{
+  result_t             rc;
+  bitmap_t             bm;
+  int                  i;
+  paintingdoc_layer_t *l;
+
+  if (doc->nlayers == PAINTINGDOC_LAYERS_MAX)
+    return result_TOO_BIG;
+
+  rc = canvas_make(doc->bm.size, colour_rgba(0, 0, 0, 0), &bm);
+  if (rc != result_OK)
+    return rc;
+
+  rc = checkpoint(doc, -1);
+  if (rc != result_OK)
+  {
+    free(bm.base);
+    return rc;
+  }
+
+  i = doc->cur + 1;
+  memmove(&doc->layers[i + 1], &doc->layers[i],
+          (size_t) (doc->nlayers - i) * sizeof(doc->layers[0]));
+  l          = &doc->layers[i];
+  l->bm      = bm;
+  l->visible = 1;
+  l->opacity = 255;
+  doc->nlayers++;
+  doc->cur = i;
+  layer_sync(doc);
+  touch(doc, canvas_box(doc));
+
+  return result_OK;
+}
+
+result_t paintingdoc_layer_delete(paintingdoc_t *doc)
+{
+  result_t rc;
+  int      i;
+
+  if (doc->nlayers == 1)
+    return result_BAD_ARG;
+
+  rc = checkpoint(doc, -1);
+  if (rc != result_OK)
+    return rc;
+
+  i = doc->cur;
+  free(doc->layers[i].bm.base);
+  memmove(&doc->layers[i], &doc->layers[i + 1],
+          (size_t) (doc->nlayers - i - 1) * sizeof(doc->layers[0]));
+  doc->nlayers--;
+  doc->cur = MAX(i - 1, 0);
+  layer_sync(doc);
+  touch(doc, canvas_box(doc));
+
+  return result_OK;
+}
+
+result_t paintingdoc_layer_move(paintingdoc_t *doc, int dir)
+{
+  result_t rc;
+  int      j;
+
+  j = doc->cur + dir;
+  if (j < 0 || j >= doc->nlayers)
+    return result_BAD_ARG;
+
+  rc = checkpoint(doc, -1);
+  if (rc != result_OK)
+    return rc;
+
+  SWAP(doc->layers[doc->cur], doc->layers[j]);
+  doc->cur = j;
+  layer_sync(doc);
+  touch(doc, canvas_box(doc));
+
+  return result_OK;
+}
+
+box_t paintingdoc_layer_show(paintingdoc_t *doc,
+                             int            i,
+                             int            visible,
+                             int            opacity)
+{
+  doc->layers[i].visible = visible;
+  doc->layers[i].opacity = CLAMP(opacity, 0, 255);
+  touch(doc, canvas_box(doc));
 
   return canvas_box(doc);
 }

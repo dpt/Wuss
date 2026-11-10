@@ -54,6 +54,26 @@
 #define SB_LINE_H(wuss) MAX(SB_ROW_H(wuss), wuss_STD_GLYPH_SIZE)
 #define SB_H(wuss)     (SB_MARGIN + SB_LINE_H(wuss) + SB_MARGIN)
 
+/* Layers bar layout, in its window's content space: a row of buttons (add,
+ * delete, raise, lower) across the top, then a row per layer, the top layer
+ * first, each its show box, its thumbnail and its opacity bar. Drawn by
+ * painting_layerbar_redraw, not icons */
+#define LB_MARGIN   4
+#define LB_BUTTON   16 /* the buttons' size */
+#define LB_BUTTONS  4
+#define LB_GAP      4  /* between the parts of a row */
+#define LB_ROW      28 /* a layer's row */
+#define LB_EYE      12 /* the show box */
+#define LB_THUMB    24 /* the thumbnail's longer side */
+#define LB_BAR_W    40 /* the opacity bar */
+#define LB_BAR_H    8
+#define LB_EYE_X    LB_MARGIN
+#define LB_THUMB_X  (LB_EYE_X + LB_EYE + LB_GAP)
+#define LB_BAR_X    (LB_THUMB_X + LB_THUMB + LB_GAP)
+#define LB_ROWS_Y   (LB_MARGIN + LB_BUTTON + LB_MARGIN)
+#define LB_W        (LB_BAR_X + LB_BAR_W + LB_MARGIN)
+#define LB_H(n)     (LB_ROWS_Y + (n) * LB_ROW + LB_MARGIN) /* for n layers */
+
 /* the paintbrush's nozzle rows, indexed by paintingdoc_nozzle_t */
 extern const char *const painting_nozzle_names[paintingdoc_NOZZLE__COUNT];
 
@@ -65,6 +85,20 @@ result_t painting_optionbar_redraw(painting_task_t    *pt,
                                    const wuss_event_t *event);
 result_t painting_optionbar_mouse(painting_task_t    *pt,
                                   const wuss_event_t *event);
+
+/* a wuss_EVENT_REDRAW or a wuss_EVENT_MOUSE on the layers bar. the mouse
+ * sets dirty to the canvas box when the canvas changed, else empties it */
+result_t painting_layerbar_redraw(painting_task_t    *pt,
+                                  const wuss_event_t *event);
+result_t painting_layerbar_mouse(painting_task_t    *pt,
+                                 const wuss_event_t *event,
+                                 box_t              *dirty);
+
+/* fit the layers bar to the number of layers and redraw it */
+void painting_layers_changed(painting_task_t *pt);
+
+/* redraw the current layer's thumbnail */
+void painting_layer_thumb_changed(painting_task_t *pt);
 
 /* lay the swatches out for the palette's size, one row or two, and redraw
  * them */

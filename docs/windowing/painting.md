@@ -100,7 +100,13 @@ makes an instance of its own.
   stops at the canvas's edge.
 - The view zooms up to 3200%. From 600% up a grey grid outlines each
   canvas pixel.
-- Menu > Save (`F3`) opens the Save As dialogue.
+- The layers bar on the canvas's right edge lists the layers, the top one
+  first. Its buttons add a layer above the current one, delete the current
+  one, and raise or lower it. In a layer's row, click the box to show or hide
+  it, the bar to set its opacity, or elsewhere to make it current. Drawing
+  goes on the current layer; transforms and resizes act on every layer.
+- Menu > Save (`F3`) opens the Save As dialogue. The PNG holds the layers
+  flattened.
 - Drop a PNG on the canvas window or on the Painting icon to load it.
 
 ## The canvas
@@ -109,6 +115,11 @@ The canvas is a `bgrx8888` bitmap of the size and colour the New dialogue
 asks for. The window shows up to 400 x 300 of it and scrolls. Drawing is
 opaque and hard-edged. There is no alpha channel because `screen_t` has no
 span table for the alpha formats, so drawing straight onto one asserts.
+
+The canvas is a stack of up to 16 layers of that size, each with a visibility
+and an opacity. `paintingdoc_bitmap` returns them composited, from a cache
+recomposited only where it is stale; with one visible opaque layer it is that
+layer. The operations draw on the current layer.
 
 Every operation in `painting-doc.h` takes canvas pixels and returns the box it
 may have changed. The task passes that box to `wuss_window_invalidate`.
@@ -119,7 +130,8 @@ and Invert uses `region_invert`. Adding and taking away use `region_union`
 and `region_subtract`.
 `paintingdoc_selection_outline` gives the boundary boxes that the ants draw.
 
-Undo keeps RLE-compressed copies of the whole canvas. A stroke takes one
+Undo keeps RLE-compressed copies of the current layer, or of every layer for
+a step that adds, deletes, moves, transforms or resizes them. A stroke takes one
 `paintingdoc_checkpoint` when the button goes down. `paintingdoc_rect` and
 `paintingdoc_fill` take their own. Symmetry repeats an operation with mirrored
 or shifted points inside `paintingdoc_hold`, so only the first copy takes its
