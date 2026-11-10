@@ -155,6 +155,16 @@ static const char *const painting_xform_names[paintingdoc_XFORM__COUNT] =
   "Rotate 180"
 };
 
+/* their shortcuts, as Aseprite's for the flips */
+static const char *const painting_xform_keys[paintingdoc_XFORM__COUNT] =
+{
+  WUSS_MENU_SHIFT "H",
+  WUSS_MENU_SHIFT "V",
+  WUSS_MENU_SHIFT "R",
+  WUSS_MENU_SHIFT "L",
+  NULL
+};
+
 /* the pixel clipboard, shared by every canvas so pixels copy between them,
  * and the number of canvases, the last of which empties it */
 static paintingdoc_clip_t painting_clip;
@@ -354,8 +364,8 @@ static result_t painting_build(painting_task_t            *task,
     return rc;
 
   for (i = 0; i < paintingdoc_XFORM__COUNT; i++)
-    WUSS_MENU_ITEM(task->xform_items, i, painting_xform_names[i],
-                   wuss_MENU_ITEM_NONE);
+    WUSS_MENU_ITEM_SHORTCUT(task->xform_items, i, painting_xform_names[i],
+                            wuss_MENU_ITEM_NONE, painting_xform_keys[i]);
   WUSS_MENU_ITEM(task->xform_items, PAINTING_XFORM_CROP, "Crop to selection",
                  wuss_MENU_ITEM_DASHED);
   WUSS_MENU_ITEM_WINDOW(task->xform_items, PAINTING_XFORM_SIZE, "Canvas size",
@@ -1205,11 +1215,36 @@ static void painting_scaleview_choice(wuss_scaleview_choice_t choice,
   (void) painting_set_zoom(pt, zoom);
 }
 
+/* move the selection's pixels one pixel in the arrow key's direction, or
+ * eight with Shift, leaving the background colour behind. unclaimed with no
+ * selection */
+static result_t painting_nudge(painting_task_t *pt, int code, int mods)
+{
+  int   step;
+  int   dx, dy;
+  box_t dirty;
+
+  if (pt->held)
+    return result_OK; /* a drag is moving it already */
+  if (paintingdoc_lift(pt->doc) != result_OK)
+    return result_WUSS_KEY_UNCLAIMED;
+
+  step  = (mods & wuss_KEY_MOD_SHIFT) ? 8 : 1;
+  dx    = code == wuss_KEY_LEFT ? -step : code == wuss_KEY_RIGHT ? step : 0;
+  dy    = code == wuss_KEY_UP   ? -step : code == wuss_KEY_DOWN  ? step : 0;
+  dirty = paintingdoc_place(pt->doc, dx, dy, &pt->bg);
+  paintingdoc_drop(pt->doc);
+  painting_invalidate_box(pt, &dirty);
+  painting_title(pt);
+
+  return result_OK;
+}
+
 /* B, H, E, L, R, X, C, D, N, M, F, G, P, S, O, W and I pick the matching
  * tool, [ and ] step the size down and up, + and - zoom, 1 returns to
- * actual size, Escape drops the selection. Anything else is passed back
- * unclaimed */
-static result_t painting_key(painting_task_t *pt, int code)
+ * actual size, Escape drops the selection and the arrow keys nudge it.
+ * Anything else is passed back unclaimed */
+static result_t painting_key(painting_task_t *pt, int code, int mods)
 {
   painting_tool_t tool;
   box_t           box;
@@ -1245,6 +1280,11 @@ static result_t painting_key(painting_task_t *pt, int code)
     paintingdoc_select_none(pt->doc);
     painting_invalidate_box(pt, &box);
     return result_OK;
+  case wuss_KEY_LEFT:
+  case wuss_KEY_RIGHT:
+  case wuss_KEY_UP:
+  case wuss_KEY_DOWN:
+    return painting_nudge(pt, code, mods);
   default:            return result_WUSS_KEY_UNCLAIMED;
   }
 
@@ -1405,7 +1445,8 @@ static result_t painting_handle(wuss_window_t      *window,
     if (!task_key_is_plain(pt->base.delegate, &pt->base.menu, event, &rc))
       return rc;
 
-    return painting_key(pt, event->data.key.code);
+    return painting_key(pt, event->data.key.code,
+                        event->data.key.modifiers);
   }
 
   case wuss_EVENT_MENU_SELECT:

@@ -116,6 +116,8 @@ Menu shortcuts (fire when the task has the focus):
 | Ctrl-A Z I    | Select all, Clear selection, Invert | painting                                                                                                                                          |
 | F Delete      | Fill, Clear selection (foreground, background) | painting                                                                                                                               |
 | N             | Next nozzle     | painting                                                                                                                                                              |
+| Shift-H V     | Flip horizontally, vertically | painting                                                                                                                                                |
+| Shift-R L     | Rotate right, left | painting                                                                                                                                                           |
 | R             | Restart         | sudoku                                                                                                                                                                |
 | F2 F3         | List, Cloud     | tagging                                                                                                                                                               |
 | F4 F5         | Scaling off, on | tagging                                                                                                                                                               |
@@ -167,6 +169,7 @@ Direct keys:
 | painting                            | `+` `=` / `-`       | Zoom in / out                                           |
 | painting                            | `1`                 | Actual size                                             |
 | painting                            | Escape              | Drop selection                                          |
+| painting                            | Arrows              | Nudge selection (Shift = 8 pixels)                      |
 | saturn                              | Left / Right        | Previous / next seed                                    |
 | sofa                                | Left / Right        | Previous / next model                                   |
 | sofa                                | Up / Down           | Step rotation (paused only)                             |
