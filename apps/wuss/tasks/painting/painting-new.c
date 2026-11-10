@@ -14,6 +14,7 @@
 #include "geom/box.h"
 #include "geom/stack.h"
 #include "wuss/component/dialogue.h"
+#include "wuss/gadget/swatches.h"
 #include "wuss/icon.h"
 #include "wuss/icon-spec.h"
 #include "wuss/iconbar.h"
@@ -32,20 +33,10 @@
 #define PN_DEFAULT_W 640
 #define PN_DEFAULT_H 480
 
-/* the background choices, in the order of the radios */
-enum
-{
-  PN_BG_WHITE,
-  PN_BG_BLACK,
-  PN_BG_GREY,
-  PN_BG_TRANSPARENT,
-  PN_BG__COUNT
-};
-
-static const char *const paintingnew_bg_names[PN_BG__COUNT] =
-{
-  "White", "Black", "Grey", "Transparent"
-};
+/* the background swatches: the desktop palette, then transparent */
+#define PN_BG_MAX      17
+#define PN_SWATCH      14  /* swatch size */
+#define PN_SWATCH_GAP  2
 
 /* icons, in creation order */
 enum
@@ -55,8 +46,7 @@ enum
   PN_ICON_X_LABEL,
   PN_ICON_HEIGHT,
   PN_ICON_BG_LABEL,
-  PN_ICON_BG,        /* first of PN_BG__COUNT radios */
-  PN_ICON_CANCEL = PN_ICON_BG + PN_BG__COUNT,
+  PN_ICON_CANCEL,
   PN_ICON_CREATE,
   PN_ICON__COUNT
 };
@@ -72,16 +62,13 @@ enum
   PN_ST_HEIGHT,
   PN_ST_BG_ROW,
   PN_ST_BG_LABEL,
-  PN_ST_BG,          /* first of PN_BG__COUNT radios */
-  PN_ST_BUTTONS = PN_ST_BG + PN_BG__COUNT,
+  PN_ST_BG,          /* the swatches */
+  PN_ST_BUTTONS,
   PN_ST_SPACER,
   PN_ST_CANCEL,
   PN_ST_CREATE,
   PN_ST__LIMIT
 };
-
-#define PN_ST_RADIO(i) \
-  [PN_ST_BG + (i)] = STACK_LEAF(PN_ST_BG_ROW, 0, 0, stack_ALIGN_CENTRE)
 
 /* sizes are zero here: paintingnew_layout sets them from the font */
 static const stack_item_t g_paintingnew_stack[PN_ST__LIMIT] =
@@ -97,10 +84,7 @@ static const stack_item_t g_paintingnew_stack[PN_ST__LIMIT] =
 
   [PN_ST_BG_ROW]       = STACK_HBOX(PN_ST_ROOT, 0, wuss_STD_GAP, stack_ALIGN_START),
   [PN_ST_BG_LABEL]     = STACK_LEAF_GROUP(PN_ST_BG_ROW, 0, 0, stack_ALIGN_CENTRE, PN_G_LABEL),
-  PN_ST_RADIO(0),
-  PN_ST_RADIO(1),
-  PN_ST_RADIO(2),
-  PN_ST_RADIO(3),
+  [PN_ST_BG]           = STACK_LEAF(PN_ST_BG_ROW, 0, 0, stack_ALIGN_CENTRE),
 
   [PN_ST_BUTTONS]      = STACK_HBOX(PN_ST_ROOT, 0, wuss_STD_GAP, stack_ALIGN_END),
   [PN_ST_SPACER]       = STACK_SPACER(PN_ST_BUTTONS, 1), /* push the buttons right */
@@ -116,10 +100,6 @@ static const int g_paintingnew_item[PN_ICON__COUNT] =
   [PN_ICON_X_LABEL]        = PN_ST_X_LABEL,
   [PN_ICON_HEIGHT]         = PN_ST_HEIGHT,
   [PN_ICON_BG_LABEL]       = PN_ST_BG_LABEL,
-  [PN_ICON_BG + 0]         = PN_ST_BG + 0,
-  [PN_ICON_BG + 1]         = PN_ST_BG + 1,
-  [PN_ICON_BG + 2]         = PN_ST_BG + 2,
-  [PN_ICON_BG + 3]         = PN_ST_BG + 3,
   [PN_ICON_CANCEL]         = PN_ST_CANCEL,
   [PN_ICON_CREATE]         = PN_ST_CREATE
 };
@@ -129,6 +109,7 @@ struct paintingnew
   paintingnew_t           **slot;     /* cleared on QUIT */
   wuss_t                *wuss;
   wuss_task_t           *task;
+  wuss_window_t         *window;   /* the dialogue's; ours, so it can redraw */
   wuss_dialogue_t       *dialogue;
   paintingnew_accept_fn_t  *accept;
   void                  *opaque;
@@ -137,35 +118,24 @@ struct paintingnew
   wuss_menu_handle_t     leaf_handle; /* level showing it as a menu leaf;
                                        * live only while so shown */
   wuss_icon_t           *icons[PN_ICON__COUNT];
+  colour_t               bg[PN_BG_MAX]; /* the swatches' colours */
+  wuss_swatches_t        swatches;      /* selected is the background */
 };
 
 /* ----------------------------------------------------------------------- */
 
-/* the colours for a background choice: the canvas, and a pen that shows on it */
-static void paintingnew_colours(int which, paintingnew_params_t *params)
+/* the colours for a background: the canvas, and a pen that shows on it */
+static void paintingnew_colours(colour_t bg, paintingnew_params_t *params)
 {
-  switch (which)
-  {
-  case PN_BG_BLACK:
-    params->bg = colour_rgb(0x00, 0x00, 0x00);
+  unsigned int r, g, b;
+
+  colour_get_rgb(&bg, &r, &g, &b);
+
+  params->bg = bg;
+  if (colour_get_alpha(&bg) != 0 && r + g + b < 3 * 0x80)
     params->fg = colour_rgb(0xFF, 0xFF, 0xFF);
-    break;
-
-  case PN_BG_GREY:
-    params->bg = colour_rgb(0xC0, 0xC0, 0xC0);
+  else
     params->fg = colour_rgb(0x00, 0x00, 0x00);
-    break;
-
-  case PN_BG_TRANSPARENT:
-    params->bg = colour_rgba(0x00, 0x00, 0x00, 0x00);
-    params->fg = colour_rgb(0x00, 0x00, 0x00);
-    break;
-
-  default:
-    params->bg = colour_rgb(0xFF, 0xFF, 0xFF);
-    params->fg = colour_rgb(0x00, 0x00, 0x00);
-    break;
-  }
 }
 
 /* the number in a size field, clamped to the allowed range, with the field
@@ -184,17 +154,6 @@ static int paintingnew_read_size(const paintingnew_t *pn, int which)
   (void) wuss_icon_set_text(wuss_dialogue_window(pn->dialogue), icon, text);
 
   return size;
-}
-
-static int paintingnew_read_bg(const paintingnew_t *pn)
-{
-  int i;
-
-  for (i = 0; i < PN_BG__COUNT; i++)
-    if (wuss_icon_get_selected(pn->icons[PN_ICON_BG + i]))
-      return i;
-
-  return PN_BG_WHITE;
 }
 
 /* close whichever chain shows the dialogue: its own, or the one it is a leaf
@@ -231,7 +190,7 @@ static result_t paintingnew_action_create(void *opaque, wuss_button_t button)
 
   params.size.w = paintingnew_read_size(pn, PN_ICON_WIDTH);
   params.size.h = paintingnew_read_size(pn, PN_ICON_HEIGHT);
-  paintingnew_colours(paintingnew_read_bg(pn), &params);
+  paintingnew_colours(pn->bg[pn->swatches.selected], &params);
 
   if (!(button & wuss_BUTTON_ADJUST))
     paintingnew_dismiss(pn);
@@ -256,8 +215,8 @@ static result_t paintingnew_layout(const wuss_t *wuss,
 
   memcpy(items, g_paintingnew_stack, sizeof(items));
 
-  /* rows fit a field or a radio glyph, whichever is taller */
-  row_h = MAX(wuss_std_height(wuss, wuss_STD_FIELD), wuss_STD_GLYPH_SIZE);
+  /* rows fit a field */
+  row_h = wuss_std_height(wuss, wuss_STD_FIELD);
   for (i = PN_ST_DIM_ROW; i < PN_ST_BUTTONS; i++)
   {
     if (items[i].kind == stack_KIND_HBOX)
@@ -279,9 +238,9 @@ static result_t paintingnew_layout(const wuss_t *wuss,
   items[PN_ST_X_LABEL].axis_size      = task_text_width(wuss, "x");
   items[PN_ST_HEIGHT].axis_size       = field_w;
   items[PN_ST_BG_LABEL].axis_size     = task_text_width(wuss, "Background");
-  for (i = 0; i < PN_BG__COUNT; i++)
-    items[PN_ST_BG + i].axis_size = wuss_STD_GLYPH_SIZE + wuss_STD_GAP +
-                                    task_text_width(wuss, paintingnew_bg_names[i]);
+  items[PN_ST_BG].axis_size  = PN_BG_MAX * (PN_SWATCH + PN_SWATCH_GAP) -
+                               PN_SWATCH_GAP;
+  items[PN_ST_BG].cross_size = PN_SWATCH;
   items[PN_ST_CANCEL].axis_size =
     task_button_width(wuss, "Cancel", wuss_STD_SECONDARY_BUTTON_BORDER);
   items[PN_ST_CREATE].axis_size =
@@ -296,6 +255,16 @@ static result_t paintingnew_layout(const wuss_t *wuss,
   return stack_solve(items, NELEMS(items), &root, boxes);
 }
 
+/* fit the swatches to their count, at the left of their layout box */
+static void paintingnew_place_swatches(paintingnew_t *pn, const box_t *box)
+{
+  pn->swatches.bbox = (box_t) BOX_POS_SIZE(box->x0, box->y0,
+                                           pn->swatches.ncolours *
+                                           (PN_SWATCH + PN_SWATCH_GAP) -
+                                           PN_SWATCH_GAP,
+                                           PN_SWATCH);
+}
+
 static result_t paintingnew_build_icons(paintingnew_t *pn,
                                         const box_t    boxes[PN_ST__LIMIT])
 {
@@ -304,7 +273,8 @@ static result_t paintingnew_build_icons(paintingnew_t *pn,
   wuss_dialogue_action_t actions[2];
   char                   width_text[PN_DIGITS + 2];
   char                   height_text[PN_DIGITS + 2];
-  int                    i;
+
+  paintingnew_place_swatches(pn, &boxes[PN_ST_BG]);
 
   wuss_icon_spec_label(&specs[PN_ICON_DIM_LABEL], boxes[PN_ST_DIM_LABEL],
                        "Dimensions", wuss_ICON_FLAGS_JUSTIFY_RIGHT);
@@ -322,9 +292,6 @@ static result_t paintingnew_build_icons(paintingnew_t *pn,
 
   wuss_icon_spec_label(&specs[PN_ICON_BG_LABEL], boxes[PN_ST_BG_LABEL],
                        "Background", wuss_ICON_FLAGS_JUSTIFY_RIGHT);
-  for (i = 0; i < PN_BG__COUNT; i++)
-    wuss_icon_spec_radio(&specs[PN_ICON_BG + i], boxes[PN_ST_BG + i],
-                         paintingnew_bg_names[i], 1);
 
   wuss_icon_spec_action(&specs[PN_ICON_CANCEL], boxes[PN_ST_CANCEL],
                         "Cancel", 0);
@@ -335,9 +302,6 @@ static result_t paintingnew_build_icons(paintingnew_t *pn,
                               PN_ICON__COUNT, pn->icons);
   if (rc != result_OK)
     return rc;
-
-  wuss_icon_set_selected(wuss_dialogue_window(pn->dialogue),
-                         pn->icons[PN_ICON_BG + PN_BG_WHITE], 1);
 
   actions[0].icon = pn->icons[PN_ICON_CANCEL];
   actions[0].fn   = paintingnew_action_cancel;
@@ -369,6 +333,7 @@ static result_t paintingnew_relayout(paintingnew_t *pn)
 
   for (i = 0; i < PN_ICON__COUNT; i++)
     wuss_icon_set_bbox(window, pn->icons[i], &boxes[g_paintingnew_item[i]]);
+  paintingnew_place_swatches(pn, &boxes[PN_ST_BG]);
 
   return result_OK;
 }
@@ -380,8 +345,9 @@ static result_t paintingnew_handle(wuss_window_t      *window,
                                    const wuss_event_t *event,
                                    void               *task_data)
 {
-  paintingnew_t *pn;
   result_t       rc;
+  paintingnew_t *pn;
+  int            i;
 
   pn = task_data;
 
@@ -391,6 +357,22 @@ static result_t paintingnew_handle(wuss_window_t      *window,
     rc = result_OK;
     (void) wuss_dialogue_handle_icon(pn->dialogue, event, &rc);
     return rc;
+
+  case wuss_EVENT_REDRAW:
+    wuss_swatches_draw(&pn->swatches, event);
+    return result_OK;
+
+  case wuss_EVENT_MOUSE:
+    if (event->data.mouse.action != wuss_MOUSE_DOWN ||
+        !(event->data.mouse.button & (wuss_BUTTON_SELECT | wuss_BUTTON_ADJUST)))
+      return result_OK;
+    i = wuss_swatches_hit_test(&pn->swatches, event->data.mouse.point);
+    if (i >= 0)
+    {
+      pn->swatches.selected = i;
+      wuss_window_invalidate_visible(window);
+    }
+    return result_OK;
 
   case wuss_EVENT_KEY:
     rc = result_WUSS_KEY_UNCLAIMED;
@@ -421,7 +403,9 @@ static result_t paintingnew_handle(wuss_window_t      *window,
     return paintingnew_relayout(pn);
 
   case wuss_EVENT_QUIT:
-    wuss_dialogue_destroy(pn->dialogue);
+    wuss_dialogue_destroy(pn->dialogue); /* leaves pn->window */
+    if (pn->window != NULL)
+      wuss_window_close(pn->window);
     if (pn->slot != NULL)
       *pn->slot = NULL;
     free(pn);
@@ -442,8 +426,14 @@ result_t paintingnew_create(paintingnew_t          **slot,
   result_t         rc;
   paintingnew_t   *pn;
   wuss_task_desc_t desc;
+  const colour_t  *desktop;
+  int              n;
+  int              best;
+  int              i;
+  unsigned int     r, g, b;
   size2d_t         size;
   box_t            boxes[PN_ST__LIMIT];
+  box_t            content;
 
   pn = calloc(1, sizeof(*pn));
   if (pn == NULL)
@@ -465,9 +455,41 @@ result_t paintingnew_create(paintingnew_t          **slot,
     return rc;
   }
 
+  /* the desktop palette, then transparent; the lightest colour to start */
+  desktop = wuss_get_palette(wuss, &n);
+  n       = MIN(n, PN_BG_MAX - 1);
+  memcpy(pn->bg, desktop, n * sizeof(*pn->bg));
+  pn->swatches.selected = n; /* transparent, if the palette is empty */
+  best                  = -1;
+  for (i = 0; i < n; i++)
+  {
+    colour_get_rgb(&pn->bg[i], &r, &g, &b);
+    if ((int) (r + g + b) > best)
+    {
+      best                  = r + g + b;
+      pn->swatches.selected = i;
+    }
+  }
+  pn->bg[n++] = colour_rgba(0x00, 0x00, 0x00, 0x00);
+  pn->swatches.gap      = PN_SWATCH_GAP;
+  pn->swatches.outline  = 1;
+  pn->swatches.colours  = pn->bg;
+  pn->swatches.ncolours = n;
+  pn->swatches.columns  = n;
+
+  /* our own window, not wuss_dialogue_create's, which takes no redraws */
   rc = paintingnew_layout(wuss, action, &size, boxes);
   if (rc == result_OK)
-    rc = wuss_dialogue_create(&pn->dialogue, pn->task, size, title, NULL, pn);
+  {
+    content = (box_t) BOX_POS_SIZE(0, 0, size.w, size.h);
+    rc = wuss_window_create(pn->task, &content, title,
+                            wuss_WINDOW_HIDDEN | wuss_WINDOW_FOCUSABLE,
+                            wuss_BACKDROP_COLOUR(wuss_COLOUR_WINDOW),
+                            size, size, &pn->window);
+  }
+  if (rc == result_OK)
+    rc = wuss_dialogue_create_on_window(&pn->dialogue, wuss, pn->window,
+                                        NULL, pn);
   if (rc == result_OK)
     rc = paintingnew_build_icons(pn, boxes);
   if (rc != result_OK)

@@ -19,8 +19,9 @@ bar opens the same dialogue.
 
 - **Width** and **Height** are 1 to 2048 pixels, starting at 640 x 480. A
   value out of range is clamped when you click Create.
-- **Background** is white, black or grey. The pen starts in a colour that
-  shows on it.
+- **Background** is a row of swatches: the desktop palette, then
+  transparent, shown as a checkerboard. It starts on the lightest colour.
+  The pen starts in black or white, whichever shows on it.
 - **Create** opens two windows: the canvas and a toolbox. ADJUST-click Create
   keeps the dialogue open, so you can open several canvases in a row.
   **Cancel** closes the dialogue.

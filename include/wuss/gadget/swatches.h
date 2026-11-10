@@ -46,7 +46,8 @@ typedef struct wuss_swatches
   int             gap;
   /** Non-zero to edge each cell with a one-pixel black outline. */
   int             outline;
-  /** The colours, one per cell, in row order. Borrowed. */
+  /** The colours, one per cell, in row order. Borrowed. A colour with zero
+   *  alpha draws as a checkerboard. */
   const colour_t *colours;
   /** Number of colours. */
   int             ncolours;

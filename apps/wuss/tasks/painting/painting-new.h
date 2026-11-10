@@ -34,7 +34,8 @@ typedef struct paintingnew paintingnew_t;
  * action the accepting button's text; that task is freed, and *slot cleared,
  * when it is destroyed, which happens with its parent task if the caller set
  * one (see wuss_set_task_parent). Width and height start at the usual 640 x
- * 480 on white and then keep what was last asked for. The strings must
+ * 480 on the desktop palette's lightest colour and then keep what was last
+ * asked for. The strings must
  * outlive the dialogue */
 result_t paintingnew_create(paintingnew_t          **slot,
                             wuss_t                  *wuss,
