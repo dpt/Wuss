@@ -104,6 +104,7 @@ enum
   PAINTING_MENU_PALETTE,   /* submenu: PAINTING_PAL_* */
   PAINTING_MENU_NOZZLE,   /* submenu: one row per paintingdoc_nozzle_t */
   PAINTING_MENU_SYMMETRY, /* submenu: PAINTING_SYM_* */
+  PAINTING_MENU_GRID,     /* submenu: one row per painting_grid_sizes entry */
   PAINTING_MENU__COUNT
 };
 
@@ -116,6 +117,9 @@ enum
                             * edges onto the far side */
   PAINTING_SYM__COUNT
 };
+
+/* the Grid submenu's rows: off, then grids of this many canvas pixels */
+#define PAINTING_GRID__COUNT 4
 
 /* the copies an op paints: four mirrorings by nine tilings */
 #define PAINTING_COPIES (4 * 9)
@@ -256,6 +260,10 @@ typedef struct painting_task
   wuss_menu_t        nozzle_menu;
   wuss_menu_item_t   sym_items[PAINTING_SYM__COUNT];
   wuss_menu_t        sym_menu;
+  wuss_menu_item_t   grid_items[PAINTING_GRID__COUNT];
+  wuss_menu_t        grid_menu;
+  int                grid;      /* the user grid's cell in canvas pixels, or 0
+                                 * for none */
   dithermenu_t       dither;
   wuss_scaleview_t  *scaleview; /* owned: "Display"'s "Scale view" leaf */
   screen_dither_t    dithering; /* how the canvas is blitted */

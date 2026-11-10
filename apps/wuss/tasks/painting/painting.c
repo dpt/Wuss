@@ -165,6 +165,13 @@ static const char *const painting_xform_keys[paintingdoc_XFORM__COUNT] =
   NULL
 };
 
+/* the Grid submenu's rows and their cells in canvas pixels, 0 for none */
+static const char *const painting_grid_names[PAINTING_GRID__COUNT] =
+{
+  "Off", "8x8", "16x16", "32x32"
+};
+static const int painting_grid_sizes[PAINTING_GRID__COUNT] = { 0, 8, 16, 32 };
+
 /* the pixel clipboard, shared by every canvas so pixels copy between them,
  * and the number of canvases, the last of which empties it */
 static paintingdoc_clip_t painting_clip;
@@ -421,6 +428,15 @@ static result_t painting_build(painting_task_t            *task,
   WUSS_MENU_ITEM_MENU(task->menu_items, PAINTING_MENU_SYMMETRY, "Symmetry",
                       wuss_MENU_ITEM_NONE, &task->sym_menu);
 
+  for (i = 0; i < PAINTING_GRID__COUNT; i++)
+    WUSS_MENU_ITEM(task->grid_items, i, painting_grid_names[i],
+                   wuss_MENU_ITEM_NONE);
+  WUSS_MENU_TITLE(task->grid_menu, "Grid", task->grid_items,
+                  NELEMS(task->grid_items));
+  wuss_menu_tick_exclusive(&task->grid_menu, 0);
+  WUSS_MENU_ITEM_MENU(task->menu_items, PAINTING_MENU_GRID, "Grid",
+                      wuss_MENU_ITEM_NONE, &task->grid_menu);
+
   WUSS_MENU_TITLE(task->base.menu, "Painting", task->menu_items,
                   NELEMS(task->menu_items));
 
@@ -564,18 +580,17 @@ static void painting_redraw_stage(painting_task_t *pt,
   }
 }
 
-/* a line along each edge between canvas pixels, zoomed by z, that falls in
- * bounds */
+/* a line along each edge between cells z window pixels square, laid from
+ * the canvas's top left, that falls in bounds */
 static void painting_draw_grid(screen_t    *scr,
                                const box_t *bounds,
                                const box_t *canvas,
-                               int          z)
+                               int          z,
+                               colour_t     colour)
 {
-  colour_t grey;
-  box_t    clip;
-  int      i, i0, i1;
+  box_t clip;
+  int   i, i0, i1;
 
-  grey = colour_rgb(0x80, 0x80, 0x80);
   if (box_intersection(bounds, canvas, &clip))
     return; /* none of the canvas is in bounds */
 
@@ -583,13 +598,13 @@ static void painting_draw_grid(screen_t    *scr,
   i1 = (clip.x1 - 1 - canvas->x0) / z;
   for (i = MAX(i0, 1); i <= i1; i++)
     screen_draw_line(scr, canvas->x0 + i * z, clip.y0,
-                     canvas->x0 + i * z, clip.y1 - 1, grey);
+                     canvas->x0 + i * z, clip.y1 - 1, colour);
 
   i0 = (clip.y0 - canvas->y0 + z - 1) / z;
   i1 = (clip.y1 - 1 - canvas->y0) / z;
   for (i = MAX(i0, 1); i <= i1; i++)
     screen_draw_line(scr, clip.x0, canvas->y0 + i * z,
-                     clip.x1 - 1, canvas->y0 + i * z, grey);
+                     clip.x1 - 1, canvas->y0 + i * z, colour);
 }
 
 static result_t painting_redraw(painting_task_t    *pt,
@@ -642,7 +657,11 @@ static result_t painting_redraw(painting_task_t    *pt,
   canvas = (box_t) BOX_POS_SIZE(ox, oy, bm->size.w * z, bm->size.h * z);
 
   if (z >= PAINTING_GRID_ZOOM)
-    painting_draw_grid(scr, bounds, &canvas, z);
+    painting_draw_grid(scr, bounds, &canvas, z,
+                       colour_rgb(0x80, 0x80, 0x80));
+  if (pt->grid * z >= PAINTING_GRID_ZOOM)
+    painting_draw_grid(scr, bounds, &canvas, pt->grid * z,
+                       colour_rgb(0x00, 0x60, 0xFF));
 
   /* ponytail: the overlays are drawn at window resolution through zoomed
    * pixel centres, so zoomed they only approximate the result's edges */
@@ -1479,6 +1498,14 @@ static result_t painting_handle(wuss_window_t      *window,
     }
     if (event->data.menu_select.menu == &pt->sym_menu)
       return painting_toggle_symmetry(pt, event->data.menu_select.index);
+    if (event->data.menu_select.menu == &pt->grid_menu)
+    {
+      pt->grid = painting_grid_sizes[event->data.menu_select.index];
+      wuss_menu_tick_exclusive_live(pt->base.menu_handle, &pt->grid_menu,
+                                    event->data.menu_select.index);
+      wuss_window_invalidate_visible(pt->base.window);
+      return result_OK;
+    }
     if (event->data.menu_select.menu == &pt->dither.menu)
     {
       pt->dithering = dithermenu_select(&pt->dither, pt->base.menu_handle,
