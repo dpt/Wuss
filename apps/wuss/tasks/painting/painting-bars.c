@@ -6,10 +6,12 @@
 #include <string.h>
 
 #include "base/utils.h"
+#include "framebuf/palettes.h"
 #include "framebuf/pattern.h"
 #include "framebuf/pixelfmt.h"
 #include "framebuf/screen.h"
 #include "geom/box.h"
+#include "utils/array.h"
 
 #include "painting.h"
 #include "painting-bars.h"
@@ -519,13 +521,145 @@ result_t painting_optionbar_mouse(painting_task_t    *pt,
     return result_OK;
 
   if (event->data.mouse.button & wuss_BUTTON_SELECT)
-    pt->fg = pt->swatches.colours[i];
+  {
+    pt->fg                = pt->swatches.colours[i];
+    pt->swatches.selected = i;
+  }
   else if (event->data.mouse.button & wuss_BUTTON_ADJUST)
+  {
     pt->bg = pt->swatches.colours[i];
+  }
   else
+  {
     return result_OK;
+  }
 
   wuss_window_invalidate_visible(pt->optionbar);
+
+  return result_OK;
+}
+
+/* ----------------------------------------------------------------------- */
+
+/* close the picker if it is editing a swatch, which is about to move */
+static void painting_palette_unpick(painting_task_t *pt)
+{
+  if (pt->picker == NULL || pt->picking == &pt->fg || pt->picking == &pt->bg)
+    return;
+
+  wuss_colourpicker_destroy(pt->picker);
+  pt->picker  = NULL;
+  pt->picking = NULL;
+}
+
+void painting_palette_changed(painting_task_t *pt)
+{
+  int rows;
+  int h;
+
+  rows = (pt->npalette + OB_SWATCHES - 1) / OB_SWATCHES;
+  h    = rows * (OB_SWATCH + OB_SWATCH_GAP) - OB_SWATCH_GAP;
+
+  pt->swatches.bbox     = (box_t) BOX_POS_SIZE(OB_SWATCH_X, (OB_H - h) / 2,
+                                               OB_SWATCH_ROW, h);
+  pt->swatches.colours  = pt->palette;
+  pt->swatches.ncolours = pt->npalette;
+  if (pt->swatches.selected >= pt->npalette)
+    pt->swatches.selected = -1;
+
+  if (pt->optionbar != NULL)
+    wuss_window_invalidate_visible(pt->optionbar);
+}
+
+void painting_palette_set(painting_task_t *pt,
+                          const colour_t  *colours,
+                          int              n)
+{
+  n = CLAMP(n, 0, PAINTING_PALETTE_MAX);
+
+  painting_palette_unpick(pt);
+  memcpy(pt->palette, colours, (size_t) n * sizeof(*colours));
+  pt->npalette          = n;
+  pt->swatches.selected = -1;
+  painting_palette_changed(pt);
+}
+
+result_t painting_palette_load(painting_task_t *pt, const char *path)
+{
+  result_t rc;
+  colour_t colours[PAINTING_PALETTE_MAX];
+  int      n;
+
+  rc = palettes_load_hex(path, colours, PAINTING_PALETTE_MAX, &n);
+  if (rc != result_OK)
+    return rc;
+
+  painting_palette_set(pt, colours, n);
+
+  return result_OK;
+}
+
+result_t painting_palette_save(const char *path, void *opaque)
+{
+  painting_task_t *pt;
+
+  pt = opaque;
+
+  return palettes_save_hex(path, pt->palette, pt->npalette);
+}
+
+result_t painting_palette_op(painting_task_t *pt, int op)
+{
+  int             sel;
+  int             i;
+  const colour_t *desktop;
+  int             n;
+
+  sel = pt->swatches.selected;
+
+  switch (op)
+  {
+  case PAINTING_PAL_ADD:
+    /* a colour already in the palette is selected, not added again */
+    for (i = 0; i < pt->npalette; i++)
+      if (pt->palette[i].primary == pt->fg.primary)
+        break;
+    if (i < pt->npalette)
+    {
+      pt->swatches.selected = i;
+      break;
+    }
+    if (pt->npalette == PAINTING_PALETTE_MAX)
+      return result_OK;
+    pt->palette[pt->npalette] = pt->fg;
+    pt->swatches.selected     = pt->npalette++;
+    break;
+
+  case PAINTING_PAL_EDIT:
+    if (sel < 0)
+      return result_OK;
+    return painting_pick_chip(pt, &pt->palette[sel]);
+
+  case PAINTING_PAL_REMOVE:
+    if (sel < 0 || pt->npalette == 1)
+      return result_OK;
+    painting_palette_unpick(pt);
+    array_delete_element(pt->palette, sizeof(pt->palette[0]), pt->npalette,
+                         sel);
+    pt->npalette--;
+    pt->swatches.selected = -1;
+    break;
+
+  case PAINTING_PAL_DESKTOP:
+    desktop = wuss_get_palette(pt->base.wuss, &n);
+    painting_palette_set(pt, desktop, n);
+    return result_OK;
+
+  default:
+    return result_OK;
+  }
+
+  painting_palette_changed(pt);
 
   return result_OK;
 }

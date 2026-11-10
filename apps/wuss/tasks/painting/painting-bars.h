@@ -24,17 +24,16 @@
                       (TB_GROUPS - 1) * TB_GROUP_GAP + TB_MARGIN)
 
 /* Option bar layout, in its window's content space: from the left, the
- * current colours and a single row of colour swatches. The swatches are a
- * wuss_swatches_t gadget and the colour chips are drawn by
- * painting_optionbar_redraw, not icons */
+ * current colours and one or two rows of colour swatches, centred down the
+ * bar. The swatches are a wuss_swatches_t gadget and the colour chips are
+ * drawn by painting_optionbar_redraw, not icons */
 #define OB_MARGIN      4
 #define OB_CHIP        16  /* the square fg and bg colour chips */
 #define OB_CHIP_STEP   8   /* the bg chip's offset down and right of the fg */
-#define OB_SWATCHES    16  /* the desktop palette's size */
+#define OB_SWATCHES    16  /* swatches in a row */
 #define OB_SWATCH      14  /* swatch size */
 #define OB_SWATCH_GAP  2
 #define OB_SWATCH_X    (OB_MARGIN + OB_CHIP_STEP + OB_CHIP + 6)
-#define OB_SWATCH_Y    9
 #define OB_SWATCH_ROW  (OB_SWATCHES * (OB_SWATCH + OB_SWATCH_GAP) - \
                         OB_SWATCH_GAP) /* swatch row's width */
 #define OB_W           (OB_SWATCH_X + OB_SWATCH_ROW + OB_MARGIN)
@@ -66,6 +65,26 @@ result_t painting_optionbar_redraw(painting_task_t    *pt,
                                    const wuss_event_t *event);
 result_t painting_optionbar_mouse(painting_task_t    *pt,
                                   const wuss_event_t *event);
+
+/* lay the swatches out for the palette's size, one row or two, and redraw
+ * them */
+void painting_palette_changed(painting_task_t *pt);
+
+/* replace the palette with n colours, keeping at most PAINTING_PALETTE_MAX */
+void painting_palette_set(painting_task_t *pt,
+                          const colour_t  *colours,
+                          int              n);
+
+/* replace the palette with the .hex palette file at path. A failure keeps
+ * the current palette */
+result_t painting_palette_load(painting_task_t *pt, const char *path);
+
+/* wuss_saveas_save_fn_t: write the palette as a .hex file. opaque is the
+ * painting_task_t */
+result_t painting_palette_save(const char *path, void *opaque);
+
+/* apply a Palette menu row, PAINTING_PAL_* */
+result_t painting_palette_op(painting_task_t *pt, int op);
 
 /* switch tool, showing its settings on the size bar */
 result_t painting_set_tool(painting_task_t *pt, painting_tool_t tool);

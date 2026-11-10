@@ -29,13 +29,6 @@
 #define PAINTING_ANTS_IDLES 6 /* idles between steps of the marching ants */
 #define PAINTING_GRID_ZOOM  6 /* least zoom showing the pixel grid */
 
-/* point the option bar swatches at the desktop palette, which wuss owns and
- * wuss_set_palette may move */
-static void painting_swatches_track(painting_task_t *pt)
-{
-  pt->swatches.colours = wuss_get_palette(pt->base.wuss, &pt->swatches.ncolours);
-}
-
 /* lay out the stage around the canvas, at its smallest, into boxes, noting
  * where the canvas lands. The stage lays out with y up, so flip it. Returns
  * the stage's size, the window's document */
@@ -122,17 +115,20 @@ static result_t painting_saveas_save(const char *path, void *opaque)
 }
 
 /* load the PNG or JPEG at path as the canvas, shrinking the window to the
- * image's stage if that is smaller than the usual view. A failure keeps the
- * current canvas */
+ * image's stage if that is smaller than the usual view. A file that is no
+ * image is tried as a .hex palette. A failure keeps the current canvas and
+ * palette */
 static result_t painting_load(painting_task_t *pt, const char *path)
 {
   result_t rc;
 
   pt->held = 0; /* abandon any stroke in progress */
 
+  /* ponytail: sniffs by trying both loaders rather than by extension, since
+   * RISC OS leaves carry none. Match on filetype if more formats arrive */
   rc = paintingdoc_load(pt->doc, path);
   if (rc != result_OK)
-    return rc;
+    return painting_palette_load(pt, path) == result_OK ? result_OK : rc;
 
   painting_set_path(pt, path);
   painting_title(pt);
@@ -162,11 +158,14 @@ static int                painting_docs;
 static result_t painting_build(painting_task_t            *task,
                                const paintingnew_params_t *params)
 {
-  result_t     rc;
-  wuss_task_t *delegate;
-  wuss_place_t place;
-  size2d_t     stage;
-  int          i;
+  result_t        rc;
+  wuss_task_t    *delegate;
+  const colour_t *desktop;
+  int             ndesktop;
+  wuss_place_t    place;
+  size2d_t        stage;
+  int             i;
+  filetype_t      text;
 
   delegate = task->base.delegate;
 
@@ -184,13 +183,12 @@ static result_t painting_build(painting_task_t            *task,
   task->dithering = screen_DITHER_NEAREST; /* painted colours stay exact */
   task->zoom      = 1;
 
-  task->swatches.bbox     = (box_t) BOX_POS_SIZE(OB_SWATCH_X, OB_SWATCH_Y,
-                                                 OB_SWATCH_ROW, OB_SWATCH);
-  task->swatches.columns  = OB_SWATCHES;
-  task->swatches.gap      = OB_SWATCH_GAP;
-  task->swatches.outline  = 1;
-  task->swatches.selected = -1;
-  painting_swatches_track(task);
+  /* the palette starts as a copy of the desktop's, then is the document's */
+  task->swatches.columns = OB_SWATCHES;
+  task->swatches.gap     = OB_SWATCH_GAP;
+  task->swatches.outline = 1;
+  desktop = wuss_get_palette(task->base.wuss, &ndesktop);
+  painting_palette_set(task, desktop, ndesktop);
 
   rc = paintingdoc_create_filled(params->size, params->bg, &task->doc);
   if (rc != result_OK)
@@ -343,6 +341,28 @@ static result_t painting_build(painting_task_t            *task,
                   NELEMS(task->xform_items));
   WUSS_MENU_ITEM_MENU(task->menu_items, PAINTING_MENU_TRANSFORM, "Transform",
                       wuss_MENU_ITEM_NONE, &task->xform_menu);
+
+  text = filetype_from_riscos(filetype_RISCOS_TEXT);
+  rc   = wuss_saveas_create(&task->pal_saveas, task->base.wuss, &text,
+                            "palette.hex", painting_palette_save, task);
+  if (rc != result_OK)
+    return rc;
+
+  WUSS_MENU_ITEM(task->pal_items, PAINTING_PAL_ADD, "Add foreground",
+                 wuss_MENU_ITEM_NONE);
+  WUSS_MENU_ITEM(task->pal_items, PAINTING_PAL_EDIT, "Edit colour",
+                 wuss_MENU_ITEM_NONE);
+  WUSS_MENU_ITEM(task->pal_items, PAINTING_PAL_REMOVE, "Remove colour",
+                 wuss_MENU_ITEM_NONE);
+  WUSS_MENU_ITEM(task->pal_items, PAINTING_PAL_DESKTOP, "Desktop palette",
+                 wuss_MENU_ITEM_DASHED);
+  WUSS_MENU_ITEM_WINDOW(task->pal_items, PAINTING_PAL_SAVE, "Save palette",
+                        wuss_MENU_ITEM_NONE,
+                        wuss_saveas_window(task->pal_saveas));
+  WUSS_MENU_TITLE(task->pal_menu, "Palette", task->pal_items,
+                  NELEMS(task->pal_items));
+  WUSS_MENU_ITEM_MENU(task->menu_items, PAINTING_MENU_PALETTE, "Palette",
+                      wuss_MENU_ITEM_NONE, &task->pal_menu);
 
   for (i = 0; i < paintingdoc_NOZZLE__COUNT; i++)
     WUSS_MENU_ITEM(task->nozzle_items, i, painting_nozzle_names[i],
@@ -826,6 +846,29 @@ static result_t painting_mouse(painting_task_t    *pt,
  * when nothing is copied, also on the menu if it is open (an ADJUST pick
  * keeps it open). A shaded Fill lets its F shortcut through to pick the Fill
  * tool */
+static void painting_menu_shade(painting_task_t *pt);
+
+/* shade Add when the palette is full, Edit colour when no swatch is
+ * selected and Remove colour then or when one colour is left */
+static void painting_palette_shade(painting_task_t *pt)
+{
+  int disable[PAINTING_PAL_DESKTOP];
+  int i;
+
+  disable[PAINTING_PAL_ADD]    = pt->npalette == PAINTING_PALETTE_MAX;
+  disable[PAINTING_PAL_EDIT]   = pt->swatches.selected < 0;
+  disable[PAINTING_PAL_REMOVE] = pt->swatches.selected < 0 ||
+                                 pt->npalette == 1;
+
+  for (i = 0; i < PAINTING_PAL_DESKTOP; i++)
+  {
+    pt->pal_items[i].flags = disable[i] ? wuss_MENU_ITEM_DISABLED :
+                                          wuss_MENU_ITEM_NONE;
+    wuss_menu_disable_item_live(pt->base.menu_handle, &pt->pal_menu, i,
+                                disable[i]);
+  }
+}
+
 static void painting_menu_shade(painting_task_t *pt)
 {
   int no_undo, no_redo, no_sel, no_clip, i;
@@ -870,6 +913,8 @@ static void painting_menu_shade(painting_task_t *pt)
                                                     wuss_MENU_ITEM_NONE);
   wuss_menu_disable_item_live(pt->base.menu_handle, &pt->xform_menu,
                               PAINTING_XFORM_CROP, no_sel);
+
+  painting_palette_shade(pt);
 }
 
 /* redraw dirty after a change that may have resized the canvas from was,
@@ -1261,6 +1306,14 @@ static result_t painting_handle(wuss_window_t      *window,
       return painting_selection_op(pt, event->data.menu_select.index);
     if (event->data.menu_select.menu == &pt->xform_menu)
       return painting_transform(pt, event->data.menu_select.index);
+    if (event->data.menu_select.menu == &pt->pal_menu)
+    {
+      result_t rc;
+
+      rc = painting_palette_op(pt, event->data.menu_select.index);
+      painting_palette_shade(pt);
+      return rc;
+    }
     if (event->data.menu_select.menu == &pt->nozzle_menu)
     {
       painting_set_nozzle(pt, event->data.menu_select.index);
@@ -1316,11 +1369,6 @@ static result_t painting_handle(wuss_window_t      *window,
     }
     return result_OK;
 
-  case wuss_EVENT_PALETTE:
-    /* wuss_set_palette repaints the whole screen itself */
-    painting_swatches_track(pt);
-    return result_OK;
-
   case wuss_EVENT_CLOSE_ADJUST:
     if (window != pt->base.window)
       return result_OK;
@@ -1342,6 +1390,7 @@ static result_t painting_handle(wuss_window_t      *window,
     wuss_colourpicker_destroy(pt->picker);
     wuss_scaleview_destroy(pt->scaleview);
     paintingnew_destroy(pt->resize);
+    wuss_saveas_destroy(pt->pal_saveas);
     free(pt->lasso);
     if (pt->doc != NULL && --painting_docs == 0)
       paintingdoc_clip_free(&painting_clip);

@@ -29,8 +29,15 @@ Closing the canvas closes the toolbox and ends that instance. Each Create
 makes an instance of its own.
 
 - **SELECT** paints with the foreground colour, **ADJUST** with the
-  background colour. Clicking a swatch in the toolbox sets the foreground
-  (SELECT) or the background (ADJUST).
+  background colour. Clicking a swatch in the option bar sets the foreground
+  (SELECT) or the background (ADJUST). SELECT also selects the swatch.
+- Each canvas has its own palette of up to 32 colours, which starts as the
+  desktop's. Past 16 the swatches wrap to a second row. Menu > Palette has
+  Add foreground (which selects the colour instead if the palette already
+  holds it), Edit colour (the colour picker on the selected swatch),
+  Remove colour, Desktop palette (start again from the desktop's) and Save
+  palette, which writes a `.hex` file. Drop a `.hex` file on the canvas to
+  load it as the palette.
 - Tools: brush, wobbly brush, eraser (wipes to transparent), line, rect,
   filled rect, flood fill, spray, select (rectangle), lasso, magic wand and
   colour picker. Press `B` `K` `E` `L` `R` `X` `F` `P` `S` `O` `W` or `I` to
@@ -115,6 +122,10 @@ the image. Undo is dropped, as a saved step cannot apply to a canvas of another 
 with an alpha channel is composited over white. A paletted image is converted
 to `bgrx8888`, which loses any palette transparency. On failure the canvas is
 left as it was.
+
+A dropped file that is not an image is tried as a `.hex` palette with
+`palettes_load_hex`. The contents decide, not the name, as RISC OS has no
+extensions.
 
 ## Open points
 

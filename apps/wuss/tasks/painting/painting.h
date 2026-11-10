@@ -101,7 +101,8 @@ enum
   PAINTING_MENU_EDIT,      /* submenu: PAINTING_EDIT_* */
   PAINTING_MENU_SELECTION, /* submenu: PAINTING_SEL_* */
   PAINTING_MENU_TRANSFORM, /* submenu: PAINTING_XFORM_* */
-  PAINTING_MENU_NOZZLE,    /* submenu: one row per paintingdoc_nozzle_t */
+  PAINTING_MENU_PALETTE,   /* submenu: PAINTING_PAL_* */
+  PAINTING_MENU_NOZZLE,   /* submenu: one row per paintingdoc_nozzle_t */
   PAINTING_MENU__COUNT
 };
 
@@ -112,6 +113,20 @@ enum
                                                    * bounds */
   PAINTING_XFORM_SIZE, /* leaf: the Canvas size dialogue */
   PAINTING_XFORM__COUNT
+};
+
+/* the most colours a document's palette holds: two rows of swatches */
+#define PAINTING_PALETTE_MAX 32
+
+/* the Palette submenu's rows */
+enum
+{
+  PAINTING_PAL_ADD,     /* append the foreground colour */
+  PAINTING_PAL_EDIT,    /* open the colour picker on the selected swatch */
+  PAINTING_PAL_REMOVE,  /* remove the selected swatch */
+  PAINTING_PAL_DESKTOP, /* replace the palette with the desktop's */
+  PAINTING_PAL_SAVE,    /* leaf: Save As for a .hex palette file */
+  PAINTING_PAL__COUNT
 };
 
 /* the Edit submenu's rows */
@@ -207,13 +222,20 @@ typedef struct painting_task
   wuss_menu_item_t   xform_items[PAINTING_XFORM__COUNT];
   wuss_menu_t        xform_menu;
   paintingnew_t     *resize;    /* owned: Transform's "Canvas size" leaf */
+  wuss_menu_item_t   pal_items[PAINTING_PAL__COUNT];
+  wuss_menu_t        pal_menu;
+  wuss_saveas_t     *pal_saveas; /* owned: Palette's "Save" leaf */
+  colour_t           palette[PAINTING_PALETTE_MAX]; /* the document's own
+                                 * palette, which the swatches show */
+  int                npalette;
   wuss_menu_item_t   nozzle_items[paintingdoc_NOZZLE__COUNT];
   wuss_menu_t        nozzle_menu;
   dithermenu_t       dither;
   wuss_scaleview_t  *scaleview; /* owned: "Display"'s "Scale view" leaf */
   screen_dither_t    dithering; /* how the canvas is blitted */
   char               row_text[painting_SETTING__COUNT][WUSS_SLIDER_ROW_BUF];
-  wuss_swatches_t    swatches;  /* the desktop palette, as a colour grid */
+  wuss_swatches_t    swatches;  /* the palette, as a colour grid; selected is
+                                 * the swatch Edit and Remove act on */
   wuss_colourpicker_t *picker;  /* edits a chip; made on first use, else NULL */
   colour_t          *picking;   /* &fg or &bg: the chip the picker edits */
 }
