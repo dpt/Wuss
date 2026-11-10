@@ -172,6 +172,23 @@ static const char *const painting_grid_names[PAINTING_GRID__COUNT] =
 };
 static const int painting_grid_sizes[PAINTING_GRID__COUNT] = { 0, 8, 16, 32 };
 
+/* the Scale submenu's rows, as a percentage */
+static const char *const painting_scale_names[PAINTING_SCALE__COUNT] =
+{
+  "50%", "200%", "300%", "400%"
+};
+static const int painting_scales[PAINTING_SCALE__COUNT] = { 50, 200, 300, 400 };
+
+/* the canvas's size scaled by row of the Scale submenu, at least a pixel */
+static size2d_t painting_scaled_size(painting_task_t *pt, int row)
+{
+  size2d_t size;
+
+  size = paintingdoc_bitmap(pt->doc)->size;
+  return SIZE2D(MAX(size.w * painting_scales[row] / 100, 1),
+                MAX(size.h * painting_scales[row] / 100, 1));
+}
+
 /* the pixel clipboard, shared by every canvas so pixels copy between them,
  * and the number of canvases, the last of which empties it */
 static paintingdoc_clip_t painting_clip;
@@ -377,6 +394,13 @@ static result_t painting_build(painting_task_t            *task,
                  wuss_MENU_ITEM_DASHED);
   WUSS_MENU_ITEM(task->xform_items, PAINTING_XFORM_TRIM, "Trim",
                  wuss_MENU_ITEM_NONE);
+  for (i = 0; i < PAINTING_SCALE__COUNT; i++)
+    WUSS_MENU_ITEM(task->scale_items, i, painting_scale_names[i],
+                   wuss_MENU_ITEM_NONE);
+  WUSS_MENU_TITLE(task->scale_menu, "Scale", task->scale_items,
+                  NELEMS(task->scale_items));
+  WUSS_MENU_ITEM_MENU(task->xform_items, PAINTING_XFORM_SCALE, "Scale",
+                      wuss_MENU_ITEM_NONE, &task->scale_menu);
   WUSS_MENU_ITEM_WINDOW(task->xform_items, PAINTING_XFORM_SIZE, "Canvas size",
                         wuss_MENU_ITEM_PRE_OPEN,
                         paintingnew_window(task->resize));
@@ -970,7 +994,9 @@ static void painting_palette_shade(painting_task_t *pt)
 
 static void painting_menu_shade(painting_task_t *pt)
 {
-  int no_undo, no_redo, no_sel, no_clip, i;
+  int      no_undo, no_redo, no_sel, no_clip, i;
+  size2d_t size;
+  int      big;
 
   no_undo = !paintingdoc_can_undo(pt->doc);
   no_redo = !paintingdoc_can_redo(pt->doc);
@@ -1012,6 +1038,16 @@ static void painting_menu_shade(painting_task_t *pt)
                                                     wuss_MENU_ITEM_NONE);
   wuss_menu_disable_item_live(pt->base.menu_handle, &pt->xform_menu,
                               PAINTING_XFORM_CROP, no_sel);
+
+  /* a scale is shaded if it would outgrow the New dialogue's limit */
+  for (i = 0; i < PAINTING_SCALE__COUNT; i++)
+  {
+    size = painting_scaled_size(pt, i);
+    big  = size.w > PAINTINGNEW_SIZE_MAX || size.h > PAINTINGNEW_SIZE_MAX;
+    pt->scale_items[i].flags = big ? wuss_MENU_ITEM_DISABLED :
+                                     wuss_MENU_ITEM_NONE;
+    wuss_menu_disable_item_live(pt->base.menu_handle, &pt->scale_menu, i, big);
+  }
 
   painting_palette_shade(pt);
 }
@@ -1067,8 +1103,8 @@ static result_t painting_transform(painting_task_t *pt, int xform)
   pt->held = 0; /* abandon any stroke in progress */
 
   was = paintingdoc_bitmap(pt->doc)->size;
-  if (xform == PAINTING_XFORM_SIZE)
-    return result_OK; /* the leaf's own row: its dialogue does the work */
+  if (xform == PAINTING_XFORM_SIZE || xform == PAINTING_XFORM_SCALE)
+    return result_OK; /* a leaf's own row: its dialogue or menu does it */
   if (xform == PAINTING_XFORM_CROP)
     dirty = paintingdoc_resize(pt->doc, paintingdoc_selection_bounds(pt->doc),
                                pt->bg);
@@ -1498,6 +1534,17 @@ static result_t painting_handle(wuss_window_t      *window,
     }
     if (event->data.menu_select.menu == &pt->sym_menu)
       return painting_toggle_symmetry(pt, event->data.menu_select.index);
+    if (event->data.menu_select.menu == &pt->scale_menu)
+    {
+      size2d_t was;
+      box_t    dirty;
+
+      pt->held = 0;
+      was      = paintingdoc_bitmap(pt->doc)->size;
+      dirty    = paintingdoc_scale(pt->doc, painting_scaled_size(pt,
+                                     event->data.menu_select.index));
+      return painting_changed(pt, was, &dirty);
+    }
     if (event->data.menu_select.menu == &pt->grid_menu)
     {
       pt->grid = painting_grid_sizes[event->data.menu_select.index];

@@ -1916,6 +1916,34 @@ box_t paintingdoc_resize(paintingdoc_t *doc, box_t box, colour_t fill)
   return layers_replace(doc, next);
 }
 
+box_t paintingdoc_scale(paintingdoc_t *doc, size2d_t size)
+{
+  bitmap_t  next[PAINTINGDOC_LAYERS_MAX];
+  bitmap_t *scaled;
+  int       i, j;
+
+  if (size.w <= 0 || size.h <= 0)
+    return (box_t) BOX_INIT;
+
+  for (i = 0; i < doc->nlayers; i++)
+  {
+    if (bitmap_resize(&doc->layers[i].bm, size, bitmap_resample_NEAREST, 0,
+                      &scaled) != result_OK)
+    {
+      for (j = 0; j < i; j++)
+        free(next[j].base);
+      logf_warning("painting: no memory to scale the canvas");
+      return (box_t) BOX_INIT;
+    }
+    next[i] = *scaled; /* keep its pixels, which canvas_make's match */
+    free(scaled);
+  }
+
+  paintingdoc_select_none(doc);
+  checkpoint_all(doc);
+  return layers_replace(doc, next);
+}
+
 box_t paintingdoc_trim_bounds(const paintingdoc_t *doc)
 {
   box_t           box;

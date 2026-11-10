@@ -433,6 +433,11 @@ box_t paintingdoc_transform_selection(paintingdoc_t      *doc,
  * paintingdoc_transform; also an empty box if box is */
 box_t paintingdoc_resize(paintingdoc_t *doc, box_t box, colour_t fill);
 
+/* scale every layer to size by nearest neighbour, dropping the selection.
+ * takes its own checkpoint. returns as paintingdoc_transform; also an empty
+ * box if size is */
+box_t paintingdoc_scale(paintingdoc_t *doc, size2d_t size);
+
 /* the bounds of the canvas's content, for a trim: the bottom layer's pixels
  * that differ from its top left one, and the other layers' pixels that are
  * not wholly transparent, hidden layers included. an empty box if there are

@@ -800,6 +800,29 @@ result_t paintingdoc_test(const char *resources)
   CHECK(paintingdoc_bitmap(doc)->size.w == 4 && px(doc, 2, 1) == RED);
   paintingdoc_destroy(doc);
 
+  printf("test: scale resizes every layer by nearest neighbour; undo puts "
+         "the old size back\n");
+
+  /* a 2x2 white canvas, red at 1,0 */
+  CHECK(paintingdoc_create(SIZE2D(2, 2), &doc) == result_OK);
+  paintingdoc_stroke(doc, POINT(1, 0), POINT(1, 0), 1, red());
+  CHECK(paintingdoc_layer_add(doc) == result_OK);
+  paintingdoc_stroke(doc, POINT(0, 1), POINT(0, 1), 1, black());
+
+  dirty = paintingdoc_scale(doc, SIZE2D(4, 4));
+  CHECK(dirty.x1 == 4 && dirty.y1 == 4);
+  CHECK(paintingdoc_bitmap(doc)->size.w == 4);
+  CHECK(px(doc, 2, 0) == RED && px(doc, 3, 1) == RED);
+  CHECK(px(doc, 1, 1) == WHITE && px(doc, 1, 3) == BLACK);
+  CHECK(paintingdoc_layer_get(doc, 1)->bm.size.w == 4);
+
+  dirty = paintingdoc_scale(doc, SIZE2D(0, 4));
+  CHECK(box_is_empty(&dirty));
+
+  paintingdoc_undo(doc);
+  CHECK(paintingdoc_bitmap(doc)->size.w == 2 && px(doc, 1, 0) == RED);
+  paintingdoc_destroy(doc);
+
   printf("test: trim bounds cover the bottom layer's pixels unlike its "
          "corner and the opaque pixels above\n");
 

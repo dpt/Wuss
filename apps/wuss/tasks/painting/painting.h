@@ -130,9 +130,13 @@ enum
   PAINTING_XFORM_CROP = paintingdoc_XFORM__COUNT, /* crop to the selection's
                                                    * bounds */
   PAINTING_XFORM_TRIM, /* crop to the content's bounds */
+  PAINTING_XFORM_SCALE, /* submenu: one row per painting_scales entry */
   PAINTING_XFORM_SIZE, /* leaf: the Canvas size dialogue */
   PAINTING_XFORM__COUNT
 };
+
+/* the Scale submenu's rows */
+#define PAINTING_SCALE__COUNT 4
 
 /* the most colours a document's palette holds: two rows of swatches */
 #define PAINTING_PALETTE_MAX 32
@@ -249,6 +253,8 @@ typedef struct painting_task
   wuss_menu_t        sel_menu;
   wuss_menu_item_t   xform_items[PAINTING_XFORM__COUNT];
   wuss_menu_t        xform_menu;
+  wuss_menu_item_t   scale_items[PAINTING_SCALE__COUNT];
+  wuss_menu_t        scale_menu;
   paintingnew_t     *resize;    /* owned: Transform's "Canvas size" leaf */
   wuss_menu_item_t   pal_items[PAINTING_PAL__COUNT];
   wuss_menu_t        pal_menu;
