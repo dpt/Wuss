@@ -766,8 +766,9 @@ static result_t painting_mouse(painting_task_t    *pt,
                                pt->zoom));
 
   /* tiled, a stroke pressed on a copy of the canvas lands on the canvas, and
-   * keeps the same shift as it runs on over the edges */
-  if (event->data.mouse.action == wuss_MOUSE_DOWN && !pt->held)
+   * keeps the same shift as it runs on over the edges. hovering follows the
+   * pointer, so the preview tracks a change of tiling or canvas size */
+  if (!pt->held)
     pt->wrap = painting_wrap(pt, p);
   p = POINT(p.x - pt->wrap.x, p.y - pt->wrap.y);
 
