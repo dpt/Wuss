@@ -743,6 +743,12 @@ static point_t painting_wrap(const painting_task_t *pt, point_t p)
                painting_floor_div(p.y, bm->size.h) * bm->size.h);
 }
 
+/* the current layer is locked, so takes no paint */
+static int painting_locked(const painting_task_t *pt)
+{
+  return paintingdoc_layer_get(pt->doc, paintingdoc_layer(pt->doc))->locked;
+}
+
 /* a MOVE always reports the SELECT button, hovering or not, so a stroke in
  * progress is tracked in pt->held instead */
 static result_t painting_mouse(painting_task_t    *pt,
@@ -775,9 +781,8 @@ static result_t painting_mouse(painting_task_t    *pt,
       return result_OK;
 
     /* a locked layer takes no paint: only the tools that select or pick act
-     * on it. ponytail: Edit's Fill, Clear, Cut and Paste still reach it;
-     * shade them if that matters */
-    if (paintingdoc_layer_get(pt->doc, paintingdoc_layer(pt->doc))->locked &&
+     * on it */
+    if (painting_locked(pt) &&
         pt->tool != painting_TOOL_PICK && pt->tool != painting_TOOL_WAND &&
         pt->tool != painting_TOOL_SELECT && pt->tool != painting_TOOL_LASSO)
       return result_OK;
@@ -1103,6 +1108,8 @@ static result_t painting_transform(painting_task_t *pt, int xform)
   else if (xform == PAINTING_XFORM_TRIM)
     dirty = paintingdoc_resize(pt->doc, paintingdoc_trim_bounds(pt->doc),
                                pt->bg);
+  else if (paintingdoc_has_selection(pt->doc) && painting_locked(pt))
+    return result_OK; /* the selection's pixels are on a locked layer */
   else if (paintingdoc_has_selection(pt->doc))
     dirty = paintingdoc_transform_selection(pt->doc,
                                             (paintingdoc_xform_t) xform,
@@ -1277,8 +1284,8 @@ static result_t painting_nudge(painting_task_t *pt, int code, int mods)
 
   if (!paintingdoc_has_selection(pt->doc))
     return result_WUSS_KEY_UNCLAIMED;
-  if (pt->held)
-    return result_OK; /* a drag is moving it already */
+  if (pt->held || painting_locked(pt))
+    return result_OK; /* a drag is moving it already, or it may not move */
 
   step  = (mods & wuss_KEY_MOD_SHIFT) ? 8 : 1;
   dx    = code == wuss_KEY_LEFT ? -step : code == wuss_KEY_RIGHT ? step : 0;
@@ -1365,6 +1372,10 @@ static void painting_edit(painting_task_t *pt, int op)
   point_t  p;
   box_t    old;
   box_t    now;
+
+  /* only Copy leaves a locked layer be */
+  if (op != PAINTING_EDIT_COPY && painting_locked(pt))
+    return;
 
   switch (op)
   {
