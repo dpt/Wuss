@@ -1275,16 +1275,15 @@ static result_t painting_nudge(painting_task_t *pt, int code, int mods)
   int   dx, dy;
   box_t dirty;
 
+  if (!paintingdoc_has_selection(pt->doc))
+    return result_WUSS_KEY_UNCLAIMED;
   if (pt->held)
     return result_OK; /* a drag is moving it already */
-  if (paintingdoc_lift(pt->doc) != result_OK)
-    return result_WUSS_KEY_UNCLAIMED;
 
   step  = (mods & wuss_KEY_MOD_SHIFT) ? 8 : 1;
   dx    = code == wuss_KEY_LEFT ? -step : code == wuss_KEY_RIGHT ? step : 0;
   dy    = code == wuss_KEY_UP   ? -step : code == wuss_KEY_DOWN  ? step : 0;
-  dirty = paintingdoc_place(pt->doc, dx, dy, &pt->bg);
-  paintingdoc_drop(pt->doc);
+  dirty = paintingdoc_nudge(pt->doc, dx, dy, &pt->bg);
   painting_invalidate_box(pt, &dirty);
   painting_title(pt);
 

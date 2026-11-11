@@ -376,6 +376,15 @@ box_t paintingdoc_place(paintingdoc_t  *doc,
  * lifted, floating, until something else changes the canvas */
 void paintingdoc_drop(paintingdoc_t *doc);
 
+/* move the selected pixels dx,dy further, lifting them first unless lifted.
+ * they stay lifted, so a run of nudges is one undo step and moving back
+ * restores what they passed over. as paintingdoc_place otherwise; does
+ * nothing if there is no selection */
+box_t paintingdoc_nudge(paintingdoc_t  *doc,
+                        int             dx,
+                        int             dy,
+                        const colour_t *leave);
+
 /* the clipboard: copied pixels, with no canvas of their own */
 typedef struct paintingdoc_clip
 {

@@ -1515,6 +1515,30 @@ void paintingdoc_drop(paintingdoc_t *doc)
   lift_end(doc);
 }
 
+box_t paintingdoc_nudge(paintingdoc_t  *doc,
+                        int             dx,
+                        int             dy,
+                        const colour_t *leave)
+{
+  box_t dirty;
+
+  if (doc->lifted == NULL)
+  {
+    if (paintingdoc_lift(doc) != result_OK)
+      return (box_t) BOX_INIT;
+    doc->d = POINT(0, 0);
+  }
+
+  dirty = paintingdoc_place(doc, doc->d.x + dx, doc->d.y + dy, leave);
+
+  /* floating pixels rebase so a later drag starts from here; lifted ones
+   * stay lifted from where they began */
+  if (doc->floating.base != NULL)
+    paintingdoc_drop(doc);
+
+  return dirty;
+}
+
 /* ----------------------------------------------------------------------- */
 
 void paintingdoc_clip_free(paintingdoc_clip_t *clip)

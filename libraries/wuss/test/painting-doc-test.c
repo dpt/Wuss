@@ -648,6 +648,30 @@ result_t paintingdoc_test(const char *resources)
 
   paintingdoc_destroy(doc);
 
+  printf("test: nudges keep the pixels lifted: there and back restores what "
+         "they passed over, as one undo step\n");
+
+  CHECK(paintingdoc_create(SIZE2D(8, 1), &doc) == result_OK);
+  paintingdoc_rect(doc, POINT(0, 0), POINT(0, 0), 1, 1, red());
+  paintingdoc_rect(doc, POINT(2, 0), POINT(2, 0), 1, 1, black());
+  CHECK(paintingdoc_select_rect(doc, (box_t) { 0, 0, 1, 1 },
+                                paintingdoc_SELOP_REPLACE) == result_OK);
+  leave = clear();
+  for (i = 0; i < 3; i++)
+    (void) paintingdoc_nudge(doc, 1, 0, &leave);
+  CHECK(px(doc, 3, 0) == RED);
+  for (i = 0; i < 3; i++)
+    (void) paintingdoc_nudge(doc, -1, 0, &leave);
+  CHECK(px(doc, 0, 0) == RED && px(doc, 2, 0) == BLACK);
+  (void) paintingdoc_nudge(doc, 1, 0, &leave);
+  paintingdoc_undo(doc);
+  CHECK(px(doc, 0, 0) == RED && px(doc, 1, 0) == WHITE);
+  CHECK(px(doc, 2, 0) == BLACK);
+  paintingdoc_undo(doc); /* the black rect: the nudges were one step */
+  CHECK(px(doc, 0, 0) == RED && px(doc, 2, 0) == WHITE);
+
+  paintingdoc_destroy(doc);
+
   printf("test: pasted pixels float: moving them leaves the canvas beneath "
          "as it was\n");
 
