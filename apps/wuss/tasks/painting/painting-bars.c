@@ -125,7 +125,8 @@ static const unsigned int painting_tool_settings[painting_TOOL__COUNT] =
 #undef SETTING
 
 /* where each tool's button sits in the toolbox: its column, row and group.
- * outline shapes are on the left with their filled forms beside them */
+ * the tools that select and move, those that paint, then the shapes, with
+ * outline shapes on the left and their filled forms beside them */
 static const struct
 {
   int col, row, group;
@@ -135,24 +136,24 @@ painting_tool_cells[painting_TOOL__COUNT] =
   [painting_TOOL_SELECT]       = { 0, 0, 0 },
   [painting_TOOL_LASSO]        = { 1, 0, 0 },
   [painting_TOOL_WAND]         = { 0, 1, 0 },
-  [painting_TOOL_PICK]         = { 1, 1, 0 },
-  [painting_TOOL_MOVE]         = { 0, 2, 0 },
+  [painting_TOOL_MOVE]         = { 1, 1, 0 },
 
-  [painting_TOOL_PENCIL]       = { 0, 3, 1 },
-  [painting_TOOL_PAINTBRUSH]   = { 1, 3, 1 },
-  [painting_TOOL_WOBBLE]       = { 0, 4, 1 },
-  [painting_TOOL_SPRAY]        = { 1, 4, 1 },
+  [painting_TOOL_PENCIL]       = { 0, 2, 1 },
+  [painting_TOOL_PAINTBRUSH]   = { 1, 2, 1 },
+  [painting_TOOL_WOBBLE]       = { 0, 3, 1 },
+  [painting_TOOL_SPRAY]        = { 1, 3, 1 },
+  [painting_TOOL_FILL]         = { 0, 4, 1 },
+  [painting_TOOL_GRADIENT]     = { 1, 4, 1 },
   [painting_TOOL_ERASER]       = { 0, 5, 1 },
-  [painting_TOOL_FILL]         = { 1, 5, 1 },
-  [painting_TOOL_GRADIENT]     = { 0, 6, 1 },
+  [painting_TOOL_PICK]         = { 1, 5, 1 },
 
+  [painting_TOOL_LINE]         = { 0, 6, 2 },
   [painting_TOOL_RECT]         = { 0, 7, 2 },
   [painting_TOOL_RECT_FILL]    = { 1, 7, 2 },
   [painting_TOOL_ELLIPSE]      = { 0, 8, 2 },
   [painting_TOOL_ELLIPSE_FILL] = { 1, 8, 2 },
   [painting_TOOL_PATH]         = { 0, 9, 2 },
-  [painting_TOOL_PATH_FILL]    = { 1, 9, 2 },
-  [painting_TOOL_LINE]         = { 0, 10, 2 }
+  [painting_TOOL_PATH_FILL]    = { 1, 9, 2 }
 };
 
 /* the tool's button box in toolbox content space */

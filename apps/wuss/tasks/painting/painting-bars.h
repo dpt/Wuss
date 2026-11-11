@@ -15,7 +15,7 @@
 #define TB_TOOL_SIZE 24  /* button size, including its bevel */
 #define TB_GROUP_GAP 2   /* extra space between groups */
 #define TB_COLUMNS   2
-#define TB_ROWS      11  /* rows used by painting_tool_cells */
+#define TB_ROWS      10  /* rows used by painting_tool_cells */
 #define TB_GROUPS    3   /* groups used by painting_tool_cells */
 #define TB_W         (TB_MARGIN + TB_COLUMNS * TB_TOOL_CELL - \
                       (TB_TOOL_CELL - TB_TOOL_SIZE) + TB_MARGIN)
