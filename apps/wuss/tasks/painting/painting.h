@@ -65,6 +65,10 @@ painting_setting_t;
 #define PAINTING_SIZEBAR_ICONS (3 * painting_SETTING__COUNT + \
                                 PAINTING_POT_LEVELS)
 
+/* the most icons the layers bar holds: show, edit and name per layer, the
+ * opacity label and slider and the four buttons */
+#define PAINTING_LAYERBAR_ICONS (3 * PAINTINGDOC_LAYERS_MAX + 2 + 4)
+
 /* the toolbox's radio buttons, in this order */
 typedef enum painting_tool
 {
@@ -264,6 +268,13 @@ typedef struct painting_task
                                  * images, empty to full, all but one hidden;
                                  * [0] NULL if not shown */
   int                pot_shown; /* the level the gauge shows */
+  wuss_icon_t       *layerbar_icons[PAINTING_LAYERBAR_ICONS]; /* three per
+                                 * layer row, then the opacity label and
+                                 * slider, then the buttons */
+  int                nlayerbar_rows; /* the layer rows the icons are for; 0
+                                      * until made */
+  int                layerbar_cur; /* the current layer the icons are for:
+                                    * its name is on the highlight */
   wuss_slider_row_t  rows[painting_SETTING__COUNT]; /* live only for the
                                  * slider settings the current tool shows */
   wuss_menu_item_t   menu_items[PAINTING_MENU__COUNT];

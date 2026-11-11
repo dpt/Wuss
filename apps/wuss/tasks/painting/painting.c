@@ -305,11 +305,11 @@ static result_t painting_build(painting_task_t            *task,
   if (rc == result_OK)
     rc = wuss_window_create_at(delegate,
                                &place,
-                               SIZE2D(LB_W, LB_H(1)),
+                               SIZE2D(LB_W, LB_H(task->base.wuss, 1)),
                                NULL,
                                wuss_WINDOW_NO_TITLEBAR,
                                wuss_BACKDROP_COLOUR(wuss_COLOUR_WINDOW),
-                               SIZE2D(LB_W, LB_H(1)),
+                               SIZE2D(LB_W, LB_H(task->base.wuss, 1)),
                                SIZE2D(0, 0),
                                &task->layerbar);
   if (rc == result_OK)
@@ -343,6 +343,7 @@ static result_t painting_build(painting_task_t            *task,
   rc = painting_toolbar_icons(task);
   if (rc != result_OK)
     return rc;
+  painting_layers_changed(task);
 
   rc = wuss_scaleview_create(&task->scaleview, task->base.wuss,
                              painting_scaleview_choice, task);
@@ -772,6 +773,14 @@ static result_t painting_mouse(painting_task_t    *pt,
      * the stroke and strand what is drawn so far */
     if (pt->held ||
         !(event->data.mouse.button & (wuss_BUTTON_SELECT | wuss_BUTTON_ADJUST)))
+      return result_OK;
+
+    /* a locked layer takes no paint: only the tools that select or pick act
+     * on it. ponytail: Edit's Fill, Clear, Cut and Paste still reach it;
+     * shade them if that matters */
+    if (paintingdoc_layer_get(pt->doc, paintingdoc_layer(pt->doc))->locked &&
+        pt->tool != painting_TOOL_PICK && pt->tool != painting_TOOL_WAND &&
+        pt->tool != painting_TOOL_SELECT && pt->tool != painting_TOOL_LASSO)
       return result_OK;
 
     pt->held   = (event->data.mouse.button & wuss_BUTTON_SELECT) ?
@@ -1540,6 +1549,16 @@ static result_t painting_handle(wuss_window_t      *window,
     return painting_mouse(pt, event);
 
   case wuss_EVENT_ICON:
+    if (window == pt->layerbar)
+    {
+      result_t rc;
+      box_t    dirty;
+
+      rc = painting_layerbar_icon(pt, event, &dirty);
+      if (rc == result_OK && !box_is_empty(&dirty))
+        rc = painting_changed(pt, paintingdoc_bitmap(pt->doc)->size, &dirty);
+      return rc;
+    }
     return painting_toolbar_icon(pt, event);
 
   case wuss_EVENT_RELAYOUT:

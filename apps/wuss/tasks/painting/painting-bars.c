@@ -828,9 +828,11 @@ void painting_step_size(painting_task_t *pt, int delta)
                                pt->size);
 }
 
+static result_t painting_layerbar_fit(painting_task_t *pt, int force);
+
 /* refit the size bar's height to the font, re-drop the toolbox and layers
  * bar to sit below it, or at the top if it is hidden, and rebuild the
- * settings */
+ * settings and the layers bar */
 result_t painting_sizebar_relayout(painting_task_t *pt)
 {
   result_t rc;
@@ -855,6 +857,9 @@ result_t painting_sizebar_relayout(painting_task_t *pt)
     wuss_window_detach(pt->layerbar);
     rc = wuss_window_attach(pt->layerbar, pt->base.window, wuss_EDGE_RIGHT,
                             wuss_ALIGN_TOP, drop);
+    if (rc == result_OK)
+      rc = painting_layerbar_fit(pt, 1); /* the slider's height follows the
+                                          * font */
   }
   if (rc != result_OK)
     return rc;
@@ -864,7 +869,7 @@ result_t painting_sizebar_relayout(painting_task_t *pt)
 
 /* ----------------------------------------------------------------------- */
 
-/* the layers bar's buttons, in order across its top */
+/* the layers bar's buttons, in order across its foot */
 enum
 {
   LB_ADD,
@@ -898,27 +903,173 @@ static const char *painting_layer_names[LB_BUTTONS] =
   "layer-lower"
 };
 
-/* button i at (x, y), faded toward ground when off */
-static result_t painting_layer_button(painting_task_t *pt,
-                                      screen_t        *scr,
-                                      int              x,
-                                      int              y,
-                                      int              i,
-                                      int              on,
-                                      colour_t         ground)
+/* the icon indices of the layers bar, made for n layer rows: row r's show
+ * toggle, edit toggle and name, then the opacity slider and button i */
+#define LB_ICON_SHOW(r)      (3 * (r))
+#define LB_ICON_EDIT(r)      (3 * (r) + 1)
+#define LB_ICON_NAME(r)      (3 * (r) + 2)
+#define LB_ICON_SLIDER(n)    (3 * (n) + 1)
+#define LB_ICON_BUTTON(n, i) (3 * (n) + 2 + (i))
+#define LB_ICON_COUNT(n)     (3 * (n) + 2 + LB_BUTTONS)
+
+/* a latching image button at bbox: grouped alone, so it latches without
+ * clearing another, and filled when latched */
+static void painting_layer_toggle(wuss_icon_spec_t *spec,
+                                  box_t             bbox,
+                                  const char       *name,
+                                  int               group)
 {
-  const bitmap_t *bm;
-
-  bm = wuss_task_iconpool_find(pt->base.delegate, painting_layer_names[i]);
-  if (bm == NULL)
-    return result_OK;
-
-  if (on)
-    return screen_copy_bitmap(scr, x, y, bm);
-
-  return screen_copy_bitmap_faded(scr, x, y, bm, ground, 128);
+  spec->bbox            = bbox;
+  spec->type            = wuss_ICON_TYPE_BITMAP;
+  spec->flags           = wuss_ICON_FLAGS_INTERACTIVE;
+  spec->u.bitmap.border = wuss_ICON_BORDER_RIDGE;
+  spec->u.bitmap.group  = group;
+  spec->bg              = wuss_COLOUR_BUTTON_PRESSED;
+  spec->u.bitmap.name   = name;
 }
 
+/* replace the layers bar's icons with a row each for n layers, the opacity
+ * slider and the buttons */
+static result_t painting_layerbar_build(painting_task_t *pt, int n)
+{
+  result_t         rc;
+  int              i, r, y;
+  wuss_icon_spec_t specs[PAINTING_LAYERBAR_ICONS];
+  int              w;
+  int              slider_h;
+  int              cur;
+
+  if (pt->nlayerbar_rows > 0)
+    for (i = 0; i < LB_ICON_COUNT(pt->nlayerbar_rows); i++)
+      wuss_icon_delete(pt->layerbar, pt->layerbar_icons[i]);
+  pt->nlayerbar_rows = 0;
+
+  memset(specs, 0, sizeof(specs));
+  cur = paintingdoc_layer(pt->doc);
+
+  for (r = 0; r < n; r++)
+  {
+    y = r * LB_ROW + 1;
+    painting_layer_toggle(&specs[LB_ICON_SHOW(r)],
+                          (box_t) BOX_POS_SIZE(LB_SHOW_X, y,
+                                               LB_TOGGLE, LB_TOGGLE),
+                          "layer-show", 1 + 2 * r);
+    painting_layer_toggle(&specs[LB_ICON_EDIT(r)],
+                          (box_t) BOX_POS_SIZE(LB_EDIT_X, y,
+                                               LB_TOGGLE, LB_TOGGLE),
+                          "layer-edit", 2 + 2 * r);
+    wuss_icon_spec_label(&specs[LB_ICON_NAME(r)],
+                         (box_t) BOX_POS_SIZE(LB_NAME_X, y,
+                                              LB_W - LB_MARGIN - LB_NAME_X,
+                                              LB_TOGGLE),
+                         "Layer", 0);
+  }
+  /* text fills its glyph cells with its ground, so the current row's name
+   * takes the highlight as its own */
+  specs[LB_ICON_NAME(n - 1 - cur)].bg = wuss_COLOUR_BUTTON_PRESSED;
+
+  slider_h = LB_SLIDER_H(pt->base.wuss);
+  w        = task_text_width(pt->base.wuss, "Opacity") + 2;
+  wuss_icon_spec_label(&specs[LB_ICON_SLIDER(n) - 1],
+                       (box_t) BOX_POS_SIZE(LB_MARGIN, LB_OPACITY_Y(n),
+                                            w, slider_h),
+                       "Opacity", 0);
+  wuss_icon_spec_slider(&specs[LB_ICON_SLIDER(n)],
+                        (box_t) BOX_POS_SIZE(LB_MARGIN + w + LB_GAP,
+                                             LB_OPACITY_Y(n),
+                                             LB_W - 2 * LB_MARGIN - w -
+                                             LB_GAP,
+                                             slider_h),
+                        wuss_SLIDER_HORIZONTAL, 0, 255, 255);
+
+  for (i = 0; i < LB_BUTTONS; i++)
+  {
+    specs[LB_ICON_BUTTON(n, i)].bbox =
+      (box_t) BOX_POS_SIZE(LB_MARGIN + i * (LB_BUTTON + LB_GAP),
+                           LB_BUTTONS_Y(pt->base.wuss, n),
+                           LB_BUTTON, LB_BUTTON);
+    specs[LB_ICON_BUTTON(n, i)].type            = wuss_ICON_TYPE_BITMAP;
+    specs[LB_ICON_BUTTON(n, i)].flags           = wuss_ICON_FLAGS_INTERACTIVE;
+    specs[LB_ICON_BUTTON(n, i)].u.bitmap.border = wuss_ICON_BORDER_RIDGE;
+    specs[LB_ICON_BUTTON(n, i)].u.bitmap.name   = painting_layer_names[i];
+  }
+
+  rc = wuss_icon_create_array(pt->layerbar, specs, LB_ICON_COUNT(n),
+                              pt->layerbar_icons);
+  if (rc != result_OK)
+    return rc;
+
+  pt->nlayerbar_rows = n;
+  pt->layerbar_cur   = cur;
+
+  return result_OK;
+}
+
+/* bring the toggles, the slider and the buttons into step with the layers */
+static void painting_layerbar_sync(painting_task_t *pt)
+{
+  int                        n, cur;
+  int                        r;
+  const paintingdoc_layer_t *layer;
+  int                        i;
+
+  n   = pt->nlayerbar_rows;
+  cur = paintingdoc_layer(pt->doc);
+
+  for (r = 0; r < n; r++)
+  {
+    layer = paintingdoc_layer_get(pt->doc, n - 1 - r);
+    wuss_icon_set_selected(pt->layerbar, pt->layerbar_icons[LB_ICON_SHOW(r)],
+                           layer->visible);
+    wuss_icon_set_selected(pt->layerbar, pt->layerbar_icons[LB_ICON_EDIT(r)],
+                           !layer->locked);
+  }
+
+  wuss_icon_set_value(pt->layerbar, pt->layerbar_icons[LB_ICON_SLIDER(n)],
+                      paintingdoc_layer_get(pt->doc, cur)->opacity);
+
+  for (i = 0; i < LB_BUTTONS; i++)
+    wuss_icon_set_disabled(pt->layerbar,
+                           pt->layerbar_icons[LB_ICON_BUTTON(n, i)],
+                           !painting_layer_can(n, cur, i));
+}
+
+/* fit the bar to the layers, rebuilding its icons if their number or the
+ * current layer changed, or force is set */
+static result_t painting_layerbar_fit(painting_task_t *pt, int force)
+{
+  result_t rc;
+  int      n;
+  size2d_t size;
+
+  n = paintingdoc_layers(pt->doc);
+  if (force || n != pt->nlayerbar_rows)
+  {
+    size = SIZE2D(LB_W, LB_H(pt->base.wuss, n));
+    rc   = wuss_window_set_doc(pt->layerbar, size);
+    if (rc == result_OK)
+      rc = wuss_window_resize(pt->layerbar, size);
+    if (rc == result_OK)
+      rc = painting_layerbar_build(pt, n);
+    if (rc != result_OK)
+      return rc;
+  }
+  else if (paintingdoc_layer(pt->doc) != pt->layerbar_cur)
+  {
+    /* move the name's highlight */
+    rc = painting_layerbar_build(pt, n);
+    if (rc != result_OK)
+      return rc;
+  }
+
+  painting_layerbar_sync(pt);
+  wuss_window_invalidate_visible(pt->layerbar);
+
+  return result_OK;
+}
+
+/* the rules between the rows and the toggles, the current row's highlight
+ * behind its thumbnail and name, and the thumbnails. the icons draw over */
 result_t painting_layerbar_redraw(painting_task_t    *pt,
                                   const wuss_event_t *event)
 {
@@ -929,7 +1080,8 @@ result_t painting_layerbar_redraw(painting_task_t    *pt,
   int                        ox, oy;
   int                        n, cur;
   wuss_config_t              config;
-  colour_t                   ground;
+  const colour_t            *palette;
+  colour_t                   rule;
   int                        i, r, y;
   const paintingdoc_layer_t *layer;
   int                        m, tw, th;
@@ -941,48 +1093,40 @@ result_t painting_layerbar_redraw(painting_task_t    *pt,
   black  = colour_rgb(0x00, 0x00, 0x00);
   ox     = bounds->x0 - event->data.redraw.scroll.x;
   oy     = bounds->y0 - event->data.redraw.scroll.y;
-  n      = paintingdoc_layers(pt->doc);
+  n      = pt->nlayerbar_rows;
   cur    = paintingdoc_layer(pt->doc);
 
   wuss_get_config(pt->base.wuss, &config);
-  ground = wuss_get_palette(pt->base.wuss, NULL)[config.body.window];
+  palette = wuss_get_palette(pt->base.wuss, NULL);
+  rule    = palette[config.bevel.dark];
 
-  for (i = 0; i < LB_BUTTONS; i++)
-  {
-    rc = painting_layer_button(pt, scr,
-                               ox + LB_MARGIN + i * (LB_BUTTON + LB_GAP),
-                               oy + LB_MARGIN, i, painting_layer_can(n, cur, i),
-                               ground);
-    if (rc != result_OK)
-      return rc;
-  }
+  if (n > 0)
+    screen_draw_line(scr, ox + LB_RULE_X, oy, ox + LB_RULE_X,
+                     oy + n * LB_ROW - 1, rule);
 
   /* a row per layer, the top one first */
   for (r = 0; r < n; r++)
   {
     i     = n - 1 - r;
-    y     = oy + LB_ROWS_Y + r * LB_ROW;
+    y     = oy + r * LB_ROW;
     layer = paintingdoc_layer_get(pt->doc, i);
 
     if (i == cur)
-      screen_fill_rect(scr, ox, y, SIZE2D(LB_W, LB_ROW),
-                       colour_rgb(0xFF, 0xFF, 0xFF));
+      screen_fill_rect(scr, ox + LB_RULE_X + 1, y,
+                       SIZE2D(LB_W - LB_RULE_X - 1, LB_ROW - 1),
+                       palette[config.button.pressed]);
+    screen_draw_line(scr, ox, y + LB_ROW - 1, ox + LB_W - 1, y + LB_ROW - 1,
+                     rule);
 
-    /* the show box, filled when shown */
-    if (layer->visible)
-      screen_fill_rect(scr, ox + LB_EYE_X + 2, y + (LB_ROW - LB_EYE) / 2 + 2,
-                       SIZE2D(LB_EYE - 4, LB_EYE - 4), black);
-    screen_draw_rect(scr, ox + LB_EYE_X, y + (LB_ROW - LB_EYE) / 2,
-                     SIZE2D(LB_EYE, LB_EYE), black);
-
-    /* the thumbnail, fitted into a square over the checks */
-    m           = MAX(layer->bm.size.w, layer->bm.size.h);
-    tw          = MAX(layer->bm.size.w * LB_THUMB / m, 1);
-    th          = MAX(layer->bm.size.h * LB_THUMB / m, 1);
-    scale.xmul  = scale.ymul = LB_THUMB;
-    scale.xdiv  = scale.ydiv = m;
-    thumb       = (box_t) BOX_POS_SIZE(ox + LB_THUMB_X + (LB_THUMB - tw) / 2,
-                                       y + (LB_ROW - th) / 2, tw, th);
+    /* the thumbnail, fitted into a square over the checks, centred beside
+     * the toggles */
+    m          = MAX(layer->bm.size.w, layer->bm.size.h);
+    tw         = MAX(layer->bm.size.w * LB_THUMB / m, 1);
+    th         = MAX(layer->bm.size.h * LB_THUMB / m, 1);
+    scale.xmul = scale.ymul = LB_THUMB;
+    scale.xdiv = scale.ydiv = m;
+    thumb      = (box_t) BOX_POS_SIZE(ox + LB_THUMB_X + (LB_THUMB - tw) / 2,
+                                      y + 1 + (LB_TOGGLE - th) / 2, tw, th);
     task_draw_checks(scr, &thumb, POINT(thumb.x0, thumb.y0));
     rc = screen_copy_bitmap_scaled_dithered(scr, &thumb, &layer->bm, &scale,
                                             pt->dithering);
@@ -990,31 +1134,19 @@ result_t painting_layerbar_redraw(painting_task_t    *pt,
       return rc;
     screen_draw_rect(scr, thumb.x0 - 1, thumb.y0 - 1,
                      SIZE2D(tw + 2, th + 2), black);
-
-    /* the opacity bar, filled in proportion */
-    y += (LB_ROW - LB_BAR_H) / 2;
-    if (layer->opacity > 0)
-      screen_fill_rect(scr, ox + LB_BAR_X, y,
-                       SIZE2D(layer->opacity * LB_BAR_W / 255, LB_BAR_H),
-                       colour_rgb(0x66, 0x66, 0x99));
-    screen_draw_rect(scr, ox + LB_BAR_X, y, SIZE2D(LB_BAR_W, LB_BAR_H),
-                     black);
   }
 
   return result_OK;
 }
 
-/* SELECT on a button runs it. on a layer's row: on its show box shows or
- * hides it, on its opacity bar sets its opacity, elsewhere makes it
- * current. dirty is set to the canvas if it changed, else empty */
+/* SELECT on a layer's row, past its toggles, makes it current. dirty is set
+ * to the canvas if it changed, else empty */
 result_t painting_layerbar_mouse(painting_task_t    *pt,
                                  const wuss_event_t *event,
                                  box_t              *dirty)
 {
-  result_t                   rc;
   point_t                    p;
-  int                        n, cur;
-  int                        i;
+  int                        r;
   const paintingdoc_layer_t *layer;
 
   *dirty = (box_t) BOX_INIT;
@@ -1023,47 +1155,88 @@ result_t painting_layerbar_mouse(painting_task_t    *pt,
       (event->data.mouse.button & wuss_BUTTON_SELECT) == 0)
     return result_OK;
 
-  rc  = result_OK;
-  p   = event->data.mouse.point;
-  n   = paintingdoc_layers(pt->doc);
-  cur = paintingdoc_layer(pt->doc);
+  p = event->data.mouse.point;
+  r = p.y / LB_ROW;
+  if (p.x <= LB_RULE_X || p.y < 0 || r >= pt->nlayerbar_rows)
+    return result_OK;
 
-  if (p.y < LB_ROWS_Y)
+  paintingdoc_layer_select(pt->doc, pt->nlayerbar_rows - 1 - r);
+
+  layer  = paintingdoc_layer_get(pt->doc, 0);
+  *dirty = (box_t) BOX_POS_SIZE(0, 0, layer->bm.size.w, layer->bm.size.h);
+
+  return result_OK;
+}
+
+/* the slider sets the current layer's opacity as it moves. a toggle shows or
+ * hides, or locks or unlocks, its layer; a button runs. dirty is set to the
+ * canvas if it changed, else empty */
+result_t painting_layerbar_icon(painting_task_t    *pt,
+                                const wuss_event_t *event,
+                                box_t              *dirty)
+{
+  result_t                   rc;
+  wuss_icon_t               *icon;
+  int                        n, cur;
+  const paintingdoc_layer_t *layer;
+  int                        r, i;
+
+  *dirty = (box_t) BOX_INIT;
+
+  rc    = result_OK;
+  icon  = event->data.icon.icon;
+  n     = pt->nlayerbar_rows;
+  cur   = paintingdoc_layer(pt->doc);
+  layer = paintingdoc_layer_get(pt->doc, cur);
+
+  if (icon == pt->layerbar_icons[LB_ICON_SLIDER(n)])
   {
-    if (p.x < LB_MARGIN)
+    if (event->data.icon.action != wuss_MOUSE_DOWN &&
+        event->data.icon.action != wuss_MOUSE_MOVE)
       return result_OK;
-    i = (p.x - LB_MARGIN) / (LB_BUTTON + LB_GAP);
-    if (i >= LB_BUTTONS || !painting_layer_can(n, cur, i))
-      return result_OK;
+    *dirty = paintingdoc_layer_show(pt->doc, cur, layer->visible,
+                                    event->data.icon.value);
+    return result_OK;
+  }
 
-    switch (i)
+  if (event->data.icon.action != wuss_MOUSE_UP)
+    return result_OK;
+
+  for (r = 0; r < n; r++)
+  {
+    i     = n - 1 - r;
+    layer = paintingdoc_layer_get(pt->doc, i);
+    if (icon == pt->layerbar_icons[LB_ICON_SHOW(r)])
     {
-    case LB_ADD:
-      rc = paintingdoc_layer_add(pt->doc);
-      break;
-    case LB_DELETE:
-      rc = paintingdoc_layer_delete(pt->doc);
-      break;
-    default:
-      rc = paintingdoc_layer_move(pt->doc, i == LB_RAISE ? 1 : -1);
-      break;
+      *dirty = paintingdoc_layer_show(pt->doc, i, !layer->visible,
+                                      layer->opacity);
+      return result_OK;
+    }
+    if (icon == pt->layerbar_icons[LB_ICON_EDIT(r)])
+    {
+      paintingdoc_layer_lock(pt->doc, i, !layer->locked);
+      painting_layers_changed(pt); /* the canvas is as it was */
+      return result_OK;
     }
   }
-  else
-  {
-    i = n - 1 - (p.y - LB_ROWS_Y) / LB_ROW;
-    if (i < 0)
-      return result_OK;
 
-    layer = paintingdoc_layer_get(pt->doc, i);
-    if (p.x >= LB_EYE_X && p.x < LB_EYE_X + LB_EYE)
-      paintingdoc_layer_show(pt->doc, i, !layer->visible, layer->opacity);
-    else if (p.x >= LB_BAR_X && p.x < LB_BAR_X + LB_BAR_W)
-      paintingdoc_layer_show(pt->doc, i, layer->visible,
-                             CLAMP((p.x - LB_BAR_X) * 255 / (LB_BAR_W - 1),
-                                   0, 255));
-    else
-      paintingdoc_layer_select(pt->doc, i);
+  for (i = 0; i < LB_BUTTONS; i++)
+    if (icon == pt->layerbar_icons[LB_ICON_BUTTON(n, i)])
+      break;
+  if (i == LB_BUTTONS)
+    return result_OK;
+
+  switch (i)
+  {
+  case LB_ADD:
+    rc = paintingdoc_layer_add(pt->doc);
+    break;
+  case LB_DELETE:
+    rc = paintingdoc_layer_delete(pt->doc);
+    break;
+  default:
+    rc = paintingdoc_layer_move(pt->doc, i == LB_RAISE ? 1 : -1);
+    break;
   }
 
   layer  = paintingdoc_layer_get(pt->doc, 0);
@@ -1075,15 +1248,10 @@ result_t painting_layerbar_mouse(painting_task_t    *pt,
 /* the extent is kept to the visible size, so the bar never scrolls */
 void painting_layers_changed(painting_task_t *pt)
 {
-  size2d_t size;
-
   if (pt->layerbar == NULL)
     return;
 
-  size = SIZE2D(LB_W, LB_H(paintingdoc_layers(pt->doc)));
-  (void) wuss_window_set_doc(pt->layerbar, size);
-  (void) wuss_window_resize(pt->layerbar, size);
-  wuss_window_invalidate_visible(pt->layerbar);
+  (void) painting_layerbar_fit(pt, 0);
 }
 
 void painting_layer_thumb_changed(painting_task_t *pt)
@@ -1095,8 +1263,8 @@ void painting_layer_thumb_changed(painting_task_t *pt)
     return;
 
   r   = paintingdoc_layers(pt->doc) - 1 - paintingdoc_layer(pt->doc);
-  row = (box_t) BOX_POS_SIZE(LB_THUMB_X - 1, LB_ROWS_Y + r * LB_ROW,
-                             LB_THUMB + 2, LB_ROW);
+  row = (box_t) BOX_POS_SIZE(LB_THUMB_X - 1, r * LB_ROW, LB_THUMB + 2,
+                             LB_ROW - 1);
   wuss_window_invalidate(pt->layerbar, &row);
 }
 

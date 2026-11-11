@@ -155,6 +155,7 @@ result_t paintingdoc_create_filled(size2d_t        size,
 
   d->layers[0].visible = 1;
   d->layers[0].opacity = 255;
+  d->layers[0].locked  = 0;
   d->nlayers           = 1;
   d->stale             = (box_t) BOX_INIT;
   layer_sync(d);
@@ -245,6 +246,7 @@ result_t paintingdoc_load(paintingdoc_t *doc, const char *path)
   doc->layers[0].bm      = next;
   doc->layers[0].visible = 1;
   doc->layers[0].opacity = 255;
+  doc->layers[0].locked  = 0;
   doc->nlayers           = 1;
   doc->cur               = 0;
   layer_sync(doc);
@@ -2034,6 +2036,7 @@ result_t paintingdoc_layer_add(paintingdoc_t *doc)
   l->bm      = bm;
   l->visible = 1;
   l->opacity = 255;
+  l->locked  = 0;
   doc->nlayers++;
   doc->cur = i;
   layer_sync(doc);
@@ -2097,4 +2100,9 @@ box_t paintingdoc_layer_show(paintingdoc_t *doc,
   touch(doc, canvas_box(doc));
 
   return canvas_box(doc);
+}
+
+void paintingdoc_layer_lock(paintingdoc_t *doc, int i, int locked)
+{
+  doc->layers[i].locked = locked;
 }

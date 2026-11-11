@@ -70,6 +70,7 @@ typedef struct paintingdoc_layer
   bitmap_t bm;
   int      visible;
   int      opacity; /* 0..255 */
+  int      locked;  /* non-zero: the painting tools leave it be */
 }
 paintingdoc_layer_t;
 
@@ -105,6 +106,9 @@ box_t paintingdoc_layer_show(paintingdoc_t *doc,
                              int            i,
                              int            visible,
                              int            opacity);
+
+/* lock or unlock layer i against the painting tools. not an undo step */
+void paintingdoc_layer_lock(paintingdoc_t *doc, int i, int locked);
 
 /* save the current layer as an undo step. call before the first segment of a
  * stroke:
