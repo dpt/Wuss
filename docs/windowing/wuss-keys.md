@@ -170,6 +170,7 @@ Direct keys:
 | painting                            | Escape              | Drop selection                                          |
 | painting                            | Arrows              | Nudge selection (Shift = 8 pixels)                      |
 | painting                            | Space + drag        | Pan the view                                            |
+| painting                            | Tab                 | Hide all toolbars, or show them all if none shows       |
 | saturn                              | Left / Right        | Previous / next seed                                    |
 | sofa                                | Left / Right        | Previous / next model                                   |
 | sofa                                | Up / Down           | Step rotation (paused only)                             |

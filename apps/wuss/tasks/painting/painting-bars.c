@@ -830,9 +830,9 @@ void painting_step_size(painting_task_t *pt, int delta)
 
 static result_t painting_layerbar_fit(painting_task_t *pt, int force);
 
-/* refit the size bar's height to the font, re-drop the toolbox and layers
- * bar to sit below it, or at the top if it is hidden, and rebuild the
- * settings and the layers bar */
+/* refit the size bar's height to the font, re-drop the toolbox to sit below
+ * it, or at the top if it is hidden, and rebuild the settings and the layers
+ * bar */
 result_t painting_sizebar_relayout(painting_task_t *pt)
 {
   result_t rc;
@@ -853,14 +853,8 @@ result_t painting_sizebar_relayout(painting_task_t *pt)
   rc = wuss_window_attach(pt->toolbox, pt->base.window, wuss_EDGE_LEFT,
                           wuss_ALIGN_TOP, drop);
   if (rc == result_OK && pt->layerbar != NULL)
-  {
-    wuss_window_detach(pt->layerbar);
-    rc = wuss_window_attach(pt->layerbar, pt->base.window, wuss_EDGE_RIGHT,
-                            wuss_ALIGN_TOP, drop);
-    if (rc == result_OK)
-      rc = painting_layerbar_fit(pt, 1); /* the slider's height follows the
-                                          * font */
-  }
+    rc = painting_layerbar_fit(pt, 1); /* the slider's height follows the
+                                        * font */
   if (rc != result_OK)
     return rc;
 

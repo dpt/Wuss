@@ -300,8 +300,8 @@ static result_t painting_build(painting_task_t            *task,
   if (rc == result_OK)
     rc = wuss_window_attach(task->optionbar, task->base.window,
                             wuss_EDGE_BOTTOM, wuss_ALIGN_LEFT, 0);
-  /* the layers bar on the right edge, dropped as the toolbox is. Its size
-   * and extent fit the layers there are */
+  /* the layers bar at the foot of the right edge. Its size and extent fit
+   * the layers there are */
   if (rc == result_OK)
     rc = wuss_window_create_at(delegate,
                                &place,
@@ -314,8 +314,7 @@ static result_t painting_build(painting_task_t            *task,
                                &task->layerbar);
   if (rc == result_OK)
     rc = wuss_window_attach(task->layerbar, task->base.window,
-                            wuss_EDGE_RIGHT, wuss_ALIGN_TOP,
-                            SB_H(task->base.wuss) + 1);
+                            wuss_EDGE_RIGHT, wuss_ALIGN_BOTTOM, 0);
   /* the size bar is a pane across the top of the canvas, which is then
    * resized so that the view keeps its size below it */
   if (rc == result_OK)
@@ -1424,6 +1423,19 @@ static result_t painting_selection_op(painting_task_t *pt, int op)
   return rc;
 }
 
+/* a View menu row's bar, or NULL if the row has none or it is closed */
+static wuss_window_t *painting_view_bar(painting_task_t *pt, int row)
+{
+  switch (row)
+  {
+  case PAINTING_VIEW_TOOLBOX:   return pt->toolbox;
+  case PAINTING_VIEW_SIZEBAR:   return pt->sizebar;
+  case PAINTING_VIEW_OPTIONBAR: return pt->optionbar;
+  case PAINTING_VIEW_LAYERBAR:  return pt->layerbar;
+  default:                      return NULL;
+  }
+}
+
 /* hide or show a View menu row's bar, flipping its tick. the toolbox and
  * layers bar drop below the size bar only while it shows */
 static result_t painting_view_toggle(painting_task_t *pt, int row)
@@ -1432,14 +1444,7 @@ static result_t painting_view_toggle(painting_task_t *pt, int row)
   wuss_window_t *bar;
   int            shown;
 
-  switch (row)
-  {
-  case PAINTING_VIEW_TOOLBOX:   bar = pt->toolbox;   break;
-  case PAINTING_VIEW_SIZEBAR:   bar = pt->sizebar;   break;
-  case PAINTING_VIEW_OPTIONBAR: bar = pt->optionbar; break;
-  case PAINTING_VIEW_LAYERBAR:  bar = pt->layerbar;  break;
-  default:                      return result_OK;
-  }
+  bar = painting_view_bar(pt, row);
   if (bar == NULL)
     return result_OK;
 
@@ -1449,6 +1454,29 @@ static result_t painting_view_toggle(painting_task_t *pt, int row)
   rc = wuss_window_set_hidden(bar, !shown);
   if (rc == result_OK && row == PAINTING_VIEW_SIZEBAR)
     rc = painting_sizebar_relayout(pt);
+
+  return rc;
+}
+
+/* hide every bar if any shows, else show them all */
+static result_t painting_view_all(painting_task_t *pt)
+{
+  result_t rc;
+  int      hide;
+  int      row;
+
+  hide = 0;
+  for (row = PAINTING_VIEW_TOOLBOX; row <= PAINTING_VIEW_LAYERBAR; row++)
+    if (painting_view_bar(pt, row) != NULL &&
+        !(pt->hidden_bars & (1u << row)))
+      hide = 1;
+
+  rc = result_OK;
+  for (row = PAINTING_VIEW_TOOLBOX;
+       rc == result_OK && row <= PAINTING_VIEW_LAYERBAR;
+       row++)
+    if (!(pt->hidden_bars & (1u << row)) == hide)
+      rc = painting_view_toggle(pt, row);
 
   return rc;
 }
@@ -1573,6 +1601,8 @@ static result_t painting_handle(wuss_window_t      *window,
     painting_menu_shade(pt); /* the selection tools leave the shading stale */
     if (!task_key_is_plain(pt->base.delegate, &pt->base.menu, event, &rc))
       return rc;
+    if (event->data.key.code == wuss_KEY_TAB)
+      return painting_view_all(pt);
 
     return painting_key(pt, event->data.key.code,
                         event->data.key.modifiers);

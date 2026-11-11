@@ -284,6 +284,7 @@ shortcuts[] =
   { "Arrows",         "Nudge selection"     },
   { "Shift-Arrows",   "Nudge by 8 pixels"   },
   { "Space-drag",     "Pan"                 },
+  { "Tab",            "Hide/show toolbars"  },
   { "Resizing",       NULL                  },
   { "F3",             "Save"                },
   { "Saturn",         NULL                  },
