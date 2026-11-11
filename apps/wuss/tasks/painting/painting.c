@@ -1458,24 +1458,31 @@ static result_t painting_view_toggle(painting_task_t *pt, int row)
   return rc;
 }
 
-/* hide every bar if any shows, else show them all */
+/* hide every bar if any shows, remembering which showed, else show the bars
+ * Tab last hid, or all of them if it has hidden none */
 static result_t painting_view_all(painting_task_t *pt)
 {
-  result_t rc;
-  int      hide;
-  int      row;
+  result_t     rc;
+  unsigned int shown;
+  unsigned int flip;
+  int          row;
 
-  hide = 0;
+  shown = 0;
   for (row = PAINTING_VIEW_TOOLBOX; row <= PAINTING_VIEW_LAYERBAR; row++)
     if (painting_view_bar(pt, row) != NULL &&
         !(pt->hidden_bars & (1u << row)))
-      hide = 1;
+      shown |= 1u << row;
+
+  if (shown)
+    flip = pt->tab_bars = shown;
+  else
+    flip = pt->tab_bars ? pt->tab_bars : ~0u;
 
   rc = result_OK;
   for (row = PAINTING_VIEW_TOOLBOX;
        rc == result_OK && row <= PAINTING_VIEW_LAYERBAR;
        row++)
-    if (!(pt->hidden_bars & (1u << row)) == hide)
+    if (flip & (1u << row))
       rc = painting_view_toggle(pt, row);
 
   return rc;

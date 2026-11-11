@@ -282,6 +282,8 @@ typedef struct painting_task
   wuss_menu_t        view_menu;
   unsigned int       hidden_bars; /* bit 1 << PAINTING_VIEW_* set when that
                                    * bar is hidden */
+  unsigned int       tab_bars;    /* the bars shown when Tab last hid them,
+                                   * for Tab to restore */
   wuss_menu_item_t   edit_items[PAINTING_EDIT__COUNT];
   wuss_menu_t        edit_menu;
   wuss_menu_item_t   sel_items[PAINTING_SEL__COUNT];
