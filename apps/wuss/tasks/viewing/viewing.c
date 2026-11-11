@@ -330,7 +330,7 @@ static result_t viewing_show(viewing_task_t *ic, const char *path)
   result_t rc;
   bitmap_t next;
 
-  rc = bitmap_load_deep(&next, path, pixelfmt_rgbx8888);
+  rc = bitmap_load_deep(&next, path, pixelfmt_rgba8888);
   if (rc != result_OK)
   {
     logf_warning("viewing: cannot load \"%s\" (rc=0x%X)", path, rc);

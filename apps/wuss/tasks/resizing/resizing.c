@@ -175,7 +175,7 @@ static result_t resizing_show(resizing_task_t *rt, const char *path)
   if (!task_image_name(path, name, sizeof(name)))
     return result_BAD_ARG;
 
-  rc = bitmap_load_deep(&next, path, pixelfmt_rgbx8888);
+  rc = bitmap_load_deep(&next, path, pixelfmt_rgba8888);
   if (rc != result_OK)
   {
     logf_warning("resizing: cannot load \"%s\" (rc=0x%X)", path, rc);

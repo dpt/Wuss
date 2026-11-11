@@ -479,7 +479,7 @@ static result_t pinboard_set_image(pinboard_t *pb, const char *path)
   result_t rc;
   bitmap_t image;
 
-  rc = bitmap_load_deep(&image, path, pixelfmt_rgbx8888);
+  rc = bitmap_load_deep(&image, path, pixelfmt_rgba8888);
   if (rc != result_OK)
     return rc;
 
