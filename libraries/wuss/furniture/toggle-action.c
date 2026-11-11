@@ -10,39 +10,33 @@
 
 void wuss__furniture_toggle_size(wuss_window_t *window, int safe)
 {
-  box_t before, before_content, new_visible, dirty, blit_src;
+  box_t before, before_content, area, new_visible, dirty, blit_src;
   box_t src[WUSS_MAX_INVALIDATE_PIECES];
   box_t copied[WUSS_MAX_INVALIDATE_PIECES];
-  int   dx, dy, blitted, scroll_reclamped, nsrc, ncopied;
+  int   grow, dx, dy, blitted, scroll_reclamped, nsrc, ncopied;
 
   before = window->visible;
   wuss__content_box(window, &before_content);
   scroll_reclamped = 0;
 
-  if (wuss__window_toggled(window))
+  /* the area to fill: the whole screen, or with "safe" the safe area that
+   * wuss_window_create_at places windows in, clear of the icon bar */
+  area.x0 = 0;
+  area.y0 = 0;
+  area.x1 = window->wuss->scr->size.w;
+  area.y1 = window->wuss->scr->size.h;
+  if (safe)
   {
-    new_visible = window->pre_toggle;
+    area.x0 += WUSS_SAFE_INSET;
+    area.y0 += WUSS_SAFE_INSET;
+    area.x1 -= WUSS_SAFE_INSET;
+    area.y1 -= WUSS_SAFE_INSET_BOTTOM(window->wuss);
   }
-  else
+
   {
-    box_t    area;
     int      outline_px, titlebar_height, target_w, target_h, vis_w, vis_h, x0, y0;
     point_t  carve;
     size2d_t screen_max, min;
-
-    /* the area to fill: the whole screen, or with "safe" the safe area that
-     * wuss_window_create_at places windows in, clear of the icon bar */
-    area.x0 = 0;
-    area.y0 = 0;
-    area.x1 = window->wuss->scr->size.w;
-    area.y1 = window->wuss->scr->size.h;
-    if (safe)
-    {
-      area.x0 += WUSS_SAFE_INSET;
-      area.y0 += WUSS_SAFE_INSET;
-      area.x1 -= WUSS_SAFE_INSET;
-      area.y1 -= WUSS_SAFE_INSET_BOTTOM(window->wuss);
-    }
 
     outline_px      = wuss__outline_px(window);
     titlebar_height = wuss__titlebar_height(window);
@@ -69,21 +63,38 @@ void wuss__furniture_toggle_size(wuss_window_t *window, int safe)
     target_w = MAX(target_w, min.w);
     target_h = MAX(target_h, min.h);
 
-    vis_w = target_w + 2 * outline_px + carve.x;
-    vis_h = target_h + titlebar_height + 2 * outline_px + carve.y;
+    /* Grow while the window is short of that extent on either axis, so a
+     * window shrunk by hand after growing grows again. Once it is at (or
+     * beyond, e.g. full screen under a safe-area toggle) the extent on both
+     * axes, revert to the size it had before growing. One with no earlier
+     * size to revert to "grows" in place, which still brings it on screen. */
+    grow = before_content.x1 - before_content.x0 < target_w ||
+           before_content.y1 - before_content.y0 < target_h ||
+           !wuss__window_toggled(window);
 
-    /* nudge the top-left by the minimum needed to fit the grown box in the
-     * area; a window that already fits stays put. */
-    x0 = window->visible.x0;
-    y0 = window->visible.y0;
+    if (grow)
+    {
+      vis_w = target_w + 2 * outline_px + carve.x;
+      vis_h = target_h + titlebar_height + 2 * outline_px + carve.y;
+      window->pre_toggle = window->visible;
+    }
+    else
+    {
+      vis_w = window->pre_toggle.x1 - window->pre_toggle.x0;
+      vis_h = window->pre_toggle.y1 - window->pre_toggle.y0;
+    }
+
+    /* nudge the top-left by the minimum needed to fit the new box in the
+     * area; a window that already fits stays put. A reverting window starts
+     * from where it was before growing. */
+    x0 = grow ? window->visible.x0 : window->pre_toggle.x0;
+    y0 = grow ? window->visible.y0 : window->pre_toggle.y0;
     if (x0 + vis_w > area.x1)
       x0 = area.x1 - vis_w;
     if (y0 + vis_h > area.y1)
       y0 = area.y1 - vis_h;
     x0 = MAX(x0, area.x0);
     y0 = MAX(y0, area.y0);
-
-    window->pre_toggle = window->visible;
 
     new_visible.x0 = x0;
     new_visible.y0 = y0;
@@ -92,7 +103,7 @@ void wuss__furniture_toggle_size(wuss_window_t *window, int safe)
   }
 
   window->visible = new_visible;
-  wuss__window_set_toggled(window, !wuss__window_toggled(window));
+  wuss__window_set_toggled(window, grow);
 
   /* tell the task the box changed, as wuss_window_resize does, so content
    * that reflows to its width (e.g. a gridview) can update the doc extent
