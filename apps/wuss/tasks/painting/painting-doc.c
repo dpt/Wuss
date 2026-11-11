@@ -95,11 +95,17 @@ static result_t canvas_make(size2d_t size, colour_t colour, bitmap_t *bm)
   return result_OK;
 }
 
-/* point bm and scr at the current layer, after it or its pixels change */
+/* point bm and scr at the current layer, after it or its pixels change. pre
+ * follows, so drawing clipped to the selection puts back this layer's pixels
+ * outside it. callers end any lift first: its pixels live in pre */
 static void layer_sync(paintingdoc_t *doc)
 {
   doc->bm = doc->layers[doc->cur].bm;
   screen_for_bitmap(&doc->scr, &doc->bm);
+
+  if (doc->pre != NULL && doc->lifted == NULL)
+    memcpy(doc->pre, doc->bm.base,
+           (size_t) doc->bm.rowbytes * (size_t) doc->bm.size.h);
 }
 
 /* the canvas box */

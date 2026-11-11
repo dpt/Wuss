@@ -968,6 +968,19 @@ result_t paintingdoc_test(const char *resources)
   CHECK(paintingdoc_layer_get(doc, 0)->locked == 1);
   paintingdoc_destroy(doc);
 
+  printf("test: drawing clipped to the selection keeps the current layer's "
+         "pixels outside it after a layer switch\n");
+
+  CHECK(paintingdoc_create(SIZE2D(3, 1), &doc) == result_OK);
+  CHECK(paintingdoc_layer_add(doc) == result_OK);
+  CHECK(paintingdoc_select_rect(doc, (box_t) { 0, 0, 1, 1 },
+                                paintingdoc_SELOP_REPLACE) == result_OK);
+  CHECK(paintingdoc_checkpoint(doc) == result_OK);
+  paintingdoc_layer_select(doc, 0);
+  paintingdoc_stroke(doc, POINT(0, 0), POINT(2, 0), 1, red());
+  CHECK(px(doc, 0, 0) == RED && px(doc, 2, 0) == WHITE);
+  paintingdoc_destroy(doc);
+
   printf("paintingdoc: all tests passed\n");
 
   return result_TEST_PASSED;
