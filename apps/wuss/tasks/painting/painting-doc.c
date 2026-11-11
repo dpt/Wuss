@@ -34,6 +34,8 @@ struct paintingdoc
   paintingdoc_layer_t layers[PAINTINGDOC_LAYERS_MAX];
   int                 nlayers;
   int                 cur;
+  /* the id the next new layer gets */
+  int                 nextid;
   /* the current layer's bitmap, sharing its pixels, and a screen on it. every
    * drawing operation works on these */
   bitmap_t bm;
@@ -153,6 +155,7 @@ result_t paintingdoc_create_filled(size2d_t        size,
     return rc;
   }
 
+  d->layers[0].id      = d->nextid++;
   d->layers[0].visible = 1;
   d->layers[0].opacity = 255;
   d->layers[0].locked  = 0;
@@ -244,6 +247,7 @@ result_t paintingdoc_load(paintingdoc_t *doc, const char *path)
   paintingdoc_select_none(doc);
   layers_free(doc->layers, doc->nlayers);
   doc->layers[0].bm      = next;
+  doc->layers[0].id      = doc->nextid++;
   doc->layers[0].visible = 1;
   doc->layers[0].opacity = 255;
   doc->layers[0].locked  = 0;
@@ -619,8 +623,11 @@ static result_t steps_push(paintingdoc_t *doc,
  * decompressed */
 static box_t steps_pop(paintingdoc_t *doc, step_t *steps, int *n)
 {
-  step_t *step;
-  int     i;
+  step_t              *step;
+  int                  i;
+  int                  j;
+  paintingdoc_layer_t *was;
+  paintingdoc_layer_t *now;
 
   step = &steps[*n - 1];
   for (i = 0; i < step->n; i++)
@@ -632,7 +639,22 @@ static box_t steps_pop(paintingdoc_t *doc, step_t *steps, int *n)
       step->layers[0].bm.size.h != doc->bm.size.h)
     paintingdoc_select_none(doc);
 
-  /* the layer gets back its pixels alone: its look is not undone */
+  /* a layer gets back its pixels alone: its look is not undone. a layer
+   * still here keeps its look; one the step brings back has its old look */
+  for (i = 0; i < step->n; i++)
+  {
+    was = &step->layers[i];
+    for (j = 0; j < doc->nlayers; j++)
+    {
+      now = &doc->layers[j];
+      if (now->id != was->id)
+        continue;
+      was->visible = now->visible;
+      was->opacity = now->opacity;
+      was->locked  = now->locked;
+    }
+  }
+
   if (step->layer >= 0)
   {
     free(doc->layers[step->layer].bm.base);
@@ -2034,6 +2056,7 @@ result_t paintingdoc_layer_add(paintingdoc_t *doc)
           (size_t) (doc->nlayers - i) * sizeof(doc->layers[0]));
   l          = &doc->layers[i];
   l->bm      = bm;
+  l->id      = doc->nextid++;
   l->visible = 1;
   l->opacity = 255;
   l->locked  = 0;

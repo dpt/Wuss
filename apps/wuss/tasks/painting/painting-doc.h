@@ -68,6 +68,7 @@ const bitmap_t *paintingdoc_bitmap(paintingdoc_t *doc);
 typedef struct paintingdoc_layer
 {
   bitmap_t bm;
+  int      id;      /* unique in its document: follows it through undo */
   int      visible;
   int      opacity; /* 0..255 */
   int      locked;  /* non-zero: the painting tools leave it be */
@@ -99,15 +100,16 @@ result_t paintingdoc_layer_delete(paintingdoc_t *doc);
  * result_OOM. an undo step */
 result_t paintingdoc_layer_move(paintingdoc_t *doc, int dir);
 
-/* show or hide layer i and set its opacity (0..255). not an undo step, though
- * undoing a step that changed the layers puts back what they had then.
- * returns the box that changed: the whole canvas */
+/* show or hide layer i and set its opacity (0..255). not an undo step, and
+ * undo leaves it be: only a layer that an undo brings back gets the look it
+ * had. returns the box that changed: the whole canvas */
 box_t paintingdoc_layer_show(paintingdoc_t *doc,
                              int            i,
                              int            visible,
                              int            opacity);
 
-/* lock or unlock layer i against the painting tools. not an undo step */
+/* lock or unlock layer i against the painting tools. not an undo step, and
+ * undo leaves it be, as paintingdoc_layer_show */
 void paintingdoc_layer_lock(paintingdoc_t *doc, int i, int locked);
 
 /* save the current layer as an undo step. call before the first segment of a

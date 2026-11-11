@@ -931,6 +931,19 @@ result_t paintingdoc_test(const char *resources)
   CHECK(paintingdoc_layers(doc) == 2 && px(doc, 1, 0) == RED);
   paintingdoc_destroy(doc);
 
+  printf("test: undo of a layer step leaves the surviving layers' look\n");
+
+  CHECK(paintingdoc_create(SIZE2D(3, 1), &doc) == result_OK);
+  CHECK(paintingdoc_layer_add(doc) == result_OK);
+  paintingdoc_layer_show(doc, 0, 0, 77);
+  paintingdoc_layer_lock(doc, 0, 1);
+  paintingdoc_undo(doc);
+  CHECK(paintingdoc_layers(doc) == 1);
+  CHECK(paintingdoc_layer_get(doc, 0)->visible == 0);
+  CHECK(paintingdoc_layer_get(doc, 0)->opacity == 77);
+  CHECK(paintingdoc_layer_get(doc, 0)->locked == 1);
+  paintingdoc_destroy(doc);
+
   printf("paintingdoc: all tests passed\n");
 
   return result_TEST_PASSED;
