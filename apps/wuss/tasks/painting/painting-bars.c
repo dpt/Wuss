@@ -644,10 +644,12 @@ void painting_palette_set(painting_task_t *pt,
 result_t painting_palette_load(painting_task_t *pt, const char *path)
 {
   result_t rc;
-  colour_t colours[PAINTING_PALETTE_MAX];
+  colour_t colours[256];
   int      n;
 
-  rc = palettes_load_hex(path, colours, PAINTING_PALETTE_MAX, &n);
+  /* read a longer palette whole, then keep its first PAINTING_PALETTE_MAX.
+   * ponytail: a file of more than 256 colours is still refused */
+  rc = palettes_load_hex(path, colours, (int) NELEMS(colours), &n);
   if (rc != result_OK)
     return rc;
 

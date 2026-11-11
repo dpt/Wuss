@@ -119,8 +119,8 @@ void painting_palette_set(painting_task_t *pt,
                           const colour_t  *colours,
                           int              n);
 
-/* replace the palette with the .hex palette file at path. A failure keeps
- * the current palette */
+/* replace the palette with the .hex palette file at path, keeping its first
+ * PAINTING_PALETTE_MAX colours. A failure keeps the current palette */
 result_t painting_palette_load(painting_task_t *pt, const char *path);
 
 /* wuss_saveas_save_fn_t: write the palette as a .hex file. opaque is the
