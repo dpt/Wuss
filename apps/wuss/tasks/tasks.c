@@ -29,6 +29,7 @@
 #include "tasks/painting/painting.h"
 #include "tasks/palette/palette.h"
 #include "tasks/reading/reading.h"
+#include "tasks/taskmanager/taskmanager.h"
 
 /* ----------------------------------------------------------------------- */
 
@@ -189,6 +190,10 @@ static const wuss_menu_t g_debug_menu =
 enum
 {
   TASK_ITEM_INFO,
+#ifdef WUSS_ICONBAR
+  TASK_ITEM_APPS,
+  TASK_ITEM_STATS,
+#endif
   TASK_ITEM_DEBUG
 #ifndef __EMSCRIPTEN__
   ,
@@ -202,10 +207,14 @@ enum
 static wuss_menu_item_t g_task_items[] =
 {
   { "Info",             wuss_MENU_ITEM_PRE_OPEN, NULL, NULL                          },
-  { "Debug",            wuss_MENU_ITEM_DASHED,   &g_debug_menu                       }
+#ifdef WUSS_ICONBAR
+  { "Apps",             wuss_MENU_ITEM_NONE,     NULL, NULL                          },
+  { "Stats",            wuss_MENU_ITEM_NONE,     NULL, NULL                          },
+#endif
+  { "Debug",            wuss_MENU_ITEM_NONE,     &g_debug_menu                       }
 #ifndef __EMSCRIPTEN__
   ,
-  { "Quit Wuss",        wuss_MENU_ITEM_DASHED,   NULL, NULL, 0, "^" WUSS_MENU_SHIFT "Q" }
+  { "Quit Wuss",        wuss_MENU_ITEM_NONE,     NULL, NULL, 0, "^" WUSS_MENU_SHIFT "Q" }
 #endif
 };
 
@@ -310,6 +319,12 @@ result_t task_handle_event(wuss_window_t      *window,
   {
     switch (index)
     {
+#ifdef WUSS_ICONBAR
+    case TASK_ITEM_APPS:
+      return taskmanager_open_apps();
+    case TASK_ITEM_STATS:
+      return taskmanager_open_stats();
+#endif
 #ifndef __EMSCRIPTEN__
     case TASK_ITEM_QUIT:
       g_tasks.quit = true;
