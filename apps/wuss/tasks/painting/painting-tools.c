@@ -60,9 +60,42 @@ int painting_collects_points(const painting_task_t *pt)
   return pt->tool == painting_TOOL_LASSO || painting_is_path(pt);
 }
 
+/* the circle diameters that screen_fill_ellipse draws looking like hexagons */
+static const unsigned char painting_bad_circles[] = { 9, 10, 11, 13, 14 };
+
+/* whether diameter d is wanted: not a bad one, and odd if odd is set */
+static int painting_good_circle(int d, int odd)
+{
+  size_t i;
+
+  if (d < 1 || (odd && (d & 1) == 0))
+    return 0;
+  for (i = 0; i < NELEMS(painting_bad_circles); i++)
+    if (d == painting_bad_circles[i])
+      return 0;
+
+  return 1;
+}
+
+/* the good circle diameter nearest to d, the smaller on a tie; odd ones only
+ * if odd is set */
+static int painting_nice_circle(int d, int odd)
+{
+  int k;
+
+  for (k = 0; ; k++)
+  {
+    if (painting_good_circle(d - k, odd))
+      return d - k;
+    if (painting_good_circle(d + k, odd))
+      return d + k;
+  }
+}
+
 /* the rubber band's ends, a and b, given the keys held: for a shape or
  * gradient Ctrl makes the anchor the centre rather than an end, and Shift
- * squares a shape or turns a gradient to the nearest 22.5 degrees */
+ * squares a shape or turns a gradient to the nearest 22.5 degrees. With the
+ * snap option, a Shift-squared ellipse takes the nearest nice diameter */
 void painting_band_ends(const painting_task_t *pt,
                                point_t               *a,
                                point_t               *b)
@@ -92,6 +125,15 @@ void painting_band_ends(const painting_task_t *pt,
     else
     {
       s  = MAX(abs(dx), abs(dy));
+      if (pt->snap && (pt->tool == painting_TOOL_ELLIPSE ||
+                       pt->tool == painting_TOOL_ELLIPSE_FILL))
+      {
+        /* the diameter is s + 1 from a corner, 2s + 1 from the centre */
+        if (pt->mods & wuss_KEY_MOD_CTRL)
+          s = (painting_nice_circle(2 * s + 1, 1) - 1) / 2;
+        else
+          s = painting_nice_circle(s + 1, 0) - 1;
+      }
       dx = dx < 0 ? -s : s;
       dy = dy < 0 ? -s : s;
     }

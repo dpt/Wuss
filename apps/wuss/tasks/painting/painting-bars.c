@@ -70,8 +70,13 @@ painting_settings[painting_SETTING__COUNT] =
   [painting_SETTING_STABILISE] = { "Stabilise", 0, PAINTING_STABILISE_MAX,
                                    NULL },
   [painting_SETTING_PERFECT]   = { "Pixel-perfect", 0, 0, NULL },
+  [painting_SETTING_SNAP]      = { "Nice circles", 0, 0, NULL },
   [painting_SETTING_SYMMETRY]  = { "Symmetry", 0, 0, NULL }
 };
+
+/* whether the setting is an option: a tick box carrying its own label */
+#define IS_OPTION(s) ((s) == painting_SETTING_PERFECT || \
+                      (s) == painting_SETTING_SNAP)
 
 /* the symmetry setting's buttons' images, by PAINTING_SYM_* */
 static const char *const painting_sym_names[PAINTING_SYM_TILED] =
@@ -80,8 +85,7 @@ static const char *const painting_sym_names[PAINTING_SYM_TILED] =
 };
 
 /* whether the setting is a slider, rather than a button or options */
-#define IS_SLIDER(s) ((s) != painting_SETTING_NOZZLE  && \
-                      (s) != painting_SETTING_PERFECT && \
+#define IS_SLIDER(s) ((s) != painting_SETTING_NOZZLE && !IS_OPTION(s) && \
                       (s) != painting_SETTING_SYMMETRY)
 
 #define SETTING(s) (1u << painting_SETTING_##s)
@@ -104,8 +108,9 @@ static const unsigned int painting_tool_settings[painting_TOOL__COUNT] =
   [painting_TOOL_LINE]         = SETTING(SIZE) | SETTING(SYMMETRY),
   [painting_TOOL_RECT]         = SETTING(SIZE) | SETTING(SYMMETRY),
   [painting_TOOL_RECT_FILL]    = SETTING(SYMMETRY),
-  [painting_TOOL_ELLIPSE]      = SETTING(SIZE) | SETTING(SYMMETRY),
-  [painting_TOOL_ELLIPSE_FILL] = SETTING(SYMMETRY),
+  [painting_TOOL_ELLIPSE]      = SETTING(SIZE) | SETTING(SNAP) |
+                                 SETTING(SYMMETRY),
+  [painting_TOOL_ELLIPSE_FILL] = SETTING(SNAP) | SETTING(SYMMETRY),
   [painting_TOOL_PATH]         = SETTING(SIZE) | SETTING(STABILISE) |
                                  SETTING(SYMMETRY),
   [painting_TOOL_PATH_FILL]    = SETTING(STABILISE) | SETTING(SYMMETRY),
@@ -235,6 +240,7 @@ static result_t painting_sizebar_build(painting_task_t *pt)
   pt->nsizebar_icons = 0;
   pt->nozzle_icon    = NULL;
   pt->perfect_icon   = NULL;
+  pt->snap_icon      = NULL;
   pt->pot_icons[0]   = NULL;
   for (i = 0; i < PAINTING_SYM_TILED; i++)
     pt->sym_icons[i] = NULL;
@@ -251,7 +257,7 @@ static result_t painting_sizebar_build(painting_task_t *pt)
       continue;
 
     /* an option carries its own label, after its tick box */
-    if (s == painting_SETTING_PERFECT)
+    if (IS_OPTION(s))
     {
       label = painting_settings[s].label;
       w     = wuss_STD_GLYPH_SIZE + task_text_width(pt->base.wuss, label) + 8;
@@ -379,6 +385,11 @@ static result_t painting_sizebar_build(painting_task_t *pt)
     {
       pt->perfect_icon = icons[at[s]];
       wuss_icon_set_selected(pt->sizebar, pt->perfect_icon, pt->perfect);
+    }
+    else if (s == painting_SETTING_SNAP)
+    {
+      pt->snap_icon = icons[at[s]];
+      wuss_icon_set_selected(pt->sizebar, pt->snap_icon, pt->snap);
     }
     else if (s == painting_SETTING_SYMMETRY)
     {
@@ -790,10 +801,15 @@ result_t painting_toolbar_icon(painting_task_t    *pt,
     return result_OK;
   }
 
-  /* the option has already toggled itself */
+  /* the options have already toggled themselves */
   if (icon != NULL && icon == pt->perfect_icon)
   {
     pt->perfect = wuss_icon_get_selected(icon);
+    return result_OK;
+  }
+  if (icon != NULL && icon == pt->snap_icon)
+  {
+    pt->snap = wuss_icon_get_selected(icon);
     return result_OK;
   }
 

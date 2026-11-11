@@ -79,6 +79,10 @@ makes an instance of its own.
   picks the Fill tool instead.
 - Line and rect show a rubber band while the button is down. They draw into
   the canvas when it is released.
+- Shift squares a rect or ellipse. Ctrl draws it out from its centre. Tick
+  **Nice circles** on the ellipse tools' size bar to snap a Shift-squared
+  ellipse away from the diameters that draw looking like hexagons (9, 10, 11,
+  13 and 14 pixels) to the nearest one that doesn't.
 - The pencil draws pixel-perfect lines one pixel wide: where a stroke turns
   a corner, leaving an L of three pixels, it puts the corner pixel back, so
   freehand diagonals stay one pixel thin. Untick **Pixel-perfect** on the

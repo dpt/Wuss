@@ -52,6 +52,8 @@ typedef enum painting_setting
                                * pointer, in pixels */
   painting_SETTING_PERFECT,   /* the pencil's pixel-perfect switch, an
                                * option */
+  painting_SETTING_SNAP,      /* the ellipses' snap to nice circle sizes, an
+                               * option */
   painting_SETTING_SYMMETRY,  /* a label, then an option per mirror */
   painting_SETTING__COUNT
 }
@@ -230,6 +232,8 @@ typedef struct painting_task
   int                tolerance; /* the wand's colour tolerance, 0..255 */
   int                stabilise; /* the stabiliser's string length, pixels */
   int                perfect;   /* non-zero: the pencil drops L corners */
+  int                snap;      /* non-zero: a Shift-squared ellipse snaps to
+                                 * a nice circle size */
   double             steady_x, steady_y; /* the stabilised pointer */
   int                held;      /* button of the stroke in progress, or 0 */
   point_t            anchor;    /* where the stroke began */
@@ -262,6 +266,8 @@ typedef struct painting_task
   wuss_icon_t       *nozzle_icon; /* the nozzle button, or NULL if not shown */
   wuss_icon_t       *perfect_icon; /* the pixel-perfect option, or NULL if not
                                     * shown */
+  wuss_icon_t       *snap_icon; /* the nice-circle option, or NULL if not
+                                 * shown */
   wuss_icon_t       *sym_icons[PAINTING_SYM_TILED]; /* the mirror options by
                                  * PAINTING_SYM_*, or NULL if not shown */
   wuss_icon_t       *pot_icons[PAINTING_POT_LEVELS]; /* the pot gauge's
