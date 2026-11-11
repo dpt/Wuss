@@ -1622,7 +1622,10 @@ box_t paintingdoc_paste(paintingdoc_t            *doc,
   paintingdoc_select_none(doc);
   if (sel_replace(doc, sel) != result_OK)
     return (box_t) BOX_INIT;
-  checkpoint_or_warn(doc);
+  /* a step of its own even mid-stroke: checkpoint_or_warn would skip it when
+   * held, leaving pre unmade */
+  if (checkpoint(doc, doc->cur) != result_OK)
+    logf_warning("painting: no memory for an undo step");
 
   bytes  = (size_t) clip->bm.rowbytes * (size_t) clip->bm.size.h;
   pixels = malloc(bytes);

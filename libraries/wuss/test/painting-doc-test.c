@@ -714,6 +714,13 @@ result_t paintingdoc_test(const char *resources)
     paintingdoc_undo(doc);
     CHECK(px(doc, 6, 6) == WHITE && px(doc, 0, 0) == RED);
 
+    /* a paste mid-stroke, its checkpoint taken, still lands */
+    paintingdoc_hold(doc, 1);
+    paintingdoc_rect(doc, POINT(7, 0), POINT(7, 0), 1, 1, black());
+    dirty = paintingdoc_paste(doc, &clip, POINT(4, 4));
+    CHECK(!box_is_empty(&dirty) && px(doc, 4, 4) == RED);
+    paintingdoc_hold(doc, 0);
+
     paintingdoc_clip_free(&clip);
   }
   paintingdoc_destroy(doc);
