@@ -136,12 +136,16 @@ static int wuss__toolbar_scroll_delta(int p, int lo, int hi)
 
 /* The extent of a toolbar's content: its shown icons, with a trailing margin
  * matching the leading one, so a document left wider than what is in it
- * gives no blank space to scroll into. Without icons, the document. */
+ * gives no blank space to scroll into. Without icons, or with a redraw handler
+ * that may draw past them, the document. */
 static size2d_t wuss__toolbar_extent(const wuss_window_t *win)
 {
 #ifdef WUSS_ICONS
   box_t u = BOX_INIT;
   int   i;
+
+  if (!(win->flags & wuss_WINDOW_NO_REDRAW))
+    return win->doc;
 
   for (i = 0; i < win->nicons; i++)
     if (!(win->icons[i]->spec.flags & wuss_ICON_FLAGS_HIDDEN))
