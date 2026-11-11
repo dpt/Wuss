@@ -1837,14 +1837,16 @@ box_t paintingdoc_transform_selection(paintingdoc_t      *doc,
     rc = mask_transform(clip.mask, clip.bm.size.w, clip.bm.size.h, xform,
                         &mask);
 
-  /* turn about the centre of the selection's bounds */
-  size = xform_size(xform, clip.bm.size.w, clip.bm.size.h);
-  o.x  = clip.at.x + (clip.bm.size.w - size.w) / 2;
-  o.y  = clip.at.y + (clip.bm.size.h - size.h) / 2;
-
+  /* turn about the centre of the selection's bounds. clip is unset if the
+   * copy failed */
   lifted = NULL;
   if (rc == result_OK)
-    rc = region_translate(mask, o.x, o.y, &unbounded, &lifted);
+  {
+    size = xform_size(xform, clip.bm.size.w, clip.bm.size.h);
+    o.x  = clip.at.x + (clip.bm.size.w - size.w) / 2;
+    o.y  = clip.at.y + (clip.bm.size.h - size.h) / 2;
+    rc   = region_translate(mask, o.x, o.y, &unbounded, &lifted);
+  }
 
   region_destroy(mask);
   region_destroy(clip.mask);
