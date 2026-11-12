@@ -19,6 +19,82 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   brush, stays solid for half its paint, then speckles out like a dry brush.
   0% (the default) never runs dry. A paint pot beside the slider drains as
   the stroke goes.
+- Painting: layers with visibility, opacity and a lock, in a layers bar;
+  cut, copy and paste of pixels; redo (F9); fill and clear the selection;
+  flip, rotate, crop, trim, scale and resize the canvas or flip and rotate
+  the selection; a palette of up to 32 colours per canvas, saved as `.hex`;
+  symmetry and tiled drawing; zoom up to 64x with a pixel grid and a user
+  grid; pencil sizes, nozzles and a pixel-perfect option; nice-size circles;
+  Tab to hide and restore the toolbars; Space-drag to pan. ADJUST on a colour
+  chip edits it in the colour picker, and New picks its background from
+  swatches.
+- Viewing, Effecting, Resizing, Dithering, Pinboard and Painting open JPEG
+  images. Filing and Pinboard pick a file's icon by its type.
+- Scale view component (`wuss_scaleview_*`): a percentage field with
+  adjusters, presets, Fit screen and Fit window, up to 9999%. It hangs off
+  the Display menu of Dithering, Effecting, Painting and Viewing, which zoom
+  with + - and 1.
+- `wuss_menu_dismiss` closes a menu chain on its owner's behalf, sending
+  `MENU_CLOSED` first.
+- Gridview: small icons and full info display modes
+  (`wuss_gridview_set_mode`). Filing gains a Display submenu for them, sort
+  orders and the rest of the RISC OS Filer's menu, with unimplemented rows
+  shaded.
+- Pinboard hosts actors on the backdrop for other tasks
+  (`wuss_MESSAGE_PINBOARD_ACTOR`, with click and drop broadcasts), drawn by
+  depth then nearest last. Pinboard also gains Display > Dithering and
+  Selection > Reveal.
+- Duckling task: up to seven ducklings and a Mama duck roam the backdrop as
+  Pinboard actors, chase the pointer, sleep and swim in a pond.
+- Icon pools load sprite sheets: a leafname ending `_<w>x<h>` splits into
+  frames, read with `wuss_iconpool_frame` and `wuss_task_iconpool_frame`.
+- `wuss_drag_past_threshold` tests a press against the drag threshold.
+- Disabled bitmap icons and radio or option glyphs draw faded.
+- Toolbars and panes whose icons overrun them scroll while the pointer rests
+  near an end, as the icon bar does.
+- The icon bar pops to the front when the pointer is held at the bottom of
+  the screen.
+- Resizing: Lanczos3 (now the default), B-spline, Gaussian, Hermite, Mitchell
+  and Lanczos2 resampling.
+- Task Manager groups child tasks under their parents.
+
+### Changed
+
+- Desktop sizings come from the current font: `wuss_std_height()` and
+  `wuss_std_frame_insets()` replace the fixed size macros, and dialogues
+  re-solve their layout on `wuss_EVENT_RELAYOUT`.
+- **Breaking:** `wuss_pinboard_actor_click_t` and
+  `wuss_pinboard_actor_drop_t` move the owner and id into an `actor` member.
+- `wuss_menu_disable_item_live` also sets the item's `DISABLED` flag.
+- A task's `wuss_MESSAGE_TASK_CLOSE_DOWN` is delivered as
+  `wuss_task_destroy` takes it down, before its `QUIT`.
+- Buttons leave two spaces either side of their label.
+- Task Manager splits into Apps and Stats windows.
+- Painting's and Dithering's menus follow the menu standard. Dithering's
+  Animate strength becomes Pause (Space).
+- Orbing's controls move into a left-hand pane.
+- Gridview's selected label lozenge is larger.
+- Wuss tracks DPTLib's `develop` branch until the next release.
+
+### Removed
+
+- `wuss_iconpool_frames` and `wuss_task_iconpool_frames`.
+
+### Fixed
+
+- Text and frame captions draw transparently over patterned or dithered
+  grounds instead of blotting them out.
+- A pane thinned by a small parent grows back once there is room, and drops
+  stale scroll.
+- A toggle-size click picks grow or revert from the window's size, so a
+  window shrunk by hand after growing grows again.
+- Image tasks keep a paletted PNG's transparency.
+- Use after free when a menu pick flash reached a task being reaped at quit.
+- Use after free when Filing or Apps quit without releasing the shared
+  program info dialogue.
+- Opening Display no longer crashes measuring empty text.
+- `-Wmaybe-uninitialized` warnings from older GCC in icon parsing and slider
+  detents.
 
 ## [0.24.0] - 2026-11-05
 
