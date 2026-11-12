@@ -67,7 +67,8 @@ wuss_scaleview_choice_t;
 
 /**
  * Choice callback: the user has chosen. Called after the dialogue has been
- * dismissed. The dialogue may be destroyed from here, or reopened.
+ * dismissed, except for an ADJUST click on Scale, which leaves it open. The
+ * dialogue may be destroyed from here, or reopened.
  *
  * \param[in] choice  What the user chose.
  * \param[in] percent The scale for wuss_SCALEVIEW_SCALE; 0 otherwise.

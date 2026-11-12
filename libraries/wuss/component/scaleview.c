@@ -50,7 +50,7 @@ enum
 };
 
 /* layout items: a VBOX of four rows -- the field and its adjusters, the
- * presets, the fits, then Cancel and Scale pushed apart. Sizes are filled in
+ * presets, the fits, then Cancel and Scale together at the right. Sizes are filled in
  * from the font. Buttons in a row share a size group so they line up. See
  * docs/windowing/wuss-layout.md */
 enum
@@ -71,8 +71,8 @@ enum
   SV_ST_FIT_SCREEN,
   SV_ST_FIT_WINDOW,
   SV_ST_ROW_BUTTONS,
-  SV_ST_CANCEL,
   SV_ST_SPACER,
+  SV_ST_CANCEL,
   SV_ST_SCALE,
   SV_ST__LIMIT
 };
@@ -102,9 +102,9 @@ static const stack_item_t sv_layout[SV_ST__LIMIT] =
   [SV_ST_FIT_SCREEN]  = STACK_LEAF_GROUP(SV_ST_ROW_FITS, 0, 0, stack_ALIGN_CENTRE, SV_GROUP_FITS),
   [SV_ST_FIT_WINDOW]  = STACK_LEAF_GROUP(SV_ST_ROW_FITS, 0, 0, stack_ALIGN_CENTRE, SV_GROUP_FITS),
   [SV_ST_ROW_BUTTONS] = STACK_HBOX(SV_ST_ROOT, 0, wuss_STD_GAP, stack_ALIGN_END),
+  [SV_ST_SPACER]      = STACK_SPACER(SV_ST_ROW_BUTTONS, 1), /* push both right */
   [SV_ST_CANCEL]      = STACK_LEAF(SV_ST_ROW_BUTTONS, 0, 0, stack_ALIGN_CENTRE),
-  [SV_ST_SPACER]      = STACK_SPACER(SV_ST_ROW_BUTTONS, 1), /* push Scale right */
-  [SV_ST_SCALE]       = STACK_LEAF(SV_ST_ROW_BUTTONS, 0, 0, stack_ALIGN_CENTRE)
+  [SV_ST_SCALE]     = STACK_LEAF(SV_ST_ROW_BUTTONS, 0, 0, stack_ALIGN_CENTRE)
 };
 
 /* the preset buttons, in icon order from SV_ICON_P25 */
@@ -138,6 +138,10 @@ struct wuss_scaleview
                                             * when it closes */
   wuss_icon_t               *icons[SV_ICON__COUNT];
   int                         nicons;      /* live entries in icons */
+  int                         percent;     /* the view's scale, as last set
+                                            * by the caller or applied by an
+                                            * ADJUST-Scale; ADJUST-Cancel
+                                            * puts it back in the field */
 };
 
 /* ----------------------------------------------------------------------- */
@@ -151,7 +155,8 @@ static int sv_get_percent(const wuss_scaleview_t *sv)
   return (int) CLAMP(percent, wuss_SCALEVIEW_MIN, wuss_SCALEVIEW_MAX);
 }
 
-result_t wuss_scaleview_set_percent(wuss_scaleview_t *sv, int percent)
+/* put percent, clamped, in the field */
+static result_t sv_set_field(wuss_scaleview_t *sv, int percent)
 {
   char text[SV_FIELD_SIZE];
 
@@ -160,6 +165,13 @@ result_t wuss_scaleview_set_percent(wuss_scaleview_t *sv, int percent)
 
   return wuss_icon_set_text(wuss_dialogue_window(sv->dialogue),
                             sv->icons[SV_ICON_FIELD], text);
+}
+
+result_t wuss_scaleview_set_percent(wuss_scaleview_t *sv, int percent)
+{
+  sv->percent = percent;
+
+  return sv_set_field(sv, percent);
 }
 
 /* close whichever chain shows the dialogue: its own, or the one it is a leaf
@@ -186,20 +198,37 @@ static result_t sv_choose(wuss_scaleview_t       *sv,
   return result_OK;
 }
 
+/* ADJUST puts the view's scale back in the field and leaves the dialogue
+ * open, as in RISC OS */
 static result_t sv_action_cancel(void *opaque, wuss_button_t button)
 {
-  NOT_USED(button);
+  wuss_scaleview_t *sv;
 
-  sv_dismiss(opaque);
+  sv = opaque;
+
+  if (button & wuss_BUTTON_ADJUST)
+    return sv_set_field(sv, sv->percent);
+
+  sv_dismiss(sv);
 
   return result_OK;
 }
 
+/* ADJUST applies the scale and leaves the dialogue open, as in RISC OS */
 static result_t sv_action_scale(void *opaque, wuss_button_t button)
 {
-  NOT_USED(button);
+  wuss_scaleview_t *sv;
 
-  return sv_choose(opaque, wuss_SCALEVIEW_SCALE, sv_get_percent(opaque));
+  sv = opaque;
+
+  if (button & wuss_BUTTON_ADJUST)
+  {
+    sv->percent = sv_get_percent(sv);
+    sv->fn(wuss_SCALEVIEW_SCALE, sv->percent, sv->opaque);
+    return result_OK;
+  }
+
+  return sv_choose(sv, wuss_SCALEVIEW_SCALE, sv_get_percent(sv));
 }
 
 static result_t sv_action_fit_screen(void *opaque, wuss_button_t button)
@@ -390,7 +419,7 @@ static int sv_handle_field_icon(wuss_scaleview_t   *sv,
                                            : -wuss_SCALEVIEW_STEP;
     if (event->data.icon.button & wuss_BUTTON_ADJUST)
       step = -step;
-    *rc = wuss_scaleview_set_percent(sv, sv_get_percent(sv) + step);
+    *rc = sv_set_field(sv, sv_get_percent(sv) + step);
     return 1;
   }
 
@@ -398,7 +427,7 @@ static int sv_handle_field_icon(wuss_scaleview_t   *sv,
   {
     if (icon == sv->icons[SV_ICON_P25 + i])
     {
-      *rc = wuss_scaleview_set_percent(sv, sv_presets[i].percent);
+      *rc = sv_set_field(sv, sv_presets[i].percent);
       return 1;
     }
   }
@@ -501,6 +530,7 @@ result_t wuss_scaleview_create(wuss_scaleview_t          **out,
   sv->opaque      = opaque;
   sv->menu_handle = NULL;
   sv->leaf_handle = NULL;
+  sv->percent     = 100;
   sv->nicons      = 0;
 
   rc = sv_solve(wuss, &size, boxes);
