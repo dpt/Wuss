@@ -15,7 +15,8 @@ Unreleased. Changes since 0.24.0; see `CHANGELOG.md` for the full list.
 ## New tasks
 
 - **Duckling:** up to seven ducklings and a Mama duck roam the backdrop as
-  Pinboard actors. They chase the pointer, sleep and swim in a pond.
+  Pinboard actors. They chase the pointer, sleep and swim in up to four
+  ponds, keeping out of one another's way.
 
 ## Painting
 
@@ -36,7 +37,9 @@ Unreleased. Changes since 0.24.0; see `CHANGELOG.md` for the full list.
 ## Window manager
 
 - **Scale view:** a component for setting a percentage zoom, on the Display
-  menu of Dithering, Effecting, Painting and Viewing.
+  menu of Dithering, Effecting, Painting and Viewing. ADJUST applies it and
+  keeps the dialogue open. Those tasks show the scale in their window
+  titles.
 - **Fonts:** desktop sizings derive from the current font, and dialogues
   re-lay themselves out when it changes.
 - **Pinboard actors:** other tasks can show bitmaps on the backdrop, drawn by
@@ -62,6 +65,8 @@ Unreleased. Changes since 0.24.0; see `CHANGELOG.md` for the full list.
 - Task Manager splits into Apps and Stats windows, groups child tasks under
   their parents and records lowest and highest counts.
 - Orbing's controls move into a left-hand pane.
+- Compositing swaps its animation for an Alpha slider and gains Display >
+  Dithering.
 
 ## Fixes
 

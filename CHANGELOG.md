@@ -33,7 +33,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Scale view component (`wuss_scaleview_*`): a percentage field with
   adjusters, presets, Fit screen and Fit window, up to 9999%. It hangs off
   the Display menu of Dithering, Effecting, Painting and Viewing, which zoom
-  with + - and 1.
+  with + - and 1. As in RISC OS, ADJUST on Scale, a preset or a fit applies
+  the scale and keeps the dialogue open, and ADJUST on Cancel puts the
+  view's scale back in the field.
 - `wuss_menu_dismiss` closes a menu chain on its owner's behalf, sending
   `MENU_CLOSED` first.
 - Gridview: small icons and full info display modes
@@ -45,7 +47,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   depth then nearest last. Pinboard also gains Display > Dithering and
   Selection > Reveal.
 - Duckling task: up to seven ducklings and a Mama duck roam the backdrop as
-  Pinboard actors, chase the pointer, sleep and swim in a pond.
+  Pinboard actors, chase the pointer, sleep and swim in up to four ponds.
+  Ducks keep out of one another's way, and now and then one breaks away
+  from a clump.
+- Compositing: an Alpha slider scales the source image's alpha, and Display
+  > Dithering picks how the composite is dithered.
+- Painting, Dithering, Effecting and Viewing title document windows
+  "LEAF at N%: APP", updated as the scale changes.
 - Icon pools load sprite sheets: a leafname ending `_<w>x<h>` splits into
   frames, read with `wuss_iconpool_frame` and `wuss_task_iconpool_frame`.
 - `wuss_drag_past_threshold` tests a press against the drag threshold.
@@ -74,6 +82,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   Animate strength becomes Pause (Space).
 - Orbing's controls move into a left-hand pane.
 - Gridview's selected label lozenge is larger.
+- Compositing's idle animation, Pause and scroll-wheel speed are gone; it
+  starts on SRC OVER and its menu follows the menu standard.
+- Pinboard holds up to 24 actors, up from 16.
+- Painting and the image tasks use DPTLib's `bitmap_orient`,
+  `region_orient`, `composite_over_pixel`, `FLOOR_DIV`,
+  `bitmap_content_bounds`, `bitmap_loads_filetype` and `div255` in place of
+  their own code. Turning a selection mask is no longer quadratic in its
+  runs.
 - Wuss tracks DPTLib's `develop` branch until the next release.
 
 ### Removed
