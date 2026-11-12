@@ -755,6 +755,7 @@ static void dithering_scaleview_choice(wuss_scaleview_choice_t choice,
                                        dt->source.size);
   task_set_doc_title(dt->base.window, path_leaf(dt->path), "Dithering", 0,
                      dt->scale);
+  (void) wuss_scaleview_set_percent(dt->scaleview, dt->scale);
   wuss_window_invalidate_visible(dt->base.window);
   if (dithering_fit(dt) == result_OK && choice == wuss_SCALEVIEW_FIT_SCREEN)
     (void) wuss_window_place(dt->base.window, &dithermenu_fit_place);

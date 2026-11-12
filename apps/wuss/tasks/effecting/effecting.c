@@ -498,6 +498,7 @@ static void effecting_scaleview_choice(wuss_scaleview_choice_t choice,
                                        ec->source.size);
   task_set_doc_title(ec->base.window, path_leaf(ec->path), "Effecting", 0,
                      ec->scale);
+  (void) wuss_scaleview_set_percent(ec->scaleview, ec->scale);
   wuss_window_invalidate_visible(ec->base.window);
   if (effecting_fit(ec) == result_OK && choice == wuss_SCALEVIEW_FIT_SCREEN)
     (void) wuss_window_place(ec->base.window, &dithermenu_fit_place);

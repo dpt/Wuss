@@ -1151,6 +1151,7 @@ static result_t painting_set_zoom(painting_task_t *pt, int zoom)
   pt->held = 0;
   pt->zoom = zoom;
   painting_title(pt);
+  (void) wuss_scaleview_set_percent(pt->scaleview, zoom * 100);
   wuss_window_invalidate_visible(pt->base.window);
   return painting_fit(pt);
 }

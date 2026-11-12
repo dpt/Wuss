@@ -198,6 +198,24 @@ static result_t sv_choose(wuss_scaleview_t       *sv,
   return result_OK;
 }
 
+/* report the choice: ADJUST leaves the dialogue open, as in RISC OS */
+static result_t sv_act(wuss_scaleview_t       *sv,
+                       wuss_button_t           button,
+                       wuss_scaleview_choice_t choice,
+                       int                     percent)
+{
+  if (choice == wuss_SCALEVIEW_SCALE)
+    sv->percent = percent;
+
+  if (button & wuss_BUTTON_ADJUST)
+  {
+    sv->fn(choice, percent, sv->opaque);
+    return result_OK;
+  }
+
+  return sv_choose(sv, choice, percent);
+}
+
 /* ADJUST puts the view's scale back in the field and leaves the dialogue
  * open, as in RISC OS */
 static result_t sv_action_cancel(void *opaque, wuss_button_t button)
@@ -214,35 +232,23 @@ static result_t sv_action_cancel(void *opaque, wuss_button_t button)
   return result_OK;
 }
 
-/* ADJUST applies the scale and leaves the dialogue open, as in RISC OS */
 static result_t sv_action_scale(void *opaque, wuss_button_t button)
 {
   wuss_scaleview_t *sv;
 
   sv = opaque;
 
-  if (button & wuss_BUTTON_ADJUST)
-  {
-    sv->percent = sv_get_percent(sv);
-    sv->fn(wuss_SCALEVIEW_SCALE, sv->percent, sv->opaque);
-    return result_OK;
-  }
-
-  return sv_choose(sv, wuss_SCALEVIEW_SCALE, sv_get_percent(sv));
+  return sv_act(sv, button, wuss_SCALEVIEW_SCALE, sv_get_percent(sv));
 }
 
 static result_t sv_action_fit_screen(void *opaque, wuss_button_t button)
 {
-  NOT_USED(button);
-
-  return sv_choose(opaque, wuss_SCALEVIEW_FIT_SCREEN, 0);
+  return sv_act(opaque, button, wuss_SCALEVIEW_FIT_SCREEN, 0);
 }
 
 static result_t sv_action_fit_window(void *opaque, wuss_button_t button)
 {
-  NOT_USED(button);
-
-  return sv_choose(opaque, wuss_SCALEVIEW_FIT_WINDOW, 0);
+  return sv_act(opaque, button, wuss_SCALEVIEW_FIT_WINDOW, 0);
 }
 
 /* ----------------------------------------------------------------------- */
@@ -396,8 +402,9 @@ static result_t sv_build_icons(wuss_scaleview_t *sv,
   return wuss_dialogue_set_actions(sv->dialogue, actions, 4);
 }
 
-/* a click on an adjuster or a preset: change the field. Returns non-zero if
- * the event was one */
+/* a click on an adjuster or a preset: change the field. ADJUST on a preset
+ * also applies it, leaving the dialogue open. Returns non-zero if the event
+ * was one */
 static int sv_handle_field_icon(wuss_scaleview_t   *sv,
                                 const wuss_event_t *event,
                                 result_t           *rc)
@@ -428,6 +435,9 @@ static int sv_handle_field_icon(wuss_scaleview_t   *sv,
     if (icon == sv->icons[SV_ICON_P25 + i])
     {
       *rc = sv_set_field(sv, sv_presets[i].percent);
+      if (*rc == result_OK && (event->data.icon.button & wuss_BUTTON_ADJUST))
+        *rc = sv_act(sv, event->data.icon.button, wuss_SCALEVIEW_SCALE,
+                     sv_presets[i].percent);
       return 1;
     }
   }

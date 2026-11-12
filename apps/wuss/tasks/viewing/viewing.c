@@ -417,6 +417,7 @@ static result_t viewing_zoom(viewing_task_t *ic, int percent)
 
   ic->scale = percent;
   viewing_title(ic);
+  (void) wuss_scaleview_set_percent(ic->scaleview, percent);
   wuss_window_invalidate_visible(ic->base.window);
   return viewing_fit(ic);
 }
