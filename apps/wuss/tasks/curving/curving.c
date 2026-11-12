@@ -36,7 +36,7 @@
 #define CURVING_NWIDTHS 6 /* rows in Menu > Width */
 
 /* a single Bezier curve with draggable control points, redrawn as nsegments
- * straight line segments. The mouse wheel adjusts nsegments; an Adjust click
+ * straight line segments. The mouse wheel adjusts nsegments; an ADJUST click
  * cycles the curve type (line, quadratic, cubic, quartic, quintic) by
  * stepping npoints, the count of points[] actually in play; Menu > Type
  * picks it directly; Menu > Width sets the line thickness; Menu > Hull

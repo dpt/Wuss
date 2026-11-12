@@ -90,10 +90,10 @@ typedef struct wuss_message wuss_message_t;
 
 
 /**
- * Mouse buttons, RISC OS-style: Select is the primary action, Adjust the
- * secondary action, Menu pops up a menu.
+ * Mouse buttons, RISC OS-style: SELECT is the primary action, ADJUST the
+ * secondary action, MENU pops up a menu.
  *
- * These are flags, OR'd together, so that chords (e.g. Select and Adjust
+ * These are flags, OR'd together, so that chords (e.g. SELECT and ADJUST
  * pressed together) can be reported. The bit values match the RISC OS button
  * order. Test them with '&' rather than comparing for equality, or a chord
  * will match no button at all.
@@ -355,7 +355,7 @@ typedef enum wuss_window_flags
   wuss_WINDOW_NO_REDRAW      = 1 << 10,
 
   /**
-   * The window can take the input focus: a Select or Adjust press on its
+   * The window can take the input focus: a SELECT or ADJUST press on its
    * content gives it focus, as does wuss_set_focus. The focused window
    * receives wuss_EVENT_KEY and has its titlebar drawn in the focus tint.
    * Not part of wuss_WINDOW_DEFAULT.
@@ -852,6 +852,18 @@ result_t wuss_set_config(wuss_t *wuss, const wuss_config_t *config);
 void wuss_get_config(const wuss_t *wuss, wuss_config_t *config);
 
 /**
+ * Whether the pointer has moved far enough from a press to start a drag: at
+ * least wuss_config_t::mouse.drag_threshold_px from it.
+ *
+ * \param[in] wuss Window manager.
+ * \param[in] from Where the button went down.
+ * \param[in] to   Where the pointer is now.
+ *
+ * \return Non-zero once to is past the drag threshold from from.
+ */
+int wuss_drag_past_threshold(const wuss_t *wuss, point_t from, point_t to);
+
+/**
  * Tell wuss the current time, for double-click detection. The frontend calls
  * this once per frame before wuss_mouse_click (SDL: SDL_GetTicks; RISC OS: a
  * monotonic millisecond clock). The epoch is arbitrary and fixed by the
@@ -990,8 +1002,7 @@ result_t wuss_set_font(wuss_t                 *wuss,
  * \param[in]  index         Font slot, 0..\ref wuss_MAX_FONTS - 1.
  * \param[in]  text          Text to measure.
  * \param[in]  len           Number of characters to consider.
- * \param[in]  target_width  Width to split within, or \ref
- *                           bmfont_width_UNLIMITED for none.
+ * \param[in]  target_width  Width to split within, or INT_MAX for none.
  * \param[out] split_point   Character count that fits within \p
  *                           target_width, or NULL if not wanted.
  * \param[out] actual_width  Width of the (possibly split) text, or NULL if
@@ -1011,7 +1022,9 @@ result_t wuss_text_measure(const wuss_t   *wuss,
  * Draw a run of text in one of wuss's configured fonts (see
  * wuss_get_font_n). Equivalent to bmfont_draw, kept alongside
  * wuss_text_measure so tasks need not include framebuf/bmfont.h themselves
- * for simple text.
+ * for simple text. Where \p bg is a desktop palette colour that wuss fills
+ * with a pattern or dither, the text is drawn with a transparent background
+ * so the glyph cells do not blot out the fill.
  *
  * \param[in]  wuss    Window manager.
  * \param[in]  index   Font slot, 0..\ref wuss_MAX_FONTS - 1.
@@ -1019,8 +1032,8 @@ result_t wuss_text_measure(const wuss_t   *wuss,
  * \param[in]  text    Text to draw.
  * \param[in]  len     Number of characters to consider.
  * \param[in]  fg      Foreground (ink) colour.
- * \param[in]  bg      Background colour, or \ref colour_NONE for
- *                     transparent.
+ * \param[in]  bg      Background colour, or a colour with alpha below 255
+ *                     for transparent.
  * \param[in]  pos     Baseline position to start drawing at.
  * \param[out] end_pos Baseline position after the drawn text, or NULL if not
  *                     wanted.
@@ -1152,9 +1165,9 @@ void wuss_clear_touched(wuss_t *wuss);
 /**
  * Deliver a mouse-down or mouse-up event (action must be wuss_MOUSE_DOWN or
  * wuss_MOUSE_UP). Hit-tests the topmost window at (x,y). On a down, a
- * titlebar click brings the window to front if button is Select (Adjust and
- * Menu leave the z-order unchanged) and starts a drag; on an up, an
- * in-progress drag is ended instead of hit-testing (an Adjust click with no
+ * titlebar click brings the window to front if button is SELECT (ADJUST and
+ * MENU leave the z-order unchanged) and starts a drag; on an up, an
+ * in-progress drag is ended instead of hit-testing (an ADJUST click with no
  * move in between sends the window to the back rather than dragging it). A
  * click on the window's content never changes the z-order and is delivered
  * to the task in window-local content coordinates.
@@ -1422,6 +1435,23 @@ result_t wuss_drag_start_object(wuss_t              *wuss,
                                 void                *opaque);
 
 /**
+ * Start a grab: a core drag that draws nothing and scrolls \p window
+ * instead, so that the content under the pointer follows it. Call it from
+ * the handler of the wuss_MOUSE_DOWN pressed on the content. Scrolling stays
+ * within the document extent and an axis the window has no scrollbar for
+ * stays put. Pointer bounds are set to stop the pointer where the scrolling
+ * stops; a task may replace them with wuss_set_pointer_bounds. Otherwise as
+ * wuss_drag_start, except that Escape also restores the scroll offset the
+ * grab started from. wuss_EVENT_SCROLL is not delivered.
+ *
+ * \param[in] wuss   Window manager.
+ * \param[in] window As wuss_drag_start.
+ * \return \ref result_OK on success, \ref result_BAD_ARG if window is NULL
+ *         or has no task handle.
+ */
+result_t wuss_drag_start_grab(wuss_t *wuss, wuss_window_t *window);
+
+/**
  * Whether a core drag session (see wuss_drag_start) is currently active.
  *
  * \param[in] wuss Window manager.
@@ -1430,7 +1460,7 @@ result_t wuss_drag_start_object(wuss_t              *wuss,
 int wuss_is_dragging(const wuss_t *wuss);
 
 /**
- * Whether a window holds the mouse capture. A Select or Adjust press on a
+ * Whether a window holds the mouse capture. A SELECT or ADJUST press on a
  * window's plain content (not on an icon or furniture) captures the mouse:
  * that window then receives every \ref wuss_EVENT_MOUSE, with points that
  * may lie outside its content box, until the button is released. Its task

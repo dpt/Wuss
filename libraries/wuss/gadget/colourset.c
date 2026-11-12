@@ -48,7 +48,9 @@ struct wuss_colourset
   wuss_window_t               *window;
   wuss_icon_t                 *field;
   wuss_icon_t                 *button;
+  wuss_icon_t                 *title_icon; /* NULL if none */
   const char                  *title;
+  int                          title_width;
   wuss_colour_t                colour;
   colour_t                     rgb;     /* what the field shows */
   int                          indexed; /* rgb is palette[colour]: follows
@@ -143,17 +145,19 @@ result_t wuss_colourset_create(wuss_colourset_t           **out,
   if (rc != result_OK)
     goto failure;
 
-  cs->alloc   = wuss->alloc;
-  cs->window  = window;
-  cs->field   = icons[0];
-  cs->button  = icons[1];
-  cs->title   = title;
-  cs->colour  = (wuss_colour_t) resolved;
-  cs->indexed = 1;
-  cs->changed = changed;
-  cs->opaque  = opaque;
-  cs->handle  = NULL;
-  cs->picking = 0;
+  cs->alloc       = wuss->alloc;
+  cs->window      = window;
+  cs->field       = icons[0];
+  cs->button      = icons[1];
+  cs->title_icon  = (nspecs > 2) ? icons[2] : NULL;
+  cs->title       = title;
+  cs->title_width = title_width;
+  cs->colour      = (wuss_colour_t) resolved;
+  cs->indexed     = 1;
+  cs->changed     = changed;
+  cs->opaque      = opaque;
+  cs->handle      = NULL;
+  cs->picking     = 0;
 
   colourset_show(cs, wuss->palette[resolved]);
 
@@ -183,6 +187,49 @@ void wuss_colourset_destroy(wuss_colourset_t *doomed)
   wuss_menu_close(doomed->handle);
   doomed->alloc.free(doomed->pixels);
   doomed->alloc.free(doomed);
+}
+
+result_t wuss_colourset_set_bbox(wuss_colourset_t *colourset, box_t bbox)
+{
+  result_t         rc;
+  wuss_icon_spec_t specs[3];
+  box_t            field;
+  size2d_t         size;
+  void            *pixels;
+  bitmap_t         bm;
+
+  /* size the field's image first, so a failure leaves everything put */
+  wuss__popup_layout(colourset->window->task->wuss, bbox, colourset->title,
+                     colourset->title_icon ? colourset->title_width : -1,
+                     "grightc", "grightc-p", specs, &field);
+  size.w = MAX(field.x1 - field.x0 - 2 * WUSS_BEVEL_WIDTH, 1);
+  size.h = MAX(field.y1 - field.y0 - 2 * WUSS_BEVEL_WIDTH, 1);
+  if (size.w != colourset->bm.size.w || size.h != colourset->bm.size.h)
+  {
+    pixels = colourset->alloc.malloc((size_t) size.w * size.h * 4);
+    if (pixels == NULL)
+      return result_OOM;
+
+    rc = bitmap_init(&bm, size, pixelfmt_bgrx8888, size.w * 4, NULL, pixels);
+    if (rc != result_OK)
+    {
+      colourset->alloc.free(pixels);
+      return rc;
+    }
+
+    /* the field icon borrows &colourset->bm, so update it in place */
+    colourset->alloc.free(colourset->pixels);
+    colourset->pixels = pixels;
+    colourset->bm     = bm;
+    bitmap_clear(&colourset->bm, colourset->rgb);
+  }
+
+  wuss__popup_relayout(colourset->window, bbox, colourset->title,
+                       colourset->title_width, "grightc", "grightc-p",
+                       colourset->button, colourset->title_icon, &field);
+  wuss_icon_set_bbox(colourset->window, colourset->field, &field);
+
+  return result_OK;
 }
 
 /* ----------------------------------------------------------------------- */

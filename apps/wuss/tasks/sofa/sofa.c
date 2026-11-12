@@ -41,8 +41,8 @@ typedef enum sofa_shape
 sofa_shape_t;
 
 /* a wireframe sofa (seat, backrest, two arms), spaceship or Platonic solid,
- * spinning about its vertical axis; a Select click or Menu > Pause
- * pauses/resumes the spin, an Adjust click or Menu > Model changes the
+ * spinning about its vertical axis; a SELECT click or Menu > Pause
+ * pauses/resumes the spin, an ADJUST click or Menu > Model changes the
  * model, Menu > Auto-cycle turns the automatic change of model after a few
  * turns on or off, Menu > Randomise (^R) picks a model and colours afresh,
  * Menu > Reset (R) restores the starting view and Menu > Save opens a

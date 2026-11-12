@@ -14,7 +14,9 @@
 #include "wuss/wuss.h"
 #include "wuss/task.h"
 #include "wuss/window.h"
+#include "framebuf/bmfont.h"
 #include "framebuf/screen.h"
+#include "io/path.h"
 #include "wuss/icon-spec.h"
 #include "../../icon.h"
 
@@ -33,9 +35,11 @@
 result_t wuss_icon_test(const char *resources)
 {
   result_t       rc;
+  bmfont_t      *stdfont;
   wuss_fixture_t fixture;
   wuss_t        *wuss;
 
+  stdfont = NULL;
   rc = wuss_fixture_open(&fixture, 200, 200);
   if (rc != result_OK)
     goto Failure;
@@ -766,13 +770,56 @@ result_t wuss_icon_test(const char *resources)
     wuss_window_close(win_flag);
   }
 
+  printf("test: standard heights follow the system font\n");
+
+  {
+    inset_t          insets;
+    wuss_font_desc_t fdesc;
+    int              h;
+
+    /* no font: the fallback reproduces the classic fixed sizes */
+    if (wuss_std_height(wuss, wuss_STD_LABEL)            != 10 ||
+        wuss_std_height(wuss, wuss_STD_FIELD)            != 22 ||
+        wuss_std_height(wuss, wuss_STD_SLIDER)           != 18 ||
+        wuss_std_height(wuss, wuss_STD_SECONDARY_BUTTON) != 26 ||
+        wuss_std_height(wuss, wuss_STD_PRIMARY_BUTTON)   != 34 ||
+        wuss_std_height(wuss, wuss_STD_FRAME_TOP)        != 12)
+      goto Failure;
+    insets = wuss_std_frame_insets(wuss);
+    if (insets.t != 12 || insets.r != 8 || insets.b != 8 || insets.l != 8)
+      goto Failure;
+
+    /* a large font grows every extent by its height */
+    rc = bmfont_create(pathf("%s/resources/bmfonts/DPT-DigitsLg/Regular.png",
+                             resources), &stdfont);
+    if (rc != result_OK)
+      goto Failure;
+    fdesc.font       = stdfont;
+    fdesc.font_class = wuss_FONT_CLASS_NONE;
+    fdesc.name       = NULL;
+    rc = wuss_set_font(wuss, 0, &fdesc);
+    if (rc != result_OK)
+      goto Failure;
+    bmfont_get_info(stdfont, NULL, &h, NULL, NULL);
+    if (h <= 10 ||
+        wuss_std_height(wuss, wuss_STD_LABEL)            != h      ||
+        wuss_std_height(wuss, wuss_STD_FIELD)            != h + 12 ||
+        wuss_std_height(wuss, wuss_STD_SLIDER)           != h + 8  ||
+        wuss_std_height(wuss, wuss_STD_SECONDARY_BUTTON) != h + 16 ||
+        wuss_std_height(wuss, wuss_STD_PRIMARY_BUTTON)   != h + 24 ||
+        wuss_std_height(wuss, wuss_STD_FRAME_TOP)        != h + 2)
+      goto Failure;
+  }
+
   wuss_fixture_close(&fixture);
+  bmfont_destroy(stdfont);
 
   return result_TEST_PASSED;
 
 Failure:
   printf("wuss_icon_test: failed (rc=0x%X)\n", rc);
   wuss_fixture_close(&fixture);
+  bmfont_destroy(stdfont);
 
   return result_TEST_FAILED;
 }

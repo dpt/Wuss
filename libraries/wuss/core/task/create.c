@@ -34,7 +34,8 @@ result_t wuss_task_create(wuss_t                 *wuss,
   list_init(&t->windows);
 #ifdef WUSS_ICONS
   t->iconpool.names    = NULL;
-  t->iconpool.atoms    = NULL;
+  t->iconpool.entries  = NULL;
+  t->iconpool.nentries = 0;
   t->iconpool.bitmaps  = NULL;
   t->iconpool.nbitmaps = 0;
 #endif

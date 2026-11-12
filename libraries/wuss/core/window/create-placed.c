@@ -51,7 +51,7 @@ static void place_area(const wuss_t      *wuss,
     area->x0 += WUSS_SAFE_INSET;
     area->y0 += WUSS_SAFE_INSET;
     area->x1 -= WUSS_SAFE_INSET;
-    area->y1 -= WUSS_SAFE_INSET_BOTTOM;
+    area->y1 -= WUSS_SAFE_INSET_BOTTOM(wuss);
   }
 }
 

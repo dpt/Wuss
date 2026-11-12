@@ -19,18 +19,26 @@ bar opens the same dialogue.
 
 - **Width** and **Height** are 1 to 2048 pixels, starting at 640 x 480. A
   value out of range is clamped when you click Create.
-- **Background** is white, black or grey. The pen starts in a colour that
-  shows on it.
-- **Create** opens two windows: the canvas and a toolbox. Adjust-click Create
+- **Background** is a row of swatches: the desktop palette, then
+  transparent, shown as a checkerboard. It starts on the lightest colour.
+  The pen starts in black or white, whichever shows on it.
+- **Create** opens two windows: the canvas and a toolbox. ADJUST-click Create
   keeps the dialogue open, so you can open several canvases in a row.
   **Cancel** closes the dialogue.
 
 Closing the canvas closes the toolbox and ends that instance. Each Create
 makes an instance of its own.
 
-- **Select** paints with the foreground colour, **Adjust** with the
-  background colour. Clicking a swatch in the toolbox sets the foreground
-  (Select) or the background (Adjust).
+- **SELECT** paints with the foreground colour, **ADJUST** with the
+  background colour. Clicking a swatch in the option bar sets the foreground
+  (SELECT) or the background (ADJUST). SELECT also selects the swatch.
+- Each canvas has its own palette of up to 32 colours, which starts as the
+  desktop's. Past 16 the swatches wrap to a second row. Menu > Palette has
+  Add foreground (which selects the colour instead if the palette already
+  holds it), Edit colour (the colour picker on the selected swatch),
+  Remove colour, Desktop palette (start again from the desktop's) and Save
+  palette, which writes a `.hex` file. Drop a `.hex` file on the canvas to
+  load it as the palette.
 - Tools: brush, wobbly brush, eraser (wipes to transparent), line, rect,
   filled rect, flood fill, spray, select (rectangle), lasso, magic wand and
   colour picker. Press `B` `K` `E` `L` `R` `X` `F` `P` `S` `O` `W` or `I` to
@@ -42,8 +50,16 @@ makes an instance of its own.
 - The wobbly brush draws an inked line whose two edges wander in and out
   on their own, swelling slowly and jittering finely, in the manner of
   Ellis Nadler's drawings. Each stroke wobbles differently.
-- The colour picker takes the foreground (Select) or the background
-  (Adjust) colour from the canvas pixel clicked.
+- The paintbrush's **Dry** slider makes each stroke run out of paint. At 0%
+  (the default) it never does. Above that, the stroke stays solid for the
+  first half of its paint, then misses more and more pixels, like a dry
+  brush, until it paints nothing. Higher settings run dry sooner: at 100% a
+  stroke lasts about 40 pixels. Each new stroke starts with a full brush.
+  The paint pot after the slider drains as a stroke uses its paint, shows
+  empty once the stroke has run dry and fills again when the next stroke
+  starts.
+- The colour picker takes the foreground (SELECT) or the background
+  (ADJUST) colour from the canvas pixel clicked.
 - Spray scatters dots in a disc round the pointer. Dots build up while the
   button is held still.
 - Select and lasso make a selection, shown with marching ants. The new
@@ -56,12 +72,54 @@ makes an instance of its own.
   matches only, and each step above adds 8 to the tolerance. Shift and Alt
   add and take away, as for select and lasso.
 - Menu > Selection has Select all, Clear selection and Invert. `Esc` also
-  clears the selection. Clear selection and Undo are shaded when they do not apply, and update
-  while the menu stays open.
+  clears the selection. Menu > Edit has Fill (`F`), which paints the selected
+  pixels with the foreground colour, and Clear (`Delete`), which paints them
+  with the background colour, each as one undo step. Clear selection, Fill, Clear, Undo and Redo are shaded when they do
+  not apply, and update while the menu stays open. With nothing selected `F`
+  picks the Fill tool instead.
 - Line and rect show a rubber band while the button is down. They draw into
   the canvas when it is released.
-- `F8` or Menu > Undo steps back. There are 20 levels and no redo.
-- Menu > Save (`F3`) opens the Save As dialogue.
+- Shift squares a rect or ellipse. Ctrl draws it out from its centre. Tick
+  **Nice circles** on the ellipse tools' size bar to snap a Shift-squared
+  ellipse away from the diameters that draw looking like hexagons (9, 10, 11,
+  13 and 14 pixels) to the nearest one that doesn't.
+- The pencil draws pixel-perfect lines one pixel wide: where a stroke turns
+  a corner, leaving an L of three pixels, it puts the corner pixel back, so
+  freehand diagonals stay one pixel thin. Untick **Pixel-perfect** on the
+  size bar to keep every pixel. Raise its **Size** and it stamps the
+  paintbrush's nozzle instead, in paint that never runs dry. The pencil keeps
+  its own size, starting at 1; the other tools share theirs.
+- `F8` or Menu > Edit > Undo steps back, and `F9` or Menu > Edit > Redo
+  steps forward again. There are 20 levels. A new edit drops the steps left to redo.
+- Menu > Transform flips the whole canvas horizontally or vertically, or
+  rotates it right, left or by 180°. Rotating right or left swaps the
+  canvas's width and height; Undo puts the old size back. With a selection
+  it flips or rotates the selected pixels instead, about the centre of the
+  selection's bounds, leaving the background colour where they were. They
+  float, as pasted pixels do, so further flips and turns join the same undo
+  step.
+  Crop to selection cuts the canvas down to the selection's bounds. Canvas
+  size opens a dialogue that grows or shrinks the canvas about its centre,
+  filling any new area with the chosen background.
+- The size bar's two Symmetry buttons mirror drawing about the canvas's
+  centre: the first copies it left to right, the second top to bottom, and
+  both make four copies. Menu > View > Tiled shows the canvas with a copy on every
+  side, and drawing that runs over an edge carries on from the far side, for
+  seamless tiles. Both apply
+  to the freehand tools, spray, line, shapes, paths and fill, each drawing as
+  one undo step. The gradient and the selection tools ignore them, and a fill
+  stops at the canvas's edge.
+- The view zooms up to 6400%. From 600% up a grey grid outlines each
+  canvas pixel. Hold Space and drag with SELECT to pan the view.
+- The layers bar on the canvas's right edge lists the layers, the top one
+  first. Its buttons add a layer above the current one, delete the current
+  one, and raise or lower it. In a layer's row, click the box to show or hide
+  it, the bar to set its opacity, or elsewhere to make it current. Drawing
+  goes on the current layer; transforms and resizes act on every layer.
+  Menu > View hides or shows each bar: the toolbox, size bar, option bar
+  and layers bar. Menu > View > Display picks the dithering and the zoom.
+- Menu > Save (`F3`) opens the Save As dialogue. The PNG holds the layers
+  flattened.
 - Drop a PNG on the canvas window or on the Painting icon to load it.
 
 ## The canvas
@@ -70,6 +128,11 @@ The canvas is a `bgrx8888` bitmap of the size and colour the New dialogue
 asks for. The window shows up to 400 x 300 of it and scrolls. Drawing is
 opaque and hard-edged. There is no alpha channel because `screen_t` has no
 span table for the alpha formats, so drawing straight onto one asserts.
+
+The canvas is a stack of up to 16 layers of that size, each with a visibility
+and an opacity. `paintingdoc_bitmap` returns them composited, from a cache
+recomposited only where it is stale; with one visible opaque layer it is that
+layer. The operations draw on the current layer.
 
 Every operation in `painting-doc.h` takes canvas pixels and returns the box it
 may have changed. The task passes that box to `wuss_window_invalidate`.
@@ -80,17 +143,24 @@ and Invert uses `region_invert`. Adding and taking away use `region_union`
 and `region_subtract`.
 `paintingdoc_selection_outline` gives the boundary boxes that the ants draw.
 
-Undo keeps RLE-compressed copies of the whole canvas. A stroke takes one
+Undo keeps RLE-compressed copies of the current layer, or of every layer for
+a step that adds, deletes, moves, transforms or resizes them. A stroke takes one
 `paintingdoc_checkpoint` when the button goes down. `paintingdoc_rect` and
-`paintingdoc_fill` take their own.
+`paintingdoc_fill` take their own. Symmetry repeats an operation with mirrored
+or shifted points inside `paintingdoc_hold`, so only the first copy takes its
+checkpoint.
 
 ## Loading
 
-`paintingdoc_load_png` replaces the canvas and resizes it to the image. Undo is
-dropped, as a saved step cannot apply to a canvas of another size. An image
+`paintingdoc_load` replaces the canvas with a PNG or JPEG and resizes it to
+the image. Undo is dropped, as a saved step cannot apply to a canvas of another size. An image
 with an alpha channel is composited over white. A paletted image is converted
 to `bgrx8888`, which loses any palette transparency. On failure the canvas is
 left as it was.
+
+A dropped file that is not an image is tried as a `.hex` palette with
+`palettes_load_hex`. The contents decide, not the name, as RISC OS has no
+extensions.
 
 ## Open points
 

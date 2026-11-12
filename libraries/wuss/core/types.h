@@ -64,11 +64,25 @@
 
 #define WUSS_PLACE_GUTTER 6 /* px left between windows auto-placed by wuss_window_create_at */
 
+/* System font height assumed when no font is loaded */
+#define WUSS_FALLBACK_FONT_HEIGHT 10
+
+/* The icon bar's height is a WUSS_ICONBAR_ICON high icon, WUSS_ICONBAR_TEXT_PAD
+ * of clear space, a label of the system font and WUSS_ICONBAR_MARGIN, split
+ * 5:3 above:below the icon and label. See wuss__iconbar_height */
+#define WUSS_ICONBAR_ICON     34
+#define WUSS_ICONBAR_TEXT_PAD 2
+#define WUSS_ICONBAR_MARGIN   21
+
 /* The safe area wuss_window_create_at places windows in: the screen inset by
- * these. Icon bar menus open with their bottom edge on the bottom inset, so
- * every icon's menu sits at the same height */
-#define WUSS_SAFE_INSET        8
-#define WUSS_SAFE_INSET_BOTTOM 47
+ * WUSS_SAFE_INSET, and at the bottom by WUSS_SAFE_INSET_BOTTOM(wuss), which
+ * reaches WUSS_SAFE_INSET_OVERLAP down into the icon bar. Icon bar menus open
+ * with their bottom edge on the bottom inset, so every icon's menu sits at
+ * the same height */
+#define WUSS_SAFE_INSET         8
+#define WUSS_SAFE_INSET_OVERLAP 20
+#define WUSS_SAFE_INSET_BOTTOM(wuss) \
+  (wuss__iconbar_height(wuss) - WUSS_SAFE_INSET_OVERLAP)
 
 #define WUSS_BUTTON_INSET 3  /* shared by close/back/toggle/resize furniture buttons and scrollbar breadth */
 
@@ -88,9 +102,8 @@
 #endif
 
 #ifdef WUSS_ICONS
-#define WUSS_FRAME_CAPTION_TOP   4  /* y shift to make frame neatly meet caption */
+#define WUSS_FRAME_CAPTION_TOP   4  /* y shift to make frame neatly meet caption, when there is no font */
 #define WUSS_FRAME_CAPTION_INSET 8  /* x offset of a wuss_ICON_TYPE_FRAME caption from the frame's left edge */
-#define WUSS_FRAME_CAPTION_PAD   22 /* gap left in the frame's top edge either side of the caption */
 
 #define WUSS_SLIDER_BEVEL 2 /* width of a wuss_ICON_TYPE_SLIDER's bevel edge, around its surround */
 #define WUSS_SLIDER_GAP   4 /* fixed inset on all four sides of a wuss_ICON_TYPE_SLIDER's surround, between it and the inner (clickable) rect */
@@ -122,19 +135,31 @@ enum
 };
 
 #ifdef WUSS_ICONS
+/* One pool entry: a plain PNG (a 1x1 grid) or a sprite sheet split into
+ * cols x rows frames, held row-major at wuss_iconpool::bitmaps[first...]. atom
+ * is the entry's name in wuss_iconpool::names (atom values are not array
+ * indices, so the position is tracked explicitly). */
+struct wuss_iconpool_entry
+{
+  int atom;
+  int first;
+  int cols;
+  int rows;
+};
+
 /* A set of named, RLE-compressed icons loaded from a directory of PNGs: the
  * wuss-wide shared pool (wuss::icon) and, optionally, one private pool per
- * task (wuss_task::iconpool). Index i is the i-th ".png" in name order
- * (strcmp -- still address by name). names interns the leafnames-sans-".png";
- * atoms[i] is entry i's atom in it (atom values are not array indices, so the
- * position is tracked explicitly); bitmaps[i] is the matching RLE-compressed
- * bitmap. All owned; freed by wuss__iconpool_clear. NULL / 0 until loaded. */
+ * task (wuss_task::iconpool). Entry i is the i-th name in strcmp order (still
+ * address by name). names interns the entry names; bitmaps holds every
+ * entry's frames. All owned; freed by wuss__iconpool_clear. NULL / 0 until
+ * loaded. */
 struct wuss_iconpool
 {
-  struct atom_set *names;
-  int             *atoms;
-  bitmap_t        *bitmaps;
-  int              nbitmaps;
+  struct atom_set            *names;
+  struct wuss_iconpool_entry *entries;
+  int                         nentries;
+  bitmap_t                   *bitmaps;
+  int                         nbitmaps;
 };
 #endif
 
@@ -370,7 +395,7 @@ struct wuss
   wuss_window_t              *pointer_window;
   /* Window holding the input focus, NULL if none; see wuss_set_focus. */
   wuss_window_t              *focus;
-  /* Window that took a Select/Adjust DOWN on its plain content (no icon hit);
+  /* Window that took a SELECT/ADJUST DOWN on its plain content (no icon hit);
    * it receives every mouse event, wherever the pointer goes, until the
    * matching MOUSE_UP. NULL when none. See capture.c. */
   wuss_window_t              *capture;
@@ -455,6 +480,10 @@ struct wuss
     /* Horizontal scroll offset in pixels; non-zero only while the icons
      * overflow the bar. */
     int                   scroll;
+    /* Non-zero while the pointer dwells at the bottom of the screen over a
+     * covered bar; pop_since is now_ms when the dwell began. */
+    int                   pop_armed;
+    unsigned int          pop_since;
   }
   iconbar;
 #endif
@@ -491,6 +520,12 @@ struct wuss
      * as "opaque". */
     wuss_drag_draw_fn_t *draw;
     void                *opaque;
+    /* Set by wuss_drag_start_grab: moves scroll the window instead. The box
+     * stays empty, so nothing is painted or invalidated for it. */
+    int                  grab;
+    /* Pointer and window scroll offset as the grab started. */
+    point_t              grab_pointer;
+    point_t              grab_scroll;
   }
   drag;
 };
@@ -524,6 +559,8 @@ struct wuss_window
     wuss_edge_t       edge;
     wuss_align_t      align;
     int               offset; /* along the edge, after aligning */
+    int               thick;  /* a pane's own thickness, which layout may
+                               * thin while its parent lacks the room */
   }
   toolbar;
   box_t               panes;  /* room the visible panes take in from each

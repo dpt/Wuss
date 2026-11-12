@@ -133,6 +133,7 @@ void     wuss_window_detach(wuss_window_t *toolbar);
 
 - **Placement.** The toolbar sits outside `edge` (`wuss_EDGE_LEFT`, `RIGHT`, `TOP` or `BOTTOM`), its outline overlapping the parent's so that the two draw as a single line. Along the edge it is aligned against the parent's content area: `wuss_ALIGN_TOP`/`BOTTOM` for a left or right edge, `wuss_ALIGN_LEFT`/`RIGHT` for a top or bottom edge, `0` to centre. `offset` then shifts it that many pixels further along. It may overhang the parent. Several toolbars on one edge stack outwards in the order they were attached, overlapping outlines in the same way. A hidden toolbar gives up its place.
 - **Size.** A toolbar keeps its own size whatever the parent's size. Resizing a toolbar is allowed and its neighbours move to suit. The parent's maximum size and toggle-size take no account of its toolbars.
+- **Overrun.** A toolbar or pane whose content -- its shown icons, or its document if it has none or draws its own content -- is larger than its content area scrolls as the icon bar does: while the pointer rests within 16 pixels of either end of an overrun axis without a scrollbar, each idle moves the content 6 pixels that way. Not while a press or drag is in progress.
 - **Screen edges.** A toolbar stays on screen, overlapping the parent if needs be, until the edge it is attached to goes off the screen; then it goes too. Only the axis at right angles to the edge is clamped, and the toolbars on one edge are clamped together.
 - **Furniture.** A toolbar has no titlebar and so no close, back, toggle-size or resize buttons. It may have an outline and scrollbars. Other flags give `result_BAD_ARG`, as does attaching a window to a toolbar, a toolbar to a second parent, or windows of different tasks.
 - **Moving and stacking.** `wuss_window_move` on a toolbar does nothing: move its parent instead. Toolbars stay in the parent's stack directly in front of it, and `wuss_window_restack` and `wuss_window_set_stack` on any member of the group act on the whole group.
@@ -211,7 +212,11 @@ A core drag (see `wuss_drag_start`) takes over the pointer until a release or Es
 
 The bitmap and `opaque` are borrowed until the drag ends. A solid image repaints its old and new boxes once a frame, and only when it has moved. Windows underneath repaint through the normal dirty path; there is no save-under.
 
-When `wuss_config_t::mouse.outline_drags` is set (the Configure task's "Solid drags" option, unticked), solid drags show ants of the same size instead. A DRAGGABLE icon drags its image and a gridview drags the item's glyph. Each falls back to ants when there is no image.
+When `wuss_config_t::mouse.outline_drags` is set (the Configuring task's "Solid drags" option, unticked), solid drags show ants of the same size instead. A DRAGGABLE icon drags its image and a gridview drags the item's glyph. Each falls back to ants when there is no image.
+
+### Grabbing
+
+`wuss_drag_start_grab(wuss, window)` starts a core drag that draws nothing and scrolls `window` instead, keeping the content under the pointer as it moves. Call it from the handler of a content `wuss_MOUSE_DOWN`. The offset is measured from where the grab started, so content stopped by the end of the document catches the pointer up on the way back. It stays within the document extent and an axis with no scrollbar stays put, as for `wuss_window_scroll_by`. The grab also sets pointer bounds (see `wuss_set_pointer_bounds`) that stop the pointer where the content stops, so a host that applies them holds the pointer still once there is nothing further to drag. A release ends the grab with `wuss_EVENT_DRAG_END`. Escape does too, after restoring the starting offset. Resizing and Viewing use it for their document areas.
 
 ## Scrolling
 
@@ -308,12 +313,15 @@ The bevel's light (top/left) and dark (bottom/right) edge shades come from `conf
 - `wuss_iconpool_lookup(wuss, name)` → 0-based index, or `-1`.
 - `wuss_iconpool_bitmap(wuss, index)` → the compressed `bitmap_t *` (window-manager-owned), or `NULL` out of range.
 - `wuss_iconpool_count(wuss)`.
+- `wuss_iconpool_frame(wuss, index, frame)` → one frame of the entry, or `NULL` out of range (so past the last frame).
+
+**Sprite sheets.** A leafname ending `_<w>x<h>` (decimal, no leading zero, both at least 1), e.g. `duck_24x24.png`, is a sprite sheet: a uniform grid of `w`×`h` cells. It loads as one entry named without the suffix (`duck`), split into frames that are each RLE-compressed. Frames are indexed row-major from 0 at the top left, and transparent cells still count. There is no mirroring or animation data: a left-facing set is another row. Partial cells at the right and bottom edges are dropped with a warning; a sheet smaller than one cell is skipped. A plain PNG is a 1×1 grid. Everything that does not ask for a frame (`wuss_iconpool_bitmap`, name lookups, icon specs) gets frame 0. Leaves load in `strcmp` order, so when two share a name (`duck.png` and `duck_24x24.png`) the first wins and the other is skipped with a warning.
 
 A `wuss_ICON_TYPE_BITMAP` spec with `u.bitmap.image == NULL` and `u.bitmap.set = wuss_ICONPOOL_SET(idx)` draws the loaded entry at `idx` (the `wuss_ICONPOOL_SET` macro offsets by one so a zero-initialised spec means "no entry"). Alternatively set `u.bitmap.name` (and `pressed_name` for the held-down image) to an entry's name and let `wuss_icon_create` resolve it; an unknown name logs a warning and the icon draws the red placeholder box. `image` wins over `set`, which wins over `name`. An out-of-range index is `result_WUSS_BAD_INDEX`. Calling `wuss_iconpool_load` again replaces the set; `wuss_destroy` frees it. A missing directory is not an error — it yields a zero-length set. `dir` is copied internally, so a `path_join_filename` result is safe to pass.
 
 **Bevelled and latching bitmap icons.** `u.bitmap.border` (`wuss_ICON_BORDER_RIDGE` or `_GROOVE`; the default `_NONE` keeps the image at the top-left) draws a bevel inside the bounding box with the image centred in it. With `wuss_ICON_FLAGS_INTERACTIVE`, a non-zero `u.bitmap.group` makes the icon latch like a grouped radio: a click selects it and clears every other selected bitmap icon in the same group on that window. A latched icon swaps its bevel (RIDGE reads raised at rest, sunk when latched) and fills with its `bg` colour. Group zero is a plain button. Paint's toolbox uses this.
 
-**Private pools.** A task may also keep a private pool, searched before the shared one when its icons' names are resolved. It is opt-in: call `wuss_task_iconpool_load(task, dir)`, or `wuss_task_iconpool_load_resource(task, resources)`, which loads `resources/wuss/tasks/<task name>/iconpool` (the name from `wuss_task_desc_t::name`, so a task needs one). Both replace the task's pool and load the same way as the shared one. `wuss_task_iconpool_find(task, name)` returns the bitmap from the private pool, falling back to the shared pool, or `NULL`. The pool is freed with the task. A name that resolves is stored in the icon as a bitmap pointer (`u.bitmap.image` / `pressed_image`), not an index, so the same name may mean different bitmaps in different tasks; `set`/`pressed_set` index the shared pool only. RADIO/OPTION glyphs also come from the shared pool only. Reloading either pool frees the bitmaps it held, so reload before creating icons that name them.
+**Private pools.** A task may also keep a private pool, searched before the shared one when its icons' names are resolved. It is opt-in: call `wuss_task_iconpool_load(task, dir)`, or `wuss_task_iconpool_load_resource(task, resources)`, which loads `resources/wuss/tasks/<task name>/iconpool` (the name from `wuss_task_desc_t::name`, so a task needs one). Both replace the task's pool and load the same way as the shared one. `wuss_task_iconpool_find(task, name)` returns the bitmap from the private pool, falling back to the shared pool, or `NULL`. `wuss_task_iconpool_frame(task, name, frame)` searches the same way for a sheet's frames. The pool is freed with the task. A name that resolves is stored in the icon as a bitmap pointer (`u.bitmap.image` / `pressed_image`), not an index, so the same name may mean different bitmaps in different tasks; `set`/`pressed_set` index the shared pool only. RADIO/OPTION glyphs also come from the shared pool only. Reloading either pool frees the bitmaps it held, so reload before creating icons that name them.
 
 ## Components
 
@@ -321,7 +329,7 @@ Built with the `WUSS_COMPONENTS` CMake option, `libraries/wuss/component/` holds
 
 ### Program-information dialogue
 
-`wuss_proginfo` is the RISC OS "Info" / Toolbox ProgInfo dialogue in miniature: a small fixed window of Name / Purpose / Author / Version rows a task fills in once, then typically hangs off its Menu-button pop-up.
+`wuss_proginfo` is the RISC OS "Info" / Toolbox ProgInfo dialogue in miniature: a small fixed window of Name / Purpose / Author / Version rows a task fills in once, then typically hangs off its MENU-button pop-up.
 
 ```C
 typedef struct wuss_proginfo_desc
@@ -356,7 +364,7 @@ Double-clicking a file in a Filing window opens it the RISC OS way, through a `w
 
 A double ADJUST click opens the file and then closes the Filing window, as it does for a directory.
 
-The demo app's tasks claim types through `taskapp_desc_t::opens`, a 0-terminated list of RISC OS filetype numbers. taskapp acknowledges a matching message as soon as the type matches, then opens a new instance and passes it the path through `data_load`. A load that fails is reported by the app itself, so Filing never reports a second error. The run function in `apps/wuss/tasks/tasks.c` maps PNG (&B60) to Viewing, and text (&FFF) and Markdown to Reading.
+The demo app's tasks claim types through `taskapp_desc_t::opens`, a 0-terminated list of RISC OS filetype numbers. taskapp acknowledges a matching message as soon as the type matches, then opens a new instance and passes it the path through `data_load`. A load that fails is reported by the app itself, so Filing never reports a second error. The run function in `apps/wuss/tasks/tasks.c` maps PNG (&B60) and JPEG (&C85) to Viewing, and text (&FFF) and Markdown to Reading.
 
 The reverse trip goes through `wuss_MESSAGE_FILER_OPEN_DIR`. ADJUST on a document window's close icon broadcasts it, with the directory that holds the document as a NUL-terminated path, and Filing opens a window on that directory (or brings the existing one to the front). The document window then closes. With Shift held, it stays open. A document that has no file yet (an untitled Painting) only closes. The demo's document tasks do this through `task_close_adjust` in `apps/wuss/tasks/common/common.h`.
 
@@ -368,10 +376,10 @@ On RISC OS, `io/dirlist` still takes a file's type from its extension rather tha
 
 Terms as this document and the API use them. Several are RISC OS conventions, which Wuss follows.
 
-- **Adjust** — the secondary mouse button, `wuss_BUTTON_ADJUST`. Conventionally the variant of an action: Adjust on the back button brings a window to front rather than sending it back, and Adjust on a scroll arrow steps against the direction the arrow points.
+- **ADJUST** — the secondary mouse button, `wuss_BUTTON_ADJUST`. Conventionally the variant of an action: ADJUST on the back button brings a window to front rather than sending it back, and ADJUST on a scroll arrow steps against the direction the arrow points.
 - **Backdrop** — the desktop background colour painted behind all windows, set by `config->backdrop` at `wuss_create` time. `wuss_NO_BACKGROUND` leaves the area behind windows untouched, making it the caller's to repaint.
-- **Button flags** — `wuss_button_t` values are flags (Select 4, Menu 2, Adjust 1), OR'd together so a chord can be reported. Test a reported button with `&`, never for equality.
-- **Chord** — two or more mouse buttons held together, e.g. Select+Adjust. Wuss's own furniture handling resolves an ambiguous chord in Select's favour.
+- **Button flags** — `wuss_button_t` values are flags (SELECT 4, MENU 2, ADJUST 1), OR'd together so a chord can be reported. Test a reported button with `&`, never for equality.
+- **Chord** — two or more mouse buttons held together, e.g. SELECT+ADJUST. Wuss's own furniture handling resolves an ambiguous chord in SELECT's favour.
 - **Content area** — the part of a window belonging to its task. Its bounds are exactly what was passed to `wuss_window_create`, furniture being added outside it, less any room its panes take; read back with `wuss_window_get_content_bounds`.
 - **Dirty region** — the accumulated set of screen-space boxes needing repaint, coalesced as they accumulate. `wuss_redraw_dirty` repaints and clears it.
 - **Font slot** — one of up to `wuss_MAX_FONTS` `wuss_font_desc_t` entries passed to `wuss_create` and owned by the `libraries/wuss/font/` module. Slot 0 is the system font, slot 1 the bold weight, slot 2 (`WUSS_SYMBOL_FONT`) an optional glyph font for menu decoration. Read back with `wuss_get_font` / `wuss_get_font_n`. See "Fonts".
@@ -382,12 +390,12 @@ Terms as this document and the API use them. Several are RISC OS conventions, wh
 - **Handle callback** — a task's single `wuss_event_fn_t`, receiving every event kind and dispatching on `event->kind`. A window whose task has no handle receives no events at all.
 - **Icon** — a rectangular UI element Wuss draws and hit-tests inside a window's content area: a static `wuss_ICON_TYPE_LABEL`, or a clickable bevelled `wuss_ICON_TYPE_ACTION`. Created with `wuss_icon_create` and owned by its window. Its bounding box is in virtual content space, so it scrolls with the content; its screen position is `content-top-left - scroll + bbox`. See "Icons".
 - **Invalidate** — mark a region dirty for the next `wuss_redraw_dirty`. Window management does this for its own changes; a task must do it for its own content changes.
-- **Menu** — the middle mouse button, `wuss_BUTTON_MENU`. Routed like any other button; Wuss provides no menu widget of its own.
+- **MENU** — the middle mouse button, `wuss_BUTTON_MENU`. Routed like any other button; a task responds by opening a pop-up menu with `wuss_menu_open` (`wuss/menu.h`).
 - **Outline** — the 1px border drawn around a window, suppressed by `wuss_WINDOW_NO_OUTLINE`.
 - **Pane** — a toolbar attached inside a parent window with `wuss_window_attach_pane`, along one edge of its content area, which shrinks to make room. See "Panes".
 - **Sausage** — the draggable thumb within a scrollbar well, sized in proportion to how much of the document extent the content area shows.
 - **Screen space** — coordinates in the underlying `screen_t`, origin at its top-left. Visible and content bounds are in screen space.
-- **Select** — the primary mouse button, `wuss_BUTTON_SELECT`. Performs the plain action, and raises a window when used on its titlebar.
+- **SELECT** — the primary mouse button, `wuss_BUTTON_SELECT`. Performs the plain action, and raises a window when used on its titlebar.
 - **Task** — the client of a window: an event callback plus an opaque `task_data` pointer, held in a `wuss_task_t`. Wuss owns the window; the task owns what's drawn inside it.
 - **Titlebar** — the strip above the content area carrying the window's label and its buttons, and the drag handle for moving the window. Suppressed by `wuss_WINDOW_NO_TITLEBAR`.
 - **Toolbar** — a window attached to an edge of a parent window with `wuss_window_attach`. It moves, stacks, hides and closes with its parent. See "Toolbars".
@@ -396,8 +404,4 @@ Terms as this document and the API use them. Several are RISC OS conventions, wh
 - **Visible bounds** — a window's whole on-screen footprint, content plus furniture; `wuss_window_get_visible_bounds`.
 - **Well** — the track a scrollbar's sausage slides along, between the two arrow buttons.
 - **Window-local coordinates** — coordinates relative to the content area's top-left. `wuss_window_invalidate` takes its box in virtual content space, i.e. with the scroll offset already added.
-- **Z-order** — the front-to-back stacking order of windows, kept as three stacks: `wuss_STACK_TOP` (error dialogues, menus), `wuss_STACK_MIDDLE` (regular windows, the default) and `wuss_STACK_BACK` (the icon bar). Every window in an earlier stack is in front of every window in a later one. A window joins a stack at creation (`wuss_WINDOW_STACK_TOP` / `wuss_WINDOW_STACK_BACK`) or moves with `wuss_window_set_stack`. `wuss_window_restack`, or a Select click on a titlebar, only reorders a window within its own stack; content clicks never change it.
-
-## Limitations
-
-- No menus: `wuss_BUTTON_MENU` is defined and routed like any other button, but Wuss has no built-in menu widget.
+- **Z-order** — the front-to-back stacking order of windows, kept as three stacks: `wuss_STACK_TOP` (error dialogues, menus), `wuss_STACK_MIDDLE` (regular windows, the default) and `wuss_STACK_BACK` (the icon bar). Every window in an earlier stack is in front of every window in a later one. A window joins a stack at creation (`wuss_WINDOW_STACK_TOP` / `wuss_WINDOW_STACK_BACK`) or moves with `wuss_window_set_stack`. `wuss_window_restack`, or a SELECT click on a titlebar, only reorders a window within its own stack; content clicks never change it. Holding the pointer within two rows of the bottom of the screen for 400ms pops a covered icon bar to the back of `wuss_STACK_TOP`; it returns to `wuss_STACK_BACK` when the pointer leaves it.

@@ -3,7 +3,7 @@
 /**
  * \file rubberband.h
  *
- * A wuss gadget: the rectangle a Select or Adjust drag on bare window
+ * A wuss gadget: the rectangle a SELECT or ADJUST drag on bare window
  * content stretches out, for selecting every item it touches. The task
  * starts the band on the press, moves it with each captured
  * wuss_EVENT_MOUSE, scrolls with it from wuss_EVENT_IDLE (see \ref

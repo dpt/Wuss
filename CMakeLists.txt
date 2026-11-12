@@ -12,7 +12,7 @@ if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE "Release" CACHE STRING "Choose the type of build, options are: Debug Release RelWithDebInfo MinSizeRel." FORCE)
 endif()
 
-project(Wuss VERSION 0.24.0 DESCRIPTION "Minimal window manager" LANGUAGES C)
+project(Wuss VERSION 0.25.0 DESCRIPTION "Minimal window manager" LANGUAGES C)
 
 # The values set in the toolchain file aren't available until this point.
 if(TARGET_RISCOS)
@@ -57,7 +57,7 @@ endif()
 include(FetchContent)
 FetchContent_Declare(dptlib
                      GIT_REPOSITORY https://github.com/dpt/DPTLib.git
-                     GIT_TAG 0.8.0)
+                     GIT_TAG 0.9.0)
 FetchContent_MakeAvailable(dptlib)
 
 # The demo and the tests load bitmap fonts from resources/bmfonts, which are
@@ -89,7 +89,7 @@ endif()
 add_library(WussLib)
 
 set_target_properties(WussLib PROPERTIES
-    VERSION 0.24.0
+    VERSION 0.25.0
     DESCRIPTION "Wuss window manager library"
     C_STANDARD 99
     PREFIX ""  # remove 'lib' prefix
@@ -132,6 +132,7 @@ if(WUSS_COMPONENTS)
     list(APPEND PUBLIC_HEADERS include/wuss/component/dialogue.h)
     list(APPEND PUBLIC_HEADERS include/wuss/component/saveas.h)
     list(APPEND PUBLIC_HEADERS include/wuss/component/dcs.h)
+    list(APPEND PUBLIC_HEADERS include/wuss/component/scaleview.h)
     list(APPEND PUBLIC_HEADERS include/wuss/component/error.h)
     list(APPEND PUBLIC_HEADERS include/wuss/component/colourpicker.h)
     list(APPEND PUBLIC_HEADERS include/wuss/gadget/colourset.h)
@@ -184,6 +185,7 @@ set(WUSS_CORE_SOURCES
     libraries/wuss/core/scroll.c
     libraries/wuss/core/scroll-step.c
     libraries/wuss/core/get-config.c
+    libraries/wuss/core/drag-past-threshold.c
     libraries/wuss/core/set-backdrop.c
     libraries/wuss/core/set-colour-fill.c
     libraries/wuss/core/set-config.c
@@ -284,6 +286,7 @@ set(WUSS_ICON_SOURCES
     libraries/wuss/icon/plot.c
     libraries/wuss/icon/iconpool.c
     libraries/wuss/icon/screen-box.c
+    libraries/wuss/icon/set-bbox.c
     libraries/wuss/icon/set-disabled.c
     libraries/wuss/icon/set-flag.c
     libraries/wuss/icon/set-hidden.c
@@ -292,6 +295,7 @@ set(WUSS_ICON_SOURCES
     libraries/wuss/icon/set-text.c
     libraries/wuss/icon/set-value.c
     libraries/wuss/icon/slider-box.c
+    libraries/wuss/icon/std-height.c
     libraries/wuss/icon/writable.c
     libraries/wuss/icon.h)
 
@@ -322,6 +326,7 @@ set(WUSS_COMPONENT_SOURCES
     libraries/wuss/component/dialogue.c
     libraries/wuss/component/saveas.c
     libraries/wuss/component/dcs.c
+    libraries/wuss/component/scaleview.c
     libraries/wuss/component/error.c
     libraries/wuss/component/colourpicker.c
     libraries/wuss/gadget/colourset.c) # a gadget, but built on colourmenu
@@ -403,6 +408,7 @@ endif()
 if(BUILD_TESTS)
     set(TEST_SOURCES
         apps/test/main.c
+        libraries/wuss/test/api-test.c
         libraries/wuss/test/gridview-bench-test.c
         libraries/wuss/test/painting-doc-test.c
         libraries/wuss/test/harness.c
@@ -421,6 +427,7 @@ if(BUILD_TESTS)
         libraries/wuss/gadget/test/gadget-test.c
         libraries/wuss/component/test/component-test.c
         libraries/wuss/component/test/dcs-test.c
+        libraries/wuss/component/test/scaleview-test.c
         libraries/wuss/component/test/error-test.c
         libraries/wuss/component/test/colourpicker-test.c
         libraries/wuss/core/test/pointer-test.c
@@ -504,6 +511,7 @@ if(BUILD_APPS)
         apps/wuss/tasks/dithering/dithering.c
         apps/wuss/tasks/display/display.c
         apps/wuss/tasks/doughnut/doughnut.c
+        apps/wuss/tasks/duckling/duckling.c
         apps/wuss/tasks/effecting/effecting.c
         apps/wuss/tasks/effecting/effecting-edit.c
         apps/wuss/tasks/filing/filing.c

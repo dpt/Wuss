@@ -23,7 +23,7 @@ void wuss__furniture_hold(wuss_window_t          *window,
                           wuss_furniture_region_t region);
 
 /* Arm a drag of "kind" from screen point "p". Records the scroll offset and
- * whether Adjust is held, for the sausage drags. */
+ * whether ADJUST is held, for the sausage drags. */
 void wuss__furniture_arm_drag(wuss_window_t             *window,
                               wuss_furniture_drag_kind_t kind,
                               point_t                    p,

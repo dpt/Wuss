@@ -38,8 +38,9 @@ enum
   RESIZING_MENU__LIMIT
 };
 
-/* window's task: a PNG dropped on its icon or window (DataLoad) resampled by
- * bitmap_resize to the chosen scale. Menu picks the method and scale, and
+/* window's task: a PNG or JPEG dropped on its icon or window (DataLoad)
+ * resampled by
+ * bitmap_resize to the chosen scale. MENU picks the method and scale, and
  * every change resamples at once. Save writes the resized result as a
  * PNG. */
 typedef struct resizing_task
@@ -76,7 +77,13 @@ static const char *const resizing_method_names[bitmap_resample__LIMIT] =
   "Nearest",
   "Bilinear",
   "Box",
-  "Catmull-Rom"
+  "B-spline",
+  "Gaussian",
+  "Hermite",
+  "Mitchell",
+  "Catmull-Rom",
+  "Lanczos2",
+  "Lanczos3"
 };
 
 static const int resizing_scales[RESIZING_NSCALES] =
@@ -92,12 +99,7 @@ static const char *const resizing_scale_names[RESIZING_NSCALES] =
 
 static void resizing_free_resized(resizing_task_t *rt)
 {
-  if (rt->resized == NULL)
-    return;
-
-  free(rt->resized->base);
-  free(rt->resized->palette);
-  free(rt->resized);
+  bitmap_destroy(rt->resized);
   rt->resized = NULL;
 }
 
@@ -162,18 +164,18 @@ static void resizing_saveas_name(resizing_task_t *rt)
   wuss_saveas_set_leafname(rt->base.saveas, leafname);
 }
 
-/* Load the PNG at path and resize it. A load failure keeps the current
- * image and is returned. */
+/* Load the PNG or JPEG at path and resize it. A load failure keeps the
+ * current image and is returned. */
 static result_t resizing_show(resizing_task_t *rt, const char *path)
 {
   result_t rc;
   bitmap_t next;
   char     name[RESIZING_MAX_NAME_LEN];
 
-  if (!path_leaf_strip_ext(path_leaf(path), ".png", name, sizeof(name)))
+  if (!task_image_name(path, name, sizeof(name)))
     return result_BAD_ARG;
 
-  rc = bitmap_load_png_deep(&next, path, pixelfmt_rgbx8888);
+  rc = bitmap_load_deep(&next, path, pixelfmt_rgba8888);
   if (rc != result_OK)
   {
     logf_warning("resizing: cannot load \"%s\" (rc=0x%X)", path, rc);
@@ -190,7 +192,7 @@ static result_t resizing_show(resizing_task_t *rt, const char *path)
     return rc;
 
   snprintf(rt->path, sizeof(rt->path), "%s", path);
-  task_set_doc_title(rt->base.window, path_leaf(path), "Resizing", 0);
+  task_set_doc_title(rt->base.window, path_leaf(path), "Resizing", 0, 0);
   return result_OK;
 }
 
@@ -201,7 +203,7 @@ static result_t resizing_init(resizing_task_t *task)
 {
   int i;
 
-  task->method    = bitmap_resample_BILINEAR;
+  task->method    = bitmap_resample_LANCZOS3;
   task->scale     = 3; /* 100% */
   task->linear    = 1;
   task->dithering = screen_DITHER_BLUE_NOISE;
@@ -320,7 +322,7 @@ static result_t resizing_handle(wuss_window_t      *window,
     if (event->data.mouse.button & wuss_BUTTON_MENU)
       return resizing_menu_open(rt);
 
-    return result_OK;
+    return wuss_drag_start_grab(rt->base.wuss, rt->base.window);
 
   case wuss_EVENT_MENU_SELECT:
     return resizing_menu_select(rt, event);

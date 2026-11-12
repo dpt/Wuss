@@ -92,6 +92,11 @@ void wuss__fill_colour(const wuss_t *wuss,
                        colour_t      colour,
                        point_t       origin);
 
+/* The background to draw text with over a wuss__fill_colour of "colour":
+ * "colour" itself when that fill is solid, else transparent so the glyph
+ * cells do not blot out the pattern or dither between the glyphs. */
+colour_t wuss__text_ground(const wuss_t *wuss, colour_t colour);
+
 /* wuss__fill_area for backdrop->fill, then backdrop->image centred on the
  * screen. */
 void wuss__fill_backdrop(const wuss_t          *wuss,

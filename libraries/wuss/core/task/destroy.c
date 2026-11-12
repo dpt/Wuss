@@ -68,6 +68,10 @@ void wuss_task_destroy(wuss_task_t *doomed)
   }
   while (child != NULL);
 
+  /* Let other tasks drop what they borrowed from this one, before its QUIT
+   * frees its task data, while its windows and icon pool still exist. */
+  wuss__message_task_close_down(wuss, doomed);
+
   /* One QUIT while every window is still alive. */
   (void) wuss__deliver_kind(doomed, NULL, wuss_EVENT_QUIT);
 

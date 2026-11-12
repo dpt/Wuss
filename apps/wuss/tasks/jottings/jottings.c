@@ -907,6 +907,12 @@ static result_t jotting_handle(wuss_window_t      *window,
     note->menu_handle = NULL;
     return result_OK;
 
+  case wuss_EVENT_RELAYOUT:
+    /* follow the system font: the old one may have been released */
+    note->md.font = wuss_get_font(note->wuss);
+    wuss_window_invalidate_visible(note->window);
+    return result_OK;
+
   case wuss_EVENT_MESSAGE_BOUNCED:
     if (event->data.message->action == wuss_MESSAGE_PINBOARD_PIN)
       jotting_report(note, "No pinboard is running");

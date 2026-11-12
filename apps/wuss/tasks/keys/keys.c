@@ -25,7 +25,7 @@
 #define KEYS_HISTORY 6 /* most recent keys shown, newest first */
 
 /* a focusable window that shows whether it holds the input focus and the
- * last few keys it was sent, each with its modifiers. A Select click gives
+ * last few keys it was sent, each with its modifiers. A SELECT click gives
  * it the focus; Menu > Clear empties the history. */
 typedef struct keys_task
 {

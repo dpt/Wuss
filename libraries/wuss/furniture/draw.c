@@ -87,7 +87,7 @@ static colour_t paint_colour(const wuss_t                 *wuss,
   return title_bg(wuss, window);
 }
 
-/* The sausage of "kind": lit while this window drags it, or while an Adjust
+/* The sausage of "kind": lit while this window drags it, or while an ADJUST
  * drag of either sausage moves both. */
 static colour_t sausage_colour(const wuss_t              *wuss,
                                const wuss_window_t       *window,

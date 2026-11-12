@@ -28,8 +28,8 @@
 /* window task: Andy Sloane's "donut.c" torus render (the classic terminal
  * spinning-doughnut demo), ray-marched per pixel and shaded by
  * surface-normal brightness, redrawn every idle tick with the two rotation
- * angles advanced a little. Select or Menu > Pause toggles pause (and Select
- * takes the input focus); the wheel zooms in/out; an Adjust drag spins the
+ * angles advanced a little. SELECT or Menu > Pause toggles pause (and SELECT
+ * takes the input focus); the wheel zooms in/out; an ADJUST drag spins the
  * torus directly, overriding the idle auto-rotation for as long as it's
  * held. Space also toggles pause; while paused the arrow keys step the
  * rotation. Menu > Tube picks the tube's thickness; Menu > Major density
@@ -59,10 +59,10 @@ typedef struct doughnut_task
                                     * 1..255 = ramp from black up to fg */
   double             a, b;    /* rotation angles about the x and z axes */
   double             zoom;    /* scales k1; wheel steps this, clamped */
-  int                paused;  /* Select or Menu > Pause toggles; idle
+  int                paused;  /* SELECT or Menu > Pause toggles; idle
                                * skips advancing a/b, arrow keys step
                                * them */
-  int                dragging;   /* non-zero while an Adjust drag is live */
+  int                dragging;   /* non-zero while an ADJUST drag is live */
   int                drag_x, drag_y; /* last drag point, content space */
   double            *zbuf;    /* redraw's z-buffer, kept between redraws */
   unsigned char     *shade;   /* redraw's grey level per z-buffer cell */
@@ -413,7 +413,7 @@ static result_t doughnut_redraw(const wuss_event_t *event,
   return screen_copy_bitmap(scr, drawn.x0, drawn.y0, &bm);
 }
 
-/* radians of a/b rotation per pixel of Adjust drag, chosen to roughly match
+/* radians of a/b rotation per pixel of ADJUST drag, chosen to roughly match
  * the idle auto-rotation's feel (0.04/0.02 rad per tick) over a normal drag
  * speed */
 #define DOUGHNUT_DRAG_SCALE 0.01
@@ -486,7 +486,7 @@ static result_t doughnut_idle(doughnut_task_t *task)
                        * open, keeping the task alive */
 
   if (task->paused || task->dragging)
-    return result_OK; /* an Adjust drag is driving a/b directly */
+    return result_OK; /* an ADJUST drag is driving a/b directly */
 
   task->a += 0.04;
   task->b += 0.02;

@@ -41,7 +41,7 @@
 #define DITHERING_SLIDER_W     128 /* slider dialogues' slider */
 #define DITHERING_SWATCHES_W   128 /* Show palette window's initial side */
 #define DITHERING_COLOURS_STEPS 8 /* Colours slider positions per doubling */
-#define DITHERING_STRENGTH_STEP 1 /* Animate strength: percent per tick */
+#define DITHERING_STRENGTH_STEP 1 /* strength animation: percent per tick */
 /* ponytail: largest per-channel miss (0..255) a screen palette may make on a
  * target colour before the dither is flagged as unshowable. A plain RGB
  * distance; a perceptual one if the warning proves too eager or lax. */
@@ -57,11 +57,12 @@
 #define DITHERING_PALETTE_CURRENT 3
 #define DITHERING_PALETTE_FIRST_HEX 4
 
-/* Palette submenu rows: a submenu per kind of palette */
+/* Palette submenu rows: a submenu per kind of palette, then Show palette */
 enum
 {
   DITHERING_PALETTE_ROW_COMPUTED,
   DITHERING_PALETTE_ROW_FIXED,
+  DITHERING_PALETTE_ROW_SHOW,
   DITHERING_PALETTE_ROW__LIMIT
 };
 
@@ -113,22 +114,21 @@ dithering_group_t;
 /* Main menu rows */
 enum
 {
-  DITHERING_MENU_DISPLAY,
   DITHERING_MENU_SAVE,
-  DITHERING_MENU_METHOD,
+  DITHERING_MENU_DISPLAY,
   DITHERING_MENU_PALETTE,
-  DITHERING_MENU_SHOW_PALETTE,
+  DITHERING_MENU_METHOD,
   DITHERING_MENU_STRENGTH,
-  DITHERING_MENU_ANIMATE,
+  DITHERING_MENU_PAUSE,
   DITHERING_MENU__LIMIT
 };
 
-/* window's task: a PNG dropped on its icon or window (DataLoad) reduced by
- * dither_bitmap, optionally to a computed palette. A Select click toggles
- * between the dithered result and the original; Menu picks the options, and
+/* window's task: a PNG or JPEG dropped on its icon or window (DataLoad)
+ * reduced by dither_bitmap, optionally to a computed palette. A SELECT click toggles
+ * between the dithered result and the original; MENU picks the options, and
  * every change re-dithers at once; Colours and Strength are slider
  * dialogues. Show palette opens a second window of swatches for the palette
- * the last dither targeted: Select selects one and a double-click edits it in
+ * the last dither targeted: SELECT selects one and a double-click edits it in
  * a colour picker, re-dithering live. An edit lasts until something builds a
  * fresh palette. Save writes the dithered result as a PNG. */
 typedef struct dithering_task
@@ -159,6 +159,9 @@ typedef struct dithering_task
   int                serpentine;
   int                linear;   /* dither in linear light */
   screen_dither_t    dithering; /* how the image is blitted to the screen */
+  int                scale;    /* percent the image is shown at */
+  wuss_scaleview_t  *scaleview; /* owned: "Display"'s "Scale view" leaf;
+                                 * freed at QUIT */
 
   char               path[DPTLIB_MAXPATH]; /* file shown; "" until the
                                 * first DataLoad */
@@ -309,12 +312,7 @@ static int dithering_colours(int pos)
 
 static void dithering_free_dithered(dithering_task_t *dt)
 {
-  if (dt->dithered == NULL)
-    return;
-
-  free(dt->dithered->base);
-  free(dt->dithered->palette);
-  free(dt->dithered);
+  bitmap_destroy(dt->dithered);
   dt->dithered = NULL;
 }
 
@@ -475,18 +473,29 @@ static void dithering_saveas_name(dithering_task_t *dt)
   wuss_saveas_set_leafname(dt->base.saveas, leafname);
 }
 
-/* Load the PNG at path and dither it, resizing the window to fit. A load
- * failure keeps the current image and is returned. */
+/* Fit the window to the image at the current scale. The window opens with
+ * the first image, sized and placed for it. */
+static result_t dithering_fit(dithering_task_t *dt)
+{
+  return task_window_fit(dt->base.delegate, &dt->base.window, "Dithering",
+                         wuss_WINDOW_DEFAULT | wuss_WINDOW_FOCUSABLE,
+                         wuss_NO_BACKDROP, /* the image covers it all */
+                         dithermenu_scaled_size(dt->source.size, dt->scale),
+                         SIZE2D(0, 0));
+}
+
+/* Load the PNG or JPEG at path and dither it, resizing the window to fit. A
+ * load failure keeps the current image and is returned. */
 static result_t dithering_show(dithering_task_t *dt, const char *path)
 {
   result_t rc;
   bitmap_t next;
   char     name[DITHERING_MAX_NAME_LEN];
 
-  if (!path_leaf_strip_ext(path_leaf(path), ".png", name, sizeof(name)))
+  if (!task_image_name(path, name, sizeof(name)))
     return result_BAD_ARG;
 
-  rc = bitmap_load_png_deep(&next, path, pixelfmt_rgbx8888);
+  rc = bitmap_load_deep(&next, path, pixelfmt_rgba8888);
   if (rc != result_OK)
   {
     logf_warning("dithering: cannot load \"%s\" (rc=0x%X)", path, rc);
@@ -498,16 +507,13 @@ static result_t dithering_show(dithering_task_t *dt, const char *path)
   strcpy(dt->name, name);
   dithering_saveas_name(dt);
 
-  /* the window opens with the first image, sized and placed for it */
-  rc = task_window_fit(dt->base.delegate, &dt->base.window, "Dithering",
-                       wuss_WINDOW_DEFAULT | wuss_WINDOW_FOCUSABLE,
-                       wuss_NO_BACKDROP, /* the image covers it all */
-                       dt->source.size, SIZE2D(0, 0));
+  rc = dithering_fit(dt);
   if (rc != result_OK)
     return rc;
 
   snprintf(dt->path, sizeof(dt->path), "%s", path);
-  task_set_doc_title(dt->base.window, path_leaf(path), "Dithering", 0);
+  task_set_doc_title(dt->base.window, path_leaf(path), "Dithering", 0,
+                     dt->scale);
   return dithering_apply(dt, 0);
 }
 
@@ -568,16 +574,17 @@ static result_t dithering_slider_create(dithering_task_t           *dt,
   wuss_icon_spec_t specs[3];
   wuss_icon_t     *made[3];
   char             buf[WUSS_SLIDER_ROW_BUF];
-  int              label_w, value_w, width, height;
+  int              label_w, value_w, slider_h, width, height;
   box_t            label_box, slider_box, value_box;
 
-  label_w = task_text_width(dt->base.wuss, title);
+  label_w  = task_text_width(dt->base.wuss, title);
   /* +2: a label insets its text a pixel either side, and an overhang would
    * be left behind when the text shrinks */
-  value_w = task_text_width(dt->base.wuss, widest) + 2;
-  width   = 2 * wuss_STD_INSET + label_w + DITHERING_SLIDER_W + value_w +
-            2 * wuss_STD_GAP;
-  height  = 2 * wuss_STD_INSET + wuss_STD_SLIDER_HEIGHT;
+  value_w  = task_text_width(dt->base.wuss, widest) + 2;
+  slider_h = wuss_std_height(dt->base.wuss, wuss_STD_SLIDER);
+  width    = 2 * wuss_STD_INSET + label_w + DITHERING_SLIDER_W + value_w +
+             2 * wuss_STD_GAP;
+  height   = 2 * wuss_STD_INSET + slider_h;
 
   rc = wuss_dialogue_create(dialogue, dt->base.delegate, SIZE2D(width, height),
                             title, fillout, dt);
@@ -587,13 +594,12 @@ static result_t dithering_slider_create(dithering_task_t           *dt,
   wuss_dialogue_set_focusable(*dialogue, 0);
 
   label_box  = (box_t) BOX_POS_SIZE(wuss_STD_INSET, wuss_STD_INSET, label_w,
-                                    wuss_STD_SLIDER_HEIGHT);
+                                    slider_h);
   slider_box = (box_t) BOX_POS_SIZE(label_box.x1 + wuss_STD_GAP,
                                     wuss_STD_INSET, DITHERING_SLIDER_W,
-                                    wuss_STD_SLIDER_HEIGHT);
+                                    slider_h);
   value_box  = (box_t) BOX_POS_SIZE(slider_box.x1 + wuss_STD_GAP,
-                                    wuss_STD_INSET, value_w,
-                                    wuss_STD_SLIDER_HEIGHT);
+                                    wuss_STD_INSET, value_w, slider_h);
 
   wuss_icon_spec_label(&specs[0], label_box, title,
                        wuss_ICON_FLAGS_JUSTIFY_RIGHT);
@@ -733,6 +739,28 @@ static int dithering_fixed_row(const dithering_task_t *dt)
   return group < 0 ? -1 : DITHERING_FIXED_FIRST_GROUP + group;
 }
 
+/* The "Scale view" dialogue's choice */
+static void dithering_scaleview_choice(wuss_scaleview_choice_t choice,
+                                       int                     percent,
+                                       void                   *opaque)
+{
+  dithering_task_t *dt;
+
+  dt = opaque;
+
+  if (dt->base.window == NULL)
+    return;
+
+  dt->scale = dithermenu_scale_percent(dt->base.window, choice, percent,
+                                       dt->source.size);
+  task_set_doc_title(dt->base.window, path_leaf(dt->path), "Dithering", 0,
+                     dt->scale);
+  (void) wuss_scaleview_set_percent(dt->scaleview, dt->scale);
+  wuss_window_invalidate_visible(dt->base.window);
+  if (dithering_fit(dt) == result_OK && choice == wuss_SCALEVIEW_FIT_SCREEN)
+    (void) wuss_window_place(dt->base.window, &dithermenu_fit_place);
+}
+
 /* The window opens with the first image. */
 static result_t dithering_init(dithering_task_t *task)
 {
@@ -749,6 +777,12 @@ static result_t dithering_init(dithering_task_t *task)
   /* the dither already targets a palette: a second, ordered one on the way
    * to the screen would only muddy it */
   task->dithering  = screen_DITHER_NEAREST;
+  task->scale      = 100;
+
+  rc = wuss_scaleview_create(&task->scaleview, task->base.wuss,
+                             dithering_scaleview_choice, task);
+  if (rc != result_OK)
+    return rc;
 
   namelist_scan(pathf("%s/resources/wuss-tasks/palettes",
                       wuss_get_resources(task->base.wuss)),
@@ -804,6 +838,8 @@ static result_t dithering_init(dithering_task_t *task)
   WUSS_MENU_TITLE(task->fixed_menu, "Fixed", task->fixed_items,
                   DITHERING_FIXED_FIRST_GROUP + task->ngroups);
 
+  WUSS_MENU_ITEM(task->palette_items, DITHERING_PALETTE_ROW_SHOW,
+                 "Show palette", wuss_MENU_ITEM_DASHED);
   WUSS_MENU_ITEM_MENU(task->palette_items, DITHERING_PALETTE_ROW_COMPUTED,
                       "Computed", wuss_MENU_ITEM_NONE, &task->computed_menu);
   WUSS_MENU_ITEM_MENU(task->palette_items, DITHERING_PALETTE_ROW_FIXED,
@@ -812,21 +848,20 @@ static result_t dithering_init(dithering_task_t *task)
                   DITHERING_PALETTE_ROW__LIMIT);
 
   dithermenu_init(&task->dither, task->dithering);
+  dithermenu_add_scale(&task->dither, wuss_scaleview_window(task->scaleview));
+  taskapp_save_row(&task->base, task->menu_items, DITHERING_MENU_SAVE,
+                   wuss_MENU_ITEM_NONE);
   WUSS_MENU_ITEM_MENU(task->menu_items, DITHERING_MENU_DISPLAY, "Display",
                       wuss_MENU_ITEM_NONE, &task->dither.display);
-  taskapp_save_row(&task->base, task->menu_items, DITHERING_MENU_SAVE,
-                   wuss_MENU_ITEM_DASHED);
-  WUSS_MENU_ITEM_MENU(task->menu_items, DITHERING_MENU_METHOD, "Method",
-                      wuss_MENU_ITEM_DASHED, &task->method_menu);
   WUSS_MENU_ITEM_MENU(task->menu_items, DITHERING_MENU_PALETTE, "Palette",
                       wuss_MENU_ITEM_NONE, &task->palette_menu);
-  WUSS_MENU_ITEM(task->menu_items, DITHERING_MENU_SHOW_PALETTE,
-                 "Show palette", wuss_MENU_ITEM_NONE);
+  WUSS_MENU_ITEM_MENU(task->menu_items, DITHERING_MENU_METHOD, "Method",
+                      wuss_MENU_ITEM_NONE, &task->method_menu);
   /* window set once the dialogue exists */
   WUSS_MENU_ITEM(task->menu_items, DITHERING_MENU_STRENGTH, "Strength",
                  wuss_MENU_ITEM_BORROWED_SUBMENU | wuss_MENU_ITEM_PRE_OPEN);
-  WUSS_MENU_ITEM(task->menu_items, DITHERING_MENU_ANIMATE,
-                 "Animate strength", wuss_MENU_ITEM_NONE);
+  WUSS_MENU_ITEM_SHORTCUT(task->menu_items, DITHERING_MENU_PAUSE, "Pause",
+                          wuss_MENU_ITEM_NONE, "SPACE");
   WUSS_MENU_TITLE(task->base.menu, "Dithering", task->menu_items,
                   DITHERING_MENU__LIMIT);
 
@@ -922,7 +957,7 @@ static void dithering_picker_changed(colour_t colour, void *opaque)
   wuss_window_invalidate_visible(dt->palette_window);
 }
 
-/* Select on a swatch selects it, and a double-click edits it */
+/* SELECT on a swatch selects it, and a double-click edits it */
 static result_t dithering_swatch_click(dithering_task_t   *dt,
                                        const wuss_event_t *event)
 {
@@ -1018,8 +1053,8 @@ static result_t dithering_redraw(dithering_task_t   *dt,
 
   x  = bounds->x0 - event->data.redraw.scroll.x;
   y  = bounds->y0 - event->data.redraw.scroll.y;
-  rc = screen_copy_bitmap_dithered(event->data.redraw.scr, x, y, bm,
-                                   dt->dithering);
+  rc = dithermenu_draw(event->data.redraw.scr, x, y, bm, dt->scale,
+                       dt->dithering);
   if (rc != result_OK)
     return rc;
 
@@ -1100,6 +1135,8 @@ static void dithering_menu_refresh(dithering_task_t *dt)
   /* a palette's tick shows on its own row and on every row leading to it */
   group = dithering_current_group(dt);
   wuss_menu_tick_exclusive(&dt->palette_menu, dithering_palette_row(dt));
+  wuss_menu_tick_item(&dt->palette_menu, DITHERING_PALETTE_ROW_SHOW,
+                      dt->palette_window != NULL);
   wuss_menu_tick_exclusive(&dt->computed_menu, dithering_computed_row(dt));
   wuss_menu_tick_exclusive(&dt->fixed_menu, dithering_fixed_row(dt));
   for (i = 0; i < dt->ngroups; i++)
@@ -1112,15 +1149,18 @@ static void dithering_menu_refresh(dithering_task_t *dt)
 
 static result_t dithering_menu_open(dithering_task_t *dt)
 {
+  result_t     rc;
   unsigned int ticks;
 
   dithering_menu_refresh(dt);
 
+  rc = wuss_scaleview_set_percent(dt->scaleview, dt->scale);
+  if (rc != result_OK)
+    return rc;
+
   ticks = 0;
-  if (dt->palette_window != NULL)
-    ticks |= 1u << DITHERING_MENU_SHOW_PALETTE;
-  if (dt->animate)
-    ticks |= 1u << DITHERING_MENU_ANIMATE;
+  if (!dt->animate)
+    ticks |= 1u << DITHERING_MENU_PAUSE;
 
   return wuss_menu_open_ticked(dt->base.delegate, &dt->base.menu, ticks,
                                wuss_get_pointer(dt->base.wuss), &dt->base.menu_handle);
@@ -1137,7 +1177,7 @@ static result_t dithering_menu_select(dithering_task_t   *dt,
   menu  = event->data.menu_select.menu;
   index = event->data.menu_select.index;
 
-  if (menu == &dt->base.menu && index == DITHERING_MENU_SHOW_PALETTE)
+  if (menu == &dt->palette_menu && index == DITHERING_PALETTE_ROW_SHOW)
   {
     rc = dithering_toggle_palette_window(dt);
     wuss_menu_tick_item_live(dt->base.menu_handle, menu, index,
@@ -1145,10 +1185,10 @@ static result_t dithering_menu_select(dithering_task_t   *dt,
     return rc;
   }
 
-  if (menu == &dt->base.menu && index == DITHERING_MENU_ANIMATE)
+  if (menu == &dt->base.menu && index == DITHERING_MENU_PAUSE)
   {
     dt->animate = !dt->animate;
-    wuss_menu_tick_item_live(dt->base.menu_handle, menu, index, dt->animate);
+    wuss_menu_tick_item_live(dt->base.menu_handle, menu, index, !dt->animate);
     return result_OK;
   }
 
@@ -1215,6 +1255,9 @@ static result_t dithering_menu_select(dithering_task_t   *dt,
     /* the other kind's submenu is closed: refresh's data ticks cover it */
     wuss_menu_tick_exclusive_live(dt->base.menu_handle, &dt->palette_menu,
                                   dithering_palette_row(dt));
+    wuss_menu_tick_item_live(dt->base.menu_handle, &dt->palette_menu,
+                             DITHERING_PALETTE_ROW_SHOW,
+                             dt->palette_window != NULL);
     wuss_menu_tick_exclusive_live(dt->base.menu_handle, &dt->fixed_menu,
                                   dithering_fixed_row(dt));
   }
@@ -1253,7 +1296,7 @@ static int dithering_current_stale(const dithering_task_t *dt)
          memcmp(dt->target, g_tasks.bm->palette, n * sizeof(*dt->target)) != 0;
 }
 
-/* Re-dither if Current has gone stale. Animate strength: bounce strength
+/* Re-dither if Current has gone stale. Unless paused, bounce strength
  * between 0 and 100 a step per idle tick, re-dithering each time. The
  * dialogue's slider follows, in case it is open. */
 static result_t dithering_idle(dithering_task_t *dt)
@@ -1411,6 +1454,7 @@ static result_t dithering_handle(wuss_window_t      *window,
     return result_OK;
 
   case wuss_EVENT_QUIT:
+    wuss_scaleview_destroy(dt->scaleview);
     wuss_colourpicker_destroy(dt->picker);
     wuss_dialogue_destroy(dt->colours_dialogue);
     wuss_dialogue_destroy(dt->strength_dialogue);

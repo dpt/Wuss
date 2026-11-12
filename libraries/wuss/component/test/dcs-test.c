@@ -84,7 +84,7 @@ static int dcs_test_width(const wuss_window_t *win)
   return content.x1 - content.x0;
 }
 
-/* Select-click the button labelled text */
+/* SELECT-click the button labelled text */
 static result_t dcs_test_click(wuss_t        *wuss,
                                wuss_window_t *win,
                                const char    *text)

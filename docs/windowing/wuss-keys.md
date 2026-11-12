@@ -5,36 +5,50 @@ Survey of every key the wuss demo (`apps/wuss`) and its libraries react to, spli
 ## How a key travels
 
 1. The frontend (`frontend-sdl.c`, `frontend-riscos.c`) turns a key press into a Unicode code point or a `wuss_KEY_*` constant plus modifiers (Shift, Ctrl, Alt). On macOS Cmd is folded into Ctrl, so "Ctrl" below means Cmd there.
-2. `wuss_key` (`core/key.c`) offers it in order to:
+2. `main.c` offers it to `tasks_system_key`, which handles the window and app chords, then checks for Ctrl-Shift-3.
+3. `wuss_key` (`core/key.c`) offers it in order to:
    1. an active window drag (Escape cancels it);
    2. an open menu chain (Escape dismisses it);
    3. the caret's writable icon (editing keys);
    4. the focused window's task, as `wuss_EVENT_KEY`.
-3. A task that does not want the key returns `result_WUSS_KEY_UNCLAIMED`. `main.c` then passes the key to `tasks_launcher_key`, which handles F2 and tries the Wuss menu's shortcut labels.
+4. A task that does not want the key returns `result_WUSS_KEY_UNCLAIMED`. `main.c` then passes the key to `tasks_launcher_key`, which handles the zoom keys and tries the Wuss menu's shortcut labels.
 
-A task's menu shortcuts only fire while one of its windows has the focus (`wuss_menu_dispatch_shortcut`). Labels match as follows: `^X` needs Ctrl; a bare label forbids Ctrl; Alt never matches; Shift is required by a `WUSS_MENU_SHIFT` prefix and forbidden for SPACE and F1..F12.
+A task's menu shortcuts only fire while one of its windows has the focus (`wuss_menu_dispatch_shortcut`). Labels match as follows: `^X` needs Ctrl; a bare label forbids Ctrl; Alt never matches; Shift is required by a `WUSS_MENU_SHIFT` prefix and forbidden for SPACE, DEL and F1..F12.
 
 ## System keys
 
-| Key      | Action                              | Where                     |
-| -------- | ----------------------------------- | ------------------------- |
-| Escape   | Cancel a window drag or resize      | `core/key.c`              |
-| Escape   | Dismiss the open menu chain         | `menu/menu.c`             |
-| Return   | Press the dialogue's default button | `component/dialogue.c`    |
-| Escape   | Press the dialogue's Cancel button  | `component/dialogue.c`    |
-| F1       | Debug > Redraw                      | `apps/wuss/tasks/tasks.c` |
-| Shift-F1 | Debug > Garbage                     | `apps/wuss/tasks/tasks.c` |
-| F2       | Zoom in                             | `tasks_launcher_key`      |
-| Shift-F2 | Zoom out                            | `tasks_launcher_key`      |
-| F3       | Debug > Pixel Stress                | `apps/wuss/tasks/tasks.c` |
-| F4       | Quit Wuss (not on Emscripten)       | `apps/wuss/tasks/tasks.c` |
+| Key                     | Action                              | Where                  |
+| ----------------------- | ----------------------------------- | ---------------------- |
+| F7 / Ctrl-\`            | Next window of the app              | `tasks_system_key`     |
+| Shift-F7 / Ctrl-Shift-\` | Previous window of the app         | `tasks_system_key`     |
+| Ctrl-Shift-F            | Toggle window size                  | `tasks_system_key`     |
+| Ctrl-F2                 | Close window                        | `tasks_system_key`     |
+| F10 / Ctrl-Tab          | Next app                            | `tasks_system_key`     |
+| Shift-F10 / Ctrl-Shift-Tab | Previous app                     | `tasks_system_key`     |
+| Ctrl-F10                | App to front                        | `tasks_system_key`     |
+| F11 / Ctrl-H            | Hide app                            | `tasks_system_key`     |
+| Shift-F11 / Ctrl-Shift-H | Hide other apps                    | `tasks_system_key`     |
+| Ctrl-F11                | Show all apps                       | `tasks_system_key`     |
+| Ctrl-F9 / Ctrl-Q        | Quit app, with unsaved-data prompts | `tasks_system_key`     |
+| Ctrl-Shift-Esc          | Kill app, with no prompts           | `tasks_system_key`     |
+| Ctrl-Shift-Q            | Quit Wuss (not on Emscripten)       | `tasks_system_key`     |
+| Ctrl-Shift-3            | Save screenshot (not on Emscripten) | `apps/wuss/main.c`     |
+| Escape                  | Cancel a window drag or resize      | `core/key.c`           |
+| Escape                  | Dismiss the open menu chain         | `menu/menu.c`          |
+| Return                  | Press the dialogue's default button | `component/dialogue.c` |
+| Escape                  | Press the dialogue's Cancel button  | `component/dialogue.c` |
+| Ctrl-= / Ctrl-Plus      | Zoom in                             | `tasks_launcher_key`   |
+| Ctrl--                  | Zoom out                            | `tasks_launcher_key`   |
+| Ctrl-0                  | Actual size                         | `tasks_launcher_key`   |
+| Shift-F1                | Debug > Redraw                      | `tasks_launcher_key`   |
+| Ctrl-Shift-F1           | Debug > Garbage                     | `tasks_launcher_key`   |
+| Shift-F3                | Debug > Pixel Stress                | `tasks_launcher_key`   |
 
 Notes:
 
-- F1..F4 are temporary allocations. They clash with the RISC OS standard keys and move to Shift-F keys (see "Changes to existing keys").
-- F1..F4 are only reached when the focused task leaves the key unclaimed.
+- A task cannot claim the `tasks_system_key` chords: they run ahead of `wuss_key`, so they also work while a menu is open or a writable holds the caret.
+- The `tasks_launcher_key` keys are only reached when the focused task leaves the key unclaimed.
 - The frontend's window-close request (SDL quit) also quits Wuss.
-- There is no key to close, hide, raise or cycle windows or tasks.
 
 ### Text editing (writable icons)
 
@@ -50,6 +64,10 @@ Active whenever a writable icon holds the caret. Alt-anything is ignored.
 | Backspace                | Delete before caret                    |
 | Delete                   | Delete after caret                     |
 | Ctrl-U                   | Clear the field                        |
+| Ctrl-A                   | Select all                             |
+| Ctrl-Z                   | Clear selection                        |
+| Ctrl-C / Ctrl-X          | Copy / cut selection                   |
+| Ctrl-V / Insert          | Paste at caret                         |
 | Any printable            | Insert at caret                        |
 
 ### Text editing (Jottings)
@@ -83,7 +101,7 @@ Menu shortcuts (fire when the task has the focus):
 | F3            | Save / Save as  | ball chars checker clock compositing curving dithering doughnut effecting fern fireworks gradient greebling oscillating orbing painting resizing saturn sofa          |
 | Ctrl-R        | Randomise       | checker doughnut fern gradient greebling orbing oscillating saturn sofa                                                                                               |
 | R             | Reset           | checker curving doughnut fern gradient orbing oscillating saturn sofa                                                                                                 |
-| Space         | Pause           | ball compositing doughnut fern fireworks oscillating saturn sofa                                                                                                      |
+| Space         | Pause           | ball dithering doughnut fern fireworks oscillating saturn sofa                                                                                                        |
 | A C G D       | Add ball, Clear, Gravity, Damping | ball                                                                                                                                                |
 | D S H         | Digital, Seconds, 12-hour | clock                                                                                                                                                       |
 | H             | Hull            | curving                                                                                                                                                               |
@@ -93,8 +111,12 @@ Menu shortcuts (fire when the task has the focus):
 | 1-4           | Choose light    | orbing                                                                                                                                                                |
 | C M           | Light colour, Mutate | orbing                                                                                                                                                           |
 | F8            | Undo            | painting                                                                                                                                                              |
+| F9            | Redo            | painting                                                                                                                                                              |
+| Ctrl-X C V    | Cut, Copy, Paste (pixels) | painting                                                                                                                                                    |
 | Ctrl-A Z I    | Select all, Clear selection, Invert | painting                                                                                                                                          |
-| N             | Next nozzle     | painting                                                                                                                                                              |
+| F Delete      | Fill, Clear selection (foreground, background) | painting                                                                                                                               |
+| Shift-H V     | Flip horizontally, vertically | painting                                                                                                                                                |
+| Shift-R L     | Rotate right, left | painting                                                                                                                                                           |
 | R             | Restart         | sudoku                                                                                                                                                                |
 | F2 F3         | List, Cloud     | tagging                                                                                                                                                               |
 | F4 F5         | Scaling off, on | tagging                                                                                                                                                               |
@@ -106,7 +128,7 @@ Menu shortcuts (fire when the task has the focus):
 | Ctrl-] Ctrl-[ | Faster, Slower  | zxtask                                                                                                                                                                |
 | Ctrl-M        | Monochromatic   | zxtask                                                                                                                                                                |
 
-Two labels never fire. System F7 (next window) runs ahead of Tagging's F7 (Sort by count). Painting's N (next nozzle) runs ahead of its direct N (Path tool).
+One label never fires. System F7 (next window) runs ahead of Tagging's F7 (Sort by count). Painting's F fills the selection while there is one; with nothing selected the row is shaded and F picks the Fill tool.
 
 Direct keys:
 
@@ -126,24 +148,29 @@ Direct keys:
 | doughnut                            | `-` `=` `+`         | Tube density down / up                                  |
 | effecting                           | Delete              | Delete effect (list window)                             |
 | fern                                | Left / Right        | Previous / next seed                                    |
-| greebling                           | Left / Right        | Previous / next palette (Right = Adjust)                |
-| greebling                           | Space               | Reseed (Select)                                         |
+| greebling                           | Left / Right        | Previous / next palette (Right = ADJUST)                |
+| greebling                           | Space               | Reseed (SELECT)                                         |
 | gradient                            | S                   | Next shape                                              |
 | gradient                            | D                   | Next dither matrix                                      |
 | minesweeping                        | Arrows              | Move cursor                                             |
-| minesweeping                        | Return              | Uncover (Select)                                        |
-| minesweeping                        | Space               | Flag (Adjust)                                           |
+| minesweeping                        | Return              | Uncover (SELECT)                                        |
+| minesweeping                        | Space               | Flag (ADJUST)                                           |
 | oscillating                         | Left / Right        | Previous / next frequency pair                          |
 | orbing                              | Arrows              | Nudge light (Shift = bigger step)                       |
 | orbing                              | O                   | Toggle the current light                                |
 | painting                            | B H K E             | Pencil, Paintbrush, Wobbly brush, Eraser                |
 | painting                            | L R X               | Line, Rectangle, Filled rectangle                       |
-| painting                            | C D M               | Ellipse, Filled ellipse, Filled path                    |
+| painting                            | C D N M             | Ellipse, Filled ellipse, Path, Filled path              |
 | painting                            | F G P               | Fill, Gradient, Spray                                   |
 | painting                            | S O W               | Select, Lasso, Magic wand                               |
 | painting                            | I V                 | Pick colour, Move                                       |
 | painting                            | `[` `]`             | Size down / up                                          |
+| painting                            | `+` `=` / `-`       | Zoom in / out                                           |
+| painting                            | `1`                 | Actual size                                             |
 | painting                            | Escape              | Drop selection                                          |
+| painting                            | Arrows              | Nudge selection (Shift = 8 pixels)                      |
+| painting                            | Space + drag        | Pan the view                                            |
+| painting                            | Tab                 | Hide all toolbars, or restore those it last hid         |
 | saturn                              | Left / Right        | Previous / next seed                                    |
 | sofa                                | Left / Right        | Previous / next model                                   |
 | sofa                                | Up / Down           | Step rotation (paused only)                             |
@@ -151,6 +178,8 @@ Direct keys:
 | sudoku                              | 1-9                 | Enter digit                                             |
 | sudoku                              | 0 Space Backspace Delete | Clear cell                                         |
 | viewing                             | Space / Shift-Space | Next / previous image                                   |
+| viewing                             | `+` `=` / `-`       | Zoom in / out (not while tiled)                         |
+| viewing                             | `1`                 | Actual size                                             |
 | viewing                             | Arrows              | Scroll                                                  |
 | viewing                             | Page Up / Page Down | Scroll by page                                          |
 | viewing                             | Home / End          | Top left / bottom                                       |
@@ -173,7 +202,7 @@ Rules for the proposals below:
 4. Never use F12, Shift-F12, Ctrl-F12 or Ctrl-Shift-F12. RISC OS owns them.
 5. Shift modifies a function key into a related action. Ctrl gives an unrelated one.
 
-Taken today by existing tasks: F3 (Save) F8 (painting Undo) Ctrl-R P M U; Escape; Return. Ctrl-P and Ctrl-M (zxtask) are safe: the guide uses the Print key and does not define Ctrl-P or Ctrl-M.
+Taken today by existing tasks: F3 (Save) F8 (painting Undo) F9 (painting Redo) Ctrl-R P M U; Escape; Return. Ctrl-P and Ctrl-M (zxtask) are safe: the guide uses the Print key and does not define Ctrl-P or Ctrl-M.
 
 ## Standard keys: RISC OS style
 
@@ -195,7 +224,7 @@ Adopt all of these as defined by the guide. Keys marked "new" have no code today
 | F9         | Redo                                     |
 | F7 F10 F11 | Free for apps and the system (see below) |
 
-Done: F3 is the Save shortcut on every task with a Save row (Ctrl-S is gone), and painting Undo is F8. The other keys need a function no task has yet: Help (F1), Load (F2), Insert (Shift-F2), Find (F4), Go to (F5), Sort (F6) and Redo (F9). Wire each when a task gains the function: give its menu row the shortcut label and the shortcut dispatcher does the rest.
+Done: F3 is the Save shortcut on every task with a Save row (Ctrl-S is gone), painting Undo is F8 and painting Redo is F9. The other keys need a function no task has yet: Help (F1), Load (F2), Insert (Shift-F2), Find (F4), Go to (F5) and Sort (F6). Wire each when a task gains the function: give its menu row the shortcut label and the shortcut dispatcher does the rest.
 
 ### Ctrl keys
 
@@ -270,7 +299,7 @@ The guide is silent on these, so macOS chords lead. Each has a function-key fall
 | Close window                                     | Ctrl-F2        | none      | RISC OS standard. Same path as the close icon (`wuss_window_try_close`).                |
 | Quit app (close all windows of the focused task) | Ctrl-Q         | Ctrl-F9   | Goes through `wuss_window_try_close` for each window so unsaved-data prompts still run. |
 | Quit Wuss                                        | Ctrl-Shift-Q   | none      | Replaces F4. Not on Emscripten.                                                         |
-| Hide app (all its windows)                       | Ctrl-H         | F11       | Needs a hidden state (see below).                                                       |
+| Hide app (all its windows)                       | Ctrl-H         | F11       | Uses the hidden state (see below).                                                      |
 | Hide others                                      | Ctrl-Shift-H   | Shift-F11 | Hides every task but the focused one.                                                   |
 | Show all / restore                               | none           | Ctrl-F11  | Restores every hidden task; focus returns to the last one hidden.                       |
 | Next window in app                               | Ctrl-\`        | F7        | Cycles the focused task's windows back to front.                                        |
@@ -281,7 +310,7 @@ The guide is silent on these, so macOS chords lead. Each has a function-key fall
 
 ## Changes to existing keys
 
-- Debug and desktop keys move off the RISC OS standard function keys:
+- Debug and desktop keys moved off the RISC OS standard function keys:
 
   | Action               | Old      | New           |
   | -------------------- | -------- | ------------- |
@@ -292,12 +321,12 @@ The guide is silent on these, so macOS chords lead. Each has a function-key fall
   | Zoom out             | Shift-F2 | Ctrl--        |
   | Quit Wuss            | F4       | Ctrl-Shift-Q  |
 
-- painting: Undo moves from Ctrl-Z to F8. Add Redo on F9. Ctrl-Z becomes Drop selection (clear selection); Escape keeps doing it too.
-- Wuss menu shortcut labels need the guide's symbols: `^` for Ctrl, a Shift marker for Shift. F8 and F9 labels show as plain `F8` and `F9`.
+- painting: Undo moved from Ctrl-Z to F8. Ctrl-Z is now Clear selection; Escape also drops the selection. Redo is on F9.
+- Wuss menu shortcut labels use the guide's symbols: `^` for Ctrl and `WUSS_MENU_SHIFT` for Shift. Function key labels show plain, such as `F8`.
 
 ## Dispatch changes
 
-- Add a system layer in `main.c` ahead of `wuss_key`, matching only the window and task chords above plus Ctrl-F2, Ctrl-=, Ctrl--, Ctrl-Shift-Q and the debug keys. An app cannot swallow them.
+- Done: `tasks_system_key` is a system layer in `main.c` ahead of `wuss_key`, matching only the window and task chords above plus Ctrl-F2, Ctrl-Shift-F and Ctrl-Shift-Q. An app cannot swallow them. The zoom and debug keys stay in `tasks_launcher_key`, so a task may claim them first.
 - Standard editing and file keys (F1 to F9, Ctrl-C and friends) go to the focused task first. If it returns `result_WUSS_KEY_UNCLAIMED`, the launcher may handle them (Ctrl-= and Ctrl-- zoom the desktop).
 - Done: writable icons handle Ctrl-A, Ctrl-C, Ctrl-X, Ctrl-V, Ctrl-Z and Insert, and Backspace and Delete remove the selection. The Copy key (End on RISC OS) is not wired, and Shift-arrows still move by word, so a selection comes only from Ctrl-A.
 - **Caret owns Ctrl-D, Ctrl-I, Ctrl-K, Ctrl-T and Ctrl-B.** While a writable holds the caret (for example an inline rename in the filer), it swallows these item-level keys and the task never sees them, so Ctrl-D or Ctrl-I cannot trigger Duplicate or Get info mid-rename. Other Ctrl-letter keys such as Ctrl-R still reach the task, so a seed field does not block them. System-layer chords (Ctrl-F2, Ctrl-Q and so on) run before the caret and still work. Done in `icon/writable.c`.

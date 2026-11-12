@@ -1,6 +1,7 @@
 /* wuss/drag.c -- wuss - minimal window manager */
 
 #include <assert.h>
+#include <limits.h>
 
 #include "impl.h"
 
@@ -51,7 +52,7 @@ static void draw_bitmap(screen_t *scr, const box_t *box, void *opaque)
   (void) screen_copy_bitmap(scr, box->x0, box->y0, opaque);
 }
 
-static result_t drag_start(wuss_t              *wuss,
+static result_t drag_begin(wuss_t              *wuss,
                            wuss_window_t       *window,
                            size2d_t             size,
                            point_t              hotspot,
@@ -60,8 +61,7 @@ static result_t drag_start(wuss_t              *wuss,
 {
   assert(wuss != NULL);
 
-  if (window == NULL || window->task->handle == NULL ||
-      size.w <= 0 || size.h <= 0)
+  if (window == NULL || window->task->handle == NULL)
     return result_BAD_ARG;
 
   /* the drag owns the pointer from here: a press that was captured by the
@@ -78,11 +78,25 @@ static result_t drag_start(wuss_t              *wuss,
   wuss->drag.frame   = 0;
   wuss->drag.draw    = draw;
   wuss->drag.opaque  = opaque;
+  wuss->drag.grab    = 0;
   box_for_pointer(wuss, wuss->pointer, &wuss->drag.box);
   wuss->drag.drawn = wuss->drag.box;
   invalidate_drawn(wuss, &wuss->drag.drawn);
 
   return result_OK;
+}
+
+static result_t drag_start(wuss_t              *wuss,
+                           wuss_window_t       *window,
+                           size2d_t             size,
+                           point_t              hotspot,
+                           wuss_drag_draw_fn_t *draw,
+                           void                *opaque)
+{
+  if (size.w <= 0 || size.h <= 0)
+    return result_BAD_ARG;
+
+  return drag_begin(wuss, window, size, hotspot, draw, opaque);
 }
 
 result_t wuss_drag_start(wuss_t        *wuss,
@@ -119,14 +133,69 @@ result_t wuss_drag_start_object(wuss_t              *wuss,
   return drag_start(wuss, window, size, hotspot, draw, opaque);
 }
 
+/* The box the pointer can move within, from "p", before "window" runs out of
+ * document to scroll. An axis with no scrollbar leaves it no room at all. */
+static void grab_bounds(const wuss_window_t *window, point_t p, box_t *out)
+{
+  point_t max;
+
+  max = wuss__scroll_clamp(window, POINT(INT_MAX, INT_MAX));
+
+  *out = (box_t) BOX_POS_SIZE(p.x, p.y, 1, 1);
+  if (window->flags & wuss_WINDOW_HSCROLL)
+  {
+    out->x0 += window->scroll.x - max.x;
+    out->x1 += window->scroll.x;
+  }
+  if (window->flags & wuss_WINDOW_VSCROLL)
+  {
+    out->y0 += window->scroll.y - max.y;
+    out->y1 += window->scroll.y;
+  }
+}
+
+result_t wuss_drag_start_grab(wuss_t *wuss, wuss_window_t *window)
+{
+  result_t rc;
+
+  /* an empty box: the ants' paths all fall through to doing nothing */
+  rc = drag_begin(wuss, window, SIZE2D(0, 0), POINT(0, 0), NULL, NULL);
+  if (rc != result_OK)
+    return rc;
+
+  wuss->drag.grab         = 1;
+  wuss->drag.grab_pointer = wuss->pointer;
+  wuss->drag.grab_scroll  = window->scroll;
+  grab_bounds(window, wuss->pointer, &wuss->pointer_bounds);
+
+  return result_OK;
+}
+
 /* Called from mouse-move.c on every move while a drag is active: recompute
  * the ants box at the new pointer position. Nothing is invalidated here --
  * several moves can land in one frame, and invalidating every intermediate
  * box would overflow the dirty list into one big merged region; the next
- * wuss__drag_tick catches the painted box up instead. */
+ * wuss__drag_tick catches the painted box up instead.
+ *
+ * A grab scrolls instead, measuring from where it started rather than the last
+ * move, so the content catches the pointer up after it strays past the end of
+ * the document. */
 void wuss__drag_move(wuss_t *wuss, point_t p)
 {
-  box_for_pointer(wuss, p, &wuss->drag.box);
+  wuss_window_t *window;
+  point_t        desired;
+
+  if (!wuss->drag.grab)
+  {
+    box_for_pointer(wuss, p, &wuss->drag.box);
+    return;
+  }
+
+  window    = wuss->drag.window;
+  desired.x = wuss->drag.grab_scroll.x - (p.x - wuss->drag.grab_pointer.x);
+  desired.y = wuss->drag.grab_scroll.y - (p.y - wuss->drag.grab_pointer.y);
+  wuss__scroll_step(window, POINT(desired.x - window->scroll.x,
+                                  desired.y - window->scroll.y));
 }
 
 /* Called from idle.c once a frame while a drag is active: step the ants one
@@ -169,6 +238,9 @@ void wuss__drag_end(wuss_t        *wuss,
 
   invalidate_drawn(wuss, &wuss->drag.drawn);
   wuss->drag.window = NULL;
+
+  if (cancelled && wuss->drag.grab)
+    wuss_window_set_scroll(window, wuss->drag.grab_scroll);
 
   wuss__pointer_set_window(wuss, cancelled ? NULL : drop);
 

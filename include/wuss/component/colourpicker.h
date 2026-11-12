@@ -21,13 +21,13 @@
  * up until OK or Cancel. Every change is reported at once through a
  * callback, so the caller can show it live:
  *
- * - Select on OK closes the dialogue, keeping the colour. - Adjust on OK
+ * - SELECT on OK closes the dialogue, keeping the colour. - ADJUST on OK
  * keeps the colour and leaves the dialogue open, the "old" swatch taking the
- * current colour. - Select on Cancel reports the old colour and closes the
- * dialogue. - Adjust on Cancel reports the old colour and leaves the
+ * current colour. - SELECT on Cancel reports the old colour and closes the
+ * dialogue. - ADJUST on Cancel reports the old colour and leaves the
  * dialogue open.
  *
- * RETURN is OK and ESCAPE is Cancel, both as Select. Each picker remembers
+ * RETURN is OK and ESCAPE is Cancel, both as SELECT. Each picker remembers
  * its last model across openings.
  *
  * Built only when WUSS_COMPONENTS is defined.

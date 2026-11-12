@@ -84,7 +84,7 @@ result_t wuss_pointer_test(const char *resources)
   wuss_window_get_content_bounds(win, &content);
 
   printf("test: a click in the vertical well below the sausage pages down, "
-         "Adjust pages back, and neither arms a sausage drag\n");
+         "ADJUST pages back, and neither arms a sausage drag\n");
   {
     wuss__vscroll_well_box(win, &well);
     wuss__vscroll_sausage_box(win, &sausage);
@@ -124,7 +124,7 @@ result_t wuss_pointer_test(const char *resources)
   wuss_window_set_scroll(win, POINT(0, 0));
 
   printf("test: option icon latches on a completed click; a lone radio "
-         "toggles on Adjust only; a press released elsewhere is dropped "
+         "toggles on ADJUST only; a press released elsewhere is dropped "
          "without latching\n");
   {
     wuss_icon_spec_t spec;
@@ -167,7 +167,7 @@ result_t wuss_pointer_test(const char *resources)
     if (!wuss__icon_selected(radio)) goto Check;
     wuss_mouse_click(wuss, at, wuss_BUTTON_SELECT, wuss_MOUSE_DOWN, NULL);
     wuss_mouse_click(wuss, at, wuss_BUTTON_SELECT, wuss_MOUSE_UP, NULL);
-    if (!wuss__icon_selected(radio)) goto Check; /* Select never clears */
+    if (!wuss__icon_selected(radio)) goto Check; /* SELECT never clears */
     wuss_mouse_click(wuss, at, wuss_BUTTON_ADJUST, wuss_MOUSE_DOWN, NULL);
     wuss_mouse_click(wuss, at, wuss_BUTTON_ADJUST, wuss_MOUSE_UP, NULL);
     if (wuss__icon_selected(radio)) goto Check;

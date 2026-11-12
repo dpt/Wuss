@@ -24,7 +24,6 @@
 #include "../common/common.h"
 
 #define DISPLAY_G_LABEL      1 /* size group, see stack_item_t::group */
-#define DISPLAY_SET_W        120
 
 enum
 {
@@ -51,35 +50,36 @@ enum
   DISPLAY_ST__LIMIT
 };
 
+/* sizes are zero here: display_layout sets them from the font */
 static const stack_item_t g_display_stack[DISPLAY_ST__LIMIT] =
 {
   [DISPLAY_ST_ROOT] = { .kind = stack_KIND_VBOX, .parent = -1,
                         .gap = wuss_STD_GAP, .pad = wuss_STD_INSETS },
 
-  [DISPLAY_ST_COLOURS_ROW]      = STACK_HBOX(DISPLAY_ST_ROOT, wuss_STD_GLYPH_SIZE, wuss_STD_GAP, stack_ALIGN_START),
-  [DISPLAY_ST_COLOURS_LABEL]    = STACK_LEAF_GROUP(DISPLAY_ST_COLOURS_ROW, 0, wuss_STD_GLYPH_SIZE, stack_ALIGN_CENTRE, DISPLAY_G_LABEL),
-  [DISPLAY_ST_COLOURS]          = STACK_LEAF_EX(DISPLAY_ST_COLOURS_ROW, 0, wuss_STD_GLYPH_SIZE, stack_ALIGN_CENTRE, 1, DISPLAY_SET_W, 0),
+  [DISPLAY_ST_COLOURS_ROW]      = STACK_HBOX(DISPLAY_ST_ROOT, 0, wuss_STD_GAP, stack_ALIGN_START),
+  [DISPLAY_ST_COLOURS_LABEL]    = STACK_LEAF_GROUP(DISPLAY_ST_COLOURS_ROW, 0, 0, stack_ALIGN_CENTRE, DISPLAY_G_LABEL),
+  [DISPLAY_ST_COLOURS]          = STACK_LEAF_EX(DISPLAY_ST_COLOURS_ROW, 0, 0, stack_ALIGN_CENTRE, 1, 0, 0),
 
-  [DISPLAY_ST_RESOLUTION_ROW]   = STACK_HBOX(DISPLAY_ST_ROOT, wuss_STD_GLYPH_SIZE, wuss_STD_GAP, stack_ALIGN_START),
-  [DISPLAY_ST_RESOLUTION_LABEL] = STACK_LEAF_GROUP(DISPLAY_ST_RESOLUTION_ROW, 0, wuss_STD_GLYPH_SIZE, stack_ALIGN_CENTRE, DISPLAY_G_LABEL),
-  [DISPLAY_ST_RESOLUTION]       = STACK_LEAF_EX(DISPLAY_ST_RESOLUTION_ROW, 0, wuss_STD_GLYPH_SIZE, stack_ALIGN_CENTRE, 1, DISPLAY_SET_W, 0),
+  [DISPLAY_ST_RESOLUTION_ROW]   = STACK_HBOX(DISPLAY_ST_ROOT, 0, wuss_STD_GAP, stack_ALIGN_START),
+  [DISPLAY_ST_RESOLUTION_LABEL] = STACK_LEAF_GROUP(DISPLAY_ST_RESOLUTION_ROW, 0, 0, stack_ALIGN_CENTRE, DISPLAY_G_LABEL),
+  [DISPLAY_ST_RESOLUTION]       = STACK_LEAF_EX(DISPLAY_ST_RESOLUTION_ROW, 0, 0, stack_ALIGN_CENTRE, 1, 0, 0),
 
-  [DISPLAY_ST_ZOOM_ROW]         = STACK_HBOX(DISPLAY_ST_ROOT, wuss_STD_GLYPH_SIZE, wuss_STD_GAP, stack_ALIGN_START),
-  [DISPLAY_ST_ZOOM_LABEL]       = STACK_LEAF_GROUP(DISPLAY_ST_ZOOM_ROW, 0, wuss_STD_GLYPH_SIZE, stack_ALIGN_CENTRE, DISPLAY_G_LABEL),
-  [DISPLAY_ST_ZOOM]             = STACK_LEAF_EX(DISPLAY_ST_ZOOM_ROW, 0, wuss_STD_GLYPH_SIZE, stack_ALIGN_CENTRE, 1, DISPLAY_SET_W, 0),
+  [DISPLAY_ST_ZOOM_ROW]         = STACK_HBOX(DISPLAY_ST_ROOT, 0, wuss_STD_GAP, stack_ALIGN_START),
+  [DISPLAY_ST_ZOOM_LABEL]       = STACK_LEAF_GROUP(DISPLAY_ST_ZOOM_ROW, 0, 0, stack_ALIGN_CENTRE, DISPLAY_G_LABEL),
+  [DISPLAY_ST_ZOOM]             = STACK_LEAF_EX(DISPLAY_ST_ZOOM_ROW, 0, 0, stack_ALIGN_CENTRE, 1, 0, 0),
 
-  [DISPLAY_ST_CRT_ROW]          = STACK_HBOX(DISPLAY_ST_ROOT, wuss_STD_GLYPH_SIZE, wuss_STD_GAP, stack_ALIGN_START),
+  [DISPLAY_ST_CRT_ROW]          = STACK_HBOX(DISPLAY_ST_ROOT, 0, wuss_STD_GAP, stack_ALIGN_START),
   [DISPLAY_ST_CRT_LABEL]        = STACK_SPACER_GROUP(DISPLAY_ST_CRT_ROW, 0, DISPLAY_G_LABEL), /* empty first column */
-  [DISPLAY_ST_CRT]              = STACK_LEAF_EX(DISPLAY_ST_CRT_ROW, 0, wuss_STD_GLYPH_SIZE, stack_ALIGN_CENTRE, 1, 0, 0),
+  [DISPLAY_ST_CRT]              = STACK_LEAF_EX(DISPLAY_ST_CRT_ROW, 0, 0, stack_ALIGN_CENTRE, 1, 0, 0),
 
-  [DISPLAY_ST_POINTER_ROW]      = STACK_HBOX(DISPLAY_ST_ROOT, wuss_STD_GLYPH_SIZE, wuss_STD_GAP, stack_ALIGN_START),
+  [DISPLAY_ST_POINTER_ROW]      = STACK_HBOX(DISPLAY_ST_ROOT, 0, wuss_STD_GAP, stack_ALIGN_START),
   [DISPLAY_ST_POINTER_LABEL]    = STACK_SPACER_GROUP(DISPLAY_ST_POINTER_ROW, 0, DISPLAY_G_LABEL),
-  [DISPLAY_ST_POINTER]          = STACK_LEAF_EX(DISPLAY_ST_POINTER_ROW, 0, wuss_STD_GLYPH_SIZE, stack_ALIGN_CENTRE, 1, 0, 0),
+  [DISPLAY_ST_POINTER]          = STACK_LEAF_EX(DISPLAY_ST_POINTER_ROW, 0, 0, stack_ALIGN_CENTRE, 1, 0, 0),
 
-  [DISPLAY_ST_BUTTONS]          = STACK_HBOX(DISPLAY_ST_ROOT, wuss_STD_SECONDARY_BUTTON_HEIGHT, wuss_STD_GAP, stack_ALIGN_START),
+  [DISPLAY_ST_BUTTONS]          = STACK_HBOX(DISPLAY_ST_ROOT, 0, wuss_STD_GAP, stack_ALIGN_START),
   [DISPLAY_ST_BUTTONS_LABEL]    = STACK_SPACER_GROUP(DISPLAY_ST_BUTTONS, 0, DISPLAY_G_LABEL),
-  [DISPLAY_ST_CANCEL]           = STACK_LEAF_EX(DISPLAY_ST_BUTTONS, 0, wuss_STD_SECONDARY_BUTTON_HEIGHT, stack_ALIGN_CENTRE, 1, 0, 0),
-  [DISPLAY_ST_CHANGE]           = STACK_LEAF_EX(DISPLAY_ST_BUTTONS, 0, wuss_STD_SECONDARY_BUTTON_HEIGHT, stack_ALIGN_CENTRE, 1, 0, 0),
+  [DISPLAY_ST_CANCEL]           = STACK_LEAF_EX(DISPLAY_ST_BUTTONS, 0, 0, stack_ALIGN_CENTRE, 1, 0, 0),
+  [DISPLAY_ST_CHANGE]           = STACK_LEAF_EX(DISPLAY_ST_BUTTONS, 0, 0, stack_ALIGN_CENTRE, 1, 0, 0),
 };
 
 enum
@@ -266,39 +266,128 @@ static result_t display_change(display_task_t *dc)
 
 /* ----------------------------------------------------------------------- */
 
+/* widest of n strings, in pixels */
+static int display_widest(const wuss_t      *wuss,
+                          const char *const *strings,
+                          int                n)
+{
+  int w;
+  int i;
+
+  w = 0;
+  for (i = 0; i < n; i++)
+    w = MAX(w, task_text_width(wuss, strings[i]));
+
+  return w;
+}
+
+/* solve the window's layout for the current font */
+static result_t display_layout(const wuss_t *wuss,
+                               size2d_t     *size,
+                               box_t         boxes[])
+{
+  result_t     rc;
+  stack_item_t items[DISPLAY_ST__LIMIT];
+  int          row_h;
+  int          button_h;
+  int          set_w;
+  int          i;
+  box_t        root;
+
+  memcpy(items, g_display_stack, sizeof(items));
+
+  /* rows fit a field or an option glyph, whichever is taller */
+  row_h    = MAX(wuss_std_height(wuss, wuss_STD_FIELD), wuss_STD_GLYPH_SIZE);
+  button_h = wuss_std_height(wuss, wuss_STD_SECONDARY_BUTTON);
+  for (i = DISPLAY_ST_COLOURS_ROW; i < DISPLAY_ST__LIMIT; i++)
+  {
+    if (items[i].kind == stack_KIND_HBOX)
+      items[i].axis_size = (i == DISPLAY_ST_BUTTONS) ? button_h : row_h;
+    else if (items[i].kind == stack_KIND_LEAF)
+      items[i].cross_size = (i >= DISPLAY_ST_CANCEL) ? button_h : row_h;
+  }
+
+  /* a set fits its widest entry beside a square arrow */
+  set_w = MAX(display_widest(wuss, g_display_depth_labels,
+                             NELEMS(g_display_depth_labels)),
+              display_widest(wuss, g_display_resolution_labels,
+                             NELEMS(g_display_resolution_labels)));
+  set_w = MAX(set_w, display_widest(wuss, g_display_zoom_labels,
+                                    NELEMS(g_display_zoom_labels)));
+  set_w = task_field_width(wuss, "") + set_w + wuss_STD_GAP + row_h;
+  items[DISPLAY_ST_COLOURS].min    = set_w;
+  items[DISPLAY_ST_RESOLUTION].min = set_w;
+  items[DISPLAY_ST_ZOOM].min       = set_w;
+
+  /* each label's natural width; the size group widens the other to match */
+  items[DISPLAY_ST_COLOURS_LABEL].axis_size =
+    task_text_width(wuss, "Colours");
+  items[DISPLAY_ST_RESOLUTION_LABEL].axis_size =
+    task_text_width(wuss, "Resolution");
+  items[DISPLAY_ST_ZOOM_LABEL].axis_size =
+    task_text_width(wuss, "Zoom");
+  items[DISPLAY_ST_CRT].min = wuss_STD_GLYPH_SIZE + wuss_STD_GAP +
+                              task_text_width(wuss, "CRT effect");
+  items[DISPLAY_ST_POINTER].min = wuss_STD_GLYPH_SIZE + wuss_STD_GAP +
+    task_text_width(wuss, "Software pointer");
+  items[DISPLAY_ST_CANCEL].min =
+    task_button_width(wuss, "Cancel", wuss_STD_SECONDARY_BUTTON_BORDER);
+  items[DISPLAY_ST_CHANGE].min =
+    task_button_width(wuss, "Change", wuss_STD_SECONDARY_BUTTON_BORDER);
+
+  rc = stack_smallest(items, NELEMS(items), size);
+  if (rc != result_OK)
+    return rc;
+
+  root = (box_t) BOX_POS_SIZE(0, 0, size->w, size->h);
+  return stack_solve(items, NELEMS(items), &root, boxes);
+}
+
+/* re-solve for a new font and move everything to match */
+static result_t display_relayout(display_task_t *dc)
+{
+  result_t       rc;
+  size2d_t       size;
+  box_t          boxes[DISPLAY_ST__LIMIT];
+  wuss_window_t *window;
+
+  rc = display_layout(dc->base.wuss, &size, boxes);
+  if (rc != result_OK)
+    return rc;
+
+  window = dc->base.window;
+
+  rc = task_fit_window(window, size);
+  if (rc != result_OK)
+    return rc;
+
+  wuss_icon_set_bbox(window, dc->labels[0], &boxes[DISPLAY_ST_COLOURS_LABEL]);
+  wuss_icon_set_bbox(window, dc->labels[1],
+                     &boxes[DISPLAY_ST_RESOLUTION_LABEL]);
+  wuss_icon_set_bbox(window, dc->labels[2], &boxes[DISPLAY_ST_ZOOM_LABEL]);
+  wuss_icon_set_bbox(window, dc->crt, &boxes[DISPLAY_ST_CRT]);
+  wuss_icon_set_bbox(window, dc->pointer, &boxes[DISPLAY_ST_POINTER]);
+  wuss_icon_set_bbox(window, dc->cancel, &boxes[DISPLAY_ST_CANCEL]);
+  wuss_icon_set_bbox(window, dc->change, &boxes[DISPLAY_ST_CHANGE]);
+  wuss_stringset_set_bbox(dc->colours, boxes[DISPLAY_ST_COLOURS]);
+  wuss_stringset_set_bbox(dc->resolution, boxes[DISPLAY_ST_RESOLUTION]);
+  wuss_stringset_set_bbox(dc->zoom, boxes[DISPLAY_ST_ZOOM]);
+
+  return result_OK;
+}
+
 static result_t display_init(display_task_t *task)
 {
   result_t         rc;
   size2d_t         size;
-  box_t            root;
-  stack_item_t     items[DISPLAY_ST__LIMIT];
   box_t            boxes[DISPLAY_ST__LIMIT];
   wuss_icon_spec_t specs[DISPLAY_NICONS];
   wuss_icon_t     *made[DISPLAY_NICONS];
 
-  /* each label's natural width; the size group widens the other to match */
-  memcpy(items, g_display_stack, sizeof(items));
-  items[DISPLAY_ST_COLOURS_LABEL].axis_size =
-    task_text_width(task->base.wuss, "Colours");
-  items[DISPLAY_ST_RESOLUTION_LABEL].axis_size =
-    task_text_width(task->base.wuss, "Resolution");
-  items[DISPLAY_ST_ZOOM_LABEL].axis_size =
-    task_text_width(task->base.wuss, "Zoom");
-  items[DISPLAY_ST_CRT].min = wuss_STD_GLYPH_SIZE + wuss_STD_GAP +
-                              task_text_width(task->base.wuss, "CRT effect");
-  items[DISPLAY_ST_POINTER].min = wuss_STD_GLYPH_SIZE + wuss_STD_GAP +
-    task_text_width(task->base.wuss, "Software pointer");
-  items[DISPLAY_ST_CANCEL].min =
-    task_button_width(task->base.wuss, "Cancel", wuss_STD_SECONDARY_BUTTON_BORDER);
-  items[DISPLAY_ST_CHANGE].min =
-    task_button_width(task->base.wuss, "Change", wuss_STD_SECONDARY_BUTTON_BORDER);
+  /* label the unlisted-size entry before measuring the entries */
+  (void) display_resolution_index(task->base.wuss);
 
-  rc = stack_smallest(items, NELEMS(items), &size);
-  if (rc != result_OK)
-    return rc;
-
-  root = (box_t) BOX_POS_SIZE(0, 0, size.w, size.h);
-  rc = stack_solve(items, NELEMS(items), &root, boxes);
+  rc = display_layout(task->base.wuss, &size, boxes);
   if (rc != result_OK)
     return rc;
 
@@ -336,10 +425,13 @@ static result_t display_init(display_task_t *task)
   if (rc != result_OK)
     return rc;
 
-  task->crt      = made[DISPLAY_ICON_CRT];
-  task->pointer  = made[DISPLAY_ICON_POINTER];
-  task->cancel = made[DISPLAY_ICON_CANCEL];
-  task->change = made[DISPLAY_ICON_CHANGE];
+  task->crt       = made[DISPLAY_ICON_CRT];
+  task->pointer   = made[DISPLAY_ICON_POINTER];
+  task->cancel    = made[DISPLAY_ICON_CANCEL];
+  task->change    = made[DISPLAY_ICON_CHANGE];
+  task->labels[0] = made[DISPLAY_ICON_COLOURS_LABEL];
+  task->labels[1] = made[DISPLAY_ICON_RESOLUTION_LABEL];
+  task->labels[2] = made[DISPLAY_ICON_ZOOM_LABEL];
 
   rc = wuss_stringset_create(&task->zoom, task->base.window,
                              boxes[DISPLAY_ST_ZOOM], "Zoom", -1,
@@ -407,7 +499,7 @@ static result_t display_handle(wuss_window_t      *window,
       if (rc != result_OK || (event->data.icon.button & wuss_BUTTON_ADJUST))
         return rc;
 
-      /* Select closes, as on RISC OS; with autoclose this frees dc, so it
+      /* SELECT closes, as on RISC OS; with autoclose this frees dc, so it
        * must not be touched afterwards */
       return wuss_window_try_close(dc->base.window);
     }
@@ -443,6 +535,9 @@ static result_t display_handle(wuss_window_t      *window,
 
   case wuss_EVENT_KEY:
     return result_WUSS_KEY_UNCLAIMED;
+
+  case wuss_EVENT_RELAYOUT:
+    return display_relayout(dc);
 
   default:
     return result_OK;

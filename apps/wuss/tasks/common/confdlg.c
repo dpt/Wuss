@@ -56,7 +56,7 @@ static void confdlg_dismiss(confdlg_t *conf)
   conf->instance->menu_handle = NULL;
 }
 
-/* Select dismisses the menu chain; Adjust resets the sliders instead */
+/* SELECT dismisses the menu chain; ADJUST resets the sliders instead */
 static result_t confdlg_cancel(void *opaque, wuss_button_t button)
 {
   confdlg_t *conf;
@@ -71,7 +71,7 @@ static result_t confdlg_cancel(void *opaque, wuss_button_t button)
   return result_OK;
 }
 
-/* Select applies and dismisses; Adjust applies and leaves the dialogue open.
+/* SELECT applies and dismisses; ADJUST applies and leaves the dialogue open.
  * old is the value rows[0] held before the change. */
 static result_t confdlg_commit(confdlg_t    *conf,
                                wuss_button_t button,
@@ -116,45 +116,50 @@ static result_t confdlg_default(void *opaque, wuss_button_t button)
   return confdlg_commit(conf, button, old);
 }
 
-result_t confdlg_create(confdlg_t            *conf,
-                        taskapp_instance_t   *instance,
-                        const confdlg_desc_t *desc,
-                        void                 *config)
+/* stack item index of icon number icon, in creation order */
+static int confdlg_icon_item(const confdlg_t *conf, int icon)
 {
-  result_t               rc;
-  stack_item_t           items[ST_MAX];
-  box_t                  boxes[ST_MAX];
-  wuss_icon_spec_t       specs[ICONS_MAX];
-  wuss_icon_t           *made[ICONS_MAX];
-  char                   bufs[CONFDLG_MAX_ROWS][WUSS_SLIDER_ROW_BUF];
-  char                   text[WUSS_SLIDER_ROW_BUF];
-  wuss_dialogue_action_t actions[NBUTTONS];
-  wuss_t                *wuss;
-  const confdlg_row_t   *r;
-  size2d_t               min_sz;
-  box_t                  root;
-  int                    row;
-  int                    st;
-  int                    icon;
-  int                    btns;
-  int                    bbox;
-  int                    value_w;
-  int                    button_w;
+  int row_icons;
 
-  if (desc->nrows > CONFDLG_MAX_ROWS)
-    return result_BAD_ARG;
+  row_icons = conf->desc->nrows * ICONS_PER_ROW;
+  if (icon < row_icons)
+    return 1 + icon / ICONS_PER_ROW * ST_PER_ROW + 1 + icon % ICONS_PER_ROW;
+  else
+    return 1 + conf->desc->nrows * ST_PER_ROW + 3 + (icon - row_icons);
+}
 
-  conf->instance = instance;
-  conf->desc     = desc;
-  conf->config   = config;
-  wuss           = instance->wuss;
+/* lay the dialogue out for the current desktop font */
+static result_t confdlg_solve(const confdlg_t *conf,
+                              size2d_t        *size,
+                              box_t            boxes[ST_MAX])
+{
+  result_t             rc;
+  stack_item_t         items[ST_MAX];
+  char                 text[WUSS_SLIDER_ROW_BUF];
+  wuss_t              *wuss;
+  int                  label_h;
+  int                  slider_h;
+  int                  button_h;
+  const confdlg_row_t *r;
+  int                  row;
+  int                  st;
+  int                  value_w;
+  int                  button_w;
+  int                  btns;
+  int                  bbox;
+  box_t                root;
+
+  wuss     = conf->instance->wuss;
+  label_h  = wuss_std_height(wuss, wuss_STD_LABEL);
+  slider_h = wuss_std_height(wuss, wuss_STD_SLIDER);
+  button_h = wuss_std_height(wuss, wuss_STD_SECONDARY_BUTTON);
 
   items[0] = (stack_item_t) { .kind = stack_KIND_VBOX, .parent = -1,
                               .gap = wuss_STD_GAP, .pad = wuss_STD_INSETS };
 
-  for (row = 0; row < desc->nrows; row++)
+  for (row = 0; row < conf->desc->nrows; row++)
   {
-    r  = &desc->rows[row];
+    r  = &conf->desc->rows[row];
     st = 1 + row * ST_PER_ROW;
 
     snprintf(text, sizeof(text), "%d", r->max);
@@ -162,25 +167,80 @@ result_t confdlg_create(confdlg_t            *conf,
     snprintf(text, sizeof(text), "%d", r->min);
     value_w = MAX(value_w, task_text_width(wuss, text));
 
-    items[st]     = (stack_item_t) STACK_HBOX(0, wuss_STD_SLIDER_HEIGHT, wuss_STD_GAP, stack_ALIGN_START);
-    items[st + 1] = (stack_item_t) STACK_LEAF_GROUP(st, task_text_width(wuss, r->label), 16, stack_ALIGN_CENTRE, ST_G_LABEL);
-    items[st + 2] = (stack_item_t) STACK_LEAF_EX(st, 0, wuss_STD_SLIDER_HEIGHT, stack_ALIGN_CENTRE, 1, ST_SLIDER_MIN_W, 0);
-    items[st + 3] = (stack_item_t) STACK_LEAF_GROUP(st, value_w, 16, stack_ALIGN_CENTRE, ST_G_VALUE);
+    items[st]     = (stack_item_t) STACK_HBOX(0, slider_h, wuss_STD_GAP, stack_ALIGN_START);
+    items[st + 1] = (stack_item_t) STACK_LEAF_GROUP(st, task_text_width(wuss, r->label), label_h, stack_ALIGN_CENTRE, ST_G_LABEL);
+    items[st + 2] = (stack_item_t) STACK_LEAF_EX(st, 0, slider_h, stack_ALIGN_CENTRE, 1, ST_SLIDER_MIN_W, 0);
+    items[st + 3] = (stack_item_t) STACK_LEAF_GROUP(st, value_w, label_h, stack_ALIGN_CENTRE, ST_G_VALUE);
   }
 
   /* a spacer in the label group puts the buttons under the sliders */
   button_w = task_button_width(wuss, "Default", wuss_STD_SECONDARY_BUTTON_BORDER);
-  btns     = 1 + desc->nrows * ST_PER_ROW;
+  btns     = 1 + conf->desc->nrows * ST_PER_ROW;
   bbox     = btns + 2;
 
-  items[btns]     = (stack_item_t) STACK_HBOX(0, wuss_STD_SECONDARY_BUTTON_HEIGHT, wuss_STD_GAP, stack_ALIGN_START);
+  items[btns]     = (stack_item_t) STACK_HBOX(0, button_h, wuss_STD_GAP, stack_ALIGN_START);
   items[btns + 1] = (stack_item_t) STACK_SPACER_GROUP(btns, 0, ST_G_LABEL);
   items[bbox]     = (stack_item_t) { .kind = stack_KIND_HBOX, .parent = btns,
                                      .gap = wuss_STD_GAP, .flex = 1 };
   for (st = bbox + 1; st <= bbox + NBUTTONS; st++)
-    items[st] = (stack_item_t) STACK_LEAF_EX(bbox, 0, wuss_STD_SECONDARY_BUTTON_HEIGHT, stack_ALIGN_CENTRE, 1, button_w, 0);
+    items[st] = (stack_item_t) STACK_LEAF_EX(bbox, 0, button_h, stack_ALIGN_CENTRE, 1, button_w, 0);
 
-  rc = stack_smallest(items, bbox + NBUTTONS + 1, &min_sz);
+  rc = stack_smallest(items, bbox + NBUTTONS + 1, size);
+  if (rc != result_OK)
+    return rc;
+
+  root = (box_t) BOX_POS_SIZE(0, 0, size->w, size->h);
+  return stack_solve(items, bbox + NBUTTONS + 1, &root, boxes);
+}
+
+static result_t confdlg_relayout(confdlg_t *conf)
+{
+  result_t       rc;
+  size2d_t       size;
+  box_t          boxes[ST_MAX];
+  wuss_window_t *window;
+  int            icon;
+
+  rc = confdlg_solve(conf, &size, boxes);
+  if (rc != result_OK)
+    return rc;
+
+  window = wuss_dialogue_window(conf->dialogue);
+
+  rc = task_fit_window(window, size);
+  if (rc != result_OK)
+    return rc;
+
+  for (icon = 0; icon < conf->desc->nrows * ICONS_PER_ROW + NBUTTONS; icon++)
+    wuss_icon_set_bbox(window, conf->icons[icon],
+                       &boxes[confdlg_icon_item(conf, icon)]);
+
+  return result_OK;
+}
+
+result_t confdlg_create(confdlg_t            *conf,
+                        taskapp_instance_t   *instance,
+                        const confdlg_desc_t *desc,
+                        void                 *config)
+{
+  result_t               rc;
+  box_t                  boxes[ST_MAX];
+  size2d_t               min_sz;
+  wuss_icon_spec_t       specs[ICONS_MAX];
+  char                   bufs[CONFDLG_MAX_ROWS][WUSS_SLIDER_ROW_BUF];
+  wuss_dialogue_action_t actions[NBUTTONS];
+  const confdlg_row_t   *r;
+  int                    row;
+  int                    icon;
+
+  if (desc->nrows > CONFDLG_MAX_ROWS)
+    return result_BAD_ARG;
+
+  conf->instance = instance;
+  conf->desc     = desc;
+  conf->config   = config;
+
+  rc = confdlg_solve(conf, &min_sz, boxes);
   if (rc != result_OK)
     return rc;
 
@@ -191,47 +251,46 @@ result_t confdlg_create(confdlg_t            *conf,
 
   wuss_dialogue_set_focusable(conf->dialogue, 0); /* no writables */
 
-  root = (box_t) BOX_POS_SIZE(0, 0, min_sz.w, min_sz.h);
-  rc = stack_solve(items, bbox + NBUTTONS + 1, &root, boxes);
-  if (rc != result_OK)
-    goto exit;
-
   for (row = 0; row < desc->nrows; row++)
   {
     r    = &desc->rows[row];
-    st   = 1 + row * ST_PER_ROW;
     icon = row * ICONS_PER_ROW;
 
-    wuss_icon_spec_label(&specs[icon], boxes[st + 1], r->label,
-                         wuss_ICON_FLAGS_JUSTIFY_RIGHT);
+    wuss_icon_spec_label(&specs[icon], boxes[confdlg_icon_item(conf, icon)],
+                         r->label, wuss_ICON_FLAGS_JUSTIFY_RIGHT);
     wuss_icon_spec_slider_row(&specs[icon + 1], &specs[icon + 2],
-                              boxes[st + 2], boxes[st + 3],
+                              boxes[confdlg_icon_item(conf, icon + 1)],
+                              boxes[confdlg_icon_item(conf, icon + 2)],
                               wuss_SLIDER_HORIZONTAL,
                               r->min, r->max, *confdlg_field(conf, row), NULL,
                               r->step, bufs[row], sizeof(bufs[row]));
   }
 
   icon = desc->nrows * ICONS_PER_ROW;
-  wuss_icon_spec_action(&specs[icon], boxes[bbox + 1], "Default", 0);
-  wuss_icon_spec_action(&specs[icon + 1], boxes[bbox + 2], "Cancel", 0);
-  wuss_icon_spec_action(&specs[icon + 2], boxes[bbox + 3], "Apply", 0);
+  wuss_icon_spec_action(&specs[icon], boxes[confdlg_icon_item(conf, icon)],
+                        "Default", 0);
+  wuss_icon_spec_action(&specs[icon + 1],
+                        boxes[confdlg_icon_item(conf, icon + 1)], "Cancel", 0);
+  wuss_icon_spec_action(&specs[icon + 2],
+                        boxes[confdlg_icon_item(conf, icon + 2)], "Apply", 0);
 
   rc = wuss_icon_create_array(wuss_dialogue_window(conf->dialogue), specs,
-                              icon + NBUTTONS, made);
+                              icon + NBUTTONS, conf->icons);
   if (rc != result_OK)
     goto exit;
 
   for (row = 0; row < desc->nrows; row++)
-    wuss_slider_row_bind(&conf->rows[row], made[row * ICONS_PER_ROW + 1],
-                         made[row * ICONS_PER_ROW + 2], NULL,
+    wuss_slider_row_bind(&conf->rows[row],
+                         conf->icons[row * ICONS_PER_ROW + 1],
+                         conf->icons[row * ICONS_PER_ROW + 2], NULL,
                          desc->rows[row].min, desc->rows[row].max,
                          desc->rows[row].step);
 
-  actions[0].icon = made[icon];
+  actions[0].icon = conf->icons[icon];
   actions[0].fn   = confdlg_default;
-  actions[1].icon = made[icon + 1];
+  actions[1].icon = conf->icons[icon + 1];
   actions[1].fn   = confdlg_cancel;
-  actions[2].icon = made[icon + 2];
+  actions[2].icon = conf->icons[icon + 2];
   actions[2].fn   = confdlg_apply;
 
   rc = wuss_dialogue_set_actions(conf->dialogue, actions, NBUTTONS);
@@ -285,6 +344,12 @@ result_t confdlg_event(confdlg_t          *conf,
   case wuss_EVENT_CLOSE:
     wuss_dialogue_handle_close(conf->dialogue, window);
     return result_OK;
+
+  case wuss_EVENT_RELAYOUT:
+    if (window != wuss_dialogue_window(conf->dialogue))
+      return result_OK;
+
+    return confdlg_relayout(conf);
 
   case wuss_EVENT_QUIT:
     wuss_dialogue_destroy(conf->dialogue);

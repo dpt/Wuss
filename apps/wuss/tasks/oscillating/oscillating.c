@@ -31,7 +31,7 @@
 
 /* window task: a Lissajous figure x=sin(a*t+phase), y=sin(b*t) plotted as a
  * ring of dots. The phase drifts each idle tick so the figure slowly morphs.
- * Select cycles the frequency pair (a,b); Adjust reverses the drift. The
+ * SELECT cycles the frequency pair (a,b); ADJUST reverses the drift. The
  * menu's Ratio row picks the frequency pair directly; its Easing row picks
  * the curve for the random backwards runs (None by default); its Decay row
  * picks how many previous frames trail behind, dimmed (Off by default); its
@@ -91,7 +91,7 @@ enum
   OSCILLATING_MENU_RESET
 };
 
-/* frequency pairs cycled by a Select click and listed in Menu > Ratio */
+/* frequency pairs cycled by a SELECT click and listed in Menu > Ratio */
 static const struct
 {
   int         a, b;

@@ -373,6 +373,8 @@ result_t wuss_lifecycle_test(const char *resources)
 
     screen_t              pscr;
     wuss_t               *pw;
+    colour_t              solid;
+    colour_t              grey;
 
     screen_init(&pscr, SIZE2D(64, 8), pixelfmt_p1, 8, phys, pixels);
     rc = wuss_create(&pscr, NULL, 0, desktop, 2, NULL, NULL, NULL, &pw);
@@ -380,6 +382,16 @@ result_t wuss_lifecycle_test(const char *resources)
       goto Failure;
 
     if (!pw->autosolid[0] || pw->autosolid[1])
+    {
+      wuss_destroy(pw);
+      goto Failure;
+    }
+
+    /* text over the solid black keeps its ground; over the dithered grey it
+     * goes transparent */
+    solid = wuss__text_ground(pw, desktop[0]);
+    grey  = wuss__text_ground(pw, desktop[1]);
+    if (solid.primary != desktop[0].primary || colour_get_alpha(&grey) != 0)
     {
       wuss_destroy(pw);
       goto Failure;

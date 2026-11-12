@@ -25,8 +25,8 @@
 #include "../common/common.h"
 
 /* a 9x9 sudoku with a unique solution, generated afresh for each game.
- * Select on a cell moves the cursor there; Select on the cursor cell steps
- * its digit up, Adjust steps it down. With the input focus, the arrow keys
+ * SELECT on a cell moves the cursor there; SELECT on the cursor cell steps
+ * its digit up, ADJUST steps it down. With the input focus, the arrow keys
  * move the cursor, 1-9 enter a digit and 0, Space, Backspace or Delete clear
  * it. Entries that clash with another digit in their row, column or box are
  * drawn in red; the board turns green once solved. A MENU-button click pops

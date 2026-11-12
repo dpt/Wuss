@@ -326,6 +326,17 @@ void wuss__message_drain(wuss_t *wuss)
   wuss->msg.dispatch_depth--;
 }
 
+void wuss__message_task_close_down(wuss_t *wuss, wuss_task_t *task)
+{
+  wuss_message_t msg;
+
+  memset(&msg, 0, offsetof(wuss_message_t, data));
+  msg.action = wuss_MESSAGE_TASK_CLOSE_DOWN;
+  msg.sender = task;
+
+  deliver(wuss, &msg); /* a broadcast skips the sender */
+}
+
 void wuss__message_purge_task(wuss_t *wuss, wuss_task_t *task)
 {
   int i;

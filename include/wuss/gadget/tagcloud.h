@@ -10,7 +10,7 @@
  * Highlighted tags are drawn bold in the accent colour. With scaling on,
  * each tag's count puts it in one of five bands, drawn from faint to full
  * strength; bitmap fonts cannot scale, so colour stands in for size. The tag
- * under the pointer is underlined. A Select or Adjust click on a tag toggles
+ * under the pointer is underlined. A SELECT or ADJUST click on a tag toggles
  * its highlight and calls the toggle callback.
  *
  * The gadget owns no icons and draws its tags itself, so the task must
@@ -165,7 +165,7 @@ int wuss_tagcloud_hit_test(const wuss_tagcloud_t *tagcloud, point_t point);
  * \param[in] tagcloud Handle.
  * \param[in] event    The event, of any kind.
  * \return 1 if the event was consumed, else 0. A REDRAW is consumed; a
- *         Select or Adjust MOUSE DOWN is consumed when it hits a tag.
+ *         SELECT or ADJUST MOUSE DOWN is consumed when it hits a tag.
  */
 int wuss_tagcloud_handle_event(wuss_tagcloud_t    *tagcloud,
                                const wuss_event_t *event);

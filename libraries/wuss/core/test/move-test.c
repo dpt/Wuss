@@ -765,7 +765,7 @@ result_t wuss_move_test(const char *resources)
      * clean region of two pieces, one of whose destination lands on the
      * other's still-unread source -- but blitting the other piece first
      * avoids that entirely, so this must NOT fall back to a full clipped
-     * redraw (that was the "Adjust drag behind a corner fully redraws the
+     * redraw (that was the "ADJUST drag behind a corner fully redraws the
      * window" regression). Dragging B up-left by (-15,-15) also grows the
      * overlap with A without ever fully hiding or fully clearing it -- the
      * blit skips the part of each piece's destination that now lands under

@@ -4,7 +4,7 @@
 
 Like its inspiration it draws into a plain framebuffer, so it runs anywhere from a desktop to a web browser and even on RISC OS itself.
 
-As with RISC OS, it expects a three-button mouse. From left to right the buttons are called `SELECT`, `MENU` and `ADJUST`. If you're using a trackpad or something use the Configure app to swap MENU and ADJUST around.
+As with RISC OS, it expects a three-button mouse. From left to right the buttons are called `SELECT`, `MENU` and `ADJUST`. If you're using a trackpad or something use the Configuring app to swap MENU and ADJUST around.
 
 ## Windows
 

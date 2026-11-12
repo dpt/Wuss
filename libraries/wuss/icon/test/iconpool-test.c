@@ -30,6 +30,21 @@
 
 /* ----------------------------------------------------------------------- */
 
+/* Grey level of pixel (x,y) of a 32bpp pool bitmap, compressed or not, or -1
+ * if it can't be read. The fixtures are grey, so channel order is moot. */
+static int iconpool_test_grey(const bitmap_t *bm, int x, int y)
+{
+  bitmap_t raw;
+  int      grey;
+
+  if (bitmap_clone(bm, &raw) != result_OK)
+    return -1;
+
+  grey = ((unsigned char *) raw.base)[y * raw.rowbytes + x * 4];
+  free(raw.base);
+  free(raw.palette);
+  return grey;
+}
 
 /* ----------------------------------------------------------------------- */
 
@@ -280,6 +295,60 @@ result_t wuss_iconpool_test(const char *resources)
       goto Failure;
   }
 
+  printf("test: wuss_iconpool_load splits sprite sheets into frames\n");
+
+  {
+    int idx, f;
+
+    rc = wuss_iconpool_load(wuss, pathf("%s/resources/test/wuss/sheets",
+                                     resources));
+    if (rc != result_OK)
+      goto Failure;
+
+    /* dup, grid, plain_04x4 and ragged: tiny_8x8 is under one cell and
+     * dup_2x2 loses to dup.png */
+    if (wuss_iconpool_count(wuss) != 4)
+      goto Failure;
+
+    /* 3x2 cells, row-major, each its own grey; frame 0 is the bitmap */
+    idx = wuss_iconpool_lookup(wuss, "grid");
+    if (idx < 0)
+      goto Failure;
+    for (f = 0; f < 6; f++)
+      if (wuss_iconpool_frame(wuss, idx, f)->size.w != 4 ||
+          iconpool_test_grey(wuss_iconpool_frame(wuss, idx, f), 0, 0) !=
+          20 * (f + 1) ||
+          iconpool_test_grey(wuss_iconpool_frame(wuss, idx, f), 3, 3) !=
+          20 * (f + 1))
+        goto Failure;
+    if (wuss_iconpool_frame(wuss, idx, 0) != wuss_iconpool_bitmap(wuss, idx) ||
+        wuss_iconpool_frame(wuss, idx, 6) != NULL ||
+        wuss_iconpool_frame(wuss, idx, -1) != NULL ||
+        wuss_iconpool_frame(wuss, -1, 0) != NULL)
+      goto Failure;
+
+    /* 10x9 at 4x4 keeps the whole 2x2 cells */
+    idx = wuss_iconpool_lookup(wuss, "ragged");
+    if (idx < 0 || wuss_iconpool_frame(wuss, idx, 4) != NULL ||
+        iconpool_test_grey(wuss_iconpool_frame(wuss, idx, 3), 0, 0) != 100)
+      goto Failure;
+
+    /* the plain dup.png wins: one 2x2 frame */
+    idx = wuss_iconpool_lookup(wuss, "dup");
+    if (idx < 0 || wuss_iconpool_frame(wuss, idx, 1) != NULL ||
+        wuss_iconpool_bitmap(wuss, idx)->size.w != 2)
+      goto Failure;
+
+    /* a leading zero is not a sheet suffix */
+    idx = wuss_iconpool_lookup(wuss, "plain_04x4");
+    if (idx < 0 || wuss_iconpool_frame(wuss, idx, 1) != NULL)
+      goto Failure;
+
+    rc = wuss_iconpool_load_resource(wuss, resources);
+    if (rc != result_OK)
+      goto Failure;
+  }
+
   printf("test: a task's private icon pool is searched before the shared one, falls back to it, and is freed with the task\n");
 
   {
@@ -317,6 +386,13 @@ result_t wuss_iconpool_test(const char *resources)
     if (wuss_task_iconpool_find(delegate_pp, "opton") !=
           wuss_iconpool_bitmap(wuss, wuss_iconpool_lookup(wuss, "opton")) ||
         wuss_task_iconpool_find(delegate_pp, "nonesuch") != NULL)
+      goto Failure;
+
+    /* frames by name: private first, a plain entry has one, unknown none */
+    if (wuss_task_iconpool_frame(delegate_pp, "rgba", 0) != priv ||
+        wuss_task_iconpool_frame(delegate_pp, "rgba", 1) != NULL ||
+        wuss_task_iconpool_frame(delegate_pp, "opton", 1) != NULL ||
+        wuss_task_iconpool_frame(delegate_pp, "nonesuch", 0) != NULL)
       goto Failure;
 
     /* icons in the task's windows resolve names privately first */

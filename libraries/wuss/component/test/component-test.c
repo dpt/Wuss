@@ -918,6 +918,25 @@ ColourPairOK: ;
                                wuss_colourset_button_width(cswuss, 22))
       goto ColourSetFail;
 
+    /* moving it into a taller box resizes the field's image to match,
+     * still showing the colour */
+    if (wuss_colourset_set_bbox(cs, (box_t) BOX_POS_SIZE(4, 30, 140, 30)) !=
+        result_OK)
+      goto ColourSetFail;
+    if (field->spec.bbox.y0 != 30 || field->spec.bbox.y1 != 60 ||
+        field->spec.u.bitmap.image->size.h != 30 - 2 * WUSS_BEVEL_WIDTH ||
+        field->spec.u.bitmap.image->size.w !=
+          field->spec.bbox.x1 - field->spec.bbox.x0 - 2 * WUSS_BEVEL_WIDTH)
+      goto ColourSetFail;
+    fpx = field->spec.u.bitmap.image->base;
+    if ((*fpx & 0xFFFFFF) != 0) goto ColourSetFail;
+    if (wuss__icon_hit_test(cswin, POINT(4 + 140 - 2, 30 + 15)) != button)
+      goto ColourSetFail;
+    if (wuss_colourset_set_bbox(cs, (box_t) BOX_POS_SIZE(4, 4, 120, 22)) !=
+        result_OK)
+      goto ColourSetFail;
+    fpx = field->spec.u.bitmap.image->base; /* the image was reallocated */
+
     /* a colour menu pick while the gadget has not opened it is declined */
     ev.kind                    = wuss_EVENT_MENU_SELECT;
     ev.data.menu_select.menu   = wuss_colourmenu_menu(cswuss);
@@ -925,7 +944,7 @@ ColourPairOK: ;
     ev.data.menu_select.button = wuss_BUTTON_SELECT;
     if (wuss_colourset_handle_event(cs, &ev, &csrc)) goto ColourSetFail;
 
-    /* a Select click on the button opens the colour menu */
+    /* a SELECT click on the button opens the colour menu */
     ev.kind              = wuss_EVENT_ICON;
     ev.data.icon.icon    = button;
     ev.data.icon.action  = wuss_MOUSE_UP;
@@ -935,7 +954,7 @@ ColourPairOK: ;
       goto ColourSetFail;
     if (wuss__menu_chain(cswuss) == NULL) goto ColourSetFail;
 
-    /* an Adjust pick of another colour refills the field and fires the
+    /* an ADJUST pick of another colour refills the field and fires the
      * callback, keeping the menu open */
     ev.kind                    = wuss_EVENT_MENU_SELECT;
     ev.data.menu_select.menu   = wuss_menu_handle_menu(wuss__menu_chain(cswuss));
@@ -969,7 +988,7 @@ ColourPairOK: ;
         (*fpx & 0xFFFFFF) != 0 || calls != 2)
       goto ColourSetFail;
 
-    /* a Select pick: wuss closes the chain and delivers MENU_CLOSED (picked)
+    /* a SELECT pick: wuss closes the chain and delivers MENU_CLOSED (picked)
      * before MENU_SELECT, which is still the gadget's */
     wuss_menu_close(wuss__menu_chain(cswuss));
     ev.kind                    = wuss_EVENT_MENU_CLOSED;

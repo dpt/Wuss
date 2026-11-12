@@ -25,7 +25,7 @@ typedef struct wuss_options
   const char *tasks;        /* -t/--tasks: comma-separated launcher task
                              * names to auto-open at startup, or "all";
                              * default "Filing,Display"
-                             * ("Filing,Configure,Reading" under
+                             * ("Filing,Configuring,Display,Reading" under
                              * Emscripten); giving -t replaces it */
   const char *root;         /* --root: directory Filing's icon bar icon and
                              * System menu row open; default "." (or "/"

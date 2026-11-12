@@ -371,8 +371,8 @@ failure:
   return rc;
 }
 
-/* Map an OS_Mouse button word (bit 2 = Select/left, bit 1 = Menu/middle,
- * bit 0 = Adjust/right on a 3-button mouse) to wuss_button_t, whose bit
+/* Map an OS_Mouse button word (bit 2 = SELECT/left, bit 1 = MENU/middle,
+ * bit 0 = ADJUST/right on a 3-button mouse) to wuss_button_t, whose bit
  * values already match RISC OS order. */
 static wuss_button_t mouse_buttons_to_wuss(int buttons)
 {

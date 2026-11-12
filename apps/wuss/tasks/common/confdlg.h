@@ -47,6 +47,8 @@ typedef struct confdlg
   const confdlg_desc_t *desc;
   void                 *config;
   wuss_slider_row_t     rows[CONFDLG_MAX_ROWS];
+  /* every icon in creation order, moved on wuss_EVENT_RELAYOUT */
+  wuss_icon_t          *icons[CONFDLG_MAX_ROWS * 3 + 3];
 }
 confdlg_t;
 
@@ -58,8 +60,8 @@ result_t confdlg_create(confdlg_t            *conf,
                         const confdlg_desc_t *desc,
                         void                 *config);
 
-/* Handle wuss_EVENT_ICON, wuss_EVENT_PRE_SHOW, wuss_EVENT_CLOSE and
- * wuss_EVENT_QUIT for the task that owns conf. */
+/* Handle wuss_EVENT_ICON, wuss_EVENT_PRE_SHOW, wuss_EVENT_CLOSE,
+ * wuss_EVENT_QUIT and wuss_EVENT_RELAYOUT for the task that owns conf. */
 result_t confdlg_event(confdlg_t          *conf,
                        wuss_window_t      *window,
                        const wuss_event_t *event);

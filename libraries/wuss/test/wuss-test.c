@@ -467,7 +467,7 @@ result_t wuss_test(const char *resources)
   if (hit != win_a)
     goto Failure;
 
-  printf("test: Adjust-drag moves a window without bringing it to front\n");
+  printf("test: ADJUST-drag moves a window without bringing it to front\n");
 
   rc = wuss_mouse_click(wuss, POINT(140, 35), wuss_BUTTON_ADJUST, wuss_MOUSE_DOWN, &hit); /* B's titlebar, clear of A */
   if (rc != result_OK)
@@ -717,7 +717,7 @@ result_t wuss_test(const char *resources)
 
   wuss_window_close(win_d);
 
-  printf("test: Adjust-click on a window's back icon brings it to front\n");
+  printf("test: ADJUST-click on a window's back icon brings it to front\n");
 
   {
     static test_task_t tc_g, tc_h;
@@ -796,7 +796,7 @@ result_t wuss_test(const char *resources)
     if (rc != result_OK)
       goto Failure;
 
-    rc = wuss_mouse_click(wuss, POINT(visible.x0 + 5, visible.y0 + 5), wuss_BUTTON_ADJUST, wuss_MOUSE_DOWN, &hit); /* Adjust-click G's back icon */
+    rc = wuss_mouse_click(wuss, POINT(visible.x0 + 5, visible.y0 + 5), wuss_BUTTON_ADJUST, wuss_MOUSE_DOWN, &hit); /* ADJUST-click G's back icon */
     if (rc != result_OK)
       goto Failure;
     if (hit != win_g)
@@ -809,7 +809,7 @@ result_t wuss_test(const char *resources)
     rc = wuss_mouse_click(wuss, POINT(145, 65), wuss_BUTTON_SELECT, wuss_MOUSE_DOWN, &hit); /* overlap: G back on top */
     if (rc != result_OK)
       goto Failure;
-    if (hit != win_g) /* Adjust-click on the back icon brought G back to front */
+    if (hit != win_g) /* ADJUST-click on the back icon brought G back to front */
       goto Failure;
 
     rc = wuss_mouse_click(wuss, POINT(145, 65), wuss_BUTTON_SELECT, wuss_MOUSE_UP, &hit);

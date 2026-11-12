@@ -109,7 +109,7 @@ Because of the priority rule, the whole handshake completes within the
 - New `wuss_config_t` fields: `double_click_ms`, `double_click_px` and
   `drag_threshold_px`, with 0 meaning the defaults (400 ms, 4 px, 4 px).
   They are live-changeable via `wuss_set_config` and exposed in the
-  Configure task.
+  Configuring task.
 
 ### Drag session (core)
 
@@ -153,8 +153,8 @@ Because of the priority rule, the whole handshake completes within the
 - Column count follows the visible width and reflows on `OPEN`. The gadget
   sets the window's document extent. Hit-testing is arithmetic; gaps
   between cells miss.
-- It owns the selection (a `bitvec`) with RISC OS rules: Select selects only
-  the item, Adjust toggles it, a click on empty space clears the selection.
+- It owns the selection (a `bitvec`) with RISC OS rules: SELECT selects only
+  the item, ADJUST toggles it, a click on empty space clears the selection.
   A double-click on an item calls `activate_fn(index)`.
 - Intended for reuse by other tasks (e.g. a resources editor). Drag-out
   hooks in here later.
@@ -220,7 +220,7 @@ All steps are complete. Each was committed separately, with its tests.
 2. `io/dirlist` and the `io/path` leafname validation.
 3. Core messaging.
 4. `wuss_set_time`, the double-click flag, the config fields and the
-   Configure task UI.
+   Configuring task UI.
 5. Core drag session, plus SDL mouse capture.
 6. DRAGGABLE icon.
 7. Grid view gadget.
@@ -236,6 +236,6 @@ All steps are complete. Each was committed separately, with its tests.
 - Load from the Filer, task-to-task transfer and RAM transfer.
 - Error and query boxes.
 - Sprite drag visuals (after masked sprites).
-- Filer copy, move, delete and rename; other views; Adjust-closes-parent.
+- Filer copy, move, delete and rename; other views; ADJUST-closes-parent.
 - Grid drag-out and custom cell drawing.
 - `saved_fn`, a public message pump and unsaved-changes tracking.

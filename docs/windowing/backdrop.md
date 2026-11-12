@@ -55,12 +55,14 @@ Pinboard menu. It follows [the menu standard](menu-standard.md).
 
 ```
 Pinboard
+  Display       >  Dithering > Nearest / Bayer / Blue noise
   Backdrop      >  Colour   >  (shared colourmenu)
                    Pattern  >  (pattern list)
                    Image    >  None / Centre / Tile / Scale
                    ---
                    Clear
   Selection     >  Open
+                   Reveal
                    Remove
   ---
   Select all
@@ -68,26 +70,31 @@ Pinboard
   Tidy
 ```
 
-- `Selection` is greyed when nothing is selected. A MENU press over an
-  unselected icon selects that icon only for the life of the menu, as the
-  Filing task does.
+- `Dithering` sets how the backdrop image is drawn on paletted and 16bpp
+  screens.
+- `Selection` and `Clear selection` are greyed when nothing is selected. A
+  MENU press over an unselected icon selects that icon only for the life of
+  the menu, as the Filing task does.
+- `Selection > Reveal` opens a Filer window on the directory holding each
+  selected icon's file or directory.
+- `Select all` and `Tidy` are greyed when there are no pinned icons.
 - `Tidy` snaps every pinned icon to the grid, packed from the top left.
 
 ### Changing the backdrop
 
 - `Colour` and `Pattern` build a new `wuss_backdrop_t` and call
   `wuss_set_backdrop`. Other tasks are not notified.
-- `Image > Centre` uses `wuss_backdrop_t::image`. `Tile` and `Scale` are
-  more than the paint offers, so the Pinboard draws them itself in its
-  window's redraw. The backdrop window then has a fill of
-  `wuss_NO_BACKGROUND` behind the image.
+- `Image > Centre`, `Tile` and `Scale` are more than the paint offers, as
+  `wuss_backdrop_t::image` is not dithered. So the Pinboard draws all three
+  in its window's redraw, over the paint's fill.
 - To set the image, select a pinned PNG and pick `Image > Centre`, `Tile` or
   `Scale`, or drop a PNG on the backdrop with SHIFT held. A plain drop pins
   the file (see below). `Image > None` removes the image. Those three rows
   are shaded while there is no image and no PNG pin is selected.
 - The menu rows are updated in place after each pick, so an ADJUST pick
   that leaves the menu open shows the new state at once.
-- `Clear` returns colour, pattern and image to the theme's backdrop.
+- `Clear` returns colour, pattern and image to the theme's backdrop. It is
+  greyed while no image is shown.
 
 ### Selection and dragging
 
@@ -136,6 +143,38 @@ Pinboard
   Pinboard acknowledges it and places the icon in the first free grid cell
   from the top left. With no Pinboard running, the message bounces to the
   sender.
+
+## Actors
+
+An actor is a bitmap that another task shows on the backdrop, such as the
+Duckling task's ducks. The Pinboard draws actors over the pinned icons and
+behind every window. It holds at most 16 at once.
+
+- **Set and remove.** The owner broadcasts `wuss_MESSAGE_PINBOARD_ACTOR` with
+  a `wuss_pinboard_actor_t`: an operation, an id that is unique to the
+  owner, the bitmap and its screen position. A set adds the actor or moves
+  it. A remove takes it away. The owner sends it recorded: the Pinboard
+  acknowledges it, so it bounces only when no Pinboard is running.
+- **Draw order.** The actor's `depth` picks its layer: a higher one draws
+  over a lower one. In one layer, an actor whose bottom edge is lower on
+  the screen draws over one higher up, so nearer actors cover further
+  ones. A click goes to the actor drawn on top.
+- **Borrowed bitmaps.** The Pinboard does not copy the bitmap. The owner
+  keeps it alive until the actor is removed or the owner is destroyed.
+- **Owner destroyed.** Core broadcasts `wuss_MESSAGE_TASK_CLOSE_DOWN` from a
+  task as `wuss_task_destroy` takes it down, before its QUIT, so before it
+  frees anything. The broadcast is delivered at once, not queued. The
+  Pinboard then removes that task's actors.
+- **Click.** A SELECT or ADJUST press over an actor broadcasts
+  `wuss_MESSAGE_PINBOARD_ACTOR_CLICK` with the owner, id, button and pointer
+  position. The owner acts on it when the owner field matches. The press
+  does not select icons or start a rubber band. MENU still opens the
+  Pinboard menu. The hit test uses the bitmap's whole box.
+- **Drag.** A SELECT drag hides the actor and drags its image with
+  `wuss_drag_start_bitmap`. At the end, the Pinboard shows the actor at the
+  drop point and broadcasts `wuss_MESSAGE_PINBOARD_ACTOR_DROP` with the new
+  position. If Escape cancels the drag, the actor stays where it was and
+  the message has `cancelled` set.
 
 ## Jottings notes
 
@@ -207,6 +246,7 @@ through messages.
 | Backdrop, no Pinboard | nothing | nothing | nothing | bounces |
 | Empty backdrop | clear selection; drag: rubber band | drag: rubber band, adding | Pinboard menu | pin; SHIFT: set image |
 | Pinned icon | select; double: open; drag: move or transfer | toggle | Pinboard menu, Selection live | pin in nearest free cell |
+| Actor | to its owner; drag: move | to its owner | Pinboard menu | as for what lies beneath |
 
 ## Persistence
 

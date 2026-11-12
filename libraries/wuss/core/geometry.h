@@ -4,6 +4,14 @@
 #define WUSS_CORE_GEOMETRY_H
 
 #include "types.h"
+#include "../font/font.h"
+
+/* height of the icon bar strip for the current system font */
+static inline int wuss__iconbar_height(const wuss_t *wuss)
+{
+  return WUSS_ICONBAR_ICON + WUSS_ICONBAR_TEXT_PAD +
+         wuss__system_font_height(wuss) + WUSS_ICONBAR_MARGIN;
+}
 
 
 /* clamp "desired" to the window's scrollable range; step the current offset
@@ -11,6 +19,21 @@
  * and, when built, the scrollbar furniture. */
 point_t wuss__scroll_clamp(const wuss_window_t *window, point_t desired);
 void    wuss__scroll_step(wuss_window_t *window, point_t delta);
+
+/* A toolbar or pane whose document overruns its content box scrolls, as the
+ * icon bar does, while the pointer rests within WUSS_TOOLBAR_SCROLL_ZONE
+ * pixels of either end of an overrun axis that has no scrollbar: each idle
+ * moves it WUSS_TOOLBAR_SCROLL_STEP pixels. Called from wuss_idle. */
+#define WUSS_TOOLBAR_SCROLL_ZONE 16
+#define WUSS_TOOLBAR_SCROLL_STEP 6
+void    wuss__toolbar_scroll_tick(wuss_t *wuss);
+
+/* "desired" clamped as wuss__scroll_clamp does, and further so that a
+ * toolbar's shown icons, not its whole document, bound an axis without a
+ * scrollbar: once they fit the content box, no blank space stays scrolled
+ * into view. Defined in scroll.c. */
+point_t wuss__toolbar_scroll_clamp(const wuss_window_t *window,
+                                   point_t              desired);
 
 #ifdef WUSS_FURNITURE
 void            wuss__titlebar_box(const wuss_window_t *window, box_t *out);
@@ -47,6 +70,17 @@ static inline void wuss__content_box(const wuss_window_t *window, box_t *out)
 static inline int wuss__window_is_pane(const wuss_window_t *window)
 {
   return (window->state & wuss_WINDOW_STATE_PANE) != 0;
+}
+
+/* The thickness "pane" has now across "edge": its width on a side edge, its
+ * height on the top or bottom. */
+static inline int wuss__pane_thickness(const wuss_window_t *pane,
+                                       wuss_edge_t          edge)
+{
+  if (edge == wuss_EDGE_LEFT || edge == wuss_EDGE_RIGHT)
+    return pane->visible.x1 - pane->visible.x0;
+
+  return pane->visible.y1 - pane->visible.y0;
 }
 
 /* The first window from "tb" on along a parent's toolbar list that is a

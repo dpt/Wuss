@@ -83,6 +83,19 @@ static void icon_draw_divider_border(screen_t    *scr,
   screen_draw_bevel_edge(scr, &ring, light, divider);
 }
 
+/* The window's ground under an icon: its fill colour, or a pattern's ground
+ * colour, else "fallback". */
+static colour_t wuss__icon_window_ground(const icon_draw_ctx_t *c,
+                                         colour_t               fallback)
+{
+  if (c->window->bg.fill.colour != wuss_NO_BACKGROUND)
+    return (c->window->bg.fill.pattern != screen_PATTERN_SOLID)
+         ? c->wuss->palette[c->window->bg.fill.pattern_bg]
+         : c->wuss->palette[c->window->bg.fill.colour];
+
+  return fallback;
+}
+
 colour_t wuss__icon_blend_ground(const icon_draw_ctx_t *c, colour_t fallback)
 {
   const wuss_icon_spec_t *icon = &c->icon->spec;
@@ -90,12 +103,22 @@ colour_t wuss__icon_blend_ground(const icon_draw_ctx_t *c, colour_t fallback)
   if (icon->bg != wuss_NO_BACKGROUND)
     return c->wuss->palette[icon->bg];
 
-  if (c->window->bg.fill.colour != wuss_NO_BACKGROUND)
-    return (c->window->bg.fill.pattern != screen_PATTERN_SOLID)
-         ? c->wuss->palette[c->window->bg.fill.pattern_bg]
-         : c->wuss->palette[c->window->bg.fill.colour];
+  return wuss__icon_window_ground(c, fallback);
+}
 
-  return fallback;
+colour_t wuss__icon_text_ground(const icon_draw_ctx_t *c, colour_t ground)
+{
+  const wuss_fill_t *fill = &c->window->bg.fill;
+
+  /* an icon with no bg of its own shows its window's ground: unknown when the
+   * window has no fill, and only stood in for by "ground" when it is a
+   * pattern, so draw the text over it transparently */
+  if (c->icon->spec.bg == wuss_NO_BACKGROUND &&
+      (fill->colour == wuss_NO_BACKGROUND ||
+       fill->pattern != screen_PATTERN_SOLID))
+    return colour_rgba(0, 0, 0, 0);
+
+  return ground;
 }
 
 /* ----------------------------------------------------------------------- */
@@ -213,7 +236,8 @@ static void wuss__icon_draw_label(const icon_draw_ctx_t *c)
 
   pos.y = wuss__icon_text_baseline_y(c, b);
 
-  wuss__text_draw_str(c->font, c->scr, icon->text, c->fg, bg, &pos, NULL);
+  wuss__text_draw_str(c->wuss, c->font, c->scr, icon->text, c->fg,
+                      wuss__icon_text_ground(c, bg), &pos, NULL);
 }
 
 /* ----------------------------------------------------------------------- */
@@ -226,7 +250,11 @@ static void wuss__icon_draw_frame(const icon_draw_ctx_t *c)
   bmfont_width_t          cap_w;
   int                     len;
   box_t                   frame;
-  colour_t                bg;
+  box_t                   bands[4];
+  int                     nbands;
+  box_t                   cap;
+  int                     i;
+  screen_t                clipped;
   point_t                 pos;
 
   light   = c->wuss->palette[c->wuss->bevel.light];
@@ -242,16 +270,36 @@ static void wuss__icon_draw_frame(const icon_draw_ctx_t *c)
                        NULL, &cap_w);
   }
 
+  /* the border meets the caption about halfway down its text */
   frame    = c->b;
-  frame.y0 += WUSS_FRAME_CAPTION_TOP;
-  icon_draw_divider_border(c->scr, &frame, light, divider);
+  frame.y0 += c->have_font ? MAX(c->font_height / 2 - 1, 0)
+                           : WUSS_FRAME_CAPTION_TOP;
+  /* the caption is drawn transparently, so clip the border around its cell
+   * rather than relying on an opaque text background to knock it out */
+  bands[0] = c->scr->clip;
+  nbands   = 1;
+  if (cap_w > 0)
+  {
+    cap.x0 = b->x0 + WUSS_FRAME_CAPTION_INSET;
+    cap.y0 = b->y0;
+    cap.x1 = cap.x0 + (int) cap_w;
+    cap.y1 = b->y0 + c->font_height;
+    nbands = box_subtract(&c->scr->clip, &cap, bands);
+  }
+
+  for (i = 0; i < nbands; i++)
+  {
+    clipped      = *c->scr;
+    clipped.clip = bands[i];
+    icon_draw_divider_border(&clipped, &frame, light, divider);
+  }
 
   if (cap_w > 0)
   {
-    bg = wuss__icon_blend_ground(c, c->fg);
-    pos.x = b->x0 + WUSS_FRAME_CAPTION_INSET;
+    pos.x = cap.x0;
     pos.y = b->y0 + c->font_ascent;
-    wuss__text_draw(c->font, c->scr, spec->text, len, c->fg, bg, &pos, NULL);
+    wuss__text_draw(c->wuss, c->font, c->scr, spec->text, len, c->fg,
+                    colour_rgba(0, 0, 0, 0), &pos, NULL);
   }
 }
 
@@ -321,9 +369,33 @@ static void wuss__icon_draw_button(const icon_draw_ctx_t *c)
       pos.y += 1;
     }
 
-    wuss__text_draw(c->font, c->scr, icon->text, len, label, base, &pos,
-                    NULL);
+    wuss__text_draw(c->wuss, c->font, c->scr, icon->text, len, label, base,
+                    &pos, NULL);
   }
+}
+
+/* ----------------------------------------------------------------------- */
+
+/* How far a disabled icon's bitmap fades toward its ground, in 256ths. */
+#define WUSS_ICON_DISABLED_FADE 128
+
+/* Blit "bm" at (x, y), faded toward "ground" when the icon is disabled. A
+ * faded blit that fails draws the image unfaded instead. */
+static result_t wuss__icon_copy_bitmap(const icon_draw_ctx_t *c,
+                                       screen_t              *scr,
+                                       int                    x,
+                                       int                    y,
+                                       const bitmap_t        *bm,
+                                       colour_t               ground)
+{
+  if ((c->icon->spec.flags & wuss_ICON_FLAGS_DISABLED) == 0)
+    return screen_copy_bitmap(scr, x, y, bm);
+
+  if (screen_copy_bitmap_faded(scr, x, y, bm, ground,
+                               WUSS_ICON_DISABLED_FADE) == result_OK)
+    return result_OK;
+
+  return screen_copy_bitmap(scr, x, y, bm);
 }
 
 /* ----------------------------------------------------------------------- */
@@ -390,7 +462,7 @@ static void wuss__icon_draw_radio_option(const icon_draw_ctx_t *c)
 
   if (bm != NULL)
   {
-    screen_copy_bitmap(c->scr, g.x0, g.y0, bm);
+    wuss__icon_copy_bitmap(c, c->scr, g.x0, g.y0, bm, bg);
   }
   else if (icon->type == wuss_ICON_TYPE_RADIO)
   {
@@ -441,7 +513,8 @@ static void wuss__icon_draw_radio_option(const icon_draw_ctx_t *c)
     if (icon->flags & wuss_ICON_FLAGS_JUSTIFY_RIGHT)
       pos.x = MAX(g.x0 - 4 - (int) width, tx); /* flush against the glyph */
     pos.y = wuss__icon_text_baseline_y(c, b);
-    wuss__text_draw(c->font, c->scr, icon->text, len, glyph, bg, &pos, NULL);
+    wuss__text_draw(c->wuss, c->font, c->scr, icon->text, len, glyph,
+                    wuss__icon_text_ground(c, bg), &pos, NULL);
   }
 }
 
@@ -453,6 +526,7 @@ static void wuss__icon_draw_bitmap(const icon_draw_ctx_t *c)
   const bitmap_t *bm;
   screen_t        clipped;
   colour_t        light, dark;
+  colour_t        ground;
   box_t           ring;
   int             x, y, raised;
 
@@ -462,21 +536,28 @@ static void wuss__icon_draw_bitmap(const icon_draw_ctx_t *c)
   if (bm == NULL)
     bm = c->icon->spec.u.bitmap.image;
 
+  /* a disabled image fades toward what lies under it: the window, as a
+   * bitmap's bg is drawn only when latched (below). bevel_light stands in
+   * for a window with no fill, so a disabled image always looks disabled. */
+  light  = c->wuss->palette[c->wuss->bevel.light];
+  ground = wuss__icon_window_ground(c, light);
+
   /* a bevel (sunk when latched), with the image centred inside it */
   x = b->x0;
   y = b->y0;
   if (c->icon->spec.type == wuss_ICON_TYPE_BITMAP &&
       c->icon->spec.u.bitmap.border != wuss_ICON_BORDER_NONE)
   {
-    light  = c->wuss->palette[c->wuss->bevel.light];
     dark   = c->wuss->palette[c->wuss->bevel.dark];
     raised = (c->icon->spec.u.bitmap.border == wuss_ICON_BORDER_RIDGE) !=
              wuss__icon_selected(c->icon);
     ring   = *b;
 
     if (wuss__icon_selected(c->icon) && c->icon->spec.bg != wuss_NO_BACKGROUND)
-      wuss__fill_colour(c->wuss, c->scr, b,
-                        c->wuss->palette[c->icon->spec.bg], c->origin);
+    {
+      ground = c->wuss->palette[c->icon->spec.bg];
+      wuss__fill_colour(c->wuss, c->scr, b, ground, c->origin);
+    }
 
     screen_draw_bevel_edge(c->scr, &ring, raised ? light : dark,
                            raised ? dark : light);
@@ -497,7 +578,7 @@ static void wuss__icon_draw_bitmap(const icon_draw_ctx_t *c)
 
   /* a missing bitmap or a failed blit leaves a red box in its place */
   if (bm == NULL ||
-      screen_copy_bitmap(&clipped, x, y, bm) != result_OK)
+      wuss__icon_copy_bitmap(c, &clipped, x, y, bm, ground) != result_OK)
     screen_fill_rect(&clipped, b->x0, b->y0, box_size(b),
                      colour_rgb(255, 0, 0));
 }
@@ -601,8 +682,8 @@ static void wuss__icon_draw_writable(const icon_draw_ctx_t *c)
   bmfont_get_info(c->font, NULL, NULL, &ascent, NULL);
   pos.x = b->x0 + wuss__writable_text_x(c->wuss, icon);
   pos.y = b->y0 + (b->y1 - b->y0 - ascent) / 2 + ascent;
-  wuss__text_draw_str(c->font, &clipped, icon->spec.text, ink, bg, &pos,
-                      NULL);
+  wuss__text_draw_str(c->wuss, c->font, &clipped, icon->spec.text, ink,
+                      wuss__icon_text_ground(c, bg), &pos, NULL);
 
   if (c->wuss->caret.icon == icon
       && c->wuss->caret.anchor != c->wuss->caret.index)
@@ -618,8 +699,8 @@ static void wuss__icon_draw_writable(const icon_draw_ctx_t *c)
       selscr      = clipped;
       selscr.clip = sel_clip;
       wuss__fill_colour(c->wuss, &selscr, &sel, ink, c->origin);
-      wuss__text_draw_str(c->font, &selscr, icon->spec.text, bg, ink, &pos,
-                          NULL);
+      wuss__text_draw_str(c->wuss, c->font, &selscr, icon->spec.text, bg, ink,
+                          &pos, NULL);
     }
   }
 

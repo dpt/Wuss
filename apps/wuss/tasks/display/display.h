@@ -17,8 +17,8 @@
  * takes effect until Change: it applies the zoom, options and mode (via
  * app_set_mode, which live-changes the frontend's surface and wuss's own
  * screen, nudging every open window back on-screen and shrinking any that no
- * longer fit), then closes the window (Adjust leaves it open). Cancel closes
- * it, discarding the picks; Adjust-Cancel instead reverts them to the
+ * longer fit), then closes the window (ADJUST leaves it open). Cancel closes
+ * it, discarding the picks; ADJUST-Cancel instead reverts them to the
  * settings in force. */
 typedef struct display_task
 {
@@ -30,6 +30,7 @@ typedef struct display_task
   wuss_icon_t        *pointer;
   wuss_icon_t        *cancel;
   wuss_icon_t        *change;
+  wuss_icon_t        *labels[3]; /* Colours, Resolution, Zoom */
 }
 display_task_t;
 

@@ -20,9 +20,9 @@ result_t wuss__furniture_press_arrow(wuss_window_t                   *win,
 
   wuss = win->wuss;
 
-  /* Adjust-clicking an arrow steps the opposite way to the arrow it points,
+  /* ADJUST-clicking an arrow steps the opposite way to the arrow it points,
    * so one arrow can be worked in both directions without moving the pointer.
-   * Select wins a Select+Adjust chord, so a chord never scrolls backwards
+   * SELECT wins a SELECT+ADJUST chord, so a chord never scrolls backwards
    * unexpectedly. */
   step = (button & wuss_BUTTON_SELECT) ?  WUSS_SCROLL_STEP
                                        : -WUSS_SCROLL_STEP;

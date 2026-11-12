@@ -14,6 +14,21 @@ Derived from the dialogues of the tasks in `apps/wuss/tasks/`
    per item. Create the window at that size, then build icons from the
    boxes.
 
+## Heights follow the font
+
+Text-bearing heights come from `wuss_std_height(wuss, kind)`, which derives
+them from the system font's height `h`: `wuss_STD_LABEL` (h),
+`wuss_STD_FIELD` (h+12), `wuss_STD_SLIDER` (h+8),
+`wuss_STD_SECONDARY_BUTTON` (h+16), `wuss_STD_PRIMARY_BUTTON` (h+24) and
+`wuss_STD_FRAME_TOP` (h+2). The default 10px font gives 10, 22, 18, 26, 34
+and 12. Never hard-code these.
+
+A font change sends `wuss_EVENT_RELAYOUT` to every window. A dialogue
+re-solves its layout, fits its window with `task_fit_window` and moves its
+icons with `wuss_icon_set_bbox` (`wuss_stringset_set_bbox` and
+`wuss_colourset_set_bbox` for gadgets), so writable text and the caret
+survive. A task that caches a font pointer re-fetches it.
+
 ## Spacing
 
 - Root is a `stack_KIND_VBOX` with `.gap = wuss_STD_GAP` and
@@ -24,8 +39,8 @@ Derived from the dialogues of the tasks in `apps/wuss/tasks/`
 ## Rows
 
 - One `STACK_HBOX` per row, `wuss_STD_GAP` between its children, height
-  set to the tallest child (`wuss_STD_SLIDER_HEIGHT`, `wuss_STD_GLYPH_SIZE`
-  or the field height).
+  set to the tallest child (`wuss_STD_SLIDER` or `wuss_STD_FIELD`, at
+  least `wuss_STD_GLYPH_SIZE` for radios and options).
 - Children are centred on the cross axis (`stack_ALIGN_CENTRE`).
 - A row holds everything that belongs to it: a caption and its radios share
   one row, never a caption above a row.
@@ -42,18 +57,20 @@ Derived from the dialogues of the tasks in `apps/wuss/tasks/`
 
 ## Controls
 
-- Radios and options: height `wuss_STD_GLYPH_SIZE`, width glyph plus
-  `wuss_STD_GAP` plus text width.
-- Sliders: `wuss_STD_SLIDER_HEIGHT`, flexible on the main axis.
-- Writable fields: fixed width, centred text, field height from the font.
+- Radios and options: height `MAX(wuss_STD_FIELD, wuss_STD_GLYPH_SIZE)`,
+  as the glyph bitmap does not scale; width glyph plus `wuss_STD_GAP` plus
+  text width.
+- Sliders: `wuss_STD_SLIDER`, flexible on the main axis.
+- Writable fields: `wuss_STD_FIELD` high, centred text, width measured
+  from the widest expected text (e.g. `"99999"`).
 
 ## Button row
 
 - Last row of the root. `STACK_HBOX` with `stack_ALIGN_END`, height
-  `wuss_STD_PRIMARY_BUTTON_HEIGHT`.
+  `wuss_STD_PRIMARY_BUTTON`.
 - First child is `STACK_SPACER(..., 1)` to push the buttons right.
-- Then Cancel (`wuss_STD_SECONDARY_BUTTON_HEIGHT`), then the default
-  button (`wuss_STD_PRIMARY_BUTTON_HEIGHT`), `wuss_STD_GAP` apart.
+- Then Cancel (`wuss_STD_SECONDARY_BUTTON`), then the default
+  button (`wuss_STD_PRIMARY_BUTTON`), `wuss_STD_GAP` apart.
 - Axis sizes from `task_button_width()` with
   `wuss_STD_SECONDARY_BUTTON_BORDER` / `wuss_STD_PRIMARY_BUTTON_BORDER`.
 
@@ -64,15 +81,16 @@ Derived from the dialogues of the tasks in `apps/wuss/tasks/`
   focus: the dialogue must contain a writable icon.
 - A dialogue with no writable icons, e.g. only sliders, must NOT have a
   default button. Its action buttons are all ordinary
-  (`wuss_STD_SECONDARY_BUTTON_HEIGHT` and `_BORDER`, `wuss_ICON_FLAGS_DEFAULT`
-  clear), and the button row is `wuss_STD_SECONDARY_BUTTON_HEIGHT` tall.
+  (`wuss_STD_SECONDARY_BUTTON` high with `wuss_STD_SECONDARY_BUTTON_BORDER`,
+  `wuss_ICON_FLAGS_DEFAULT` clear), and the button row is
+  `wuss_STD_SECONDARY_BUTTON` tall.
 - Such a dialogue is also not focusable: call
   `wuss_dialogue_set_focusable(dialogue, 0)` after creating it.
 
 ## Cancel button
 
 - ESCAPE activates the dialogue's Cancel button (`wuss_dialogue_handle_key`),
-  as a Select click on it would. Name the button with
+  as a SELECT click on it would. Name the button with
   `wuss_dialogue_set_cancel` after registering the actions.
 - Like RETURN, it is a key event, so it reaches only a focusable dialogue.
   A dialogue with no writable icons is not focusable and so is cancelled
@@ -80,4 +98,5 @@ Derived from the dialogues of the tasks in `apps/wuss/tasks/`
 
 ## Frames
 
-Contents of a `wuss_ICON_TYPE_FRAME` use `wuss_STD_FRAME_INSETS` as the pad.
+Contents of a `wuss_ICON_TYPE_FRAME` use `wuss_std_frame_insets(wuss)` as
+the pad.

@@ -29,7 +29,7 @@
  * Menu > Configuration sets the window size, the number of points plotted
  * and the curl (a percentage scaling the small shear terms of the main frond
  * transform: 100 is Barnsley's fern, 0 a straight stem, higher bends it
- * over). Select re-seeds for a fresh fern and Adjust steps back; Left/Right
+ * over). SELECT re-seeds for a fresh fern and ADJUST steps back; Left/Right
  * step back and forward once the window has the input focus, and Space toggles
  * Menu > Pause; unticked, it re-seeds every null event. The wheel zooms in and
  * out about the centre. Menu > Colours sets the
@@ -62,7 +62,7 @@ typedef struct fern_task
   taskapp_instance_t base;
   fern_config_t      config;
   colour_t           bg, fg;
-  unsigned long      seed;        /* RNG state; Select/Adjust step it */
+  unsigned long      seed;        /* RNG state; SELECT/ADJUST step it */
   confdlg_t          conf;
   wuss_colourlist_t  colours; /* per-instance, see saturn.c */
   wuss_menu_item_t   menu_items[6];
@@ -257,7 +257,7 @@ static result_t fern_mouse(fern_task_t        *task,
                                      &task->base.menu_handle);
   }
 
-  /* the seed step is invertible, so Adjust walks back through the ferns */
+  /* the seed step is invertible, so ADJUST walks back through the ferns */
   if (button & wuss_BUTTON_SELECT)
     task->seed += FERN_SEED_STEP;
   else if (button & wuss_BUTTON_ADJUST)
@@ -416,6 +416,7 @@ static result_t fern_handle(wuss_window_t      *window,
   case wuss_EVENT_PRE_SHOW:
   case wuss_EVENT_CLOSE:
   case wuss_EVENT_QUIT:
+  case wuss_EVENT_RELAYOUT:
     return confdlg_event(&task->conf, window, event);
 
   case wuss_EVENT_PRE_SUBMENU_OPEN:

@@ -20,6 +20,11 @@ wuss_window_t *wuss__z_first(wuss_t *wuss);
 result_t wuss__relayout_all(wuss_t *wuss);
 wuss_window_t *wuss__z_below(const wuss_window_t *window);
 
+/* Recompute a pinned window's box (the whole screen for a backdrop, the
+ * bottom strip for the icon bar) from the screen size and system font, and
+ * invalidate any change. */
+void wuss__fit_pinned_window(wuss_window_t *window);
+
 /* Recover the owning wuss_window_t from a node in a task's window list
  * (window->task_link). task_link is not the first member, so a plain cast
  * won't do. */

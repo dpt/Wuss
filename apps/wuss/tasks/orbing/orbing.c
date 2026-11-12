@@ -39,6 +39,19 @@
 #define ORBING_NROWS   5 /* control strip slider rows */
 #define ORBING_NCOLOURS 3 /* control strip colour sets */
 
+/* icons in the strip: the three frames, label / slider / value per row,
+ * then the On option */
+enum
+{
+  SI_BACKDROP,
+  SI_SPHERE,
+  SI_LIGHT,
+  SI_ROW,
+  SI_ON_LABEL = SI_ROW + 3 * ORBING_NROWS,
+  SI_ON,
+  SI__LIMIT
+};
+
 /* one of the fixed lights: a unit direction from the sphere's centre (x
  * right, y up, z towards the viewer; negative z is behind the sphere), a
  * colour, an intensity in percent (100 = the colour as-is) and the size and
@@ -56,12 +69,12 @@ orbing_light_t;
 
 /* window task: a single sphere, shaded per pixel by up to four coloured lights,
  * in the spirit of Kai's Power Tools' Spheroid Designer. The sphere fills the
- * window right of a fixed control strip framed in three groups: Background
- * (its colour set), Sphere (ambient, glow and its colour set) and the current
- * light's (its highlight size and sharpness, its level, an On option and its
- * colour set); the sphere scales with the window. Each lit light shows
- * as a ring marker (dotted when behind the sphere, filled when current). A
- * Select click on a marker makes that light current; anywhere else it moves the
+ * window beside a left hand pane, a control strip framed in three groups:
+ * Background (its colour set), Sphere (ambient, glow and its colour set) and
+ * the current light's (its highlight size and sharpness, its level, an On
+ * option and its colour set); the sphere scales with the window. Each lit
+ * light shows as a ring marker (dotted when behind the sphere, filled when current). A
+ * SELECT click on a marker makes that light current; anywhere else it moves the
  * current light there (turning it on), and dragging keeps moving it. The arrow
  * keys move it too, a pixel at a time (eight with Shift). Inside the disc the
  * light faces the surface under the pointer; the band just outside wraps it
@@ -76,6 +89,7 @@ orbing_light_t;
 typedef struct orbing_task
 {
   taskapp_instance_t base;
+  wuss_window_t     *pane;          /* holds the control strip */
   wuss_menu_item_t   menu_items[7]; /* per-instance, not a shared static */
   /* "Light" submenu: one row per light */
   wuss_menu_item_t   light_items[ORBING_NLIGHTS];
@@ -83,7 +97,7 @@ typedef struct orbing_task
   dithermenu_t       dither;     /* "Display" submenu */
   screen_dither_t    dithering;  /* how the preview is blitted */
   int                current;    /* index of the light a drag moves */
-  int                dragging;   /* non-zero while a Select drag is live */
+  int                dragging;   /* non-zero while a SELECT drag is live */
   orbing_light_t   lights[ORBING_NLIGHTS];
   colour_t           sphere;     /* surface colour */
   colour_t           background; /* colour outside the sphere */
@@ -92,6 +106,7 @@ typedef struct orbing_task
   wuss_slider_row_t  rows[ORBING_NROWS];
   wuss_icon_t       *light_frame; /* captioned with the current light */
   wuss_icon_t       *on_icon;     /* the current light's On option */
+  wuss_icon_t       *strip_icons[SI__LIMIT]; /* moved on relayout */
   wuss_colourset_t  *colour_sets[ORBING_NCOLOURS]; /* sphere, background,
                                                      * current light */
   rng_t              rng;        /* for Mutate and Randomise */
@@ -127,7 +142,7 @@ orbing_task_t;
  * reach. Markers use the inverse, so a back light's marker sits in the band
  * where the pointer that placed it was. */
 
-#define ORBING_STRIP  176  /* control strip width, px, at the left */
+#define ORBING_STRIP  176  /* control strip pane's least width, px */
 #define ORBING_MARGIN 8    /* px between the wrap band and the window edge */
 #define ORBING_WRAP   0.25 /* wrap band width, in sphere radii */
 #define ORBING_MARKER 4    /* marker ring radius, px */
@@ -213,37 +228,25 @@ enum
   SS__LIMIT = SS_ROW + 4 * ORBING_NROWS
 };
 
-/* icons in the strip: the three frames, label / slider / value per row,
- * then the On option */
-enum
-{
-  SI_BACKDROP,
-  SI_SPHERE,
-  SI_LIGHT,
-  SI_ROW,
-  SI_ON_LABEL = SI_ROW + 3 * ORBING_NROWS,
-  SI_ON,
-  SI__LIMIT
-};
-
 #define SS_G_LABEL      1 /* size groups, see stack_item_t::group */
 #define SS_G_VALUE      2
 #define SS_SLIDER_MIN_W (64)
 
+/* heights and frame pads are zero here: orbing_strip_items sets them from the
+ * desktop font */
 #define SS_FRAME(parent_) \
   { .kind = stack_KIND_VBOX, .parent = (parent_), .axis_size = STACK_HUG, \
-    .gap = wuss_STD_GAP, .align = stack_ALIGN_FILL, \
-    .pad = wuss_STD_FRAME_INSETS }
+    .gap = wuss_STD_GAP, .align = stack_ALIGN_FILL }
 
 /* a full-width line: a colour set */
 #define SS_LINE(frame) \
-  STACK_LEAF(frame, wuss_STD_SECONDARY_BUTTON_HEIGHT, 0, stack_ALIGN_FILL)
+  STACK_LEAF(frame, 0, 0, stack_ALIGN_FILL)
 
 #define SS_ROW_ITEMS(n, frame) \
-  [SS_ROW + 4 * (n)]     = STACK_HBOX(frame, wuss_STD_SLIDER_HEIGHT, wuss_STD_GAP, stack_ALIGN_START), \
-  [SS_ROW + 4 * (n) + 1] = STACK_LEAF_GROUP(SS_ROW + 4 * (n), 0, 16, stack_ALIGN_CENTRE, SS_G_LABEL), \
-  [SS_ROW + 4 * (n) + 2] = STACK_LEAF_EX(SS_ROW + 4 * (n), 0, wuss_STD_SLIDER_HEIGHT, stack_ALIGN_CENTRE, 1, SS_SLIDER_MIN_W, 0), \
-  [SS_ROW + 4 * (n) + 3] = STACK_LEAF_GROUP(SS_ROW + 4 * (n), 0, 16, stack_ALIGN_CENTRE, SS_G_VALUE)
+  [SS_ROW + 4 * (n)]     = STACK_HBOX(frame, 0, wuss_STD_GAP, stack_ALIGN_START), \
+  [SS_ROW + 4 * (n) + 1] = STACK_LEAF_GROUP(SS_ROW + 4 * (n), 0, 0, stack_ALIGN_CENTRE, SS_G_LABEL), \
+  [SS_ROW + 4 * (n) + 2] = STACK_LEAF_EX(SS_ROW + 4 * (n), 0, 0, stack_ALIGN_CENTRE, 1, SS_SLIDER_MIN_W, 0), \
+  [SS_ROW + 4 * (n) + 3] = STACK_LEAF_GROUP(SS_ROW + 4 * (n), 0, 0, stack_ALIGN_CENTRE, SS_G_VALUE)
 
 static const stack_item_t orbing_strip[SS__LIMIT] =
 {
@@ -257,8 +260,8 @@ static const stack_item_t orbing_strip[SS__LIMIT] =
   SS_ROW_ITEMS(ORBING_ROW_SIZE,      SS_LIGHT),
   SS_ROW_ITEMS(ORBING_ROW_SHARPNESS, SS_LIGHT),
   SS_ROW_ITEMS(ORBING_ROW_INTENSITY, SS_LIGHT),
-  [SS_ON_LINE]   = STACK_HBOX(SS_LIGHT, wuss_STD_GLYPH_SIZE, wuss_STD_GAP, stack_ALIGN_FILL),
-  [SS_ON_LABEL]  = STACK_LEAF_GROUP(SS_ON_LINE, 0, 16, stack_ALIGN_CENTRE, SS_G_LABEL),
+  [SS_ON_LINE]   = STACK_HBOX(SS_LIGHT, 0, wuss_STD_GAP, stack_ALIGN_FILL),
+  [SS_ON_LABEL]  = STACK_LEAF_GROUP(SS_ON_LINE, 0, 0, stack_ALIGN_CENTRE, SS_G_LABEL),
   [SS_ON]        = STACK_LEAF(SS_ON_LINE, wuss_STD_GLYPH_SIZE, 0, stack_ALIGN_FILL),
   [SS_ON_SPACER] = STACK_SPACER(SS_ON_LINE, 1),
   [SS_COLOUR + ORBING_COLOUR_SPHERE]     = SS_LINE(SS_SPHERE),
@@ -266,27 +269,91 @@ static const stack_item_t orbing_strip[SS__LIMIT] =
   [SS_COLOUR + ORBING_COLOUR_LIGHT]      = SS_LINE(SS_LIGHT)
 };
 
-/* Copies orbing_strip into items, giving each label and value its natural
- * width in the desktop font; the size groups widen the rest to match. */
+/* Copies orbing_strip into items, sizing the heights and frame pads from the
+ * desktop font and giving each label and value its natural width; the size
+ * groups widen the rest to match. */
 static void orbing_strip_items(const wuss_t *wuss, stack_item_t *items)
 {
-  char text[WUSS_SLIDER_ROW_BUF];
-  int  row;
+  inset_t frame_pad;
+  int     label_h;
+  int     slider_h;
+  int     which;
+  int     item;
+  char    text[WUSS_SLIDER_ROW_BUF];
+  int     row;
 
   memcpy(items, orbing_strip, sizeof(orbing_strip));
 
+  frame_pad = wuss_std_frame_insets(wuss);
+  label_h   = wuss_std_height(wuss, wuss_STD_LABEL);
+  slider_h  = wuss_std_height(wuss, wuss_STD_SLIDER);
+
+  items[SS_BACKDROP].pad = frame_pad;
+  items[SS_SPHERE].pad   = frame_pad;
+  items[SS_LIGHT].pad    = frame_pad;
+
+  for (which = 0; which < ORBING_NCOLOURS; which++)
+    items[SS_COLOUR + which].axis_size =
+      wuss_std_height(wuss, wuss_STD_SECONDARY_BUTTON);
+
   for (row = 0; row < ORBING_NROWS; row++)
   {
-    items[SS_ROW + 4 * row + 1].axis_size =
-      task_text_width(wuss, orbing_rows[row].label);
+    item = SS_ROW + 4 * row;
+
+    items[item].axis_size      = slider_h;
+    items[item + 1].cross_size = label_h;
+    items[item + 2].cross_size = slider_h;
+    items[item + 3].cross_size = label_h;
+
+    items[item + 1].axis_size = task_text_width(wuss, orbing_rows[row].label);
 
     snprintf(text, sizeof(text),
              orbing_rows[row].fmt ? orbing_rows[row].fmt : "%d",
              orbing_rows[row].max);
-    items[SS_ROW + 4 * row + 3].axis_size = task_text_width(wuss, text);
+    items[item + 3].axis_size = task_text_width(wuss, text);
   }
 
-  items[SS_ON_LABEL].axis_size = task_text_width(wuss, "On");
+  items[SS_ON_LINE].axis_size   = MAX(wuss_std_height(wuss, wuss_STD_FIELD),
+                                      wuss_STD_GLYPH_SIZE);
+  items[SS_ON_LABEL].cross_size = label_h;
+  items[SS_ON_LABEL].axis_size  = task_text_width(wuss, "On");
+}
+
+/* lay the strip out for the current desktop font: at least ORBING_STRIP
+ * wide, and wider if the font needs it */
+static result_t orbing_strip_solve(const wuss_t *wuss,
+                                   size2d_t     *size,
+                                   box_t         boxes[SS__LIMIT])
+{
+  result_t     rc;
+  stack_item_t items[SS__LIMIT];
+  box_t        root;
+
+  orbing_strip_items(wuss, items);
+
+  rc = stack_smallest(items, NELEMS(items), size);
+  if (rc != result_OK)
+    return rc;
+
+  size->w = MAX(size->w, ORBING_STRIP);
+
+  root = (box_t) BOX_POS_SIZE(0, 0, size->w, size->h);
+  return stack_solve(items, NELEMS(items), &root, boxes);
+}
+
+/* where colour set which goes: its field ends where the sliders end, its
+ * button sits in the value column */
+static box_t orbing_colour_line(const wuss_t *wuss,
+                                const box_t   boxes[SS__LIMIT],
+                                int           which)
+{
+  box_t line;
+
+  line     = boxes[SS_COLOUR + which];
+  line.x1  = boxes[SS_ROW + 2].x1 + wuss_STD_GAP;
+  line.x1 += wuss_colourset_button_width(wuss, line.y1 - line.y0);
+
+  return line;
 }
 
 /* per-redraw constants, worked out once rather than per pixel */
@@ -418,15 +485,12 @@ static void orbing_prepare(const orbing_task_t *task,
 }
 
 /* the sphere's centre and radius for a content area of the given size, in
- * content-local coordinates: centred in the pane right of the strip */
+ * content-local coordinates: centred */
 static void orbing_layout(size2d_t size, double *cx, double *cy, double *r)
 {
-  int w;
-
-  w   = MAX(size.w - ORBING_STRIP, 0);
-  *cx = ORBING_STRIP + w / 2.0;
+  *cx = size.w / 2.0;
   *cy = size.h / 2.0;
-  *r  = (MIN(w, size.h) / 2.0 - ORBING_MARGIN) / (1.0 + ORBING_WRAP);
+  *r  = (MIN(size.w, size.h) / 2.0 - ORBING_MARGIN) / (1.0 + ORBING_WRAP);
 }
 
 /* the task field a strip row edits, taking a per-light row's from the given
@@ -449,19 +513,13 @@ static int *orbing_row_field(orbing_task_t *task, int row)
   return orbing_field(task, row, task->current);
 }
 
-/* repaint the preview pane only, leaving the strip's icons alone */
+/* repaint the preview; the strip's icons are in the pane, so stay alone */
 static void orbing_invalidate_preview(orbing_task_t *task)
 {
-  box_t content, pane;
-
   if (task->base.window == NULL)
     return;
 
-  wuss_window_get_content_bounds(task->base.window, &content);
-  pane = (box_t) BOX_POS_SIZE(ORBING_STRIP, 0,
-                              MAX(box_size(&content).w - ORBING_STRIP, 0),
-                              box_size(&content).h);
-  wuss_window_invalidate(task->base.window, &pane);
+  wuss_window_invalidate_visible(task->base.window);
 }
 
 /* point the light at content-local (px, py) */
@@ -666,26 +724,75 @@ static void orbing_picker_changed(colour_t colour, void *opaque)
   orbing_invalidate_preview(task);
 }
 
-/* build the control strip's icons down the window's left edge, "height"
- * tall */
-static result_t orbing_strip_create(orbing_task_t *task, int height)
+/* the stack item laying out each strip icon */
+static int orbing_strip_item(int icon)
 {
-  result_t         rc;
-  box_t            root;
-  stack_item_t     items[SS__LIMIT];
-  box_t            boxes[SS__LIMIT];
-  box_t            line;
-  wuss_icon_spec_t specs[SI__LIMIT];
-  char             bufs[ORBING_NROWS][WUSS_SLIDER_ROW_BUF];
-  wuss_icon_t     *made[SI__LIMIT];
-  int              row, item, icon, which;
+  if (icon >= SI_ROW && icon < SI_ON_LABEL)
+    return SS_ROW + 4 * ((icon - SI_ROW) / 3) + 1 + (icon - SI_ROW) % 3;
 
-  orbing_strip_items(task->base.wuss, items);
+  switch (icon)
+  {
+  case SI_BACKDROP: return SS_BACKDROP;
+  case SI_SPHERE:   return SS_SPHERE;
+  case SI_LIGHT:    return SS_LIGHT;
+  case SI_ON_LABEL: return SS_ON_LABEL;
+  default:          return SS_ON;
+  }
+}
 
-  root = (box_t) BOX_POS_SIZE(0, 0, ORBING_STRIP, height);
-  rc = stack_solve(items, NELEMS(items), &root, boxes);
+/* wuss_EVENT_RELAYOUT: lay the strip out again for the new font, widening
+ * the pane and raising the window's minimum height to suit */
+static result_t orbing_strip_relayout(orbing_task_t *task)
+{
+  result_t rc;
+  size2d_t strip_sz;
+  box_t    boxes[SS__LIMIT];
+  int      icon;
+  int      which;
+
+  rc = orbing_strip_solve(task->base.wuss, &strip_sz, boxes);
   if (rc != result_OK)
     return rc;
+
+  rc = wuss_window_set_doc(task->pane, SIZE2D(strip_sz.w, 1024));
+  if (rc != result_OK)
+    return rc;
+
+  rc = wuss_window_resize(task->pane, strip_sz);
+  if (rc != result_OK)
+    return rc;
+
+  rc = wuss_window_set_min_size(task->base.window,
+                                SIZE2D(wuss_KEEP, strip_sz.h));
+  if (rc != result_OK)
+    return rc;
+
+  for (icon = 0; icon < SI__LIMIT; icon++)
+    wuss_icon_set_bbox(task->pane, task->strip_icons[icon],
+                       &boxes[orbing_strip_item(icon)]);
+
+  for (which = 0; which < ORBING_NCOLOURS; which++)
+  {
+    rc = wuss_colourset_set_bbox(task->colour_sets[which],
+                                 orbing_colour_line(task->base.wuss, boxes,
+                                                    which));
+    if (rc != result_OK)
+      return rc;
+  }
+
+  return result_OK;
+}
+
+/* build the control strip's icons in the pane, as laid out by
+ * orbing_strip_solve */
+static result_t orbing_strip_create(orbing_task_t *task,
+                                    const box_t    boxes[SS__LIMIT])
+{
+  result_t         rc;
+  wuss_icon_spec_t specs[SI__LIMIT];
+  char             bufs[ORBING_NROWS][WUSS_SLIDER_ROW_BUF];
+  wuss_icon_t    **made;
+  int              row, item, icon, which;
 
   wuss_icon_spec_frame(&specs[SI_BACKDROP], boxes[SS_BACKDROP], "Background");
   wuss_icon_spec_frame(&specs[SI_SPHERE], boxes[SS_SPHERE], "Sphere");
@@ -713,23 +820,22 @@ static result_t orbing_strip_create(orbing_task_t *task, int height)
                        wuss_ICON_FLAGS_JUSTIFY_RIGHT);
   wuss_icon_spec_option(&specs[SI_ON], boxes[SS_ON], "");
 
-  rc = wuss_icon_create_array(task->base.window, specs, NELEMS(specs), made);
+  made = task->strip_icons;
+  rc   = wuss_icon_create_array(task->pane, specs, NELEMS(specs), made);
   if (rc != result_OK)
     return rc;
 
   task->light_frame = made[SI_LIGHT];
   task->on_icon     = made[SI_ON];
-  wuss_icon_set_selected(task->base.window, task->on_icon,
+  wuss_icon_set_selected(task->pane, task->on_icon,
                          task->lights[task->current].on);
 
   for (which = 0; which < ORBING_NCOLOURS; which++)
   {
-    /* end the field where the sliders end, the button in the value column */
-    line     = boxes[SS_COLOUR + which];
-    line.x1  = boxes[SS_ROW + 2].x1 + wuss_STD_GAP;
-    line.x1 += wuss_colourset_button_width(task->base.wuss, line.y1 - line.y0);
-    rc = wuss_colourset_create(&task->colour_sets[which], task->base.window,
-                               line, "Colour",
+    rc = wuss_colourset_create(&task->colour_sets[which], task->pane,
+                               orbing_colour_line(task->base.wuss, boxes,
+                                                  which),
+                               "Colour",
                                boxes[SS_ROW + 1].x1 - boxes[SS_ROW + 1].x0,
                                /* line up with the sliders */
                                0, NULL, NULL); /* its button opens the
@@ -752,17 +858,16 @@ static result_t orbing_strip_create(orbing_task_t *task, int height)
 
 static result_t orbing_init(orbing_task_t *task)
 {
-  result_t     rc;
-  wuss_t      *wuss;
-  stack_item_t items[SS__LIMIT];
-  size2d_t     strip_sz;
-  int          i;
+  result_t rc;
+  wuss_t  *wuss;
+  size2d_t strip_sz;
+  box_t    boxes[SS__LIMIT];
+  int      i;
 
   wuss = task->base.wuss;
 
-  /* the strip sets the window's minimum height */
-  orbing_strip_items(wuss, items);
-  rc = stack_smallest(items, NELEMS(items), &strip_sz);
+  /* the strip sets the pane's width and the window's minimum height */
+  rc = orbing_strip_solve(wuss, &strip_sz, boxes);
   if (rc != result_OK)
     return rc;
 
@@ -771,25 +876,44 @@ static result_t orbing_init(orbing_task_t *task)
   rng_seed(&task->rng, (uint32_t) rand());
 
   /* no scrollbars: the sphere is laid out across the visible content, so a
-   * resize must redraw all of it and doc is only the growth ceiling. wuss
-   * fills the strip's background; the redraw paints the preview pane */
+   * resize must redraw all of it and doc is only the growth ceiling. The
+   * redraw paints every pixel, so wuss need fill no background under it. The
+   * width includes the room the pane and its one pixel divider will take */
   rc = wuss_window_create_at(task->base.delegate,
                              &task_place,
-                             SIZE2D(ORBING_STRIP + 240,
+                             SIZE2D(strip_sz.w + 1 + 240,
                                     MAX(240, strip_sz.h)),
                              "Orbing",
                              wuss_WINDOW_CLOSE | wuss_WINDOW_BACK |
                              wuss_WINDOW_TOGGLE_SIZE | wuss_WINDOW_RESIZE |
                              wuss_WINDOW_NO_RESIZE_BLIT |
                              wuss_WINDOW_FOCUSABLE,
-                             wuss_BACKDROP_COLOUR(wuss_COLOUR_WINDOW),
+                             wuss_NO_BACKDROP,
                              SIZE2D(1024, 1024),
-                             SIZE2D(ORBING_STRIP + 64, strip_sz.h),
+                             SIZE2D(64, strip_sz.h),
                              &task->base.window);
   if (rc != result_OK)
     return rc;
 
-  rc = orbing_strip_create(task, strip_sz.h);
+  rc = wuss_window_create_at(task->base.delegate,
+                             &task_place,
+                             strip_sz,
+                             NULL,
+                             wuss_WINDOW_NO_TITLEBAR |
+                             wuss_WINDOW_NO_OUTLINE  |
+                             wuss_WINDOW_NO_REDRAW,
+                             wuss_BACKDROP_COLOUR(wuss_COLOUR_WINDOW),
+                             SIZE2D(strip_sz.w, 1024),
+                             SIZE2D(0, 0),
+                             &task->pane);
+  if (rc != result_OK)
+    return rc;
+
+  rc = wuss_window_attach_pane(task->pane, task->base.window, wuss_EDGE_LEFT);
+  if (rc != result_OK)
+    return rc;
+
+  rc = orbing_strip_create(task, boxes);
   if (rc != result_OK)
     return rc;
 
@@ -851,10 +975,10 @@ static void orbing_quit(orbing_task_t *task)
   free(task->pixels);
 }
 
-/* shade the dirty part of the preview pane into the task's bgra8888 buffer and
+/* shade the dirty part of the preview into the task's bgra8888 buffer and
  * blit it dithered. The bitmap's top-left is pulled back to a whole number of
- * dither tiles from the pane's corner, so the dither stays locked to the
- * pane across partial redraws; the clip is narrowed to the dirty box so the
+ * dither tiles from the content's corner, so the dither stays locked to the
+ * content across partial redraws; the clip is narrowed to the dirty box so the
  * unshaded margin that adds, which holds stale pixels, is never drawn */
 static result_t orbing_paint(orbing_task_t        *task,
                              screen_t             *scr,
@@ -866,7 +990,7 @@ static result_t orbing_paint(orbing_task_t        *task,
                              double                r)
 {
   result_t      rc;
-  int           x0, ox, oy, w, h;
+  int           ox, oy, w, h;
   unsigned int *pixels;
   int           x, y, k;
   double        cov;
@@ -874,11 +998,10 @@ static result_t orbing_paint(orbing_task_t        *task,
   bitmap_t      bm;
   box_t         saved;
 
-  x0 = MAX(content->x0, bounds->x0 + ORBING_STRIP);
-  if (x0 >= content->x1 || content->y0 >= content->y1)
+  if (content->x0 >= content->x1 || content->y0 >= content->y1)
     return result_OK;
 
-  ox = x0 - (x0 - bounds->x0 - ORBING_STRIP) % ORBING_DITHER_TILE;
+  ox = content->x0 - (content->x0 - bounds->x0) % ORBING_DITHER_TILE;
   oy = content->y0 - (content->y0 - bounds->y0) % ORBING_DITHER_TILE;
   w  = content->x1 - ox;
   h  = content->y1 - oy;
@@ -890,7 +1013,7 @@ static result_t orbing_paint(orbing_task_t        *task,
 
   for (y = content->y0; y < content->y1; y++)
   {
-    for (x = x0; x < content->x1; x++)
+    for (x = content->x0; x < content->x1; x++)
     {
       cov = orbing_normal(x + 0.5 - cx, y + 0.5 - cy, r, n);
       if (cov == 0.0)
@@ -972,12 +1095,12 @@ static void orbing_sync_light(orbing_task_t *task)
     return;
 
   /* ponytail: an OOM here only leaves the caption or a value label stale */
-  (void) wuss_icon_set_text(task->base.window, task->light_frame,
+  (void) wuss_icon_set_text(task->pane, task->light_frame,
                             orbing_light_names[task->current]);
   for (row = ORBING_ROW_SIZE; row < ORBING_NROWS; row++)
-    (void) wuss_slider_row_set(task->base.window, &task->rows[row],
+    (void) wuss_slider_row_set(task->pane, &task->rows[row],
                                *orbing_row_field(task, row));
-  wuss_icon_set_selected(task->base.window, task->on_icon,
+  wuss_icon_set_selected(task->pane, task->on_icon,
                          task->lights[task->current].on);
   orbing_sync_colours(task);
 }
@@ -986,7 +1109,7 @@ static void orbing_sync_light(orbing_task_t *task)
 static void orbing_light_on(orbing_task_t *task)
 {
   task->lights[task->current].on = 1;
-  wuss_icon_set_selected(task->base.window, task->on_icon, 1);
+  wuss_icon_set_selected(task->pane, task->on_icon, 1);
 }
 
 /* put every strip control back in step with its field */
@@ -999,7 +1122,7 @@ static void orbing_sync_rows(orbing_task_t *task)
 
   /* ponytail: an OOM here only leaves a value label stale */
   for (row = 0; row < ORBING_ROW_SIZE; row++)
-    (void) wuss_slider_row_set(task->base.window, &task->rows[row],
+    (void) wuss_slider_row_set(task->pane, &task->rows[row],
                                *orbing_row_field(task, row));
   orbing_sync_light(task);
 }
@@ -1240,9 +1363,11 @@ static result_t orbing_mouse(orbing_task_t      *task,
                                      &task->base.menu_handle);
   }
 
-  if (action == wuss_MOUSE_DOWN &&
-      (!(button & wuss_BUTTON_SELECT) || p.x < ORBING_STRIP))
+  if (window != task->base.window)
     return result_OK; /* strip clicks land on its sliders, or nowhere */
+
+  if (action == wuss_MOUSE_DOWN && !(button & wuss_BUTTON_SELECT))
+    return result_OK;
 
   if (action == wuss_MOUSE_MOVE && !task->dragging)
     return result_OK;
@@ -1288,7 +1413,7 @@ static result_t orbing_key(orbing_task_t    *task,
   if (event->data.key.code == 'O' || event->data.key.code == 'o')
   {
     task->lights[task->current].on = !task->lights[task->current].on;
-    wuss_icon_set_selected(task->base.window, task->on_icon,
+    wuss_icon_set_selected(task->pane, task->on_icon,
                            task->lights[task->current].on);
     orbing_invalidate_preview(task);
     return result_OK;
@@ -1467,13 +1592,18 @@ static result_t orbing_handle(wuss_window_t      *window,
     return orbing_menu_select(task, event);
 
   case wuss_EVENT_ICON:
-    if (window != task->base.window)
+    if (window != task->pane)
       return result_OK;
     return orbing_icon(task, window, event);
 
   case wuss_EVENT_QUIT:
     orbing_quit(task);
     return result_OK;
+
+  case wuss_EVENT_RELAYOUT:
+    if (window != task->base.window)
+      return result_OK;
+    return orbing_strip_relayout(task);
 
   default:
     return result_OK;
@@ -1489,6 +1619,7 @@ result_t orbing_app_create(wuss_t *wuss)
     .instance_size = sizeof(orbing_task_t),
     .init          = (taskapp_init_fn_t) orbing_init,
     .handle        = orbing_handle,
+    .all_windows   = true, /* the pane opens the menu too */
     .save_name     = "orbing.png",
     .save          = orbing_saveas_save
   };

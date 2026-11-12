@@ -284,6 +284,13 @@ result_t wuss_menu_open_window(wuss_task_t        *task,
  *  after this call: a handle kept past either must not be passed back. */
 void wuss_menu_close(wuss_menu_handle_t handle);
 
+/** Close a menu chain on its owner's behalf, as a window leaf of another
+ *  task does once the user is done with it. As wuss_menu_close, but the
+ *  task that opened the chain first gets wuss_EVENT_MENU_CLOSED (picked
+ *  zero), as when wuss closes it, so that it drops its handle. Safe to pass
+ *  NULL. */
+void wuss_menu_dismiss(wuss_menu_handle_t handle);
+
 /** Non-zero while \p handle refers to a currently open chain; zero for
  *  NULL. Like every call taking a handle, it must not be passed one dropped
  *  on wuss_EVENT_MENU_CLOSED. */
@@ -504,11 +511,11 @@ void wuss_menu_tick_item_live(wuss_menu_handle_t handle,
                               int                ticked);
 
 /**
- * Shade or unshade a single item on a currently open menu level in place, so
- * an ADJUST pick that changes whether another row applies shows at once.
- * Only the open row changes: set or clear wuss_MENU_ITEM_DISABLED in the
- * item's flags as well, for the next wuss_menu_open. A no-op if \p handle is
- * NULL or \p menu is not an open level of its chain.
+ * Shade or unshade a single item: set or clear wuss_MENU_ITEM_DISABLED in
+ * its flags, for the next wuss_menu_open, and update its row in place if \p
+ * menu is an open level of \p handle's chain, so an ADJUST pick that changes
+ * whether another row applies shows at once. \p handle may be NULL when no
+ * menu is open.
  *
  * \param[in] handle   Chain handle from wuss_menu_open.
  * \param[in] menu     The (sub)menu level to update; matched by pointer
@@ -566,11 +573,11 @@ void wuss_menu_set_title_live(wuss_menu_handle_t handle,
  * be open. Call it from a wuss_EVENT_KEY handler so the menu table, not a
  * hand-written switch, decides what each key does.
  *
- * A label is a single character (matched ignoring case), "SPACE", "UP",
- * "DOWN", "LEFT", "RIGHT" or "F1".."F12", optionally prefixed with '^' to
- * require Ctrl then WUSS_MENU_SHIFT to require Shift. Without '^' Ctrl must
- * be up. Without WUSS_MENU_SHIFT Shift must be up for every named key but is
- * ignored for a single character. Alt never matches.
+ * A label is a single character (matched ignoring case), "SPACE", "DEL",
+ * "UP", "DOWN", "LEFT", "RIGHT" or "F1".."F12", optionally prefixed with '^'
+ * to require Ctrl then WUSS_MENU_SHIFT to require Shift. Without '^' Ctrl
+ * must be up. Without WUSS_MENU_SHIFT Shift must be up for every named key
+ * but is ignored for a single character. Alt never matches.
  *
  * \param[in] task Task to receive the wuss_EVENT_MENU_SELECT.
  * \param[in] menu Menu whose rows' shortcuts are searched.

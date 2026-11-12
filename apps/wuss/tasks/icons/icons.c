@@ -77,7 +77,7 @@ enum
   ICONS_N_INTRO   = 3, /* heading, counter button, counter label */
   ICONS_N_BUTTONS = 5, /* frame + 2x2 grid: default/normal x plain/disabled */
   ICONS_N_RADIOS  = 8, /* frame + 3 radios + option + state label + 2 justified labels */
-  ICONS_N_BITMAPS = 3, /* frame + decorative + interactive bitmap */
+  ICONS_N_BITMAPS = 4, /* frame + decorative + interactive + disabled bitmap */
   ICONS_N_ICONSET = 5, /* frame + opton + optoff + radon + radoff from the loaded set */
   ICONS_N_PATTERN = 2, /* frame + one PATTERN swatch */
   ICONS_N_BORDERS = 6, /* frame + GROOVE + RIDGE + ACTION + DIVIDER + PLAIN labels */
@@ -113,8 +113,15 @@ icons_layout_t;
 /* [0] a heading, [1] the button that bumps the counter (shown as a default
  * action button, so it carries the accent styling), [2] the counter label
  * beside it. Returns the indices of [1] and [2] via button/counter. */
-static void icons_add_intro(icons_layout_t *lay, int *button, int *counter)
+static void icons_add_intro(icons_layout_t *lay,
+                            const wuss_t   *wuss,
+                            int            *button,
+                            int            *counter)
 {
+  int w;
+
+  w = task_button_width(wuss, "Press me", wuss_STD_PRIMARY_BUTTON_BORDER);
+
   wuss_icon_spec_label(&lay->specs[lay->n++],
                        (box_t) BOX_POS_SIZE(ICONS_MARGIN, lay->y, 220, 14),
                        "Work-area icons:", wuss_ICON_FONT(1));
@@ -124,12 +131,12 @@ static void icons_add_intro(icons_layout_t *lay, int *button, int *counter)
   /* 4px larger on every side than a plain button to seat the DEFAULT icon's
    * 6px action surround */
   wuss_icon_spec_action(&lay->specs[lay->n++],
-                        (box_t) BOX_POS_SIZE(ICONS_MARGIN - 4, lay->y - 4, 88, 30),
+                        (box_t) BOX_POS_SIZE(ICONS_MARGIN - 4, lay->y - 4, w, 30),
                         "Press me", 1);
 
   *counter = lay->n;
   wuss_icon_spec_label(&lay->specs[lay->n++],
-                       (box_t) BOX_POS_SIZE(ICONS_MARGIN + 92, lay->y, 120, 22),
+                       (box_t) BOX_POS_SIZE(ICONS_MARGIN + w, lay->y, 120, 22),
                        "0", 0);
   lay->y += 46;
 }
@@ -138,8 +145,10 @@ static void icons_add_intro(icons_layout_t *lay, int *button, int *counter)
  * DEFAULT (accent) button, column 1 the plain one; the bottom row adds
  * DISABLED. The DEFAULT column is inset 4px on every side to seat the accent
  * icon's 6px action surround. */
-static void icons_add_buttons(icons_layout_t *lay)
+static void icons_add_buttons(icons_layout_t *lay, const wuss_t *wuss)
 {
+  int               default_w;
+  int               normal_w;
   wuss_icon_spec_t *s;
   int               top;
   int               col;
@@ -147,6 +156,10 @@ static void icons_add_buttons(icons_layout_t *lay)
   int               x;
   int               y;
 
+  default_w = task_button_width(wuss, "Default",
+                                wuss_STD_PRIMARY_BUTTON_BORDER);
+  normal_w  = task_button_width(wuss, "Normal",
+                                wuss_STD_SECONDARY_BUTTON_BORDER);
   top = lay->y;
   wuss_icon_spec_frame(&lay->specs[lay->n++],
                        (box_t) BOX_POS_SIZE(ICONS_MARGIN, top, 200, 90),
@@ -161,10 +174,11 @@ static void icons_add_buttons(icons_layout_t *lay)
 
       s = &lay->specs[lay->n++];
       if (col == 0)
-        wuss_icon_spec_action(s, (box_t) BOX_POS_SIZE(x - 4, y - 4, 64, 30),
+        wuss_icon_spec_action(s, (box_t) BOX_POS_SIZE(x - 4, y - 4,
+                                                      default_w, 30),
                               "Default", 1);
       else
-        wuss_icon_spec_action(s, (box_t) BOX_POS_SIZE(x, y, 56, 22),
+        wuss_icon_spec_action(s, (box_t) BOX_POS_SIZE(x, y, normal_w, 22),
                               "Normal", 0);
 
       if (row == 1)
@@ -216,8 +230,9 @@ static void icons_add_radios(icons_layout_t *lay, int *opt, int *state)
   lay->y = top + 190;
 }
 
-/* A grouping frame captioned "Bitmaps", holding a decorative sprite and (to
- * its right) an interactive one that bumps the counter -- only laid out if
+/* A grouping frame captioned "Bitmaps", holding a decorative sprite, (to
+ * its right) an interactive one that bumps the counter and a disabled one
+ * faded toward the window ground -- only laid out if
  * the sprite loaded. Returns the interactive icon's index via *hotspot, or
  * leaves it unset if sprite is NULL. */
 static void icons_add_bitmaps(icons_layout_t *lay,
@@ -250,6 +265,15 @@ static void icons_add_bitmaps(icons_layout_t *lay,
   s->u.bitmap.image = sprite;
   s->flags  = wuss_ICON_FLAGS_INTERACTIVE;
   *hotspot  = lay->n;
+  lay->n++;
+
+  /* disabled: the image fades toward the window ground */
+  s         = &lay->specs[lay->n];
+  s->bbox   = (box_t) BOX_POS_SIZE(ICONS_MARGIN + 30 + 2 * sprite->size.w,
+                                   top + 20, sprite->size.w, sprite->size.h);
+  s->type   = wuss_ICON_TYPE_BITMAP;
+  s->u.bitmap.image = sprite;
+  s->flags  = wuss_ICON_FLAGS_DISABLED;
   lay->n++;
 
   lay->y = top + sprite->size.h + 50;
@@ -723,8 +747,8 @@ static result_t icons_init(icons_task_t *task)
 
   i_hotspot = -1;
 
-  icons_add_intro(&lay, &i_button, &i_counter);
-  icons_add_buttons(&lay);
+  icons_add_intro(&lay, wuss, &i_button, &i_counter);
+  icons_add_buttons(&lay, wuss);
   icons_add_radios(&lay, &i_opt, &i_state);
   icons_add_bitmaps(&lay, task->has_sprite ? &task->sprite : NULL, &i_hotspot);
   icons_add_iconset(&lay, wuss);

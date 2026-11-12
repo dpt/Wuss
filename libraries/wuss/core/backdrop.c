@@ -94,11 +94,8 @@ void wuss__fill_index(const wuss_t *wuss,
   screen_fill_pattern(scr, area, &pat);
 }
 
-void wuss__fill_colour(const wuss_t *wuss,
-                       screen_t     *scr,
-                       const box_t  *area,
-                       colour_t      colour,
-                       point_t       origin)
+/* The desktop palette index whose RGB equals "colour", or -1 if none. */
+static int wuss__palette_index(const wuss_t *wuss, colour_t colour)
 {
   unsigned r, g, b;
   int      i;
@@ -111,13 +108,47 @@ void wuss__fill_colour(const wuss_t *wuss,
 
     colour_get_rgb(&wuss->palette[i], &pr, &pg, &pb);
     if (pr == r && pg == g && pb == b)
-    {
-      wuss__fill_index(wuss, scr, i, area, origin.x, origin.y);
-      return;
-    }
+      return i;
   }
 
-  screen_fill_rect(scr, area->x0, area->y0, box_size(area), colour);
+  return -1;
+}
+
+void wuss__fill_colour(const wuss_t *wuss,
+                       screen_t     *scr,
+                       const box_t  *area,
+                       colour_t      colour,
+                       point_t       origin)
+{
+  int i;
+
+  i = wuss__palette_index(wuss, colour);
+  if (i >= 0)
+    wuss__fill_index(wuss, scr, i, area, origin.x, origin.y);
+  else
+    screen_fill_rect(scr, area->x0, area->y0, box_size(area), colour);
+}
+
+colour_t wuss__text_ground(const wuss_t *wuss, colour_t colour)
+{
+  const wuss_fill_t *user;
+  int                i;
+
+  i = wuss__palette_index(wuss, colour);
+  if (i < 0)
+    return colour; /* wuss__fill_colour fills it solid */
+
+  /* mirror wuss__fill_index's choice of fill */
+  user = &wuss->fills[i];
+  if (user->colour != wuss_NO_BACKGROUND)
+  {
+    if (user->pattern != screen_PATTERN_SOLID)
+      return colour_rgba(0, 0, 0, 0);
+
+    i = user->colour;
+  }
+
+  return wuss->autosolid[i] ? colour : colour_rgba(0, 0, 0, 0);
 }
 
 void wuss__fill_area(const wuss_t      *wuss,

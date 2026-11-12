@@ -1,6 +1,5 @@
 /* wuss/component/error.c -- error report window */
 
-#include <limits.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -25,6 +24,8 @@
 #include "wuss/component/error.h"
 
 #include "../core/types.h"
+#include "../font/font.h"
+#include "../icon.h"
 
 /* ----------------------------------------------------------------------- */
 
@@ -68,24 +69,21 @@ static const stack_item_t error_layout[ERROR_ST__LIMIT] =
 {
   [ERROR_ST_ROOT]        = { .kind = stack_KIND_VBOX, .parent = -1,
                              .gap = wuss_STD_GAP, .pad = wuss_STD_INSETS },
-  [ERROR_ST_BODY]        = STACK_HBOX(ERROR_ST_ROOT, ERROR_IMAGE_SIZE,
-                                      wuss_STD_GAP, stack_ALIGN_CENTRE),
+  [ERROR_ST_BODY]        = STACK_HBOX(ERROR_ST_ROOT, 0, wuss_STD_GAP,
+                                      stack_ALIGN_CENTRE),
   [ERROR_ST_IMAGE]       = STACK_LEAF(ERROR_ST_BODY, ERROR_IMAGE_SIZE,
                                       ERROR_IMAGE_SIZE, stack_ALIGN_CENTRE),
-  [ERROR_ST_MESSAGE]     = STACK_LEAF(ERROR_ST_BODY, 0, wuss_STD_GLYPH_SIZE,
+  [ERROR_ST_MESSAGE]     = STACK_LEAF(ERROR_ST_BODY, 0, 0,
                                       stack_ALIGN_CENTRE),
   [ERROR_ST_BODY_SPACER] = STACK_SPACER(ERROR_ST_BODY, 1),
   [ERROR_ST_APP]         = STACK_LEAF(ERROR_ST_BODY, 0, 0,
                                       stack_ALIGN_CENTRE),
-  [ERROR_ST_BUTTONS]     = STACK_HBOX(ERROR_ST_ROOT,
-                                      wuss_STD_PRIMARY_BUTTON_HEIGHT,
-                                      wuss_STD_GAP, stack_ALIGN_END),
+  [ERROR_ST_BUTTONS]     = STACK_HBOX(ERROR_ST_ROOT, 0, wuss_STD_GAP,
+                                      stack_ALIGN_END),
   [ERROR_ST_SPACER]      = STACK_SPACER(ERROR_ST_BUTTONS, 1),
-  [ERROR_ST_CANCEL]      = STACK_LEAF(ERROR_ST_BUTTONS, 0,
-                                      wuss_STD_SECONDARY_BUTTON_HEIGHT,
+  [ERROR_ST_CANCEL]      = STACK_LEAF(ERROR_ST_BUTTONS, 0, 0,
                                       stack_ALIGN_CENTRE),
-  [ERROR_ST_OK]          = STACK_LEAF(ERROR_ST_BUTTONS, 0,
-                                      wuss_STD_PRIMARY_BUTTON_HEIGHT,
+  [ERROR_ST_OK]          = STACK_LEAF(ERROR_ST_BUTTONS, 0, 0,
                                       stack_ALIGN_CENTRE)
 };
 
@@ -120,24 +118,6 @@ static struct
 g;
 
 /* ----------------------------------------------------------------------- */
-
-static int error_text_width(const wuss_t *wuss, const char *text)
-{
-  bmfont_width_t width;
-
-  bmfont_measure(wuss_get_font(wuss), text, (int) strlen(text), NULL,
-                 INT_MAX, NULL, &width);
-
-  return width;
-}
-
-static int error_button_width(const wuss_t *wuss,
-                              const char   *text,
-                              int           border)
-{
-  return error_text_width(wuss, text) + 2 * error_text_width(wuss, " ") +
-         2 * border;
-}
 
 static void error_report_free(error_report_t *report)
 {
@@ -232,6 +212,7 @@ static result_t error_solve(const wuss_t         *wuss,
   const bitmap_t *app;
   int             cancel, n, i;
   stack_item_t    item;
+  int             field, primary;
   box_t           root;
 
   app    = error_app_bitmap(wuss, report);
@@ -254,18 +235,30 @@ static result_t error_solve(const wuss_t         *wuss,
     n++;
   }
 
-  items[map[ERROR_ST_MESSAGE]].axis_size =
-    error_text_width(wuss, report->message);
-  items[map[ERROR_ST_OK]].axis_size =
-    error_button_width(wuss, "OK", wuss_STD_PRIMARY_BUTTON_BORDER);
+  field   = wuss_std_height(wuss, wuss_STD_FIELD);
+  primary = wuss_std_height(wuss, wuss_STD_PRIMARY_BUTTON);
+
+  items[map[ERROR_ST_BODY]].axis_size     = MAX(ERROR_IMAGE_SIZE, field);
+  items[map[ERROR_ST_MESSAGE]].axis_size  =
+    (int) wuss__text_width(wuss_get_font(wuss), report->message);
+  items[map[ERROR_ST_MESSAGE]].cross_size = field;
+  items[map[ERROR_ST_BUTTONS]].axis_size  = primary;
+  items[map[ERROR_ST_OK]].axis_size       =
+    wuss__button_width(wuss, "OK", wuss_STD_PRIMARY_BUTTON_BORDER);
+  items[map[ERROR_ST_OK]].cross_size      = primary;
   if (cancel)
-    items[map[ERROR_ST_CANCEL]].axis_size =
-      error_button_width(wuss, "Cancel", wuss_STD_SECONDARY_BUTTON_BORDER);
+  {
+    items[map[ERROR_ST_CANCEL]].axis_size  =
+      wuss__button_width(wuss, "Cancel", wuss_STD_SECONDARY_BUTTON_BORDER);
+    items[map[ERROR_ST_CANCEL]].cross_size =
+      wuss_std_height(wuss, wuss_STD_SECONDARY_BUTTON);
+  }
   if (app != NULL)
   {
     items[map[ERROR_ST_APP]].axis_size  = app->size.w;
     items[map[ERROR_ST_APP]].cross_size = app->size.h;
-    items[map[ERROR_ST_BODY]].axis_size = MAX(ERROR_IMAGE_SIZE, app->size.h);
+    items[map[ERROR_ST_BODY]].axis_size =
+      MAX(items[map[ERROR_ST_BODY]].axis_size, app->size.h);
   }
 
   rc = stack_smallest(items, n, size);
@@ -421,6 +414,9 @@ static result_t error_task_handle(wuss_window_t      *window,
 
   case wuss_EVENT_PRE_CLOSE:
     return wuss_dialogue_handle_pre_close(g.dialogue);
+
+  case wuss_EVENT_RELAYOUT:
+    return (g.shown && g.used > 0) ? error_show_head() : result_OK;
 
   case wuss_EVENT_QUIT:
     /* the wuss instance is going: reports still waiting are not answered */

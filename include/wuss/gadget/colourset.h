@@ -16,7 +16,7 @@
  * but the field's image belongs to the gadget: free the gadget after the
  * window closes, or at least once the window will not be redrawn.
  *
- * A Select or Adjust click on the button opens the colour menu beside it,
+ * A SELECT or ADJUST click on the button opens the colour menu beside it,
  * retitled to the gadget's title, its None row hidden and the current colour
  * ticked. The task forwards its wuss_EVENT_ICON, wuss_EVENT_MENU_SELECT,
  * wuss_EVENT_MENU_CLOSED and wuss_EVENT_PALETTE events to \ref
@@ -121,9 +121,21 @@ int wuss_colourset_button_width(const wuss_t *wuss, int height);
 void wuss_colourset_destroy(wuss_colourset_t *doomed);
 
 /**
+ * Lay a colour set out again in a new bounding box, e.g. after a font
+ * change. The title, field and button are placed as by \ref
+ * wuss_colourset_create; a title made to fit its text is measured again.
+ *
+ * \param[in] colourset Gadget to move.
+ * \param[in] bbox      New bounding box, virtual document space.
+ * \return \ref result_OK on success, or \ref result_OOM if the field's image
+ *         could not be resized (the gadget is then left where it was).
+ */
+result_t wuss_colourset_set_bbox(wuss_colourset_t *colourset, box_t bbox);
+
+/**
  * Offer an event from the task's own handler: a wuss_EVENT_ICON on the
  * gadget's button, or a wuss_EVENT_MENU_SELECT from the colour menu while
- * the gadget opened it. An Adjust pick keeps the menu open with the tick
+ * the gadget opened it. An ADJUST pick keeps the menu open with the tick
  * moved. A wuss_EVENT_MENU_CLOSED must be offered too, so the gadget drops
  * its handle on the freed chain, and a wuss_EVENT_PALETTE, so the field
  * follows the new palette; both are noted but never consumed.

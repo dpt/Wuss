@@ -15,6 +15,7 @@
 #include "geom/box.h"
 #include "geom/point.h"
 #include "geom/size.h"
+#include "io/filetype.h"
 #include "io/path.h"
 #include "wuss/menu.h"
 #include "wuss/message.h"
@@ -105,16 +106,21 @@ static inline result_t task_window_fit(wuss_task_t        *task,
 }
 
 /* title window for its document: "LEAF: APP", or "*LEAF: APP" when edited,
- * or just "APP" with no document (leaf NULL) */
+ * or just "APP" with no document (leaf NULL). A view that scales passes its
+ * scale as percent, giving "LEAF at 200%: APP"; others pass 0 */
 static inline void task_set_doc_title(wuss_window_t *window,
                                       const char    *leaf,
                                       const char    *app,
-                                      int            edited)
+                                      int            edited,
+                                      int            percent)
 {
   char title[256];
 
   if (leaf == NULL)
     snprintf(title, sizeof(title), "%s", app);
+  else if (percent > 0)
+    snprintf(title, sizeof(title), "%s%s at %d%%: %s", edited ? "*" : "",
+             leaf, percent, app);
   else
     snprintf(title, sizeof(title), "%s%s: %s", edited ? "*" : "", leaf, app);
 
@@ -167,25 +173,90 @@ static inline int task_key_is_plain(wuss_task_t        *task,
           (wuss_KEY_MOD_CTRL | wuss_KEY_MOD_ALT)) == 0;
 }
 
-/* pixel width of text in the desktop font, for sizing stack leaves */
+/* pixel width of text in the desktop font, for sizing stack leaves; 0 for
+ * empty text, which bmfont_measure rejects */
 static inline int task_text_width(const wuss_t *wuss, const char *text)
 {
   bmfont_width_t width;
 
-  bmfont_measure(wuss_get_font(wuss), text, (int) strlen(text), NULL,
-                 INT_MAX, NULL, &width);
+  width = 0;
+  if (text[0] != '\0')
+    (void) bmfont_measure(wuss_get_font(wuss), text, (int) strlen(text), NULL,
+                          INT_MAX, NULL, &width);
 
   return width;
 }
 
+/* glyph for a file of RISC OS type riscos: "file_" plus the type in lower
+ * case hex (0xC85 finds "file_c85"), else the generic "file_unk". Looked up
+ * through task's pools; NULL if neither is there */
+static inline const bitmap_t *task_file_glyph(const wuss_task_t *task,
+                                              unsigned int       riscos)
+{
+  char            name[16];
+  const bitmap_t *bm;
+
+  snprintf(name, sizeof(name), "file_%03x", riscos);
+  bm = wuss_task_iconpool_find(task, name);
+  if (bm == NULL)
+    bm = wuss_task_iconpool_find(task, "file_unk");
+
+  return bm;
+}
+
+/* the leafname of the image at path less its ".png", ".jpg" or ".jpeg"
+ * extension (all lower or all upper case), into name (capacity cap). zero if
+ * it has none of them or does not fit */
+static inline int task_image_name(const char *path, char *name, size_t cap)
+{
+  static const char *exts[] =
+  {
+    ".png", ".jpg", ".jpeg", ".PNG", ".JPG", ".JPEG"
+  };
+
+  const char *leaf;
+  size_t      i;
+
+  leaf = path_leaf(path);
+  for (i = 0; i < sizeof(exts) / sizeof(exts[0]); i++)
+    if (path_leaf_strip_ext(leaf, exts[i], name, cap))
+      return 1;
+
+  return 0;
+}
+
 /* smallest width of a button labelled text inside a border of the given
- * width: the text plus a space either side */
+ * width: the text plus two spaces either side */
 static inline int task_button_width(const wuss_t *wuss,
                                     const char   *text,
                                     int           border)
 {
-  return task_text_width(wuss, text) + 2 * task_text_width(wuss, " ") +
+  return task_text_width(wuss, text) + 4 * task_text_width(wuss, " ") +
          2 * border;
+}
+
+/* smallest width of a field or display holding text: the text plus a space
+ * either side */
+static inline int task_field_width(const wuss_t *wuss, const char *text)
+{
+  return task_text_width(wuss, text) + 2 * task_text_width(wuss, " ");
+}
+
+/* resize a dialogue to a newly solved layout: min size, doc and visible
+ * size all become size. used on wuss_EVENT_RELAYOUT */
+static inline result_t task_fit_window(wuss_window_t *window, size2d_t size)
+{
+  result_t rc;
+
+  rc = wuss_window_set_min_size(window, size);
+  if (rc != result_OK)
+    return rc;
+
+  rc = wuss_window_set_doc(window, size);
+  if (rc != result_OK)
+    return rc;
+
+  return wuss_window_resize(window, size);
 }
 
 /* fill box with a light and dark grey checkerboard of 4 pixel squares phased

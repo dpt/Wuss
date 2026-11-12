@@ -1,6 +1,5 @@
 /* wuss/component/dcs.c -- Discard/Cancel/Save dialogue */
 
-#include <limits.h>
 #include <string.h>
 
 #ifdef FORTIFY
@@ -23,6 +22,8 @@
 #include "wuss/component/dialogue.h"
 
 #include "../core/types.h"
+#include "../font/font.h"
+#include "../icon.h"
 
 /* ----------------------------------------------------------------------- */
 
@@ -38,7 +39,7 @@ enum
 
 /* layout items, in creation order: a VBOX of the message above a row of
  * buttons, Discard at the left and Cancel and Save pushed right. The
- * message's width and the buttons' widths are filled in from the font. Save
+ * message's size and the buttons' sizes are filled in from the font. Save
  * comes last so the Quit variant, which has none, uses a prefix of both this
  * and the icon list. See docs/windowing/wuss-layout.md */
 enum
@@ -57,20 +58,12 @@ static const stack_item_t dcs_layout[DCS_ST__LIMIT] =
 {
   [DCS_ST_ROOT]    = { .kind = stack_KIND_VBOX, .parent = -1,
                        .gap = wuss_STD_GAP, .pad = wuss_STD_INSETS },
-  [DCS_ST_MESSAGE] = STACK_LEAF(DCS_ST_ROOT, wuss_STD_GLYPH_SIZE, 0,
-                                stack_ALIGN_START),
-  [DCS_ST_BUTTONS] = STACK_HBOX(DCS_ST_ROOT, wuss_STD_PRIMARY_BUTTON_HEIGHT,
-                                wuss_STD_GAP, stack_ALIGN_END),
-  [DCS_ST_DISCARD] = STACK_LEAF(DCS_ST_BUTTONS, 0,
-                                wuss_STD_SECONDARY_BUTTON_HEIGHT,
-                                stack_ALIGN_CENTRE),
+  [DCS_ST_MESSAGE] = STACK_LEAF(DCS_ST_ROOT, 0, 0, stack_ALIGN_START),
+  [DCS_ST_BUTTONS] = STACK_HBOX(DCS_ST_ROOT, 0, wuss_STD_GAP, stack_ALIGN_END),
+  [DCS_ST_DISCARD] = STACK_LEAF(DCS_ST_BUTTONS, 0, 0, stack_ALIGN_CENTRE),
   [DCS_ST_SPACER]  = STACK_SPACER(DCS_ST_BUTTONS, 1), /* push Cancel and Save right */
-  [DCS_ST_CANCEL]  = STACK_LEAF(DCS_ST_BUTTONS, 0,
-                                wuss_STD_SECONDARY_BUTTON_HEIGHT,
-                                stack_ALIGN_CENTRE),
-  [DCS_ST_SAVE]    = STACK_LEAF(DCS_ST_BUTTONS, 0,
-                                wuss_STD_PRIMARY_BUTTON_HEIGHT,
-                                stack_ALIGN_CENTRE)
+  [DCS_ST_CANCEL]  = STACK_LEAF(DCS_ST_BUTTONS, 0, 0, stack_ALIGN_CENTRE),
+  [DCS_ST_SAVE]    = STACK_LEAF(DCS_ST_BUTTONS, 0, 0, stack_ALIGN_CENTRE)
 };
 
 struct wuss_dcs
@@ -87,27 +80,6 @@ struct wuss_dcs
   wuss_icon_t          *icons[DCS_ICON__COUNT];
   int                   nicons;      /* live entries in icons */
 };
-
-/* ----------------------------------------------------------------------- */
-
-/* pixel width of text in the desktop font */
-static int dcs_text_width(const wuss_t *wuss, const char *text)
-{
-  bmfont_width_t width;
-
-  bmfont_measure(wuss_get_font(wuss), text, (int) strlen(text), NULL,
-                 INT_MAX, NULL, &width);
-
-  return width;
-}
-
-/* smallest width of a button labelled text inside a border of the given
- * width: the text plus a space either side */
-static int dcs_button_width(const wuss_t *wuss, const char *text, int border)
-{
-  return dcs_text_width(wuss, text) + 2 * dcs_text_width(wuss, " ") +
-         2 * border;
-}
 
 /* ----------------------------------------------------------------------- */
 
@@ -159,26 +131,36 @@ static result_t dcs_solve(const wuss_t   *wuss,
 {
   result_t     rc;
   stack_item_t items[DCS_ST__LIMIT];
+  int          primary, secondary;
   int          n;
   box_t        root;
 
+  primary   = wuss_std_height(wuss, wuss_STD_PRIMARY_BUTTON);
+  secondary = wuss_std_height(wuss, wuss_STD_SECONDARY_BUTTON);
+
   memcpy(items, dcs_layout, sizeof(items));
   n = DCS_ST__LIMIT;
-  items[DCS_ST_MESSAGE].cross_size = dcs_text_width(wuss, message);
+  items[DCS_ST_MESSAGE].axis_size  = wuss_std_height(wuss, wuss_STD_FIELD);
+  items[DCS_ST_MESSAGE].cross_size =
+    (int) wuss__text_width(wuss_get_font(wuss), message);
+  items[DCS_ST_BUTTONS].axis_size  = primary;
   items[DCS_ST_DISCARD].axis_size  =
-    dcs_button_width(wuss, "Discard", wuss_STD_SECONDARY_BUTTON_BORDER);
+    wuss__button_width(wuss, "Discard", wuss_STD_SECONDARY_BUTTON_BORDER);
+  items[DCS_ST_DISCARD].cross_size = secondary;
   items[DCS_ST_CANCEL].axis_size   =
-    dcs_button_width(wuss, "Cancel", wuss_STD_SECONDARY_BUTTON_BORDER);
+    wuss__button_width(wuss, "Cancel", wuss_STD_SECONDARY_BUTTON_BORDER);
+  items[DCS_ST_CANCEL].cross_size  = secondary;
   items[DCS_ST_SAVE].axis_size     =
-    dcs_button_width(wuss, "Save", wuss_STD_PRIMARY_BUTTON_BORDER);
+    wuss__button_width(wuss, "Save", wuss_STD_PRIMARY_BUTTON_BORDER);
+  items[DCS_ST_SAVE].cross_size    = primary;
 
   /* without Save, Cancel is the default and so the primary button */
   if (kind == wuss_DCS_KIND_QUIT)
   {
     n = DCS_ST_SAVE;
-    items[DCS_ST_CANCEL].cross_size = wuss_STD_PRIMARY_BUTTON_HEIGHT;
+    items[DCS_ST_CANCEL].cross_size = primary;
     items[DCS_ST_CANCEL].axis_size  =
-      dcs_button_width(wuss, "Cancel", wuss_STD_PRIMARY_BUTTON_BORDER);
+      wuss__button_width(wuss, "Cancel", wuss_STD_PRIMARY_BUTTON_BORDER);
   }
 
   rc = stack_smallest(items, n, size);
@@ -270,6 +252,12 @@ static result_t dcs_task_handle(wuss_window_t      *window,
   case wuss_EVENT_MENU_CLOSED:
     dcs->menu_handle = NULL; /* wuss closed the chain under us */
     return dcs_choose(dcs, wuss_DCS_CANCEL);
+
+  case wuss_EVENT_RELAYOUT:
+    /* the font may have changed: lay out again around the same message,
+     * which the new label copies before the old one goes */
+    return wuss_dcs_set_message(dcs,
+                                wuss_icon_get_text(dcs->icons[DCS_ICON_MESSAGE]));
 
   default:
     return result_OK;

@@ -244,6 +244,15 @@ result_t wuss_menu_test(const char *resources)
     if (wuss__z_first(fwuss) != wuss__menu_level_window(chain))
       goto FlashCheckFail;
 
+    /* --- a SELECT pick still flashing when its owner is destroyed: the
+     * owner is being reaped, so the pick is dropped, not delivered --- */
+    flash_pick_row(fwuss, chain, 0, wuss_BUTTON_SELECT);
+    if (!wuss__menu_level_flashing(chain)) goto FlashCheckFail;
+    wuss_task_destroy(fowner);
+    forget_test_tasks(); /* fowner is freed */
+    if (ftc.menu_select_count != 3) goto FlashCheckFail;
+    if (wuss__menu_chain(fwuss) != NULL) goto FlashCheckFail;
+
     rc = result_OK;
     goto FlashDestroy;
 
@@ -833,6 +842,8 @@ PwFail:
         { "^" WUSS_MENU_SHIFT "UP",
                    wuss_KEY_UP,     wuss_KEY_MOD_CTRL,  wuss_MENU_ITEM_NONE,     0 },
         { "LEFT",  wuss_KEY_RIGHT,  wuss_KEY_MOD_NONE,  wuss_MENU_ITEM_NONE,     0 },
+        { "DEL",   wuss_KEY_DELETE, wuss_KEY_MOD_NONE,  wuss_MENU_ITEM_NONE,     1 },
+        { "DEL",   wuss_KEY_DELETE, wuss_KEY_MOD_SHIFT, wuss_MENU_ITEM_NONE,     0 },
       };
 
       result_t     drc;
@@ -1008,6 +1019,20 @@ ScFail:
       if (!claimed)                           goto MoveCheckFail;
       if (wuss__menu_chain(mwuss) != NULL)          goto MoveCheckFail;
       if (mta.menu_closed_count != 2)         goto MoveCheckFail;
+      if (mta.menu_handle != NULL)            goto MoveCheckFail;
+
+      /* wuss_menu_dismiss, as a leaf owned by another task closes the
+       * chain: the owner is told too. Regression: the Scale view leaf used
+       * wuss_menu_close, leaving the owner's handle dangling */
+      wuss_mouse_click(mwuss, POINT(20, 20), wuss_BUTTON_MENU,
+                       wuss_MOUSE_DOWN, NULL);
+      wuss_mouse_click(mwuss, POINT(20, 20), wuss_BUTTON_MENU,
+                       wuss_MOUSE_UP, NULL);
+      if (mta.menu_handle == NULL)            goto MoveCheckFail;
+
+      wuss_menu_dismiss(mta.menu_handle);
+      if (wuss__menu_chain(mwuss) != NULL)          goto MoveCheckFail;
+      if (mta.menu_closed_count != 3)         goto MoveCheckFail;
       if (mta.menu_handle != NULL)            goto MoveCheckFail;
     }
 
@@ -1396,8 +1421,11 @@ QuitFail:
     wuss_menu_tick_set_live(h, &tk_menu, 4);
     wuss_menu_disable_item_live(h, &tk_menu, 1, 1);
     if (!(wuss__menu_level_icon(level, 1)->spec.flags &
-          wuss_ICON_FLAGS_DISABLED))
+          wuss_ICON_FLAGS_DISABLED) ||
+        !(tk_items[1].flags & wuss_MENU_ITEM_DISABLED))
       goto TickCheckFail;
+    wuss_menu_disable_item_live(NULL, &tk_menu, 1, 0);
+    if (tk_items[1].flags & wuss_MENU_ITEM_DISABLED)      goto TickCheckFail;
     wuss_menu_set_item_text_live(h, &tk_menu, 1, "Uno");
     if (strcmp(wuss_icon_get_text(wuss__menu_level_icon(level, 1)), "Uno"))
       goto TickCheckFail;

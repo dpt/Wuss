@@ -38,7 +38,7 @@
   } \
   while (0)
 
-static uint32_t px(const paintingdoc_t *doc, int x, int y)
+static uint32_t px(paintingdoc_t *doc, int x, int y)
 {
   const bitmap_t *bm;
 
@@ -145,7 +145,7 @@ result_t paintingdoc_test(const char *resources)
   paintingdoc_destroy(doc);
 
   CHECK(paintingdoc_create(SIZE2D(2, 2), &doc) == result_OK);
-  CHECK(paintingdoc_load_png(doc, path) == result_OK);
+  CHECK(paintingdoc_load(doc, path) == result_OK);
   remove(path);
   CHECK(paintingdoc_bitmap(doc)->size.w == 8);
   CHECK(px(doc, 0, 0) == CLEAR);
@@ -500,10 +500,10 @@ result_t paintingdoc_test(const char *resources)
   printf("test: loading a paletted or an RGB PNG resizes the canvas, drops "
          "the undo history and keeps the picture\n");
 
-  snprintf(path, sizeof(path), "%s/resources/wuss-tasks/images/bob-lady.png",
+  snprintf(path, sizeof(path), "%s/resources/test/wuss/painting/bob-lady.png",
            resources);
   CHECK(paintingdoc_checkpoint(doc) == result_OK);
-  CHECK(paintingdoc_load_png(doc, path) == result_OK);
+  CHECK(paintingdoc_load(doc, path) == result_OK);
   CHECK(paintingdoc_bitmap(doc)->size.w == 64);
   CHECK(paintingdoc_bitmap(doc)->size.h == 64);
   CHECK(!paintingdoc_can_undo(doc));
@@ -515,9 +515,9 @@ result_t paintingdoc_test(const char *resources)
       n += px(doc, x, y) != WHITE;
   CHECK(n > 100);
 
-  snprintf(path, sizeof(path), "%s/resources/wuss-tasks/images/smred.png",
+  snprintf(path, sizeof(path), "%s/resources/test/wuss/painting/rgb512.png",
            resources);
-  CHECK(paintingdoc_load_png(doc, path) == result_OK);
+  CHECK(paintingdoc_load(doc, path) == result_OK);
   CHECK(paintingdoc_bitmap(doc)->size.w == 512);
   CHECK(paintingdoc_bitmap(doc)->size.h == 512);
 
@@ -525,8 +525,8 @@ result_t paintingdoc_test(const char *resources)
 
   paintingdoc_stroke(doc, POINT(5, 5), POINT(5, 5), 1, red());
   snprintf(path, sizeof(path),
-           "%s/resources/wuss-tasks/images/no-such-file.png", resources);
-  CHECK(paintingdoc_load_png(doc, path) != result_OK);
+           "%s/resources/test/wuss/painting/no-such-file.png", resources);
+  CHECK(paintingdoc_load(doc, path) != result_OK);
   CHECK(paintingdoc_bitmap(doc)->size.w == 512);
   CHECK(px(doc, 5, 5) == RED);
 
@@ -539,7 +539,7 @@ result_t paintingdoc_test(const char *resources)
   paintingdoc_destroy(doc);
 
   CHECK(paintingdoc_create(SIZE2D(8, 8), &doc) == result_OK);
-  CHECK(paintingdoc_load_png(doc, path) == result_OK);
+  CHECK(paintingdoc_load(doc, path) == result_OK);
   remove(path);
   CHECK(paintingdoc_bitmap(doc)->size.w == 512);
   CHECK(px(doc, 5, 5) == RED);
@@ -646,6 +646,345 @@ result_t paintingdoc_test(const char *resources)
   CHECK(px(doc, 7, 7) == RED);
   CHECK(px(doc, 0, 0) == RED && px(doc, 1, 1) == RED);
 
+  paintingdoc_destroy(doc);
+
+  printf("test: nudges keep the pixels lifted: there and back restores what "
+         "they passed over, as one undo step\n");
+
+  CHECK(paintingdoc_create(SIZE2D(8, 1), &doc) == result_OK);
+  paintingdoc_rect(doc, POINT(0, 0), POINT(0, 0), 1, 1, red());
+  paintingdoc_rect(doc, POINT(2, 0), POINT(2, 0), 1, 1, black());
+  CHECK(paintingdoc_select_rect(doc, (box_t) { 0, 0, 1, 1 },
+                                paintingdoc_SELOP_REPLACE) == result_OK);
+  leave = clear();
+  for (i = 0; i < 3; i++)
+    (void) paintingdoc_nudge(doc, 1, 0, &leave);
+  CHECK(px(doc, 3, 0) == RED);
+  for (i = 0; i < 3; i++)
+    (void) paintingdoc_nudge(doc, -1, 0, &leave);
+  CHECK(px(doc, 0, 0) == RED && px(doc, 2, 0) == BLACK);
+  (void) paintingdoc_nudge(doc, 1, 0, &leave);
+  paintingdoc_undo(doc);
+  CHECK(px(doc, 0, 0) == RED && px(doc, 1, 0) == WHITE);
+  CHECK(px(doc, 2, 0) == BLACK);
+  paintingdoc_undo(doc); /* the black rect: the nudges were one step */
+  CHECK(px(doc, 0, 0) == RED && px(doc, 2, 0) == WHITE);
+
+  paintingdoc_destroy(doc);
+
+  printf("test: pasted pixels float: moving them leaves the canvas beneath "
+         "as it was\n");
+
+  CHECK(paintingdoc_create(SIZE2D(8, 8), &doc) == result_OK);
+  {
+    paintingdoc_clip_t clip = { 0 };
+
+    CHECK(paintingdoc_copy(doc, &clip) == result_BAD_ARG);
+
+    paintingdoc_rect(doc, POINT(0, 0), POINT(1, 1), 1, 1, red());
+    CHECK(paintingdoc_select_rect(doc, (box_t) { 0, 0, 2, 2 },
+                                  paintingdoc_SELOP_REPLACE) == result_OK);
+    CHECK(paintingdoc_copy(doc, &clip) == result_OK);
+    CHECK(clip.at.x == 0 && clip.at.y == 0);
+    CHECK(clip.bm.size.w == 2 && clip.bm.size.h == 2);
+
+    dirty = paintingdoc_paste(doc, &clip, POINT(4, 4));
+    CHECK(dirty.x0 == 4 && dirty.y0 == 4 && dirty.x1 == 6 && dirty.y1 == 6);
+    CHECK(px(doc, 4, 4) == RED && px(doc, 5, 5) == RED);
+
+    /* floating: no hole is left, whatever colour is given */
+    leave = black();
+    CHECK(paintingdoc_lift(doc) == result_OK);
+    paintingdoc_place(doc, 2, 0, &leave);
+    paintingdoc_drop(doc);
+    CHECK(px(doc, 4, 4) == WHITE && px(doc, 6, 4) == RED);
+
+    /* still floating after a drop, and kept while dragged off the canvas */
+    CHECK(paintingdoc_lift(doc) == result_OK);
+    paintingdoc_place(doc, 10, 0, &leave);
+    paintingdoc_drop(doc);
+    CHECK(!paintingdoc_has_selection(doc) && px(doc, 6, 4) == WHITE);
+    CHECK(paintingdoc_lift(doc) == result_OK);
+    paintingdoc_place(doc, -10, 2, &leave);
+    paintingdoc_drop(doc);
+    CHECK(px(doc, 6, 6) == RED && px(doc, 7, 7) == RED);
+    CHECK(px(doc, 6, 4) == WHITE);
+
+    /* the paste and its moves are one undo step */
+    paintingdoc_undo(doc);
+    CHECK(px(doc, 6, 6) == WHITE && px(doc, 0, 0) == RED);
+
+    /* a paste mid-stroke, its checkpoint taken, still lands */
+    paintingdoc_hold(doc, 1);
+    paintingdoc_rect(doc, POINT(7, 0), POINT(7, 0), 1, 1, black());
+    dirty = paintingdoc_paste(doc, &clip, POINT(4, 4));
+    CHECK(!box_is_empty(&dirty) && px(doc, 4, 4) == RED);
+    paintingdoc_hold(doc, 0);
+
+    paintingdoc_clip_free(&clip);
+  }
+  paintingdoc_destroy(doc);
+
+  printf("test: transforms flip and turn the canvas; undo restores its "
+         "size\n");
+
+  /* a 4x2 canvas, red at its top left */
+  CHECK(paintingdoc_create(SIZE2D(4, 2), &doc) == result_OK);
+  paintingdoc_stroke(doc, POINT(0, 0), POINT(0, 0), 1, red());
+
+  paintingdoc_transform(doc, orient_FLIP_H);
+  CHECK(px(doc, 3, 0) == RED && px(doc, 0, 0) == WHITE);
+  paintingdoc_transform(doc, orient_FLIP_V);
+  CHECK(px(doc, 3, 1) == RED && px(doc, 3, 0) == WHITE);
+  paintingdoc_transform(doc, orient_ROTATE_180);
+  CHECK(px(doc, 0, 0) == RED);
+
+  CHECK(paintingdoc_select_all(doc) == result_OK);
+  dirty = paintingdoc_transform(doc, orient_ROTATE_CW);
+  CHECK(!paintingdoc_has_selection(doc));
+  CHECK(paintingdoc_bitmap(doc)->size.w == 2);
+  CHECK(paintingdoc_bitmap(doc)->size.h == 4);
+  CHECK(dirty.x1 == 2 && dirty.y1 == 4);
+  CHECK(px(doc, 1, 0) == RED && px(doc, 0, 0) == WHITE);
+
+  paintingdoc_transform(doc, orient_ROTATE_CCW);
+  paintingdoc_transform(doc, orient_ROTATE_CCW);
+  CHECK(paintingdoc_bitmap(doc)->size.w == 2);
+  CHECK(px(doc, 0, 3) == RED);
+
+  /* back through the turns, then forward again */
+  paintingdoc_undo(doc);
+  paintingdoc_undo(doc);
+  CHECK(paintingdoc_bitmap(doc)->size.w == 2);
+  CHECK(px(doc, 1, 0) == RED);
+  paintingdoc_undo(doc);
+  CHECK(paintingdoc_bitmap(doc)->size.w == 4);
+  CHECK(px(doc, 0, 0) == RED);
+  paintingdoc_redo(doc);
+  CHECK(paintingdoc_bitmap(doc)->size.h == 4);
+  CHECK(px(doc, 1, 0) == RED);
+
+  /* drawing still reaches the whole of the turned canvas */
+  paintingdoc_stroke(doc, POINT(1, 3), POINT(1, 3), 1, black());
+  CHECK(px(doc, 1, 3) == BLACK);
+  paintingdoc_destroy(doc);
+
+  printf("test: transforms turn the selection about its centre, leaving a "
+         "colour behind\n");
+
+  /* a 3x2 selection at 1,1, red at its top left */
+  CHECK(paintingdoc_create(SIZE2D(8, 8), &doc) == result_OK);
+  paintingdoc_stroke(doc, POINT(1, 1), POINT(1, 1), 1, red());
+  CHECK(paintingdoc_select_rect(doc, (box_t) { 1, 1, 4, 3 },
+                                paintingdoc_SELOP_REPLACE) == result_OK);
+
+  dirty = paintingdoc_transform_selection(doc, orient_ROTATE_CW, black());
+  CHECK(!box_is_empty(&dirty));
+  CHECK(paintingdoc_bitmap(doc)->size.w == 8);
+  dirty = paintingdoc_selection_bounds(doc);
+  CHECK(dirty.x0 == 1 && dirty.y0 == 1 && dirty.x1 == 3 && dirty.y1 == 4);
+  CHECK(px(doc, 2, 1) == RED && px(doc, 1, 1) == WHITE);
+  CHECK(px(doc, 3, 1) == BLACK);
+
+  /* floating already: a flip joins the turn's undo step */
+  paintingdoc_transform_selection(doc, orient_FLIP_H, black());
+  CHECK(px(doc, 1, 1) == RED && px(doc, 2, 1) == WHITE);
+  paintingdoc_undo(doc);
+  CHECK(px(doc, 1, 1) == RED && px(doc, 3, 1) == WHITE);
+  paintingdoc_destroy(doc);
+
+  printf("test: resize crops within the canvas and grows it beyond, "
+         "filling\n");
+
+  /* a 4x4 white canvas, red at 2,1 */
+  CHECK(paintingdoc_create(SIZE2D(4, 4), &doc) == result_OK);
+  paintingdoc_stroke(doc, POINT(2, 1), POINT(2, 1), 1, red());
+
+  CHECK(paintingdoc_select_rect(doc, (box_t) { 2, 1, 4, 3 },
+                                paintingdoc_SELOP_REPLACE) == result_OK);
+  dirty = paintingdoc_resize(doc, paintingdoc_selection_bounds(doc),
+                             black());
+  CHECK(!paintingdoc_has_selection(doc));
+  CHECK(dirty.x1 == 2 && dirty.y1 == 2);
+  CHECK(paintingdoc_bitmap(doc)->size.w == 2);
+  CHECK(px(doc, 0, 0) == RED && px(doc, 1, 1) == WHITE);
+
+  /* a border of one pixel all round, filled */
+  paintingdoc_resize(doc, (box_t) { -1, -1, 3, 3 }, clear());
+  CHECK(paintingdoc_bitmap(doc)->size.w == 4);
+  CHECK(px(doc, 0, 0) == CLEAR && px(doc, 3, 3) == CLEAR);
+  CHECK(px(doc, 1, 1) == RED && px(doc, 2, 2) == WHITE);
+
+  /* wholly off the old canvas: all fill */
+  paintingdoc_resize(doc, (box_t) { 10, 10, 12, 11 }, red());
+  CHECK(px(doc, 0, 0) == RED && px(doc, 1, 0) == RED);
+
+  /* an empty box changes nothing */
+  dirty = paintingdoc_resize(doc, (box_t) { 0, 0, 0, 5 }, red());
+  CHECK(box_is_empty(&dirty) && paintingdoc_bitmap(doc)->size.w == 2);
+
+  paintingdoc_undo(doc);
+  paintingdoc_undo(doc);
+  CHECK(paintingdoc_bitmap(doc)->size.w == 2);
+  paintingdoc_undo(doc);
+  CHECK(paintingdoc_bitmap(doc)->size.w == 4 && px(doc, 2, 1) == RED);
+  paintingdoc_destroy(doc);
+
+  printf("test: scale resizes every layer by nearest neighbour; undo puts "
+         "the old size back\n");
+
+  /* a 2x2 white canvas, red at 1,0 */
+  CHECK(paintingdoc_create(SIZE2D(2, 2), &doc) == result_OK);
+  paintingdoc_stroke(doc, POINT(1, 0), POINT(1, 0), 1, red());
+  CHECK(paintingdoc_layer_add(doc) == result_OK);
+  paintingdoc_stroke(doc, POINT(0, 1), POINT(0, 1), 1, black());
+
+  dirty = paintingdoc_scale(doc, SIZE2D(4, 4));
+  CHECK(dirty.x1 == 4 && dirty.y1 == 4);
+  CHECK(paintingdoc_bitmap(doc)->size.w == 4);
+  CHECK(px(doc, 2, 0) == RED && px(doc, 3, 1) == RED);
+  CHECK(px(doc, 1, 1) == WHITE && px(doc, 1, 3) == BLACK);
+  CHECK(paintingdoc_layer_get(doc, 1)->bm.size.w == 4);
+
+  dirty = paintingdoc_scale(doc, SIZE2D(0, 4));
+  CHECK(box_is_empty(&dirty));
+
+  paintingdoc_undo(doc);
+  CHECK(paintingdoc_bitmap(doc)->size.w == 2 && px(doc, 1, 0) == RED);
+  paintingdoc_destroy(doc);
+
+  printf("test: trim bounds cover the bottom layer's pixels unlike its "
+         "corner and the opaque pixels above\n");
+
+  CHECK(paintingdoc_create(SIZE2D(8, 8), &doc) == result_OK);
+  dirty = paintingdoc_trim_bounds(doc);
+  CHECK(box_is_empty(&dirty));
+
+  paintingdoc_stroke(doc, POINT(2, 3), POINT(2, 3), 1, red());
+  dirty = paintingdoc_trim_bounds(doc);
+  CHECK(dirty.x0 == 2 && dirty.y0 == 3 && dirty.x1 == 3 && dirty.y1 == 4);
+
+  CHECK(paintingdoc_layer_add(doc) == result_OK);
+  paintingdoc_stroke(doc, POINT(5, 1), POINT(5, 1), 1, red());
+  dirty = paintingdoc_trim_bounds(doc);
+  CHECK(dirty.x0 == 2 && dirty.y0 == 1 && dirty.x1 == 6 && dirty.y1 == 4);
+
+  paintingdoc_resize(doc, dirty, red());
+  CHECK(paintingdoc_bitmap(doc)->size.w == 4);
+  CHECK(paintingdoc_bitmap(doc)->size.h == 3);
+  CHECK(px(doc, 0, 2) == RED && px(doc, 3, 0) == RED);
+  CHECK(px(doc, 0, 0) == WHITE);
+  paintingdoc_destroy(doc);
+
+  printf("test: a brush runs dry: solid while over half full, then thinning, "
+         "then nothing\n");
+
+  CHECK(paintingdoc_create(SIZE2D(100, 9), &doc) == result_OK);
+  {
+    paintingdoc_pot_t pot;
+    int               painted;
+
+    pot.seed = 1;
+    pot.load = 40;
+    pot.left = pot.load;
+
+    /* two segments, so the shared stamp at x = 10 is paid for once */
+    paintingdoc_brush(doc, POINT(0, 4), POINT(10, 4),
+                      paintingdoc_NOZZLE_SQUARE, 5, black(), &pot);
+    paintingdoc_brush(doc, POINT(10, 4), POINT(99, 4),
+                      paintingdoc_NOZZLE_SQUARE, 5, black(), &pot);
+    CHECK(pot.left == 0);
+
+    for (x = 0; x <= 19; x++) /* stamps 0..19, the solid half */
+      CHECK(px(doc, x, 2) == BLACK && px(doc, x, 6) == BLACK);
+
+    painted = 0;
+    for (x = 25; x <= 35; x++)
+      for (y = 2; y <= 6; y++)
+        painted += px(doc, x, y) == BLACK;
+    CHECK(painted > 0 && painted < 11 * 5); /* speckled */
+
+    for (x = 43; x < 100; x++) /* past the last stamp's reach */
+      CHECK(px(doc, x, 4) == WHITE);
+
+    /* no pot paints the whole way */
+    paintingdoc_brush(doc, POINT(0, 4), POINT(99, 4),
+                      paintingdoc_NOZZLE_SQUARE, 5, black(), NULL);
+    CHECK(px(doc, 99, 4) == BLACK);
+  }
+  paintingdoc_destroy(doc);
+
+  printf("test: layers draw on the current one, composite at their "
+         "opacity, move, hide and undo\n");
+
+  /* white below, red at 1,0 on a layer above */
+  CHECK(paintingdoc_create(SIZE2D(3, 1), &doc) == result_OK);
+  CHECK(paintingdoc_layer_add(doc) == result_OK);
+  CHECK(paintingdoc_layers(doc) == 2 && paintingdoc_layer(doc) == 1);
+  CHECK(px(doc, 1, 0) == WHITE);
+  CHECK(paintingdoc_checkpoint(doc) == result_OK);
+  paintingdoc_stroke(doc, POINT(1, 0), POINT(1, 0), 1, red());
+  CHECK(px(doc, 0, 0) == WHITE && px(doc, 1, 0) == RED);
+
+  /* half opacity mixes; hidden shows the white below */
+  paintingdoc_layer_show(doc, 1, 1, 128);
+  CHECK(px(doc, 1, 0) == 0xFFFF7F7Fu);
+  paintingdoc_layer_show(doc, 1, 0, 255);
+  CHECK(px(doc, 1, 0) == WHITE);
+  paintingdoc_layer_show(doc, 1, 1, 255);
+
+  /* moved below, the white layer covers it */
+  CHECK(paintingdoc_layer_move(doc, 1) == result_BAD_ARG);
+  CHECK(paintingdoc_layer_move(doc, -1) == result_OK);
+  CHECK(paintingdoc_layer(doc) == 0 && px(doc, 1, 0) == WHITE);
+
+  /* flips take every layer with them */
+  paintingdoc_transform(doc, orient_FLIP_H);
+  paintingdoc_layer_move(doc, 1);
+  CHECK(px(doc, 1, 0) == RED);
+
+  /* undo the move, the flip and the move back, then the stroke */
+  paintingdoc_undo(doc);
+  paintingdoc_undo(doc);
+  paintingdoc_undo(doc);
+  CHECK(paintingdoc_layer(doc) == 1 && px(doc, 1, 0) == RED);
+  paintingdoc_undo(doc);
+  CHECK(px(doc, 1, 0) == WHITE);
+  paintingdoc_redo(doc);
+  CHECK(px(doc, 1, 0) == RED);
+
+  /* deleting the last layer fails; deleting the red one leaves white */
+  CHECK(paintingdoc_layer_delete(doc) == result_OK);
+  CHECK(paintingdoc_layers(doc) == 1 && px(doc, 1, 0) == WHITE);
+  CHECK(paintingdoc_layer_delete(doc) == result_BAD_ARG);
+  paintingdoc_undo(doc);
+  CHECK(paintingdoc_layers(doc) == 2 && px(doc, 1, 0) == RED);
+  paintingdoc_destroy(doc);
+
+  printf("test: undo of a layer step leaves the surviving layers' look\n");
+
+  CHECK(paintingdoc_create(SIZE2D(3, 1), &doc) == result_OK);
+  CHECK(paintingdoc_layer_add(doc) == result_OK);
+  paintingdoc_layer_show(doc, 0, 0, 77);
+  paintingdoc_layer_lock(doc, 0, 1);
+  paintingdoc_undo(doc);
+  CHECK(paintingdoc_layers(doc) == 1);
+  CHECK(paintingdoc_layer_get(doc, 0)->visible == 0);
+  CHECK(paintingdoc_layer_get(doc, 0)->opacity == 77);
+  CHECK(paintingdoc_layer_get(doc, 0)->locked == 1);
+  paintingdoc_destroy(doc);
+
+  printf("test: drawing clipped to the selection keeps the current layer's "
+         "pixels outside it after a layer switch\n");
+
+  CHECK(paintingdoc_create(SIZE2D(3, 1), &doc) == result_OK);
+  CHECK(paintingdoc_layer_add(doc) == result_OK);
+  CHECK(paintingdoc_select_rect(doc, (box_t) { 0, 0, 1, 1 },
+                                paintingdoc_SELOP_REPLACE) == result_OK);
+  CHECK(paintingdoc_checkpoint(doc) == result_OK);
+  paintingdoc_layer_select(doc, 0);
+  paintingdoc_stroke(doc, POINT(0, 0), POINT(2, 0), 1, red());
+  CHECK(px(doc, 0, 0) == RED && px(doc, 2, 0) == WHITE);
   paintingdoc_destroy(doc);
 
   printf("paintingdoc: all tests passed\n");

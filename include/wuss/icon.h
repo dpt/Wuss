@@ -113,8 +113,8 @@ typedef enum wuss_icon_type
   /** An editable single-line text field: the bounding box filled with bg
    *  inside a 1px fg outline, the text left-aligned in fg. Its buffer is
    *  owned by the icon and holds up to spec.u.writable.size - 1 bytes,
-   *  seeded from text; read it back with wuss_icon_get_text. A Select or
-   *  Adjust click on a focusable window's writable places the caret (see
+   *  seeded from text; read it back with wuss_icon_get_text. A SELECT or
+   *  ADJUST click on a focusable window's writable places the caret (see
    *  wuss_icon_set_caret) at the nearest character. While it holds the
    *  caret, wuss_key edits the buffer -- printable Latin-1, Backspace,
    *  Delete, Left, Right, Home and End, Shift+Left / Shift+Right by words,
@@ -129,7 +129,7 @@ typedef enum wuss_icon_type
    *  but the user cannot edit. Build with wuss_icon_spec_display. */
   wuss_ICON_TYPE_DISPLAY,
   /** Drawn as wuss_ICON_TYPE_BITMAP (spec.u.bitmap). Once the pointer clears
-   *  wuss_config_t::mouse.drag_threshold_px from a Select/Adjust press, starts a
+   *  wuss_config_t::mouse.drag_threshold_px from a SELECT/ADJUST press, starts a
    *  core drag of the icon's image (see wuss_drag_start_bitmap), or with no
    *  image an ants box the size of its bounding box (see wuss_drag_start),
    *  hotspot at the press point; a click with no such movement behaves like
@@ -184,8 +184,10 @@ typedef enum wuss_icon_flags
   wuss_ICON_FLAGS_NONE          = 0,
   /** Not drawn, not hit-tested. */
   wuss_ICON_FLAGS_HIDDEN        = 1 << 0,
-  /** Drawn greyed; clicks fall through to the task as wuss_EVENT_MOUSE rather
-   *  than raising wuss_EVENT_ICON. */
+  /** Drawn greyed, a bitmap (wuss_ICON_TYPE_BITMAP, DRAGGABLE or a radio or
+   *  option glyph from the icon set) faded half way toward its ground;
+   *  clicks fall through to the task as wuss_EVENT_MOUSE rather than raising
+   *  wuss_EVENT_ICON. */
   wuss_ICON_FLAGS_DISABLED      = 1 << 1,
   /** wuss_ICON_TYPE_LABEL: left-align the text in the bounding box. This is
    *  the default (value 0); named for call sites that want to state the
@@ -435,21 +437,11 @@ wuss_icon_spec_t;
 
 /* ----------------------------------------------------------------------- */
 
-/** Standard main-axis size (px) for a wuss_ICON_TYPE_SLIDER. */
-#define wuss_STD_SLIDER_HEIGHT           18
-
 /** Standard size (px) of a stock-set glyph: a wuss_ICON_TYPE_RADIO or
- *  wuss_ICON_TYPE_OPTION glyph, a gadget arrow and the like; square. Also
- *  the row height needed to hold a stringset or colourset field. */
+ *  wuss_ICON_TYPE_OPTION glyph, a gadget arrow and the like; square. The
+ *  bitmap does not scale with the font, so a radio or option row is the
+ *  larger of this and wuss_std_height(wuss, wuss_STD_FIELD). */
 #define wuss_STD_GLYPH_SIZE              22
-
-/** Standard main-axis size (px) for a non-default wuss_ICON_TYPE_ACTION
- *  button, e.g. Cancel. */
-#define wuss_STD_SECONDARY_BUTTON_HEIGHT 26
-
-/** Standard main-axis size (px) for a wuss_ICON_FLAGS_DEFAULT
- *  wuss_ICON_TYPE_ACTION button, e.g. OK/Apply. */
-#define wuss_STD_PRIMARY_BUTTON_HEIGHT   34
 
 /** Per-edge border (px) of a non-default wuss_ICON_TYPE_ACTION button: one
  *  bevel ring. */
@@ -474,18 +466,46 @@ wuss_icon_spec_t;
  *  frame's own border/caption, on every edge except for the top. */
 #define wuss_STD_FRAME_INSET             4
 
-/** Standard gap (px) between a wuss_ICON_TYPE_FRAME's contents and the
- *  frame's own border/caption, on the top edge. */
-#define wuss_STD_FRAME_TOP_INSET         8
+/** A standard text-bearing extent that wuss_std_height derives from the
+ *  current system font. */
+typedef enum wuss_std_height
+{
+  /** A plain line of text: the font height. */
+  wuss_STD_LABEL,
+  /** A writable, stringset or colourset field, or any row holding one. */
+  wuss_STD_FIELD,
+  /** A wuss_ICON_TYPE_SLIDER and the label/value text beside it. */
+  wuss_STD_SLIDER,
+  /** A non-default wuss_ICON_TYPE_ACTION button, e.g. Cancel. */
+  wuss_STD_SECONDARY_BUTTON,
+  /** A wuss_ICON_FLAGS_DEFAULT wuss_ICON_TYPE_ACTION button, e.g. OK. */
+  wuss_STD_PRIMARY_BUTTON,
+  /** The band a wuss_ICON_TYPE_FRAME's caption occupies above its
+   *  contents, before wuss_STD_FRAME_INSET. */
+  wuss_STD_FRAME_TOP
+}
+wuss_std_height_t;
 
-/** wuss_STD_FRAME_INSET plus wuss_STD_INSET on every edge except the top,
- *  which gets a further 6px, e.g. a stack_item_t.pad value for a frame's
- *  contents below a caption. */
-#define wuss_STD_FRAME_INSETS \
-  INSET(wuss_STD_FRAME_INSET + wuss_STD_FRAME_TOP_INSET, \
-        wuss_STD_FRAME_INSET + wuss_STD_INSET, \
-        wuss_STD_FRAME_INSET + wuss_STD_INSET, \
-        wuss_STD_FRAME_INSET + wuss_STD_INSET)
+/**
+ * Standard main-axis size (px) of a text-bearing layout item, derived from
+ * the height of the system font (slot 0) so that layouts follow a font
+ * change. Without a system font a 10px font is assumed.
+ *
+ * \param[in] wuss  Window manager.
+ * \param[in] which Which extent.
+ * \return The extent in pixels.
+ */
+int wuss_std_height(const wuss_t *wuss, wuss_std_height_t which);
+
+/**
+ * wuss_STD_FRAME_INSET plus wuss_STD_INSET on every edge except the top,
+ * which gets the wuss_STD_FRAME_TOP caption band instead, e.g. a
+ * stack_item_t.pad value for a frame's contents below a caption.
+ *
+ * \param[in] wuss Window manager.
+ * \return The insets.
+ */
+inset_t wuss_std_frame_insets(const wuss_t *wuss);
 
 /* ----------------------------------------------------------------------- */
 
@@ -594,7 +614,9 @@ void wuss_icon_set_hidden(wuss_window_t *window,
 
 /**
  * Shade or unshade an icon, toggling wuss_ICON_FLAGS_DISABLED. A shaded icon
- * ignores clicks. Invalidates the icon's bounding box.
+ * ignores clicks, and its bitmap (BITMAP, DRAGGABLE or a radio or option
+ * glyph from the icon set) fades toward its ground. Invalidates the icon's
+ * bounding box.
  *
  * \param[in] window   Window the icon belongs to.
  * \param[in] icon     Icon to change.
@@ -611,6 +633,19 @@ void wuss_icon_set_disabled(wuss_window_t *window,
  * \param[out] bbox Filled in with the bounding box.
  */
 void wuss_icon_get_bbox(const wuss_icon_t *icon, box_t *bbox);
+
+/**
+ * Move or resize an icon, e.g. to lay a window out again after a font
+ * change. Its text, value, selection and caret are kept. Invalidates the old
+ * and the new bounding box, unless they are equal.
+ *
+ * \param[in] window Window the icon belongs to.
+ * \param[in] icon   Icon to change.
+ * \param[in] bbox   New bounding box, virtual document space.
+ */
+void wuss_icon_set_bbox(wuss_window_t *window,
+                        wuss_icon_t   *icon,
+                        const box_t   *bbox);
 
 /**
  * Fetch an icon's type.
@@ -706,6 +741,12 @@ result_t wuss_icon_set_caret(wuss_window_t *window,
  * (strcmp), so an index is stable across platforms -- but still address
  * entries by name, not by a hardcoded index.
  *
+ * A leafname ending "_<w>x<h>" (e.g. "duck_24x24.png") is a sprite sheet: a
+ * uniform grid of w x h pixel cells, split into frames at load and named
+ * without the suffix ("duck"). See \ref wuss_iconpool_frame. Partial edge
+ * cells are dropped. Of two leaves sharing a name, the first in strcmp order
+ * wins.
+ *
  * Calling this again replaces the previous set (the old bitmaps and names
  * are freed). \ref wuss_destroy frees the set.
  *
@@ -761,6 +802,21 @@ int wuss_iconpool_lookup(const wuss_t *wuss, const char *name);
  *         is out of range.
  */
 const bitmap_t *wuss_iconpool_bitmap(const wuss_t *wuss, int index);
+
+/**
+ * Fetch one frame of an icon-set entry by index. A sprite sheet's frames are
+ * numbered row-major from 0 at the top left; a plain PNG has only frame 0,
+ * which is what \ref wuss_iconpool_bitmap returns.
+ *
+ * \param[in] wuss  Window manager.
+ * \param[in] index 0-based index, 0..\ref wuss_iconpool_count -1.
+ * \param[in] frame 0-based frame.
+ * \return The bitmap, owned and valid as for \ref wuss_iconpool_bitmap, or
+ *         NULL if \p index or \p frame is out of range.
+ */
+const bitmap_t *wuss_iconpool_frame(const wuss_t *wuss,
+                                    int           index,
+                                    int           frame);
 
 /**
  * Fetch an icon set entry's name.

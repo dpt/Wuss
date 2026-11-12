@@ -1106,7 +1106,7 @@ result_t wuss_toggle_test(const char *resources)
     wuss_window_get_visible_bounds(win_s, &after);
     if (after.x0 != WUSS_SAFE_INSET || after.y0 != WUSS_SAFE_INSET ||
         after.x1 != 200 - WUSS_SAFE_INSET ||
-        after.y1 != 200 - WUSS_SAFE_INSET_BOTTOM)
+        after.y1 != 200 - WUSS_SAFE_INSET_BOTTOM(wuss))
       goto Failure; /* doc == 0: fills the safe area exactly */
 
     rc = wuss_redraw_dirty(wuss);
@@ -1114,6 +1114,60 @@ result_t wuss_toggle_test(const char *resources)
       goto Failure;
 
     wuss_window_close(win_s);
+  }
+
+  printf("test: toggle-size picks its direction from the window's size: short of the extent grows, at it reverts\n");
+
+  {
+    wuss_task_t   *delegate_d;
+    box_t          box_d, small, after;
+    wuss_window_t *win_d;
+
+    delegate_d = mk_task(wuss, NULL, NULL);
+    if (delegate_d == NULL) goto Failure;
+
+    box_d.x0 = 20; box_d.y0 = 20;
+    box_d.x1 = 60; box_d.y1 = 60;
+    rc = wuss_window_create(delegate_d, &box_d, "D", wuss_WINDOW_DEFAULT,
+                            wuss_NO_BACKDROP, SIZE2D(0, 0), SIZE2D(0, 0),
+                            &win_d);
+    if (rc != result_OK)
+      goto Failure;
+
+    /* grow, then shrink by hand: the next toggle must grow again, not revert */
+    wuss_window_toggle_size(win_d);
+    rc = wuss_window_resize(win_d, SIZE2D(60, 60));
+    if (rc != result_OK)
+      goto Failure;
+    wuss_window_get_visible_bounds(win_d, &small);
+
+    wuss_window_toggle_size(win_d);
+    wuss_window_get_visible_bounds(win_d, &after);
+    if (after.x0 != 0 || after.y0 != 0 || after.x1 != 200 || after.y1 != 200)
+      goto Failure; /* a hand-shrunk window grows to the screen again */
+
+    /* at the extent: reverts to the hand-shrunk box */
+    wuss_window_toggle_size(win_d);
+    wuss_window_get_visible_bounds(win_d, &after);
+    if (!box_equal(&after, &small))
+      goto Failure;
+
+    /* a full-screen window is beyond the safe area's extent, so a safe-area
+     * toggle reverts it rather than shrinking it to the safe area, nudged
+     * into the safe area from its old top-left at the screen corner */
+    wuss_window_toggle_size(win_d);
+    wuss->furniture_ops->toggle_size(win_d, 1);
+    wuss_window_get_visible_bounds(win_d, &after);
+    if (after.x0 != WUSS_SAFE_INSET || after.y0 != WUSS_SAFE_INSET ||
+        after.x1 - after.x0 != small.x1 - small.x0 ||
+        after.y1 - after.y0 != small.y1 - small.y0)
+      goto Failure;
+
+    rc = wuss_redraw_dirty(wuss);
+    if (rc != result_OK)
+      goto Failure;
+
+    wuss_window_close(win_d);
   }
 
   wuss_fixture_close(&fixture);

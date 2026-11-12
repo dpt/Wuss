@@ -8,6 +8,112 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.25.0] - 2026-11-12
+
+### Added
+
+- `wuss_drag_start_grab` starts a grab: a core drag that scrolls the window so
+  its content follows the pointer. Resizing and Viewing grab when their
+  document area is dragged.
+- Task Manager: lowest and highest counts of apps, tasks, windows and visible
+  windows.
+- Painting: a Dry setting for the paintbrush. Each stroke starts with a full
+  brush, stays solid for half its paint, then speckles out like a dry brush.
+  0% (the default) never runs dry. A paint pot beside the slider drains as
+  the stroke goes.
+- Painting: layers with visibility, opacity and a lock, in a layers bar;
+  cut, copy and paste of pixels; redo (F9); fill and clear the selection;
+  flip, rotate, crop, trim, scale and resize the canvas or flip and rotate
+  the selection; a palette of up to 32 colours per canvas, saved as `.hex`;
+  symmetry and tiled drawing; zoom up to 64x with a pixel grid and a user
+  grid; pencil sizes, nozzles and a pixel-perfect option; nice-size circles;
+  Tab to hide and restore the toolbars; Space-drag to pan. ADJUST on a colour
+  chip edits it in the colour picker, and New picks its background from
+  swatches.
+- Viewing, Effecting, Resizing, Dithering, Pinboard and Painting open JPEG
+  images. Filing and Pinboard pick a file's icon by its type.
+- Scale view component (`wuss_scaleview_*`): a percentage field with
+  adjusters, presets, Fit screen and Fit window, up to 9999%. It hangs off
+  the Display menu of Dithering, Effecting, Painting and Viewing, which zoom
+  with + - and 1. As in RISC OS, ADJUST on Scale, a preset or a fit applies
+  the scale and keeps the dialogue open, and ADJUST on Cancel puts the
+  view's scale back in the field.
+- `wuss_menu_dismiss` closes a menu chain on its owner's behalf, sending
+  `MENU_CLOSED` first.
+- Gridview: small icons and full info display modes
+  (`wuss_gridview_set_mode`). Filing gains a Display submenu for them, sort
+  orders and the rest of the RISC OS Filer's menu, with unimplemented rows
+  shaded.
+- Pinboard hosts actors on the backdrop for other tasks
+  (`wuss_MESSAGE_PINBOARD_ACTOR`, with click and drop broadcasts), drawn by
+  depth then nearest last. Pinboard also gains Display > Dithering and
+  Selection > Reveal.
+- Duckling task: up to seven ducklings and a Mama duck roam the backdrop as
+  Pinboard actors, chase the pointer, sleep and swim in up to four ponds.
+  Ducks keep out of one another's way, and now and then one breaks away
+  from a clump.
+- Compositing: an Alpha slider scales the source image's alpha, and Display
+  > Dithering picks how the composite is dithered.
+- Painting, Dithering, Effecting and Viewing title document windows
+  "LEAF at N%: APP", updated as the scale changes.
+- Icon pools load sprite sheets: a leafname ending `_<w>x<h>` splits into
+  frames, read with `wuss_iconpool_frame` and `wuss_task_iconpool_frame`.
+- `wuss_drag_past_threshold` tests a press against the drag threshold.
+- Disabled bitmap icons and radio or option glyphs draw faded.
+- Toolbars and panes whose icons overrun them scroll while the pointer rests
+  near an end, as the icon bar does.
+- The icon bar pops to the front when the pointer is held at the bottom of
+  the screen.
+- Resizing: Lanczos3 (now the default), B-spline, Gaussian, Hermite, Mitchell
+  and Lanczos2 resampling.
+- Task Manager groups child tasks under their parents.
+
+### Changed
+
+- Desktop sizings come from the current font: `wuss_std_height()` and
+  `wuss_std_frame_insets()` replace the fixed size macros, and dialogues
+  re-solve their layout on `wuss_EVENT_RELAYOUT`.
+- **Breaking:** `wuss_pinboard_actor_click_t` and
+  `wuss_pinboard_actor_drop_t` move the owner and id into an `actor` member.
+- `wuss_menu_disable_item_live` also sets the item's `DISABLED` flag.
+- A task's `wuss_MESSAGE_TASK_CLOSE_DOWN` is delivered as
+  `wuss_task_destroy` takes it down, before its `QUIT`.
+- Buttons leave two spaces either side of their label.
+- Task Manager splits into Apps and Stats windows.
+- Painting's and Dithering's menus follow the menu standard. Dithering's
+  Animate strength becomes Pause (Space).
+- Orbing's controls move into a left-hand pane.
+- Gridview's selected label lozenge is larger.
+- Compositing's idle animation, Pause and scroll-wheel speed are gone; it
+  starts on SRC OVER and its menu follows the menu standard.
+- Pinboard holds up to 24 actors, up from 16.
+- Painting and the image tasks use DPTLib's `bitmap_orient`,
+  `region_orient`, `composite_over_pixel`, `FLOOR_DIV`,
+  `bitmap_content_bounds`, `bitmap_loads_filetype` and `div255` in place of
+  their own code. Turning a selection mask is no longer quadratic in its
+  runs.
+- Wuss needs DPTLib 0.9.0.
+
+### Removed
+
+- `wuss_iconpool_frames` and `wuss_task_iconpool_frames`.
+
+### Fixed
+
+- Text and frame captions draw transparently over patterned or dithered
+  grounds instead of blotting them out.
+- A pane thinned by a small parent grows back once there is room, and drops
+  stale scroll.
+- A toggle-size click picks grow or revert from the window's size, so a
+  window shrunk by hand after growing grows again.
+- Image tasks keep a paletted PNG's transparency.
+- Use after free when a menu pick flash reached a task being reaped at quit.
+- Use after free when Filing or Apps quit without releasing the shared
+  program info dialogue.
+- Opening Display no longer crashes measuring empty text.
+- `-Wmaybe-uninitialized` warnings from older GCC in icon parsing and slider
+  detents.
+
 ## [0.24.0] - 2026-11-05
 
 ### Added
@@ -23,7 +129,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Dithering: double-click a swatch in the Target palette window to edit that
   colour. The image re-dithers live, and the edit lasts until a fresh palette
   is built.
-- Task Manager: Select on its icon bar icon opens a window of allocation
+- Task Manager: SELECT on its icon bar icon opens a window of allocation
   statistics: current, lowest and highest bytes and blocks, plus allocations
   and frees. `BUILD_APPS` turns on DPTLib's `DPTLIB_ALLOC_COUNT`, sending all
   allocation by Wuss, DPTLib and the demo through it.
@@ -79,7 +185,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   Colours and Randomise (Ctrl-R) set its ends and show it, and Reset also makes
   them black and white. The Patterns task is gone.
 - Tiling is now part of Viewing: Menu's Tile row repeats the image across a
-  window filling the screen, Select drag moves the tile origin and Reset origin
+  window filling the screen, SELECT drag moves the tile origin and Reset origin
   puts it back. Tiles follow Display's dithering. The Tiling task is gone.
 - Dithering: Palette > Computed's Optimal row is now called Octree.
 - Dragged windows snap to the safe area's edges as well as the screen's.
@@ -154,14 +260,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   sausage while it is held or dragged.
 - `wuss_colourset_button()` lets a caller take over a colour set's button.
   Orbing picks every colour with the 24-bit colour picker.
-- `wuss_MESSAGE_FILER_OPEN_DIR`: Adjust on a document window's close icon
+- `wuss_MESSAGE_FILER_OPEN_DIR`: ADJUST on a document window's close icon
   opens the document's directory in the Filer and closes the document
   unless Shift is held. Viewing, Reading, Painting, Tiling, Resizing,
   Dithering and Effecting do so.
 - Single-document tasks title their window "LEAF: APP" once a file is
   loaded. Painting starts as "<Untitled>: Painting" and marks unsaved
   changes with a `*`.
-- Filing closes a directory display after a file Adjust-dragged out of it
+- Filing closes a directory display after a file ADJUST-dragged out of it
   is accepted, as RISC OS does.
 - Painting: alpha transparency (a bgra8888 canvas, transparent New canvases,
   PNGs with alpha, a checkerboard behind transparent pixels; the eraser
@@ -178,7 +284,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   idle, and the image is labelled when the method is Nearest.
 - Palette: 32 more `.hex` palettes, among them Amber, Phosphor, CGA, C64,
   Game Boy, DB16, Sweetie-16, MSX, Apple II, Nord, Gruvbox, Tango,
-  RISC OS 256, xterm-256, RGBW and RGBK. A Menu click on the Screen window
+  RISC OS 256, xterm-256, RGBW and RGBK. A MENU click on the Screen window
   loads a palette matched to the screen's depth.
 - Viewing draws transparent images over a checkerboard.
 - Ball picks its colours from the palette, never the background colour,
@@ -191,13 +297,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `wuss_window_is_front()` asks whether a window is the frontmost visible
   one of its stack, counting a toolbar group as one window.
 - `wuss_gridview` keyboard navigation: arrow keys move the selection and
-  scroll it into view; Return activates it as a Select double-click does.
+  scroll it into view; Return activates it as a SELECT double-click does.
   Filing and Apps offer key presses to their grids first.
 - `wuss_swatches_t` dithers each swatch from two palette entries on a
   paletted screen rather than snapping to the nearest.
 - Painting: a magic wand selection tool (W) with a tolerance; Shift adds to
   and Alt subtracts from the selection; a move tool (V) lifts the selection
-  (Select moves, Adjust copies); a wobbly brush (K) in the manner of Ellis
+  (SELECT moves, ADJUST copies); a wobbly brush (K) in the manner of Ellis
   Nadler with Wobble and Wander settings; a spray Rate setting. The size
   slider becomes a size bar pane showing the current tool's settings. The
   toolbox groups selection, painting and shape tools. The canvas sits on a
@@ -207,7 +313,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Configuring becomes a gridview of section icons (Mousing, Fonts and
   Backdrop), each opening its own window. The icons come from the task's
   private icon pool.
-- Filing: text (`.txt`) and Markdown (`.md`) file icons. A Select click on
+- Filing: text (`.txt`) and Markdown (`.md`) file icons. A SELECT click on
   the Filing or Apps icon bar icon opens the root window even when other
   windows are open; with the root already frontmost it brings all the
   task's windows to the front.
@@ -226,9 +332,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   Reading's header lines no longer yield overlapping spans. Tasks draw
   randomness from their own `rng_t` rather than `rand()`.
 - Requires DPTLib 0.7.0.
-- Icon bar clicks: Select or Adjust on a hidden app's icon shows it again.
-  Otherwise Select brings all the app's windows to the front or, with none,
-  opens a new instance; Adjust does nothing. App menus gain a New row for
+- Icon bar clicks: SELECT or ADJUST on a hidden app's icon shows it again.
+  Otherwise SELECT brings all the app's windows to the front or, with none,
+  opens a new instance; ADJUST does nothing. App menus gain a New row for
   apps allowing more than one instance. Display keeps a single instance.
 - Oscillating moves into Toys, Orbing into Image and Pooling into System.
 - Reading caches its layout and draws only the lines a redraw touches.
@@ -421,7 +527,7 @@ separately.
 - Particles task: repeller and attractor forces (Add submenu) with a shared
   Strength dialogue whose Range slider sets the force's reach, and a
   Markers toggle (M) drawing each force's range.
-- Ball task: Select grabs a ball and throws it on release; Menu > Add ball
+- Ball task: SELECT grabs a ball and throws it on release; Menu > Add ball
   (A) adds one. Wall bounces lose a quarter of the speed.
 - `wuss_ICON_TYPE_DISPLAY` leaves the reserved set: `wuss_icon_spec_display()`
   now builds one rather than a grooved LABEL. It draws via the label
@@ -455,7 +561,7 @@ separately.
   `wuss_colourmenu_t`) and a Size... submenu — a hover-opened dialogue
   (`wuss_menu_item_t::window`) with a slider for the sketch size and a
   second slider for the stars-loop iteration count, Apply/Cancel/
-  Adjust-Apply/Adjust-Cancel following RISC OS convention.
+  ADJUST-Apply/ADJUST-Cancel following RISC OS convention.
 - The `wuss` chars task draws a dotted baseline rule and a light-blue
   advance-width rule under each glyph (useful for eyeballing advance-width
   drift), trims contiguous leading/trailing blank grid rows, and gains a
@@ -503,10 +609,10 @@ separately.
 - `wuss_window_set_doc()` — change a window's virtual document extent after
   creation (used when cycling to a differently-sized image).
 - New `wuss` demo tasks: **Minesweeper** (12x12/20-mine board, flood-fill
-  reveal, flags on Adjust, mine counter and elapsed timer HUD) and
+  reveal, flags on ADJUST, mine counter and elapsed timer HUD) and
   **greeble** (an edge-matched tile-placement greebling pattern built from
   205 baked artist stamps, prefab blocks scattered largest-first, a random
-  4-colour palette per pattern, Adjust cycles the base palette).
+  4-colour palette per pattern, ADJUST cycles the base palette).
 - `wuss` text task gains a Sample submenu (pangrams plus the Lorem Ipsum
   default) and moves the font picker under a root MENU.
 - The `wuss` SDL frontend tracks an integer device-pixel scale in
@@ -676,7 +782,7 @@ separately.
   `wuss_EVENT_ICON`. Adds `wuss_icon_set_caret()`, the
   `wuss_icon_spec_writable()` helper and a demo group in the icons task.
 - `wuss` input focus and key events: windows opt in with
-  `wuss_WINDOW_FOCUSABLE`; a Select/Adjust press on a focusable window's
+  `wuss_WINDOW_FOCUSABLE`; a SELECT/ADJUST press on a focusable window's
   content takes the focus, and `wuss_set_focus()`/`wuss_get_focus()`
   manage it directly. Focus changes send `wuss_EVENT_GAIN_FOCUS`/
   `LOSE_FOCUS` and tint the titlebar with the new `title.focus_bg` palette
@@ -713,14 +819,14 @@ separately.
 - `wuss_icons_load_resource()`; `wuss_create()` now loads the icon set once
   itself instead of per task.
 - A Configure task (also on the main Wuss menu): System frame options to
-  swap the Menu/Adjust mouse buttons and reverse scroll-wheel direction,
+  swap the MENU/ADJUST mouse buttons and reverse scroll-wheel direction,
   and a Backdrop frame with foreground/background colours, a fill-pattern
   grid, a result swatch and a Set backdrop action, laid out with
   `geom/stack`.
 - `wuss` demo command-line options `--res WIDTHxHEIGHT` and `-t/--tasks`
   (comma-separated launcher task names, or `all`, to open at startup).
-- A Doughnut task (Andy Sloane's spinning torus): Select pauses, the wheel
-  zooms, an Adjust drag spins it directly, arrow keys rotate it while
+- A Doughnut task (Andy Sloane's spinning torus): SELECT pauses, the wheel
+  zooms, an ADJUST drag spins it directly, arrow keys rotate it while
   paused, plus a Background colour picker.
 - The text task gains a Markdown Demo sample (headers plus inline bold/
   italic/code as colour-tagged runs).
@@ -900,10 +1006,10 @@ separately.
   `Family Style` labels, so `wuss_fontmenu` items read e.g. `GrongyUI Bold`.
 - Colour components (`wuss_colour_t` RGB fields etc.) move from `int` to
   `unsigned int`.
-- Scroll sausage Adjust-drag now scrolls both axes at once; scroll arrows
+- Scroll sausage ADJUST-drag now scrolls both axes at once; scroll arrows
   auto-repeat while held; a window's minimum size floors at what its
   furniture needs; dragged windows snap to screen edges; a menu chain
-  raises to front after an Adjust pick.
+  raises to front after an ADJUST pick.
 - Task menu boilerplate (plain window creation, proginfo desc, key-shortcut
   prologue, clamp-to-range) is factored into shared helpers across tasks;
   task clamps use `MIN`/`MAX` instead of hand-rolled comparisons.
@@ -983,8 +1089,8 @@ separately.
   toward the origin by the minimum needed to fit, rather than pinning the
   top-left and only growing the bottom-right; restore returns the exact
   pre-toggle box.
-- Adjust-clicking a scroll well now pages away from the click point
-  (mirroring Select's page-towards), matching RISC OS's usual Select/Adjust
+- ADJUST-clicking a scroll well now pages away from the click point
+  (mirroring SELECT's page-towards), matching RISC OS's usual SELECT/ADJUST
   reversal elsewhere in the furniture.
 - **Breaking:** `wuss_window_invalidate_all()` is renamed
   `wuss_window_invalidate_visible()` -- "all" misread as the whole document
@@ -1061,15 +1167,15 @@ separately.
   build one; the flat-colour case is `wuss_BACKDROP_COLOUR(old_value)`.
 - **Breaking:** `wuss_button_t` values are now flags (`wuss_BUTTON_SELECT` 4,
   `wuss_BUTTON_MENU` 2, `wuss_BUTTON_ADJUST` 1, `wuss_BUTTON_NONE` 0) so
-  chords such as Select+Adjust can be reported. Client code comparing a
+  chords such as SELECT+ADJUST can be reported. Client code comparing a
   reported button for equality must now test with `&`.
 - **Breaking:** `wuss_window_create()` takes a `min_doc` argument between
   `doc` and `window`, the minimum content extent a resize-drag or toggle-size
   will shrink to. It is clamped up to the built-in grab floor and down to
   `doc`. Pass `(0, 0)` for the built-in floor.
-- Adjust-clicking a scroll arrow now steps against the direction the arrow
+- ADJUST-clicking a scroll arrow now steps against the direction the arrow
   points, so one arrow can be worked both ways without moving the pointer.
-  Toggle-size stays Select-only.
+  Toggle-size stays SELECT-only.
 - A window can no longer be resized larger than the screen.
 - **Breaking:** event dispatch is reworked around a registered, opaque
   `wuss_task_t` that owns its windows and is the sole delivery target.
@@ -1202,7 +1308,7 @@ separately.
   their window, so they misaligned with the background.
 - The colour picker's title bar could be pushed off screen, and its value
   column left pixels behind.
-- Viewing's Stage tick did not update on Adjust-click.
+- Viewing's Stage tick did not update on ADJUST-click.
 - Toolbar outlines sat 1px out from their parent's.
 - AppsFiler windows sat well above the icon bar after shrinking to fit.
 - `wuss_gridview_set_count()` re-measures the cell from the items, so a filer
@@ -1261,9 +1367,9 @@ separately.
   `wuss_WINDOW_NO_RESIZE_BLIT` alone as their window flags, zeroing every
   furniture bit under the new opt-in flag polarity instead of just opting
   out of blit-based resize; now OR'd with `wuss_WINDOW_DEFAULT`.
-- The saturn Size dialogue's Cancel/Apply buttons now act on Select release
+- The saturn Size dialogue's Cancel/Apply buttons now act on SELECT release
   (`wuss_MOUSE_UP`) instead of press, so a press dragged off the button no
-  longer commits and an Adjust click leaves the dialogue open per RISC OS
+  longer commits and an ADJUST click leaves the dialogue open per RISC OS
   convention; the slider groove now derives from the surround box rather
   than the bevel box.
 - Icon text was vertically centred using ascender+descender (`font_height`),
@@ -1413,7 +1519,7 @@ separately.
 - A window's scroll offset is re-clamped after a resize reveals content past
   the document extent.
 - The scrollbar well keeps a 2px gap at each end.
-- Dragging a scrollbar well with Select no longer raises the window; only a
+- Dragging a scrollbar well with SELECT no longer raises the window; only a
   resize-icon grab restacks it.
 - `wuss_window_move()` no longer repaints already-blitted pixels when a drag
   past an occluded corner slides one clean piece of the window onto ground
@@ -1496,10 +1602,10 @@ separately.
   could open or re-tick it after a rebuild freed it.
 - A menu chain owner's handle went stale: a normal pick now also delivers
   `MENU_CLOSED`, and `wuss_destroy()` abandons a task's chain before QUIT.
-- A Menu-button release on a menu row selected it.
+- A MENU-button release on a menu row selected it.
 - Demo task mouse handlers acted on clicks in any window, e.g. a Menu
   click on the Info dialogue opened the task menu.
-- A Menu click over an icon never reached the window's mouse handler.
+- A MENU click over an icon never reached the window's mouse handler.
 - The Image task's ninepatch path dropped its leafname.
 - `wuss__icon_from_spec` rejected `wuss_NO_BACKGROUND` swatches.
 - Hidden windows forced repaints of visible content (toggle-size occlusion
@@ -1519,7 +1625,7 @@ separately.
 - Scroll/resize press highlighting dragged the window by a stale offset.
 - The colourmenu None chip's hatch was phased against the screen rather
   than the chip, tearing after a move.
-- Minesweeper's Grid Size tick didn't update on an Adjust pick, and its
+- Minesweeper's Grid Size tick didn't update on an ADJUST pick, and its
   redraw ignored the scroll offset.
 - The doughnut render was sized from the dirty box rather than the window,
   and recomputed theta trig in its inner loop.

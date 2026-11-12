@@ -1,6 +1,6 @@
 # Wuss
 
-version 0.24.0
+version 0.25.0
 
 [![Build status](https://github.com/dpt/Wuss/actions/workflows/ci.yml/badge.svg)](https://github.com/dpt/Wuss/actions)
 
@@ -44,7 +44,7 @@ cmake -B build -G Ninja -DBUILD_TESTS=YES
 cmake --build build --target WussTest
 ```
 
-Requires libpng. The demo also needs SDL3. Useful options:
+Requires libpng and libjpeg. The demo also needs SDL3. Useful options:
 
 - `BUILD_TESTS` — the test binary
 - `BUILD_APPS` — the interactive `wuss` demo

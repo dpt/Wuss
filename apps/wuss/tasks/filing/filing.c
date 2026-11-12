@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
@@ -198,16 +199,57 @@ static const bitmap_t *filing_glyph_for(const filing_window_t *fw,
   if (entry->is_dir)
     return task->glyph_directory;
 
-  if (entry->type.riscos == filetype_RISCOS_PNG)
-    return task->glyph_png;
+  return task_file_glyph(task->delegate, entry->type.riscos);
+}
 
-  if (entry->type.riscos == filetype_RISCOS_TEXT)
-    return task->glyph_text;
+/* fills fw's info strings for entry: size, type and date */
+static void filing_info(filing_window_t       *fw,
+                        const dirlist_entry_t *entry,
+                        wuss_gridview_item_t  *out)
+{
+  static const char units[] = "KMG";
 
-  if (entry->type.riscos == filetype_RISCOS_MARKDOWN)
-    return task->glyph_markdown;
+  long long size;
+  int       u;
+  struct tm *tm;
 
-  return task->glyph_file;
+  if (!entry->is_dir)
+  {
+    size = entry->size;
+    if (size < 1024)
+    {
+      snprintf(fw->size_text, sizeof(fw->size_text), "%lld bytes", size);
+    }
+    else
+    {
+      /* rounded, as the RISC OS Filer: 1536 bytes shows as 2 Kbytes */
+      for (u = 0; u < 2 && size >= 1024 * 1024; u++)
+        size /= 1024;
+      snprintf(fw->size_text, sizeof(fw->size_text), "%lld %cbytes",
+               (size + 512) / 1024, units[u]);
+    }
+    out->info[0] = fw->size_text;
+  }
+
+  if (entry->is_dir)
+  {
+    out->info[1] = "Directory";
+  }
+  else if (entry->type.name != NULL && entry->type.name[0] != '\0')
+  {
+    out->info[1] = entry->type.name;
+  }
+  else
+  {
+    snprintf(fw->type_text, sizeof(fw->type_text), "&%03X",
+             entry->type.riscos & 0xFFFu);
+    out->info[1] = fw->type_text;
+  }
+
+  tm = entry->mtime != 0 ? localtime(&entry->mtime) : NULL;
+  if (tm != NULL && strftime(fw->date_text, sizeof(fw->date_text),
+                             "%H:%M:%S %d-%b-%Y", tm) != 0)
+    out->info[2] = fw->date_text;
 }
 
 static void filing_item(int index, void *opaque, wuss_gridview_item_t *out)
@@ -218,14 +260,13 @@ static void filing_item(int index, void *opaque, wuss_gridview_item_t *out)
   fw    = opaque;
   entry = dirlist_get(fw->listing, index);
   if (entry == NULL)
-  {
-    out->glyph = NULL;
-    out->label = NULL;
-    return;
-  }
+    return; /* the gadget cleared out */
 
   out->label = entry->leaf;
   out->glyph = filing_glyph_for(fw, entry);
+  if (fw->gridview != NULL &&
+      wuss_gridview_get_mode(fw->gridview) == wuss_GRIDVIEW_FULL)
+    filing_info(fw, entry, out);
 }
 
 static result_t filing_open_path(filing_task_t       *task,
@@ -427,6 +468,7 @@ static result_t filing_open_path(filing_task_t       *task,
   dirlist_t       *listing;
   wuss_place_t     place;
   wuss_window_t   *window;
+  filing_window_t *from;
 
 #ifndef __riscos
   /* "." or "a/../b" becomes the full path, for the title and so that the
@@ -461,9 +503,10 @@ static result_t filing_open_path(filing_task_t       *task,
   if (rc != result_OK)
     return rc;
 
-  fw          = &task->windows[slot];
-  fw->owner   = task;
-  fw->listing = listing; /* wuss_gridview_create measures through filing_item */
+  fw           = &task->windows[slot];
+  fw->owner    = task;
+  fw->gridview = NULL; /* so filing_item sees no stale one while measuring */
+  fw->listing  = listing; /* wuss_gridview_create measures through filing_item */
   snprintf(fw->path, sizeof(fw->path), "%s", path);
 
   place = task_place_from(parent);
@@ -482,6 +525,12 @@ static result_t filing_open_path(filing_task_t       *task,
   }
 
   wuss_gridview_set_drag(fw->gridview, filing_drag);
+
+  /* a new window shows its contents as the window it was opened from */
+  from = filing_find_by_window(task, parent);
+  if (from != NULL)
+    wuss_gridview_set_mode(fw->gridview,
+                           wuss_gridview_get_mode(from->gridview));
 
   fw->window = window;
   if (slot == task->nwindows)
@@ -528,17 +577,78 @@ result_t filing_create(wuss_t *wuss, filing_task_t **out)
   task->wuss     = wuss;
   task->nwindows = 0;
 
+  /* rows not yet implemented are shaded */
+  WUSS_MENU_ITEM(task->sel_menu_items, FILING_SEL_MENU_COPY, "Copy",
+                 wuss_MENU_ITEM_DISABLED);
+  WUSS_MENU_ITEM(task->sel_menu_items, FILING_SEL_MENU_RENAME, "Rename",
+                 wuss_MENU_ITEM_DISABLED);
   WUSS_MENU_ITEM(task->sel_menu_items, FILING_SEL_MENU_DELETE, "Delete",
                  wuss_MENU_ITEM_NONE);
+  WUSS_MENU_ITEM(task->sel_menu_items, FILING_SEL_MENU_ACCESS, "Access",
+                 wuss_MENU_ITEM_DISABLED);
+  WUSS_MENU_ITEM(task->sel_menu_items, FILING_SEL_MENU_COUNT, "Count",
+                 wuss_MENU_ITEM_DISABLED);
+  WUSS_MENU_ITEM(task->sel_menu_items, FILING_SEL_MENU_HELP, "Help",
+                 wuss_MENU_ITEM_DISABLED);
+  WUSS_MENU_ITEM(task->sel_menu_items, FILING_SEL_MENU_INFO, "Info",
+                 wuss_MENU_ITEM_DISABLED);
+  WUSS_MENU_ITEM(task->sel_menu_items, FILING_SEL_MENU_FIND, "Find",
+                 wuss_MENU_ITEM_DISABLED);
+  WUSS_MENU_ITEM(task->sel_menu_items, FILING_SEL_MENU_SET_TYPE, "Set type",
+                 wuss_MENU_ITEM_DISABLED);
+  WUSS_MENU_ITEM(task->sel_menu_items, FILING_SEL_MENU_STAMP, "Stamp",
+                 wuss_MENU_ITEM_DISABLED);
   WUSS_MENU_TITLE(task->sel_menu, "Selection", task->sel_menu_items,
                   NELEMS(task->sel_menu_items));
 
+  WUSS_MENU_ITEM(task->display_menu_items, FILING_DISPLAY_LARGE,
+                 "Large icons", wuss_MENU_ITEM_NONE);
+  WUSS_MENU_ITEM(task->display_menu_items, FILING_DISPLAY_SMALL,
+                 "Small icons", wuss_MENU_ITEM_NONE);
+  WUSS_MENU_ITEM(task->display_menu_items, FILING_DISPLAY_FULL, "Full info",
+                 wuss_MENU_ITEM_NONE);
+  WUSS_MENU_ITEM(task->display_menu_items, FILING_DISPLAY_SORT_NAME,
+                 "Sort by name",
+                 wuss_MENU_ITEM_DASHED | wuss_MENU_ITEM_DISABLED);
+  WUSS_MENU_ITEM(task->display_menu_items, FILING_DISPLAY_SORT_TYPE,
+                 "Sort by type", wuss_MENU_ITEM_DISABLED);
+  WUSS_MENU_ITEM(task->display_menu_items, FILING_DISPLAY_SORT_SIZE,
+                 "Sort by size", wuss_MENU_ITEM_DISABLED);
+  WUSS_MENU_ITEM(task->display_menu_items, FILING_DISPLAY_SORT_DATE,
+                 "Sort by date", wuss_MENU_ITEM_DISABLED);
+  WUSS_MENU_TITLE(task->display_menu, "Display", task->display_menu_items,
+                  NELEMS(task->display_menu_items));
+
+  /* the RISC OS Filer's defaults */
+  WUSS_MENU_ITEM(task->options_menu_items, FILING_OPTIONS_CONFIRM_ALL,
+                 "Confirm all", wuss_MENU_ITEM_DISABLED);
+  WUSS_MENU_ITEM(task->options_menu_items, FILING_OPTIONS_CONFIRM_DELETES,
+                 "Confirm deletes",
+                 wuss_MENU_ITEM_TICKED | wuss_MENU_ITEM_DISABLED);
+  WUSS_MENU_ITEM(task->options_menu_items, FILING_OPTIONS_VERBOSE, "Verbose",
+                 wuss_MENU_ITEM_DASHED | wuss_MENU_ITEM_TICKED |
+                 wuss_MENU_ITEM_DISABLED);
+  WUSS_MENU_ITEM(task->options_menu_items, FILING_OPTIONS_FORCE, "Force",
+                 wuss_MENU_ITEM_DISABLED);
+  WUSS_MENU_ITEM(task->options_menu_items, FILING_OPTIONS_NEWER, "Newer",
+                 wuss_MENU_ITEM_DISABLED);
+  WUSS_MENU_ITEM(task->options_menu_items, FILING_OPTIONS_FASTER, "Faster",
+                 wuss_MENU_ITEM_DISABLED);
+  WUSS_MENU_TITLE(task->options_menu, "Options", task->options_menu_items,
+                  NELEMS(task->options_menu_items));
+
+  WUSS_MENU_ITEM_MENU(task->menu_items, FILING_MENU_DISPLAY, "Display",
+                      wuss_MENU_ITEM_NONE, &task->display_menu);
   WUSS_MENU_ITEM_MENU(task->menu_items, FILING_MENU_SELECTION, task->sel_text,
                       wuss_MENU_ITEM_NONE, &task->sel_menu);
   WUSS_MENU_ITEM(task->menu_items, FILING_MENU_SELECT_ALL, "Select all",
                  wuss_MENU_ITEM_NONE);
   WUSS_MENU_ITEM(task->menu_items, FILING_MENU_CLEAR_SELECTION,
                  "Clear selection", wuss_MENU_ITEM_NONE);
+  WUSS_MENU_ITEM_MENU(task->menu_items, FILING_MENU_OPTIONS, "Options",
+                      wuss_MENU_ITEM_NONE, &task->options_menu);
+  WUSS_MENU_ITEM(task->menu_items, FILING_MENU_NEW_DIRECTORY,
+                 "New directory", wuss_MENU_ITEM_DISABLED);
   WUSS_MENU_ITEM(task->menu_items, FILING_MENU_OPEN_PARENT, "Open parent",
                  wuss_MENU_ITEM_NONE);
   task->menu_items[FILING_MENU_OPEN_PARENT].shortcut = "^" WUSS_MENU_SHIFT "UP";
@@ -577,12 +687,8 @@ result_t filing_create(wuss_t *wuss, filing_task_t **out)
     return rc;
   }
 
-  task->glyph_file           = filing_find_glyph(task->delegate, "file_unk");
   task->glyph_directory      = filing_find_glyph(task->delegate, "file_dir");
   task->glyph_directory_open = filing_find_glyph(task->delegate, "file_diro");
-  task->glyph_png            = filing_find_glyph(task->delegate, "file_b60");
-  task->glyph_text           = filing_find_glyph(task->delegate, "file_fff");
-  task->glyph_markdown       = filing_find_glyph(task->delegate, "file_1d0");
 
   memset(&spec, 0, sizeof(spec));
   spec.text     = "Filing";
@@ -690,11 +796,6 @@ static int filing_download_selection(const filing_window_t *fw, int download)
 /* shade or unshade a menu row, on screen too if the menu is open */
 static void filing_menu_enable(filing_task_t *task, int row, int enabled)
 {
-  if (enabled)
-    task->menu_items[row].flags &= ~wuss_MENU_ITEM_DISABLED;
-  else
-    task->menu_items[row].flags |= wuss_MENU_ITEM_DISABLED;
-
   wuss_menu_disable_item_live(task->menu_handle, &task->menu, row, !enabled);
 }
 
@@ -778,12 +879,20 @@ static void filing_menu_update(filing_task_t *task)
   char             parent[DPTLIB_MAXPATH];
   int              count;
   int              selected;
+  int              mode;
+  int              i;
 
   fw       = filing_find_by_window(task, task->menu_window);
   count    = fw != NULL ? dirlist_count(fw->listing) : 0;
   selected = fw != NULL ? wuss_gridview_selected_count(fw->gridview) : 0;
+  mode     = fw != NULL ? (int) wuss_gridview_get_mode(fw->gridview) : -1;
 
   filing_label_selection(task, fw, selected);
+  filing_menu_enable(task, FILING_MENU_DISPLAY, fw != NULL);
+  /* tick the mode, and name as the only sort order */
+  for (i = 0; i < FILING_DISPLAY__LIMIT; i++)
+    wuss_menu_tick_item_live(task->menu_handle, &task->display_menu, i,
+                             i == mode || i == FILING_DISPLAY_SORT_NAME);
   filing_menu_enable(task, FILING_MENU_SELECTION, selected > 0);
   filing_menu_enable(task, FILING_MENU_SELECT_ALL, selected < count);
   filing_menu_enable(task, FILING_MENU_CLEAR_SELECTION, selected > 0);
@@ -1009,6 +1118,21 @@ result_t filing_handle(wuss_window_t      *window,
       }
       return result_OK;
     }
+    if (event->data.menu_select.menu == &task->display_menu &&
+        event->data.menu_select.index < FILING_DISPLAY_SORT_NAME)
+    {
+      fw = filing_find_by_window(task, task->menu_window);
+      if (fw != NULL)
+      {
+        /* rows are in wuss_gridview_mode_t order */
+        wuss_gridview_set_mode(fw->gridview, (wuss_gridview_mode_t)
+                               event->data.menu_select.index);
+        wuss_gridview_fit_window(fw->gridview, FILING_COLUMNS,
+                                 FILING_MAX_ROWS, NULL);
+        filing_menu_update(task);
+      }
+      return result_OK;
+    }
     if (event->data.menu_select.menu != &task->menu)
       return result_OK;
 
@@ -1145,6 +1269,7 @@ result_t filing_handle(wuss_window_t      *window,
   }
 
   case wuss_EVENT_QUIT:
+    wuss_proginfo_release(task->delegate);
     filing_destroy(task);
     return result_OK;
 

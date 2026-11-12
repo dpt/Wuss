@@ -36,7 +36,6 @@
 #define ZXTASK_BORDER        (32)
 #define ZXTASK_WINDOW_WIDTH  (ZXTASK_SCREEN_WIDTH + 2 * ZXTASK_BORDER)
 #define ZXTASK_WINDOW_HEIGHT (ZXTASK_SCREEN_HEIGHT + 2 * ZXTASK_BORDER)
-#define ZXTASK_MAX_ZOOM      (2)
 
 /* Pacing: a backlog longer than MAX_LAG is dropped rather than caught up,
  * and a wait shorter than MIN_WAIT is left on the deadline for a later,
@@ -88,7 +87,6 @@ struct zxtask
   char                 speed_title[16]; /* "Speed 100%" */
   wuss_menu_handle_t   menu_handle; /* live only between open and close */
   colour_t             palette[16]; /* the screen's colours, mono aware */
-  unsigned char       *pixels;   /* p4 doubled screen, when zoomed */
   int                  mono;     /* simulate a black and white TV */
   int                  zoom;     /* pixel scale, 1 or 2 */
   pthread_t            thread;
@@ -259,7 +257,6 @@ static void zxtask_destroy(zxtask_t *task)
   zxspectrum_destroy(task->zx);
   pthread_cond_destroy(&task->wake);
   pthread_mutex_destroy(&task->lock);
-  free(task->pixels);
   free(task);
 }
 
@@ -413,31 +410,6 @@ static int zxtask_sleep(int duration, void *opaque)
 
 /* ----------------------------------------------------------------------- */
 
-/* Double the claimed 256x192 p4 screen into task->pixels. ponytail: zoom 2
- * only, generalise if ZXTASK_MAX_ZOOM grows. */
-static void zxtask_convert(zxtask_t *task, const bitmap_t *bm)
-{
-  int                  rowbytes;
-  int                  x, y;
-  const unsigned char *row;
-  unsigned char       *out;
-  unsigned int         p;
-
-  rowbytes = ZXTASK_SCREEN_WIDTH; /* 512 pixels at 4bpp */
-  for (y = 0; y < ZXTASK_SCREEN_HEIGHT; y++)
-  {
-    row = (const unsigned char *) bm->base + y * bm->rowbytes;
-    out = task->pixels + y * 2 * rowbytes;
-    for (x = 0; x < ZXTASK_SCREEN_WIDTH / 2; x++)
-    {
-      p      = row[x];
-      *out++ = (unsigned char) ((p & 0x0F) | (p << 4));
-      *out++ = (unsigned char) ((p & 0xF0) | (p >> 4));
-    }
-    memcpy(out, out - rowbytes, rowbytes);
-  }
-}
-
 static result_t zxtask_redraw(zxtask_t *task, const wuss_event_t *event)
 {
   static const unsigned int level = 0xCD; /* the border has no BRIGHT */
@@ -449,6 +421,8 @@ static result_t zxtask_redraw(zxtask_t *task, const wuss_event_t *event)
   const zx_frame_t *frame;
   bitmap_t          bm;
   int               i;
+  box_t             dst;
+  screen_scale_t    scale;
 
   bounds = event->data.redraw.bounds;
   x      = bounds->x0 - event->data.redraw.scroll.x;
@@ -482,28 +456,17 @@ static result_t zxtask_redraw(zxtask_t *task, const wuss_event_t *event)
     task->palette[i] = zxtask_colour(task, i & 7, (i & 8) ? 0xFF : level);
   bm.palette = task->palette;
 
-  if (task->zoom == 1)
-  {
-    rc = screen_copy_bitmap(event->data.redraw.scr, x, y, &bm);
-    zxspectrum_release_screen(task->zx);
-    return rc;
-  }
+  dst.x0 = x;
+  dst.y0 = y;
+  dst.x1 = x + frame->width * task->zoom;
+  dst.y1 = y + frame->height * task->zoom;
 
-  zxtask_convert(task, &bm);
+  scale.xmul = scale.ymul = task->zoom;
+  scale.xdiv = scale.ydiv = 1;
+
+  rc = screen_copy_bitmap_scaled(event->data.redraw.scr, &dst, &bm, &scale);
   zxspectrum_release_screen(task->zx);
-  rc = bitmap_init(&bm,
-                   SIZE2D(ZXTASK_SCREEN_WIDTH * task->zoom,
-                          ZXTASK_SCREEN_HEIGHT * task->zoom),
-                   pixelfmt_p4,
-                   ZXTASK_SCREEN_WIDTH * task->zoom / 2,
-                   NULL,
-                   task->pixels);
-  if (rc != result_OK)
-    return rc;
-
-  bm.palette = task->palette;
-
-  return screen_copy_bitmap(event->data.redraw.scr, x, y, &bm);
+  return rc;
 }
 
 static result_t zxtask_mouse(zxtask_t           *task,
@@ -587,31 +550,15 @@ static void zxtask_set_speed(zxtask_t *task, int index)
   pthread_mutex_unlock(&task->lock);
 }
 
-/* Toggle mono or zoom. Mono is all in the palette. The zoom buffer is made
- * when zoom is first wanted and freed once it is not. */
+/* Toggle mono or zoom. Mono is all in the palette; zoom swaps 1 and 2. */
 static result_t zxtask_set_view(zxtask_t *task, int index)
 {
   size2d_t size;
 
   if (index == ZXTASK_MENU_MONO)
-  {
     task->mono = !task->mono;
-  }
-  else if (task->pixels == NULL)
-  {
-    task->pixels = malloc(ZXTASK_SCREEN_WIDTH * ZXTASK_SCREEN_HEIGHT *
-                          ZXTASK_MAX_ZOOM * ZXTASK_MAX_ZOOM / 2);
-    if (task->pixels == NULL)
-      return result_OOM;
-
-    task->zoom = ZXTASK_MAX_ZOOM;
-  }
   else
-  {
-    free(task->pixels);
-    task->pixels = NULL;
-    task->zoom   = 1;
-  }
+    task->zoom = 3 - task->zoom;
 
   if (task->window == NULL)
     return result_OK;
@@ -739,7 +686,10 @@ static result_t zxtask_handle(wuss_window_t      *window,
     {
       for (i = 0; i < ndamage; i++)
       {
-        box_scalelog2(&damage[i], task->zoom - 1); /* zoom is 1 or 2 */
+        damage[i].x0 *= task->zoom;
+        damage[i].y0 *= task->zoom;
+        damage[i].x1 *= task->zoom;
+        damage[i].y1 *= task->zoom;
         wuss_window_invalidate(task->window, &damage[i]);
       }
     }

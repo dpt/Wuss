@@ -86,7 +86,7 @@ result_t wuss__icon_from_spec(const wuss_t           *w,
   if (is_bitmap && bitmap == NULL && spec->u.bitmap.set == 0 &&
       spec->u.bitmap.name != NULL)
   {
-    bitmap = wuss__iconpool_find(w, task, spec->u.bitmap.name);
+    bitmap = wuss__iconpool_find(w, task, spec->u.bitmap.name, 0);
     if (bitmap == NULL)
     {
       logf_warning("wuss: icon pool has no \"%s\"", spec->u.bitmap.name);
@@ -97,7 +97,7 @@ result_t wuss__icon_from_spec(const wuss_t           *w,
   if (is_bitmap && pressed == NULL && spec->u.bitmap.pressed_set == 0 &&
       spec->u.bitmap.pressed_name != NULL)
   {
-    pressed = wuss__iconpool_find(w, task, spec->u.bitmap.pressed_name);
+    pressed = wuss__iconpool_find(w, task, spec->u.bitmap.pressed_name, 0);
     if (pressed == NULL)
       logf_warning("wuss: icon pool has no \"%s\"",
                    spec->u.bitmap.pressed_name);

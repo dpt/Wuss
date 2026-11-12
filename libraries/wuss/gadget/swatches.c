@@ -74,7 +74,14 @@ void wuss_swatches_draw(const wuss_swatches_t *swatches,
     x = ox + (i % cols) * (cell.w + swatches->gap);
     y = oy + (i / cols) * (cell.h + swatches->gap);
 
-    if (nphys == 0)
+    if (colour_get_alpha(&swatches->colours[i]) == 0)
+    {
+      /* transparent: a checkerboard, as paint programs show it */
+      box = (box_t) BOX_POS_SIZE(x, y, cell.w, cell.h);
+      screen_fill_checks(scr, &box, POINT(x, y), 4,
+                         colour_rgb(0xCC, 0xCC, 0xCC), white);
+    }
+    else if (nphys == 0)
     {
       screen_fill_rect(scr, x, y, cell, swatches->colours[i]);
     }

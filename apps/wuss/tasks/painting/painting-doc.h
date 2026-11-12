@@ -8,7 +8,9 @@
 #include "framebuf/colour.h"
 #include "framebuf/screen.h"
 #include "geom/box.h"
+#include "geom/orient.h"
 #include "geom/point.h"
+#include "geom/region.h"
 #include "geom/size.h"
 #include "utils/rng.h"
 
@@ -38,11 +40,12 @@ result_t paintingdoc_create_filled(size2d_t        size,
 /* free a canvas and its undo history. doc may be NULL */
 void paintingdoc_destroy(paintingdoc_t *doc);
 
-/* replace the canvas with the PNG at path, resized to match it, keeping any
- * transparency it has. discards the undo history, as it could not be applied
- * to a canvas of another size. on any failure the canvas and its history are
- * left as they were */
-result_t paintingdoc_load_png(paintingdoc_t *doc, const char *path);
+/* replace the canvas, every layer, with one layer holding the PNG or JPEG at
+ * path, resized to match it,
+ * keeping any transparency it has. discards the undo history, as it could
+ * not be applied to a canvas of another size. on any failure the canvas and
+ * its history are left as they were */
+result_t paintingdoc_load(paintingdoc_t *doc, const char *path);
 
 /* non-zero if the canvas has changed (drawn on or undone) since it was
  * created, loaded or last marked saved */
@@ -51,14 +54,74 @@ int paintingdoc_is_edited(const paintingdoc_t *doc);
 /* mark the canvas as saved: unedited until it next changes */
 void paintingdoc_set_saved(paintingdoc_t *doc);
 
-/* the canvas pixels, for drawing to a window. owned by doc: valid until the
- * next paintingdoc_undo or paintingdoc_destroy */
-const bitmap_t *paintingdoc_bitmap(const paintingdoc_t *doc);
+/* the image as shown, for drawing to a window or saving: the visible layers
+ * composited, each at its opacity. owned by doc: valid until the next change
+ * to the canvas or paintingdoc_destroy */
+const bitmap_t *paintingdoc_bitmap(paintingdoc_t *doc);
 
-/* save the canvas as an undo step. call before the first segment of a stroke:
+/* layers: the canvas is a stack of layers, bottom first, all one size. a new
+ * canvas has one. drawing, the selection's lifts, the colour pick and the
+ * wand act on the current layer; flips, turns and resizes on every layer */
+
+/* most layers a canvas holds */
+#define PAINTINGDOC_LAYERS_MAX 16
+
+typedef struct paintingdoc_layer
+{
+  bitmap_t bm;
+  int      id;      /* unique in its document: follows it through undo */
+  int      visible;
+  int      opacity; /* 0..255 */
+  int      locked;  /* non-zero: the painting tools leave it be */
+}
+paintingdoc_layer_t;
+
+/* the number of layers, and the current layer's index */
+int paintingdoc_layers(const paintingdoc_t *doc);
+int paintingdoc_layer(const paintingdoc_t *doc);
+
+/* layer i, bottom first. valid until the layers next change */
+const paintingdoc_layer_t *paintingdoc_layer_get(const paintingdoc_t *doc,
+                                                 int                  i);
+
+/* make layer i current, dropping any lifted pixels where they lie */
+void paintingdoc_layer_select(paintingdoc_t *doc, int i);
+
+/* add a transparent layer above the current one and make it current. fails
+ * with result_TOO_BIG if there are PAINTINGDOC_LAYERS_MAX already, or
+ * result_OOM. an undo step */
+result_t paintingdoc_layer_add(paintingdoc_t *doc);
+
+/* delete the current layer, making the one below current. fails with
+ * result_BAD_ARG if it is the last, or result_OOM. an undo step */
+result_t paintingdoc_layer_delete(paintingdoc_t *doc);
+
+/* swap the current layer with the one above (dir 1) or below (dir -1),
+ * keeping it current. fails with result_BAD_ARG if there is none, or
+ * result_OOM. an undo step */
+result_t paintingdoc_layer_move(paintingdoc_t *doc, int dir);
+
+/* show or hide layer i and set its opacity (0..255). not an undo step, and
+ * undo leaves it be: only a layer that an undo brings back gets the look it
+ * had. returns the box that changed: the whole canvas */
+box_t paintingdoc_layer_show(paintingdoc_t *doc,
+                             int            i,
+                             int            visible,
+                             int            opacity);
+
+/* lock or unlock layer i against the painting tools. not an undo step, and
+ * undo leaves it be, as paintingdoc_layer_show */
+void paintingdoc_layer_lock(paintingdoc_t *doc, int i, int locked);
+
+/* save the current layer as an undo step. call before the first segment of a
+ * stroke:
  * paintingdoc_stroke does not do it itself, as a stroke is many calls. fails
  * with result_OOM, leaving the history as it was */
 result_t paintingdoc_checkpoint(paintingdoc_t *doc);
+
+/* while held, of the operations that take their own checkpoint only the first
+ * does, so several draw as one undo step: symmetry and tiling's copies */
+void paintingdoc_hold(paintingdoc_t *doc, int hold);
 
 /* draw a stroke, rect or ellipse as paintingdoc_stroke, paintingdoc_rect and
  * paintingdoc_ellipse do, but onto any screen, for a rubber-band preview over
@@ -107,15 +170,28 @@ typedef enum paintingdoc_nozzle
 }
 paintingdoc_nozzle_t;
 
+/* the paint a brush stroke has to draw on, carried from one segment to the
+ * next. it holds load stamps' worth. past half full the stroke runs dry: it
+ * misses more pixels as the paint runs out, and an empty pot paints nothing.
+ * which pixels it misses is fixed by seed, so overlapping stamps agree */
+typedef struct paintingdoc_pot
+{
+  uint32_t seed; /* picks the pixels a drying stroke misses */
+  int      load; /* stamps a full pot paints; 0 never runs dry */
+  int      left; /* stamps left in the pot */
+}
+paintingdoc_pot_t;
+
 /* stamp the nozzle, size pixels across, at every pixel step from a to b
- * (a == b stamps once). the caller takes the checkpoint, as for
- * paintingdoc_stroke */
+ * (a == b stamps once), drawing on pot, or endless paint if pot is NULL.
+ * the caller takes the checkpoint, as for paintingdoc_stroke */
 box_t paintingdoc_brush(paintingdoc_t       *doc,
                         point_t              a,
                         point_t              b,
                         paintingdoc_nozzle_t nozzle,
                         int                  size,
-                        colour_t             colour);
+                        colour_t             colour,
+                        paintingdoc_pot_t   *pot);
 
 /* a wobbly stroke's progress, carried from one segment to the next so the
  * wobble runs on unbroken. set seed to any value (a fresh one per stroke for
@@ -141,6 +217,26 @@ box_t paintingdoc_wobble(paintingdoc_t        *doc,
                          int                   wander,
                          colour_t              colour,
                          paintingdoc_wobble_t *wobble);
+
+/* a pencil stroke's last two pixels, carried from one segment to the next.
+ * set n to 0 before the first segment */
+typedef struct paintingdoc_trail
+{
+  int      n;     /* pixels held in p, 0..2 */
+  point_t  p[2];  /* the pixel before last, then the last */
+  uint32_t under; /* what p[n - 1] covered before the stroke set it */
+}
+paintingdoc_trail_t;
+
+/* draw a pixel-perfect stroke segment a to b one pixel wide: where a step
+ * turns a corner, leaving an L of three pixels, the corner pixel is put back
+ * as it was, so diagonals stay one pixel thin. the caller takes the
+ * checkpoint, as for paintingdoc_stroke */
+box_t paintingdoc_pencil(paintingdoc_t       *doc,
+                         point_t              a,
+                         point_t              b,
+                         colour_t             colour,
+                         paintingdoc_trail_t *trail);
 
 /* scatter dots of colour over the disc of the given radius in pixels centred
  * on p. each call aims a dot at density percent of the disc's pixels, so
@@ -207,7 +303,7 @@ int paintingdoc_pick(const paintingdoc_t *doc, point_t p, colour_t *colour);
  * rect or fill leaves the rest of the canvas as it was. there is at most one;
  * making a new one replaces it, adds to it or takes from it, as the
  * paintingdoc_selop_t passed says. it is not part of the undo history.
- * loading a PNG drops it */
+ * loading an image drops it */
 
 /* how a newly made area meets the selection already there */
 typedef enum paintingdoc_selop
@@ -262,7 +358,7 @@ box_t paintingdoc_selection_bounds(const paintingdoc_t *doc);
 const box_t *paintingdoc_selection_outline(const paintingdoc_t *doc, int *n);
 
 /* moving the selection: lift its pixels, place them as often as the drag
- * needs, then drop them. a new selection or a loaded PNG also drops them */
+ * needs, then drop them. a new selection or a loaded image also drops them */
 
 /* lift the selected pixels to move them, taking a checkpoint first. fails
  * with result_BAD_ARG if there is no selection, or result_OOM */
@@ -277,15 +373,94 @@ box_t paintingdoc_place(paintingdoc_t  *doc,
                         int             dy,
                         const colour_t *leave);
 
-/* drop the lifted pixels where they were last placed */
+/* drop the lifted pixels where they were last placed. pasted pixels stay
+ * lifted, floating, until something else changes the canvas */
 void paintingdoc_drop(paintingdoc_t *doc);
+
+/* move the selected pixels dx,dy further, lifting them first unless lifted.
+ * they stay lifted, so a run of nudges is one undo step and moving back
+ * restores what they passed over. as paintingdoc_place otherwise; does
+ * nothing if there is no selection */
+box_t paintingdoc_nudge(paintingdoc_t  *doc,
+                        int             dx,
+                        int             dy,
+                        const colour_t *leave);
+
+/* the clipboard: copied pixels, with no canvas of their own */
+typedef struct paintingdoc_clip
+{
+  bitmap_t  bm;   /* the pixels in the copied selection's bounds; base NULL
+                   * while empty */
+  region_t *mask; /* the copied pixels, relative to bm's top left */
+  point_t   at;   /* where bm's top left was copied from */
+}
+paintingdoc_clip_t;
+
+/* copy the selected pixels into *clip, replacing what it held. fails with
+ * result_BAD_ARG if there is no selection, or result_OOM, leaving *clip as
+ * it was */
+result_t paintingdoc_copy(const paintingdoc_t *doc,
+                          paintingdoc_clip_t  *clip);
+
+/* empty *clip */
+void paintingdoc_clip_free(paintingdoc_clip_t *clip);
+
+/* paste clip with its top left at p, as the selection, its pixels floating:
+ * lifted as by paintingdoc_lift, but a move leaves the canvas they cover as
+ * it was, until something else changes the canvas. takes its own
+ * checkpoint. does nothing if clip is empty or lands wholly off the canvas */
+box_t paintingdoc_paste(paintingdoc_t            *doc,
+                        const paintingdoc_clip_t *clip,
+                        point_t                   p);
+
+/* flip or turn the whole canvas, dropping the selection. a quarter turn
+ * swaps the canvas's width and height; undo puts the old size back. takes
+ * its own checkpoint. returns the box that changed (the whole canvas, at its
+ * new size), or an empty box, the canvas left as it was, if out of memory */
+box_t paintingdoc_transform(paintingdoc_t *doc, orient_t orient);
+
+/* flip or turn the selected pixels about the centre of the selection's
+ * bounds, leaving the colour leave where they were. they float, as pasted
+ * pixels do, and the selection turns with them. takes its own checkpoint,
+ * unless they float already, when it joins the step that floated them.
+ * returns the box that changed, or an empty box if there is no selection or
+ * no memory */
+box_t paintingdoc_transform_selection(paintingdoc_t *doc,
+                                      orient_t       orient,
+                                      colour_t       leave);
+
+/* make the canvas the area box (x1/y1 exclusive) of the canvas, dropping the
+ * selection: inside the canvas it crops, and beyond it the canvas grows,
+ * the bottom layer filled with fill and the rest transparent. so box
+ * (-1,-1)-(w+1,h+1) adds a one-pixel border, and the
+ * selection's bounds crop to it. takes its own checkpoint. returns as
+ * paintingdoc_transform; also an empty box if box is */
+box_t paintingdoc_resize(paintingdoc_t *doc, box_t box, colour_t fill);
+
+/* scale every layer to size by nearest neighbour, dropping the selection.
+ * takes its own checkpoint. returns as paintingdoc_transform; also an empty
+ * box if size is */
+box_t paintingdoc_scale(paintingdoc_t *doc, size2d_t size);
+
+/* the bounds of the canvas's content, for a trim: the bottom layer's pixels
+ * that differ from its top left one, and the other layers' pixels that are
+ * not wholly transparent, hidden layers included. an empty box if there are
+ * none */
+box_t paintingdoc_trim_bounds(const paintingdoc_t *doc);
 
 /* non-zero if there is a step to undo */
 int paintingdoc_can_undo(const paintingdoc_t *doc);
 
-/* restore the canvas to the last checkpoint, discarding it. returns the box
+/* restore the canvas to the last checkpoint, keeping the canvas it replaces
+ * for paintingdoc_redo. a new checkpoint drops those. returns the box
  * that changed (the whole canvas), or an empty box if there was nothing to
  * undo or the step could not be decompressed */
 box_t paintingdoc_undo(paintingdoc_t *doc);
+
+/* non-zero if there is an undone step to redo */
+int paintingdoc_can_redo(const paintingdoc_t *doc);
+
+/* restore the canvas to the step last undone. returns as paintingdoc_undo */
+box_t paintingdoc_redo(paintingdoc_t *doc);
 
 #endif /* TASKS_PAINTING_DOC_H */

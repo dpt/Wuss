@@ -19,10 +19,7 @@
  * and at the edge -- the gap is not drawn on, so it reads as space rather
  * than a shared border. An icon bar wider than the screen scrolls (see
  * WUSS_ICONBAR_SCROLL_ZONE). */
-#define WUSS_ICONBAR_ICON       34
 #define WUSS_ICONBAR_GAP        8
-#define WUSS_ICONBAR_HEIGHT     67
-#define WUSS_ICONBAR_TEXT_PAD   2  /* clear space above the label */
 
 /* An icon bar wider than the screen scrolls: while the pointer is directly
  * over the bar, not over a window in front of it, and within
@@ -30,6 +27,12 @@
  * WUSS_ICONBAR_SCROLL_STEP pixels. */
 #define WUSS_ICONBAR_SCROLL_ZONE 40
 #define WUSS_ICONBAR_SCROLL_STEP 6
+
+/* A covered bar pops to front once the pointer has stayed within
+ * WUSS_ICONBAR_POP_ZONE rows of the bottom of the screen for
+ * WUSS_ICONBAR_POP_DELAY_MS, and drops back when the pointer leaves it. */
+#define WUSS_ICONBAR_POP_ZONE     2
+#define WUSS_ICONBAR_POP_DELAY_MS 400
 
 /* Vertical placement: the icon (plus WUSS_ICONBAR_TEXT_PAD and the font
  * height if labelled) has the spare bar height split 5:3 above:below. */
@@ -64,6 +67,11 @@ void wuss__iconbar_icon_box(const wuss_t *wuss, int index, box_t *out);
 /* Idle step: scroll the bar while the pointer hovers near an end of an
  * overfull bar. Called from wuss_idle. */
 void wuss__iconbar_scroll_tick(wuss_t *wuss);
+
+/* Idle step: pop a covered bar to front while the pointer is held at the
+ * bottom of the screen and drop it back once the pointer leaves. Called from
+ * wuss_idle. */
+void wuss__iconbar_pop_tick(wuss_t *wuss);
 
 /* Paint every icon (image/label) into "piece", a piece of
  * wuss->iconbar.window's content already backdrop-filled and clipped by

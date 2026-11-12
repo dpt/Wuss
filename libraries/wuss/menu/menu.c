@@ -84,12 +84,15 @@ void wuss__menu_close_from(struct wuss__menu *node)
    * about to be freed out from under it (the caller unlinks it from
    * wuss->menu->chain first), so delivering the notification here -- rather
    * than via wuss__menu_flash_finish, whose own teardown would race this
-   * one -- is the only chance the pick has of reaching its owner. */
+   * one -- is the only chance the pick has of reaching its owner. An owner
+   * being torn down gets nothing: acting on the pick (opening a dialogue,
+   * creating a task) would build on a teardown already under way. */
   if (node->flash.frames > 0)
   {
     node->flash.frames = 0;
-    (void) wuss__menu_deliver_select(node->flash.owner, node->flash.menu,
-                                     node->flash.index, node->flash.button);
+    if (!(node->flash.owner->flags & wuss_TASK__REAPING))
+      (void) wuss__menu_deliver_select(node->flash.owner, node->flash.menu,
+                                       node->flash.index, node->flash.button);
   }
 
   {
@@ -503,6 +506,23 @@ void wuss_menu_close(wuss_menu_handle_t handle)
 
   root->wuss->menu->chain = NULL;
   wuss__menu_close_from(root);
+}
+
+void wuss_menu_dismiss(wuss_menu_handle_t handle)
+{
+  struct wuss__menu *root;
+
+  if (handle == NULL)
+    return;
+
+  root = handle;
+  while (root->parent != NULL)
+    root = root->parent;
+
+  if (root->wuss->menu->chain != root)
+    return; /* stale handle */
+
+  wuss__menu_abandon(root->wuss);
 }
 
 int wuss_menu_is_open(wuss_menu_handle_t handle)

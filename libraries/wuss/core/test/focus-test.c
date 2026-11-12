@@ -86,7 +86,7 @@ result_t wuss_focus_test(const char *resources)
     /* the flag gates wuss_set_focus */
     if (wuss_set_focus(wuss, win_n) != result_BAD_ARG) goto Failure;
 
-    /* a Menu press never takes focus; a Select press on content does, and
+    /* a MENU press never takes focus; a SELECT press on content does, and
      * GAIN_FOCUS arrives */
     wuss_mouse_click(wuss, POINT(content_f.x0 + 5, content_f.y0 + 5),
                      wuss_BUTTON_MENU, wuss_MOUSE_DOWN, NULL);

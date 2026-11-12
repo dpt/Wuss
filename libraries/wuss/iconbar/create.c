@@ -8,6 +8,7 @@
 #endif
 
 #include "../core/types.h"
+#include "../core/geometry.h"
 #include "../core/alloc.h"
 #include "../core/invalidate.h"
 
@@ -54,7 +55,8 @@ static result_t iconbar_window_ensure(wuss_t *wuss)
    * grows the box by lands exactly on the strip's edges, keeping the bar's
    * visible box flush to the screen's bottom/sides as before. */
   content.x0 = WUSS_ICONBAR_OUTLINE;
-  content.y0 = wuss->scr->size.h - WUSS_ICONBAR_HEIGHT + WUSS_ICONBAR_OUTLINE;
+  content.y0 = wuss->scr->size.h - wuss__iconbar_height(wuss) +
+               WUSS_ICONBAR_OUTLINE;
   content.x1 = wuss->scr->size.w - WUSS_ICONBAR_OUTLINE;
   content.y1 = wuss->scr->size.h - WUSS_ICONBAR_OUTLINE;
 

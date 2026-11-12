@@ -32,8 +32,6 @@
 
 /* ----------------------------------------------------------------------- */
 
-#define CONFIGURING_ROW        22  /* px; System frame's option-icon row pitch */
-
 /* Shown in the Timing frame's writable fields until the user edits and
  * applies; match wuss_config_t's documented "0 means default" values. */
 #define CONFIGURING_DOUBLE_CLICK_MS_DEFAULT     400
@@ -63,14 +61,6 @@
 
 #define CONFIGURING_G_LABEL    1 /* size groups, see stack_item_t::group */
 #define CONFIGURING_G_UNIT     2
-
-/* Timing frame's writable fields are narrower than a swatch row. */
-#define CONFIGURING_FIELD_W    48
-
-/* Font frame's name display, sized so it and its "Choose" button line up
- * with the swatch rows below. */
-#define CONFIGURING_FONT_NAME_W (CONFIGURING_GRID_COLS * CONFIGURING_CELL - \
-                                 CONFIGURING_FIELD_W - 4)
 
 /* Root layout: a "System" frame (the two option icons), a "Font" frame (the
  * system font's name and a "Choose" button opening the font menu), a
@@ -136,7 +126,7 @@ enum
 /* CONFIGURING_ST_SYSTEM is itself the container the two option icons stack
  * inside (a VBOX, not a leaf, so stack_solve descends into it): padded off
  * the frame's caption row on top and off the frame edges on the other three
- * sides, its children laid out at CONFIGURING_ROW pitch. CONFIGURING_ST_BACKDROP is
+ * sides, its children laid out at the font's row pitch. CONFIGURING_ST_BACKDROP is
  * likewise a VBOX -- its fg/bg swatch rows, pattern grid, result square and
  * "Set backdrop" button are each a leaf, hugging the frame's caption row on
  * top and its bottom edge below; none of them carry a retained icon (the
@@ -160,21 +150,20 @@ static const stack_item_t g_configuring_stack[CONFIGURING_ST__LIMIT] =
     .axis_size = STACK_HUG,
     .gap       = 4,
     .align     = stack_ALIGN_FILL,
-    .pad       = wuss_STD_FRAME_INSETS,
   },
 
   [CONFIGURING_ST_SWAP] = STACK_LEAF(CONFIGURING_ST_SYSTEM,
-                                CONFIGURING_ROW,
+                                0,
                                 0,
                                 stack_ALIGN_FILL),
 
   [CONFIGURING_ST_REVERSE_SCROLL] = STACK_LEAF(CONFIGURING_ST_SYSTEM,
-                                          CONFIGURING_ROW,
+                                          0,
                                           0,
                                           stack_ALIGN_FILL),
 
   [CONFIGURING_ST_SOLID_DRAGS] = STACK_LEAF(CONFIGURING_ST_SYSTEM,
-                                            CONFIGURING_ROW,
+                                            0,
                                             0,
                                             stack_ALIGN_FILL),
 
@@ -185,32 +174,30 @@ static const stack_item_t g_configuring_stack[CONFIGURING_ST__LIMIT] =
     .axis_size = STACK_HUG,
     .gap       = 4,
     .align     = stack_ALIGN_FILL,
-    .pad       = wuss_STD_FRAME_INSETS,
   },
 
   [CONFIGURING_ST_FONT_HBOX] =
   {
     .kind      = stack_KIND_HBOX,
     .parent    = CONFIGURING_ST_FONT,
-    .axis_size = CONFIGURING_ROW,
     .gap       = 4,
     .align     = stack_ALIGN_FILL,
   },
 
   [CONFIGURING_ST_FONT_LABEL] = STACK_LEAF_GROUP(CONFIGURING_ST_FONT_HBOX,
                                                  0,
-                                                 CONFIGURING_ROW,
+                                                 0,
                                                  stack_ALIGN_FILL,
                                                  CONFIGURING_G_LABEL),
 
   [CONFIGURING_ST_FONT_NAME] = STACK_LEAF(CONFIGURING_ST_FONT_HBOX,
-                                          CONFIGURING_FONT_NAME_W,
-                                          CONFIGURING_ROW,
+                                          0,
+                                          0,
                                           stack_ALIGN_FILL),
 
   [CONFIGURING_ST_FONT_BUTTON] = STACK_LEAF(CONFIGURING_ST_FONT_HBOX,
-                                            CONFIGURING_FIELD_W,
-                                            CONFIGURING_ROW,
+                                            0,
+                                            0,
                                             stack_ALIGN_FILL),
 
   [CONFIGURING_ST_TIMING] =
@@ -220,32 +207,30 @@ static const stack_item_t g_configuring_stack[CONFIGURING_ST__LIMIT] =
     .axis_size = STACK_HUG,
     .gap       = 4,
     .align     = stack_ALIGN_FILL,
-    .pad       = wuss_STD_FRAME_INSETS,
   },
 
   [CONFIGURING_ST_DBL_MS_HBOX] =
   {
     .kind      = stack_KIND_HBOX,
     .parent    = CONFIGURING_ST_TIMING,
-    .axis_size = CONFIGURING_ROW,
     .gap       = 4,
     .align     = stack_ALIGN_FILL,
   },
 
   [CONFIGURING_ST_DBL_MS_LABEL] = STACK_LEAF_GROUP(CONFIGURING_ST_DBL_MS_HBOX,
                                               0,
-                                              CONFIGURING_ROW,
+                                              0,
                                               stack_ALIGN_FILL,
                                               CONFIGURING_G_LABEL),
 
   [CONFIGURING_ST_DBL_MS_FIELD] = STACK_LEAF(CONFIGURING_ST_DBL_MS_HBOX,
-                                        CONFIGURING_FIELD_W,
-                                        CONFIGURING_ROW,
+                                        0,
+                                        0,
                                         stack_ALIGN_FILL),
 
   [CONFIGURING_ST_DBL_MS_UNIT] = STACK_LEAF_GROUP(CONFIGURING_ST_DBL_MS_HBOX,
                                              0,
-                                             CONFIGURING_ROW,
+                                             0,
                                              stack_ALIGN_FILL,
                                              CONFIGURING_G_UNIT),
 
@@ -253,25 +238,24 @@ static const stack_item_t g_configuring_stack[CONFIGURING_ST__LIMIT] =
   {
     .kind      = stack_KIND_HBOX,
     .parent    = CONFIGURING_ST_TIMING,
-    .axis_size = CONFIGURING_ROW,
     .gap       = 4,
     .align     = stack_ALIGN_FILL,
   },
 
   [CONFIGURING_ST_DBL_PX_LABEL] = STACK_LEAF_GROUP(CONFIGURING_ST_DBL_PX_HBOX,
                                               0,
-                                              CONFIGURING_ROW,
+                                              0,
                                               stack_ALIGN_FILL,
                                               CONFIGURING_G_LABEL),
 
   [CONFIGURING_ST_DBL_PX_FIELD] = STACK_LEAF(CONFIGURING_ST_DBL_PX_HBOX,
-                                        CONFIGURING_FIELD_W,
-                                        CONFIGURING_ROW,
+                                        0,
+                                        0,
                                         stack_ALIGN_FILL),
 
   [CONFIGURING_ST_DBL_PX_UNIT] = STACK_LEAF_GROUP(CONFIGURING_ST_DBL_PX_HBOX,
                                              0,
-                                             CONFIGURING_ROW,
+                                             0,
                                              stack_ALIGN_FILL,
                                              CONFIGURING_G_UNIT),
 
@@ -279,25 +263,24 @@ static const stack_item_t g_configuring_stack[CONFIGURING_ST__LIMIT] =
   {
     .kind      = stack_KIND_HBOX,
     .parent    = CONFIGURING_ST_TIMING,
-    .axis_size = CONFIGURING_ROW,
     .gap       = 4,
     .align     = stack_ALIGN_FILL,
   },
 
   [CONFIGURING_ST_DRAG_PX_LABEL] = STACK_LEAF_GROUP(CONFIGURING_ST_DRAG_PX_HBOX,
                                                0,
-                                               CONFIGURING_ROW,
+                                               0,
                                                stack_ALIGN_FILL,
                                                CONFIGURING_G_LABEL),
 
   [CONFIGURING_ST_DRAG_PX_FIELD] = STACK_LEAF(CONFIGURING_ST_DRAG_PX_HBOX,
-                                         CONFIGURING_FIELD_W,
-                                         CONFIGURING_ROW,
+                                         0,
+                                         0,
                                          stack_ALIGN_FILL),
 
   [CONFIGURING_ST_DRAG_PX_UNIT] = STACK_LEAF_GROUP(CONFIGURING_ST_DRAG_PX_HBOX,
                                               0,
-                                              CONFIGURING_ROW,
+                                              0,
                                               stack_ALIGN_FILL,
                                               CONFIGURING_G_UNIT),
 
@@ -305,20 +288,19 @@ static const stack_item_t g_configuring_stack[CONFIGURING_ST__LIMIT] =
   {
     .kind      = stack_KIND_HBOX,
     .parent    = CONFIGURING_ST_TIMING,
-    .axis_size = wuss_STD_SECONDARY_BUTTON_HEIGHT,
     .gap       = 4,
     .align     = stack_ALIGN_FILL,
   },
 
   [CONFIGURING_ST_TIMING_BUTTON_SPACER] = STACK_LEAF_GROUP(CONFIGURING_ST_TIMING_BUTTON_HBOX,
                                                        0,
-                                                       wuss_STD_SECONDARY_BUTTON_HEIGHT,
+                                                       0,
                                                        stack_ALIGN_FILL,
                                                        CONFIGURING_G_LABEL),
 
   [CONFIGURING_ST_TIMING_BUTTON] = STACK_LEAF(CONFIGURING_ST_TIMING_BUTTON_HBOX,
-                                         CONFIGURING_FIELD_W,
-                                         wuss_STD_SECONDARY_BUTTON_HEIGHT,
+                                         0,
+                                         0,
                                          stack_ALIGN_FILL),
 
   [CONFIGURING_ST_BACKDROP] =
@@ -328,7 +310,6 @@ static const stack_item_t g_configuring_stack[CONFIGURING_ST__LIMIT] =
     .axis_size = STACK_HUG,
     .gap       = wuss_STD_GAP,
     .align     = stack_ALIGN_FILL,
-    .pad       = wuss_STD_FRAME_INSETS,
   },
 
   [CONFIGURING_ST_FG_HBOX] =
@@ -415,20 +396,19 @@ static const stack_item_t g_configuring_stack[CONFIGURING_ST__LIMIT] =
   {
     .kind      = stack_KIND_HBOX,
     .parent    = CONFIGURING_ST_BACKDROP,
-    .axis_size = wuss_STD_SECONDARY_BUTTON_HEIGHT,
     .gap       = 4,
     .align     = stack_ALIGN_FILL,
   },
 
   [CONFIGURING_ST_BUTTON_SPACER] = STACK_LEAF_GROUP(CONFIGURING_ST_BUTTON_HBOX,
                                                0,
-                                               wuss_STD_SECONDARY_BUTTON_HEIGHT,
+                                               0,
                                                stack_ALIGN_FILL,
                                                CONFIGURING_G_LABEL),
 
   [CONFIGURING_ST_BUTTON] = STACK_LEAF(CONFIGURING_ST_BUTTON_HBOX,
                                   CONFIGURING_GRID_COLS * CONFIGURING_CELL,
-                                  wuss_STD_SECONDARY_BUTTON_HEIGHT,
+                                  0,
                                   stack_ALIGN_FILL),
 
   [CONFIGURING_ST_THEME] =
@@ -438,32 +418,30 @@ static const stack_item_t g_configuring_stack[CONFIGURING_ST__LIMIT] =
     .axis_size = STACK_HUG,
     .gap       = 4,
     .align     = stack_ALIGN_FILL,
-    .pad       = wuss_STD_FRAME_INSETS,
   },
 
   [CONFIGURING_ST_THEME_HBOX] =
   {
     .kind      = stack_KIND_HBOX,
     .parent    = CONFIGURING_ST_THEME,
-    .axis_size = CONFIGURING_ROW,
     .gap       = 4,
     .align     = stack_ALIGN_FILL,
   },
 
   [CONFIGURING_ST_THEME_LABEL] = STACK_LEAF_GROUP(CONFIGURING_ST_THEME_HBOX,
                                                   0,
-                                                  CONFIGURING_ROW,
+                                                  0,
                                                   stack_ALIGN_FILL,
                                                   CONFIGURING_G_LABEL),
 
   [CONFIGURING_ST_THEME_NAME] = STACK_LEAF(CONFIGURING_ST_THEME_HBOX,
-                                           CONFIGURING_FONT_NAME_W,
-                                           CONFIGURING_ROW,
+                                           0,
+                                           0,
                                            stack_ALIGN_FILL),
 
   [CONFIGURING_ST_THEME_BUTTON] = STACK_LEAF(CONFIGURING_ST_THEME_HBOX,
-                                             CONFIGURING_FIELD_W,
-                                             CONFIGURING_ROW,
+                                             0,
+                                             0,
                                              stack_ALIGN_FILL),
 };
 
@@ -595,11 +573,64 @@ static void configuring_grid_cell(int i, int *col, int *row)
 
 /* ----------------------------------------------------------------------- */
 
-/* g_configuring_stack with each label at its natural width; the size group
- * widens the rest to match */
+/* g_configuring_stack sized for the current font: frame insets, row and
+ * button heights, and each label at its natural width (the size group
+ * widens the rest to match) */
 static void configuring_label_widths(const wuss_t *wuss, stack_item_t *items)
 {
+  inset_t       insets;
+  int           row_h;
+  int           button_h;
+  int           i;
+  stack_item_t *it;
+  int           field_w;
+  int           choose_w;
+  int           name_w;
+  const char   *font_name;
+
   memcpy(items, g_configuring_stack, sizeof(g_configuring_stack));
+
+  /* rows fit a field or an option glyph, whichever is taller; a zero size
+   * in the table is a row's height */
+  insets   = wuss_std_frame_insets(wuss);
+  row_h    = MAX(wuss_std_height(wuss, wuss_STD_FIELD), wuss_STD_GLYPH_SIZE);
+  button_h = wuss_std_height(wuss, wuss_STD_SECONDARY_BUTTON);
+  for (i = CONFIGURING_ST_ROOT + 1; i < CONFIGURING_ST__LIMIT; i++)
+  {
+    it = &items[i];
+    if (it->parent == CONFIGURING_ST_ROOT)
+      it->pad = insets;
+    else if (it->kind == stack_KIND_HBOX ||
+             items[it->parent].kind == stack_KIND_VBOX)
+      it->axis_size = (it->axis_size == 0) ? row_h : it->axis_size;
+    else if (it->cross_size == 0)
+      it->cross_size = row_h;
+  }
+  items[CONFIGURING_ST_TIMING_BUTTON_HBOX].axis_size    = button_h;
+  items[CONFIGURING_ST_TIMING_BUTTON_SPACER].cross_size = button_h;
+  items[CONFIGURING_ST_TIMING_BUTTON].cross_size        = button_h;
+  items[CONFIGURING_ST_BUTTON_HBOX].axis_size           = button_h;
+  items[CONFIGURING_ST_BUTTON_SPACER].cross_size        = button_h;
+  items[CONFIGURING_ST_BUTTON].cross_size               = button_h;
+
+  /* fields fit "65535"; a name display lines up with the swatch rows
+   * unless its name needs more */
+  field_w  = task_field_width(wuss, "99999");
+  choose_w = task_button_width(wuss, "Choose", wuss_STD_SECONDARY_BUTTON_BORDER);
+  name_w   = CONFIGURING_GRID_COLS * CONFIGURING_CELL - choose_w - 4;
+  font_name = wuss_get_font_name_n(wuss, 0);
+  items[CONFIGURING_ST_DBL_MS_FIELD].axis_size  = field_w;
+  items[CONFIGURING_ST_DBL_PX_FIELD].axis_size  = field_w;
+  items[CONFIGURING_ST_DRAG_PX_FIELD].axis_size = field_w;
+  items[CONFIGURING_ST_TIMING_BUTTON].axis_size =
+    task_button_width(wuss, "Apply", wuss_STD_SECONDARY_BUTTON_BORDER);
+  items[CONFIGURING_ST_FONT_BUTTON].axis_size   = choose_w;
+  items[CONFIGURING_ST_THEME_BUTTON].axis_size  = choose_w;
+  items[CONFIGURING_ST_FONT_NAME].axis_size =
+    MAX(name_w, task_field_width(wuss, font_name ? font_name : ""));
+  items[CONFIGURING_ST_THEME_NAME].axis_size =
+    MAX(name_w, task_field_width(wuss, theme_current()));
+
   items[CONFIGURING_ST_SWAP].cross_size = wuss_STD_GLYPH_SIZE + wuss_STD_GAP +
     task_text_width(wuss, "Swap right/middle mouse buttons");
   items[CONFIGURING_ST_REVERSE_SCROLL].cross_size = wuss_STD_GLYPH_SIZE +
@@ -838,25 +869,97 @@ static void configuring_section_bind(configuring_task_t *task,
 #undef CONFIGURING_BIND
 }
 
+/* Every open section's icons, indexed by CONFIGURING_ICON_*: moved on
+ * wuss_EVENT_RELAYOUT. The task is a singleton and sections' runs of icons
+ * are disjoint, so one array serves. */
+static wuss_icon_t *g_configuring_icons[CONFIGURING_NICONS];
+
+/* Solve section's layout for the current font: its size in *doc and the
+ * specs of its icons (indexed by CONFIGURING_ICON_*) */
+static result_t configuring_section_solve(configuring_task_t *task,
+                                          int                 section,
+                                          size2d_t           *doc,
+                                          wuss_icon_spec_t   *specs)
+{
+  result_t     rc;
+  stack_item_t all[CONFIGURING_ST__LIMIT];
+  stack_item_t items[CONFIGURING_ST__LIMIT];
+  int          map[CONFIGURING_ST__LIMIT];
+  int          n;
+  box_t        root;
+  box_t        solved[CONFIGURING_ST__LIMIT];
+  box_t        boxes[CONFIGURING_ST__LIMIT];
+  int          i;
+
+  configuring_label_widths(task->base.wuss, all);
+  n = configuring_section_items(all, section, items, map);
+
+  rc = stack_smallest(items, n, doc);
+  if (rc != result_OK)
+    return rc;
+
+  root = (box_t) BOX_POS_SIZE(0, 0, doc->w, doc->h);
+  rc = stack_solve(items, n, &root, solved);
+  if (rc != result_OK)
+    return rc;
+
+  memset(boxes, 0, sizeof(boxes));
+  for (i = 0; i < n; i++)
+    boxes[map[i]] = solved[i];
+
+  memset(specs, 0, CONFIGURING_NICONS * sizeof(*specs));
+  configuring_section_specs(task, section, boxes, specs);
+
+  return result_OK;
+}
+
+/* Re-solve the section shown in window for a new font and move its icons */
+static result_t configuring_section_relayout(configuring_task_t *task,
+                                             wuss_window_t      *window)
+{
+  result_t                     rc;
+  int                          section;
+  const configuring_section_t *sec;
+  size2d_t                     doc;
+  wuss_icon_spec_t             specs[CONFIGURING_NICONS];
+  int                          i;
+
+  for (section = 0; section < CONFIGURING_SECTION__LIMIT; section++)
+    if (window == task->windows[section])
+      break;
+  if (section == CONFIGURING_SECTION__LIMIT)
+    return result_OK;
+
+  sec = &g_configuring_sections[section];
+
+  rc = configuring_section_solve(task, section, &doc, specs);
+  if (rc != result_OK)
+    return rc;
+
+  rc = task_fit_window(window, doc);
+  if (rc != result_OK)
+    return rc;
+
+  for (i = sec->first_icon; i < sec->last_icon; i++)
+    wuss_icon_set_bbox(window, g_configuring_icons[i], &specs[i].bbox);
+
+  /* the swatches have no icons but may have moved */
+  wuss_window_invalidate_extent(window);
+
+  return result_OK;
+}
+
 /* Open section's window, or bring it to the front if open */
 static result_t configuring_section_open(configuring_task_t *task,
                                          int                 section)
 {
   result_t                     rc;
   const configuring_section_t *sec;
-  stack_item_t                 all[CONFIGURING_ST__LIMIT];
-  stack_item_t                 items[CONFIGURING_ST__LIMIT];
-  int                          map[CONFIGURING_ST__LIMIT];
-  int                          n;
   size2d_t                     doc;
+  wuss_icon_spec_t             specs[CONFIGURING_NICONS];
   wuss_place_t                 place;
   wuss_window_t               *window;
-  box_t                        root;
-  box_t                        solved[CONFIGURING_ST__LIMIT];
-  box_t                        boxes[CONFIGURING_ST__LIMIT];
-  int                          i;
-  wuss_icon_spec_t             specs[CONFIGURING_NICONS];
-  wuss_icon_t                 *icons[CONFIGURING_NICONS];
+  wuss_icon_t                **icons;
 
   if (task->windows[section] != NULL)
   {
@@ -866,10 +969,7 @@ static result_t configuring_section_open(configuring_task_t *task,
 
   sec = &g_configuring_sections[section];
 
-  configuring_label_widths(task->base.wuss, all);
-  n = configuring_section_items(all, section, items, map);
-
-  rc = stack_smallest(items, n, &doc);
+  rc = configuring_section_solve(task, section, &doc, specs);
   if (rc != result_OK)
     return rc;
 
@@ -886,19 +986,7 @@ static result_t configuring_section_open(configuring_task_t *task,
   if (rc != result_OK)
     return rc;
 
-  root = (box_t) BOX_POS_SIZE(0, 0, doc.w, doc.h);
-  rc = stack_solve(items, n, &root, solved);
-  if (rc != result_OK)
-    goto failure;
-
-  memset(boxes, 0, sizeof(boxes));
-  for (i = 0; i < n; i++)
-    boxes[map[i]] = solved[i];
-
-  memset(specs, 0, sizeof(specs));
-  memset(icons, 0, sizeof(icons));
-  configuring_section_specs(task, section, boxes, specs);
-
+  icons = g_configuring_icons;
   rc = wuss_icon_create_array(window, &specs[sec->first_icon],
                               sec->last_icon - sec->first_icon,
                               &icons[sec->first_icon]);
@@ -1510,6 +1598,9 @@ static result_t configuring_handle(wuss_window_t      *window,
 
   case wuss_EVENT_KEY:
     return result_WUSS_KEY_UNCLAIMED;
+
+  case wuss_EVENT_RELAYOUT:
+    return configuring_section_relayout(cc, window);
 
   default:
     return result_OK;

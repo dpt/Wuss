@@ -69,8 +69,8 @@ typedef enum minesweeping_cell_state
 }
 minesweeping_cell_state_t;
 
-/* classic minesweeper: Select reveals a cell (flood-filling neighbouring
- * zeros), Adjust toggles a flag. Select on a revealed number whose flags
+/* classic minesweeper: SELECT reveals a cell (flood-filling neighbouring
+ * zeros), ADJUST toggles a flag. SELECT on a revealed number whose flags
  * match it reveals the rest of its neighbours ("chording"). Mines are
  * placed on the first reveal so the opening click is never a mine. A win
  * that beats the session's fastest time at that size and difficulty says
@@ -719,7 +719,7 @@ static result_t minesweeping_redraw(const wuss_event_t *event,
   return result_OK;
 }
 
-/* Select reveals cell (r,c), Adjust toggles its flag; either restarts a
+/* SELECT reveals cell (r,c), ADJUST toggles its flag; either restarts a
  * finished game wherever it lands. (r,c) may be off the board. */
 static result_t minesweeping_act(minesweeping_task_t *ms,
                                  int                  r,
@@ -828,8 +828,8 @@ static void minesweeping_invalidate_cursor(minesweeping_task_t *ms)
   wuss_window_invalidate(ms->base.window, &local);
 }
 
-/* arrows move the cursor (clamped at the edges), Return acts as Select and
- * Space as Adjust on the cursor cell; everything else is passed back
+/* arrows move the cursor (clamped at the edges), Return acts as SELECT and
+ * Space as ADJUST on the cursor cell; everything else is passed back
  * unclaimed */
 static result_t minesweeping_key(minesweeping_task_t *ms, int code)
 {
@@ -863,19 +863,12 @@ static result_t minesweeping_key(minesweeping_task_t *ms, int code)
 }
 
 /* Give up only makes sense while a game is in progress. Also shades the
- * open menu, if any, so an Adjust pick shows it at once. */
+ * open menu, if any, so an ADJUST pick shows it at once. */
 static void minesweeping_menu_update(minesweeping_task_t *ms)
 {
-  wuss_menu_item_t *give_up;
-  bool              disabled;
+  bool disabled;
 
-  give_up  = &ms->menu_items[MINESWEEPING_MENU_GIVE_UP];
   disabled = !(ms->placed && !ms->dead && !ms->won);
-  if (disabled)
-    give_up->flags |= wuss_MENU_ITEM_DISABLED;
-  else
-    give_up->flags &= ~wuss_MENU_ITEM_DISABLED;
-
   wuss_menu_disable_item_live(ms->base.menu_handle, &ms->base.menu,
                               MINESWEEPING_MENU_GIVE_UP, disabled);
 }

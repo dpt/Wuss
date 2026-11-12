@@ -223,6 +223,10 @@ result_t wuss_window_resize(wuss_window_t *window, size2d_t size)
   if (rc != result_OK)
     return rc;
 
+  /* a pane asked to resize takes that as its own thickness */
+  if (wuss__window_is_pane(window))
+    window->toolbar.thick = wuss__pane_thickness(window, window->toolbar.edge);
+
   /* a resized toolbar shifts its siblings; a resized parent its toolbars */
   wuss__toolbars_layout(wuss__toolbar_root(window), NULL);
 

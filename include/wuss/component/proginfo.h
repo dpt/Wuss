@@ -6,7 +6,7 @@
  * A shared wuss component: the RISC OS "Info" / Toolbox ProgInfo dialogue in
  * miniature -- a small window of Name / Purpose / Author / Version rows,
  * built once and reusable by every task that wants an "Info" row on its
- * Menu-button pop-up, rather than each task carrying its own copy.
+ * MENU-button pop-up, rather than each task carrying its own copy.
  *
  * One process-wide singleton -- no per-task instances, no create/destroy --
  * composing a wuss_info_t (the label:value grid and its window) with a

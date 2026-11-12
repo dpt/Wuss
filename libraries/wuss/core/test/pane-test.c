@@ -275,7 +275,17 @@ result_t wuss_pane_test(const char *resources)
     wuss_window_get_content_bounds(parent, &box);
     wuss__min_content(parent, &min);
     if (width(&box) != min.w) goto Failure;
+
+    /* ...and regains its thickness as the parent grows */
+    wuss_window_get_visible_bounds(left, &vl);
+    rc = wuss_window_resize(parent, SIZE2D(min.w + 40, height(&box)));
+    if (rc != result_OK) goto Failure;
+    wuss_window_get_visible_bounds(left, &box);
+    if (width(&box) != width(&vl) + 40) goto Failure;
+
     rc = wuss_window_resize(left, SIZE2D(16, 3));
+    if (rc != result_OK) goto Failure;
+    rc = wuss_window_resize(parent, SIZE2D(width(&pc), height(&pc)));
     if (rc != result_OK) goto Failure;
     wuss_window_get_content_bounds(parent, &box);
     if (!box_equal(&box, &pc)) goto Failure;

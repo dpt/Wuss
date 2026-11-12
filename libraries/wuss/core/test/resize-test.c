@@ -545,7 +545,7 @@ result_t wuss_resize_test(const char *resources)
       /* clamp above the icon bar's fixed bottom strip too: it always draws
        * on top of every window, same reasoning as the occluder skip in the
        * next test below */
-      content_e.y1 = MIN(content_e.y1, 200 - WUSS_ICONBAR_HEIGHT);
+      content_e.y1 = MIN(content_e.y1, 200 - wuss__iconbar_height(wuss));
 #endif
       bad = 0;
       for (sy = content_e.y0; sy < content_e.y1 && !bad; sy++)
@@ -666,7 +666,7 @@ result_t wuss_resize_test(const char *resources)
 #ifdef WUSS_ICONBAR
       /* clamp above the icon bar's fixed bottom strip too: it always draws
        * on top of every window, same reasoning as the occluder skip below */
-      content_f.y1 = MIN(content_f.y1, 200 - WUSS_ICONBAR_HEIGHT);
+      content_f.y1 = MIN(content_f.y1, 200 - wuss__iconbar_height(wuss));
 #endif
       bad = 0;
       for (sy = content_f.y0; sy < content_f.y1 && !bad; sy++)

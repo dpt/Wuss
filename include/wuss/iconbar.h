@@ -4,11 +4,12 @@
  * \file iconbar.h
  *
  * A RISC OS-style icon bar: a strip pinned to the bottom edge of the screen,
- * full width, always drawn on top of every window and never hit-tested as
- * part of the ordinary window stack. Any task can add an icon to it; a click
- * or drag is delivered to that icon's owning task as a task-view
- * wuss_EVENT_ICON (window == NULL, data.iconbar_icon), the same event kind a
- * work-area wuss_ICON_TYPE_ACTION icon raises in the window view.
+ * full width, behind regular windows. Holding the pointer at the bottom of
+ * the screen pops a covered bar to front until the pointer leaves it. Any
+ * task can add an icon to it; a click or drag is delivered to that icon's
+ * owning task as a task-view wuss_EVENT_ICON (window == NULL,
+ * data.iconbar_icon), the same event kind a work-area wuss_ICON_TYPE_ACTION
+ * icon raises in the window view.
  *
  * The bar itself always exists once the library is built with the
  * WUSS_ICONBAR option on -- there is no create/destroy call for the bar,

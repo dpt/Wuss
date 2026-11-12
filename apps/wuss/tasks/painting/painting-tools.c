@@ -14,6 +14,7 @@
 #include "utils/rng.h"
 
 #include "painting.h"
+#include "painting-bars.h"
 #include "painting-tools.h"
 
 /* the spray's radius in pixels per unit of the size slider */
@@ -59,9 +60,42 @@ int painting_collects_points(const painting_task_t *pt)
   return pt->tool == painting_TOOL_LASSO || painting_is_path(pt);
 }
 
+/* the circle diameters that screen_fill_ellipse draws looking like hexagons */
+static const unsigned char painting_bad_circles[] = { 9, 10, 11, 13, 14 };
+
+/* whether diameter d is wanted: not a bad one, and odd if odd is set */
+static int painting_good_circle(int d, int odd)
+{
+  size_t i;
+
+  if (d < 1 || (odd && (d & 1) == 0))
+    return 0;
+  for (i = 0; i < NELEMS(painting_bad_circles); i++)
+    if (d == painting_bad_circles[i])
+      return 0;
+
+  return 1;
+}
+
+/* the good circle diameter nearest to d, the smaller on a tie; odd ones only
+ * if odd is set */
+static int painting_nice_circle(int d, int odd)
+{
+  int k;
+
+  for (k = 0; ; k++)
+  {
+    if (painting_good_circle(d - k, odd))
+      return d - k;
+    if (painting_good_circle(d + k, odd))
+      return d + k;
+  }
+}
+
 /* the rubber band's ends, a and b, given the keys held: for a shape or
  * gradient Ctrl makes the anchor the centre rather than an end, and Shift
- * squares a shape or turns a gradient to the nearest 22.5 degrees */
+ * squares a shape or turns a gradient to the nearest 22.5 degrees. With the
+ * snap option, a Shift-squared ellipse takes the nearest nice diameter */
 void painting_band_ends(const painting_task_t *pt,
                                point_t               *a,
                                point_t               *b)
@@ -91,6 +125,15 @@ void painting_band_ends(const painting_task_t *pt,
     else
     {
       s  = MAX(abs(dx), abs(dy));
+      if (pt->snap && (pt->tool == painting_TOOL_ELLIPSE ||
+                       pt->tool == painting_TOOL_ELLIPSE_FILL))
+      {
+        /* the diameter is s + 1 from a corner, 2s + 1 from the centre */
+        if (pt->mods & wuss_KEY_MOD_CTRL)
+          s = (painting_nice_circle(2 * s + 1, 1) - 1) / 2;
+        else
+          s = painting_nice_circle(s + 1, 0) - 1;
+      }
       dx = dx < 0 ? -s : s;
       dy = dy < 0 ? -s : s;
     }
@@ -175,14 +218,30 @@ box_t painting_span_box(point_t a, point_t b)
 /* redraw a box of the canvas, which sits at pt->page on the stage */
 void painting_invalidate_box(painting_task_t *pt, const box_t *box)
 {
-  box_t b;
+  const bitmap_t *bm;
+  int             t, dx, dy;
+  box_t           b;
 
   if (box_is_empty(box))
     return;
 
-  b = (box_t) { box->x0 + pt->page.x, box->y0 + pt->page.y,
-                box->x1 + pt->page.x, box->y1 + pt->page.y };
-  wuss_window_invalidate(pt->base.window, &b);
+  /* tiled, each of the nine copies of the canvas shown */
+  bm = paintingdoc_bitmap(pt->doc);
+  for (t = 0; t < 9; t++)
+  {
+    if (t != 4 && !(pt->symmetry & (1u << PAINTING_SYM_TILED)))
+      continue;
+
+    dx = (t % 3 - 1) * bm->size.w;
+    dy = (t / 3 - 1) * bm->size.h;
+    b  = (box_t) { (box->x0 + dx) * pt->zoom + pt->page.x,
+                   (box->y0 + dy) * pt->zoom + pt->page.y,
+                   (box->x1 + dx) * pt->zoom + pt->page.x,
+                   (box->y1 + dy) * pt->zoom + pt->page.y };
+    wuss_window_invalidate(pt->base.window, &b);
+  }
+
+  painting_layer_thumb_changed(pt);
 }
 
 /* the colour a stroke in progress paints: the eraser always wipes to
@@ -197,22 +256,129 @@ colour_t painting_stroke_colour(const painting_task_t *pt)
   return pt->fg;
 }
 
-/* paint the segment a to b of a freehand stroke, returning the dirty box */
-box_t painting_stroke_segment(painting_task_t *pt,
-                                     point_t          a,
-                                     point_t          b)
+/* ----------------------------------------------------------------------- */
+
+/* draw copy k of an op whose points, mapped for that copy, are a and b */
+typedef box_t (painting_copy_fn_t)(painting_task_t *pt,
+                                   int              k,
+                                   point_t          a,
+                                   point_t          b);
+
+/* map p to copy k of an op, or return false if the symmetry has that copy
+ * off. k's low two bits mirror p across and down the canvas, and k / 4
+ * shifts it a canvas over either way, 4 being no shift */
+static int painting_copy(const painting_task_t *pt, int k, point_t *p)
+{
+  const bitmap_t *bm;
+  unsigned int    m;
+  int             t;
+
+  bm = paintingdoc_bitmap(pt->doc);
+  m  = (unsigned int) k & 3;
+  t  = k >> 2;
+
+  if ((m & ~pt->symmetry) != 0 ||
+      (t != 4 && !(pt->symmetry & (1u << PAINTING_SYM_TILED))))
+    return 0;
+
+  if (m & (1u << PAINTING_SYM_HORIZONTAL))
+    p->x = bm->size.w - 1 - p->x;
+  if (m & (1u << PAINTING_SYM_VERTICAL))
+    p->y = bm->size.h - 1 - p->y;
+  p->x += (t % 3 - 1) * bm->size.w;
+  p->y += (t / 3 - 1) * bm->size.h;
+
+  return 1;
+}
+
+/* draw every copy of an op from a to b that the symmetry has on, as one undo
+ * step, each from the same stroke state, returning the box they dirtied */
+static box_t painting_copies(painting_task_t    *pt,
+                             painting_copy_fn_t *op,
+                             point_t             a,
+                             point_t             b)
+{
+  paintingdoc_wobble_t wobble;
+  paintingdoc_pot_t    pot;
+  rng_t                rng;
+  box_t                dirty = BOX_INIT;
+  int                  k;
+  point_t              ka, kb;
+  box_t                box;
+
+  wobble = pt->wobble;
+  pot    = pt->pot;
+  rng    = pt->rng;
+
+  paintingdoc_hold(pt->doc, 1);
+  for (k = 0; k < PAINTING_COPIES; k++)
+  {
+    ka = a;
+    kb = b;
+    if (!painting_copy(pt, k, &ka) || !painting_copy(pt, k, &kb))
+      continue;
+
+    pt->wobble = wobble;
+    pt->pot    = pot;
+    pt->rng    = rng;
+    box        = op(pt, k, ka, kb);
+    box_union(&dirty, &box, &dirty);
+  }
+  paintingdoc_hold(pt->doc, 0);
+
+  return dirty;
+}
+
+/* painting_copy_fn_t: a freehand segment */
+static box_t painting_segment_copy(painting_task_t *pt,
+                                   int              k,
+                                   point_t          a,
+                                   point_t          b)
 {
   if (pt->tool == painting_TOOL_PAINTBRUSH)
     return paintingdoc_brush(pt->doc, a, b, pt->nozzle, pt->size,
-                             painting_stroke_colour(pt));
+                             painting_stroke_colour(pt), &pt->pot);
   if (pt->tool == painting_TOOL_WOBBLE)
     return paintingdoc_wobble(pt->doc, a, b, pt->size, pt->edge, pt->wander,
                               painting_stroke_colour(pt), &pt->wobble);
-  if (pt->tool == painting_TOOL_PENCIL)
+  /* pixel-perfect only means anything one pixel wide. wider, the pencil
+   * stamps the nozzle with paint that never runs out */
+  if (pt->tool == painting_TOOL_PENCIL && pt->size > 1)
+    return paintingdoc_brush(pt->doc, a, b, pt->nozzle, pt->size,
+                             painting_stroke_colour(pt), NULL);
+  if (pt->tool == painting_TOOL_PENCIL && !pt->perfect)
     return paintingdoc_stroke(pt->doc, a, b, 1, painting_stroke_colour(pt));
+  if (pt->tool == painting_TOOL_PENCIL)
+    return paintingdoc_pencil(pt->doc, a, b, painting_stroke_colour(pt),
+                              &pt->trail[k]);
 
   return paintingdoc_stroke(pt->doc, a, b, pt->size,
                             painting_stroke_colour(pt));
+}
+
+/* paint the segment a to b of a freehand stroke, returning the dirty box */
+box_t painting_stroke_segment(painting_task_t *pt, point_t a, point_t b)
+{
+  box_t dirty;
+
+  dirty = painting_copies(pt, painting_segment_copy, a, b);
+  if (pt->tool == painting_TOOL_PAINTBRUSH)
+    painting_pot_gauge(pt);
+
+  return dirty;
+}
+
+/* painting_copy_fn_t: a spray at a */
+static box_t painting_spray_copy(painting_task_t *pt,
+                                 int              k,
+                                 point_t          a,
+                                 point_t          b)
+{
+  NOT_USED(k);
+  NOT_USED(b);
+
+  return paintingdoc_spray(pt->doc, a, pt->size * PAINTING_SPRAY_SCALE,
+                           pt->density, painting_stroke_colour(pt), &pt->rng);
 }
 
 /* spray at p on rate percent of the calls, made per move and idle while the
@@ -225,8 +391,62 @@ box_t painting_spray(painting_task_t *pt, point_t p)
 
   pt->spray_tick -= 100;
 
-  return paintingdoc_spray(pt->doc, p, pt->size * PAINTING_SPRAY_SCALE,
-                           pt->density, painting_stroke_colour(pt), &pt->rng);
+  return painting_copies(pt, painting_spray_copy, p, p);
+}
+
+/* painting_copy_fn_t: a flood fill at a */
+static box_t painting_fill_copy(painting_task_t *pt,
+                                int              k,
+                                point_t          a,
+                                point_t          b)
+{
+  NOT_USED(k);
+  NOT_USED(b);
+
+  return paintingdoc_fill(pt->doc, a, painting_stroke_colour(pt));
+}
+
+/* ponytail: tiled, a fill stops at the canvas's edge rather than flowing on
+ * round to the far side; flood the tiled canvas if seams show */
+box_t painting_fill(painting_task_t *pt, point_t p)
+{
+  return painting_copies(pt, painting_fill_copy, p, p);
+}
+
+/* painting_copy_fn_t: the path through the lasso's points, a and b unused */
+static box_t painting_path_copy(painting_task_t *pt,
+                                int              k,
+                                point_t          a,
+                                point_t          b)
+{
+  point_t *points;
+  int      i;
+  box_t    dirty;
+
+  NOT_USED(a);
+  NOT_USED(b);
+
+  points = malloc(sizeof(*points) * (size_t) pt->nlasso);
+  if (points == NULL)
+    return (box_t) BOX_INIT;
+
+  for (i = 0; i < pt->nlasso; i++)
+  {
+    points[i] = pt->lasso[i];
+    (void) painting_copy(pt, k, &points[i]);
+  }
+
+  dirty = paintingdoc_path(pt->doc, points, pt->nlasso, pt->size,
+                           pt->tool == painting_TOOL_PATH_FILL,
+                           painting_stroke_colour(pt));
+  free(points);
+
+  return dirty;
+}
+
+box_t painting_path_commit(painting_task_t *pt)
+{
+  return painting_copies(pt, painting_path_copy, pt->lasso[0], pt->lasso[0]);
 }
 
 /* the canvas box the rubber band at its current size may cover */
@@ -320,8 +540,10 @@ void painting_select_commit(painting_task_t *pt, point_t p)
   painting_invalidate_box(pt, &drag);
 }
 
-/* the marching ants: a one pixel outline of black and white dashes round the
- * selection, drawn over the canvas and shifted along by ants_phase */
+/* the marching ants: a one canvas pixel outline of black and white dashes
+ * round the selection, drawn over the canvas and shifted along by ants_phase.
+ * Zoomed, each outline pixel is a block, the dashes phased in canvas
+ * pixels */
 void painting_draw_ants(const painting_task_t *pt,
                         screen_t              *scr,
                         int                    ox,
@@ -329,7 +551,12 @@ void painting_draw_ants(const painting_task_t *pt,
 {
   const box_t   *spans;
   pixelfmt_any_t black, white;
-  int            n, lo, hi, mid, i, y, x1, x;
+  int            z;
+  int            n, lo, hi, mid, i;
+  int            wy, y0, y1;
+  int            cx, wx, x0, x1;
+  pixelfmt_any_t ant;
+  int            x, y;
 
   spans = paintingdoc_selection_outline(pt->doc, &n);
 
@@ -338,13 +565,15 @@ void painting_draw_ants(const painting_task_t *pt,
   black = screen_colour_to_pixel(scr, colour_rgb(0x00, 0x00, 0x00));
   white = screen_colour_to_pixel(scr, colour_rgb(0xFF, 0xFF, 0xFF));
 
+  z = pt->zoom;
+
   /* the spans run down the rows, so skip straight to the first in the clip */
   lo = 0;
   hi = n;
   while (lo < hi)
   {
     mid = (lo + hi) / 2;
-    if (oy + spans[mid].y0 < scr->clip.y0)
+    if (oy + (spans[mid].y0 + 1) * z <= scr->clip.y0)
       lo = mid + 1;
     else
       hi = mid;
@@ -352,15 +581,28 @@ void painting_draw_ants(const painting_task_t *pt,
 
   for (i = lo; i < n; i++)
   {
-    y = oy + spans[i].y0;
-    if (y >= scr->clip.y1)
+    wy = oy + spans[i].y0 * z;
+    if (wy >= scr->clip.y1)
       break;
 
-    x1 = MIN(ox + spans[i].x1, scr->clip.x1);
-    for (x = MAX(ox + spans[i].x0, scr->clip.x0); x < x1; x++)
-      screen_set_pixel_value(scr, x, y,
-                             ((x - ox + y - oy - pt->ants_phase) & 7) < 4 ?
-                             black : white);
+    y0 = MAX(wy, scr->clip.y0);
+    y1 = MIN(wy + z, scr->clip.y1);
+
+    /* ponytail: steps every canvas pixel of the span, clipped or not;
+     * start from the clip's edge if wide zoomed selections crawl */
+    for (cx = spans[i].x0; cx < spans[i].x1; cx++)
+    {
+      wx = ox + cx * z;
+      x0 = MAX(wx, scr->clip.x0);
+      x1 = MIN(wx + z, scr->clip.x1);
+      if (x0 >= x1)
+        continue;
+
+      ant = ((cx + spans[i].y0 - pt->ants_phase) & 7) < 4 ? black : white;
+      for (y = y0; y < y1; y++)
+        for (x = x0; x < x1; x++)
+          screen_set_pixel_value(scr, x, y, ant);
+    }
   }
 }
 
@@ -442,20 +684,17 @@ void painting_invalidate_ants(painting_task_t *pt)
     painting_invalidate_box(pt, &boxes[j]);
 }
 
-/* draw the finished rubber band into the canvas */
-box_t painting_band_commit(painting_task_t *pt)
+/* painting_copy_fn_t: a rect, ellipse or line from a to b */
+static box_t painting_band_copy(painting_task_t *pt,
+                                int              k,
+                                point_t          a,
+                                point_t          b)
 {
   colour_t colour;
-  point_t  a, b;
+
+  NOT_USED(k);
 
   colour = painting_stroke_colour(pt);
-  painting_band_ends(pt, &a, &b);
-
-  /* Select runs from fg to bg, Adjust the other way */
-  if (pt->tool == painting_TOOL_GRADIENT)
-    return pt->held == wuss_BUTTON_ADJUST ?
-           paintingdoc_gradient(pt->doc, a, b, pt->bg, pt->fg) :
-           paintingdoc_gradient(pt->doc, a, b, pt->fg, pt->bg);
 
   if (pt->tool == painting_TOOL_RECT || pt->tool == painting_TOOL_RECT_FILL)
     return paintingdoc_rect(pt->doc, a, b, pt->size,
@@ -466,14 +705,32 @@ box_t painting_band_commit(painting_task_t *pt)
     return paintingdoc_ellipse(pt->doc, a, b, pt->size,
                                pt->tool == painting_TOOL_ELLIPSE_FILL, colour);
 
-  if (paintingdoc_checkpoint(pt->doc) != result_OK)
-    return (box_t) BOX_INIT; /* no undo step, so no line */
-
   return paintingdoc_stroke(pt->doc, a, b, pt->size, colour);
 }
 
-/* place the lifted selection under p: a Select drag moves it, leaving bg
- * behind, and an Adjust drag copies it */
+/* draw the finished rubber band into the canvas */
+box_t painting_band_commit(painting_task_t *pt)
+{
+  point_t a, b;
+
+  painting_band_ends(pt, &a, &b);
+
+  /* SELECT runs from fg to bg, ADJUST the other way. it fills the whole
+   * selection, so has no copies */
+  if (pt->tool == painting_TOOL_GRADIENT)
+    return pt->held == wuss_BUTTON_ADJUST ?
+           paintingdoc_gradient(pt->doc, a, b, pt->bg, pt->fg) :
+           paintingdoc_gradient(pt->doc, a, b, pt->fg, pt->bg);
+
+  if (pt->tool == painting_TOOL_LINE &&
+      paintingdoc_checkpoint(pt->doc) != result_OK)
+    return (box_t) BOX_INIT; /* no undo step, so no line */
+
+  return painting_copies(pt, painting_band_copy, a, b);
+}
+
+/* place the lifted selection under p: a SELECT drag moves it, leaving bg
+ * behind, and an ADJUST drag copies it */
 box_t painting_place(painting_task_t *pt, point_t p)
 {
   return paintingdoc_place(pt->doc, p.x - pt->anchor.x, p.y - pt->anchor.y,

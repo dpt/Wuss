@@ -578,7 +578,7 @@ wuss_edge_t;
  * without any events of their own. wuss_window_move does nothing to a
  * toolbar; wuss_window_resize works and re-lays out the group.
  *
- * A Select or Adjust press on a toolbar that is not wuss_WINDOW_FOCUSABLE
+ * A SELECT or ADJUST press on a toolbar that is not wuss_WINDOW_FOCUSABLE
  * gives the input focus to its parent instead. The parent's titlebar is
  * drawn in the focus tint while the parent or any of its toolbars has the
  * focus.

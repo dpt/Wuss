@@ -27,13 +27,7 @@
 #define PAINTING_VIEW_H   300
 
 #define PAINTING_ANTS_IDLES 6 /* idles between steps of the marching ants */
-
-/* point the option bar swatches at the desktop palette, which wuss owns and
- * wuss_set_palette may move */
-static void painting_swatches_track(painting_task_t *pt)
-{
-  pt->swatches.colours = wuss_get_palette(pt->base.wuss, &pt->swatches.ncolours);
-}
+#define PAINTING_GRID_ZOOM  6 /* least zoom showing the pixel grid */
 
 /* lay out the stage around the canvas, at its smallest, into boxes, noting
  * where the canvas lands. The stage lays out with y up, so flip it. Returns
@@ -43,12 +37,18 @@ static size2d_t painting_stage(painting_task_t *pt,
                                size_t          *nboxes)
 {
   const bitmap_t *bm;
+  int             n, w, h;
   size2d_t        sz;
 
+  /* tiled, the content is the canvas with a copy on every side */
   bm = paintingdoc_bitmap(pt->doc);
-  stage_generate(&pt->stagecfg, 0, 0, bm->size.w, bm->size.h,
+  n  = (pt->symmetry & (1u << PAINTING_SYM_TILED)) ? 3 : 1;
+  w  = bm->size.w * pt->zoom;
+  h  = bm->size.h * pt->zoom;
+  stage_generate(&pt->stagecfg, 0, 0, w * n, h * n,
                  &sz.w, &sz.h, boxes, nboxes);
-  pt->page = POINT(boxes[0].box.x0, sz.h - boxes[0].box.y1); /* content */
+  pt->page = POINT(boxes[0].box.x0 + w * (n / 2),
+                   sz.h - boxes[0].box.y1 + h * (n / 2)); /* content */
 
   return sz;
 }
@@ -62,9 +62,27 @@ static size2d_t painting_stage_size(painting_task_t *pt)
   return painting_stage(pt, boxes, &nboxes);
 }
 
+/* size the canvas window's document to the stage, shrinking the window to
+ * it if that is smaller than the usual view */
+static result_t painting_fit(painting_task_t *pt)
+{
+  result_t rc;
+  size2d_t size;
+
+  size = painting_stage_size(pt);
+
+  rc = wuss_window_resize(pt->base.window,
+                          SIZE2D(MIN(size.w, PAINTING_VIEW_W),
+                                 MIN(size.h, PAINTING_VIEW_H)));
+  if (rc != result_OK)
+    return rc;
+
+  return wuss_window_set_doc(pt->base.window, size);
+}
+
 /* ----------------------------------------------------------------------- */
 
-/* title the canvas window "LEAF: Painting", starred while edited */
+/* title the canvas window "LEAF at N%: Painting", starred while edited */
 static void painting_title(painting_task_t *pt)
 {
   if (pt->base.window == NULL)
@@ -72,7 +90,8 @@ static void painting_title(painting_task_t *pt)
 
   task_set_doc_title(pt->base.window,
                      pt->path[0] ? path_leaf(pt->path) : "<Untitled>",
-                     "Painting", paintingdoc_is_edited(pt->doc));
+                     "Painting", paintingdoc_is_edited(pt->doc),
+                     pt->zoom * 100);
 }
 
 /* the document is now the file at path */
@@ -101,43 +120,99 @@ static result_t painting_saveas_save(const char *path, void *opaque)
   return result_OK;
 }
 
-/* load the PNG at path as the canvas, shrinking the window to the image's
- * stage if that is smaller than the usual view. A failure keeps the current
- * canvas */
+/* load the PNG or JPEG at path as the canvas, shrinking the window to the
+ * image's stage if that is smaller than the usual view. A file that is no
+ * image is tried as a .hex palette. A failure keeps the current canvas and
+ * palette */
 static result_t painting_load(painting_task_t *pt, const char *path)
 {
   result_t rc;
-  size2d_t size;
 
   pt->held = 0; /* abandon any stroke in progress */
 
-  rc = paintingdoc_load_png(pt->doc, path);
+  /* ponytail: sniffs by trying both loaders rather than by extension, since
+   * RISC OS leaves carry none. Match on filetype if more formats arrive */
+  rc = paintingdoc_load(pt->doc, path);
   if (rc != result_OK)
-    return rc;
+    return painting_palette_load(pt, path) == result_OK ? result_OK : rc;
 
   painting_set_path(pt, path);
   painting_title(pt);
+  painting_layers_changed(pt);
 
-  size = painting_stage_size(pt);
-
-  rc = wuss_window_resize(pt->base.window,
-                          SIZE2D(MIN(size.w, PAINTING_VIEW_W),
-                                 MIN(size.h, PAINTING_VIEW_H)));
-  if (rc != result_OK)
-    return rc;
-
-  return wuss_window_set_doc(pt->base.window, size);
+  return painting_fit(pt);
 }
+
+static wuss_scaleview_choice_fn_t painting_scaleview_choice;
+static paintingnew_accept_fn_t    painting_resize_accept;
+
+/* the Transform submenu's rows, in orient_t order */
+static const char *const painting_xform_names[orient__LIMIT] =
+{
+  "Flip horizontally",
+  "Flip vertically",
+  "Rotate right",
+  "Rotate left",
+  "Rotate 180"
+};
+
+/* their shortcuts, as Aseprite's for the flips */
+static const char *const painting_xform_keys[orient__LIMIT] =
+{
+  WUSS_MENU_SHIFT "H",
+  WUSS_MENU_SHIFT "V",
+  WUSS_MENU_SHIFT "R",
+  WUSS_MENU_SHIFT "L",
+  NULL
+};
+
+/* the Grid submenu's rows and their cells in canvas pixels, 0 for none */
+static const char *const painting_grid_names[PAINTING_GRID__COUNT] =
+{
+  "Off", "8x8", "16x16", "32x32"
+};
+static const int painting_grid_sizes[PAINTING_GRID__COUNT] = { 0, 8, 16, 32 };
+
+/* the View submenu's bar rows */
+static const char *const painting_view_names[PAINTING_VIEW_GRID] =
+{
+  "Toolbox", "Size bar", "Option bar", "Layers bar"
+};
+
+/* the Scale submenu's rows, as a percentage */
+static const char *const painting_scale_names[PAINTING_SCALE__COUNT] =
+{
+  "50%", "200%", "300%", "400%"
+};
+static const int painting_scales[PAINTING_SCALE__COUNT] = { 50, 200, 300, 400 };
+
+/* the canvas's size scaled by row of the Scale submenu, at least a pixel */
+static size2d_t painting_scaled_size(painting_task_t *pt, int row)
+{
+  size2d_t size;
+
+  size = paintingdoc_bitmap(pt->doc)->size;
+  return SIZE2D(MAX(size.w * painting_scales[row] / 100, 1),
+                MAX(size.h * painting_scales[row] / 100, 1));
+}
+
+/* the pixel clipboard, shared by every canvas so pixels copy between them,
+ * and the number of canvases, the last of which empties it */
+static paintingdoc_clip_t painting_clip;
+static int                painting_docs;
 
 /* build the canvas and its windows; on failure the caller reaps the task */
 static result_t painting_build(painting_task_t            *task,
                                const paintingnew_params_t *params)
 {
-  result_t     rc;
-  wuss_task_t *delegate;
-  wuss_place_t place;
-  size2d_t     stage;
-  int          i;
+  result_t        rc;
+  wuss_task_t    *delegate;
+  const colour_t *desktop;
+  int             ndesktop;
+  wuss_place_t    place;
+  size2d_t        stage;
+  int             i;
+  filetype_t      text;
 
   delegate = task->base.delegate;
 
@@ -145,25 +220,28 @@ static result_t painting_build(painting_task_t            *task,
   task->bg   = params->bg;
   task->tool = painting_TOOL_PENCIL;
   rng_seed(&task->rng, 1);
-  task->size      = 3;
+  task->size       = 1; /* the pencil's */
+  task->other_size = 3;
   task->density   = 20; /* about the old fixed dusting */
   task->rate      = 100;
   task->edge      = 100;
   task->wander    = 100;
   task->tolerance = 16;
+  task->perfect   = 1;
   task->dithering = screen_DITHER_NEAREST; /* painted colours stay exact */
+  task->zoom      = 1;
 
-  task->swatches.bbox     = (box_t) BOX_POS_SIZE(OB_SWATCH_X, OB_SWATCH_Y,
-                                                 OB_SWATCH_ROW, OB_SWATCH);
-  task->swatches.columns  = OB_SWATCHES;
-  task->swatches.gap      = OB_SWATCH_GAP;
-  task->swatches.outline  = 1;
-  task->swatches.selected = -1;
-  painting_swatches_track(task);
+  /* the palette starts as a copy of the desktop's, then is the document's */
+  task->swatches.columns = OB_SWATCHES;
+  task->swatches.gap     = OB_SWATCH_GAP;
+  task->swatches.outline = 1;
+  desktop = wuss_get_palette(task->base.wuss, &ndesktop);
+  painting_palette_set(task, desktop, ndesktop);
 
   rc = paintingdoc_create_filled(params->size, params->bg, &task->doc);
   if (rc != result_OK)
     return rc;
+  painting_docs++;
 
   stageconfig_init(&task->stagecfg);
   task->stagecfg.pasteboard_min = 128;
@@ -175,6 +253,7 @@ static result_t painting_build(painting_task_t            *task,
    * the canvas's outline */
   place          = task_place;
   place.extra.x0 = TB_W + 1;
+  place.extra.x1 = LB_W + 1;
   place.extra.y1 = OB_H + 1;
   /* painting_redraw draws the stage and the canvas on it over the whole
    * content area */
@@ -208,7 +287,7 @@ static result_t painting_build(painting_task_t            *task,
    * toolbox to share its top outline with the size bar's bottom edge */
   if (rc == result_OK)
     rc = wuss_window_attach(task->toolbox, task->base.window, wuss_EDGE_LEFT,
-                            wuss_ALIGN_TOP, SB_H + 1);
+                            wuss_ALIGN_TOP, SB_H(task->base.wuss) + 1);
   if (rc == result_OK)
     rc = wuss_window_create_at(delegate,
                                &place,
@@ -222,18 +301,33 @@ static result_t painting_build(painting_task_t            *task,
   if (rc == result_OK)
     rc = wuss_window_attach(task->optionbar, task->base.window,
                             wuss_EDGE_BOTTOM, wuss_ALIGN_LEFT, 0);
+  /* the layers bar at the foot of the right edge. Its size and extent fit
+   * the layers there are */
+  if (rc == result_OK)
+    rc = wuss_window_create_at(delegate,
+                               &place,
+                               SIZE2D(LB_W, LB_H(task->base.wuss, 1)),
+                               NULL,
+                               wuss_WINDOW_NO_TITLEBAR,
+                               wuss_BACKDROP_COLOUR(wuss_COLOUR_WINDOW),
+                               SIZE2D(LB_W, LB_H(task->base.wuss, 1)),
+                               SIZE2D(0, 0),
+                               &task->layerbar);
+  if (rc == result_OK)
+    rc = wuss_window_attach(task->layerbar, task->base.window,
+                            wuss_EDGE_RIGHT, wuss_ALIGN_BOTTOM, 0);
   /* the size bar is a pane across the top of the canvas, which is then
    * resized so that the view keeps its size below it */
   if (rc == result_OK)
     rc = wuss_window_create_at(delegate,
                                &place,
-                               SIZE2D(SB_W, SB_H),
+                               SIZE2D(SB_W, SB_H(task->base.wuss)),
                                NULL,
                                wuss_WINDOW_NO_TITLEBAR |
                                wuss_WINDOW_NO_OUTLINE  |
                                wuss_WINDOW_NO_REDRAW,
                                wuss_BACKDROP_COLOUR(wuss_COLOUR_WINDOW),
-                               SIZE2D(SB_W, SB_H),
+                               SIZE2D(SB_W, SB_H(task->base.wuss)),
                                SIZE2D(0, 0),
                                &task->sizebar);
   if (rc == result_OK)
@@ -249,16 +343,57 @@ static result_t painting_build(painting_task_t            *task,
   rc = painting_toolbar_icons(task);
   if (rc != result_OK)
     return rc;
+  painting_layers_changed(task);
+
+  rc = wuss_scaleview_create(&task->scaleview, task->base.wuss,
+                             painting_scaleview_choice, task);
+  if (rc != result_OK)
+    return rc;
 
   dithermenu_init(&task->dither, task->dithering);
-  WUSS_MENU_ITEM_MENU(task->menu_items, PAINTING_MENU_DISPLAY, "Display",
-                      wuss_MENU_ITEM_NONE, &task->dither.display);
+  dithermenu_add_scale(&task->dither, wuss_scaleview_window(task->scaleview));
 
-  WUSS_MENU_ITEM_SHORTCUT(task->menu_items, PAINTING_MENU_UNDO, "Undo",
-                          wuss_MENU_ITEM_DASHED, "F8");
+  for (i = 0; i < PAINTING_VIEW_GRID; i++)
+    WUSS_MENU_ITEM(task->view_items, i, painting_view_names[i],
+                   wuss_MENU_ITEM_TICKED);
+  for (i = 0; i < PAINTING_GRID__COUNT; i++)
+    WUSS_MENU_ITEM(task->grid_items, i, painting_grid_names[i],
+                   wuss_MENU_ITEM_NONE);
+  WUSS_MENU_TITLE(task->grid_menu, "Grid", task->grid_items,
+                  NELEMS(task->grid_items));
+  wuss_menu_tick_exclusive(&task->grid_menu, 0);
+  WUSS_MENU_ITEM_MENU(task->view_items, PAINTING_VIEW_GRID, "Grid",
+                      wuss_MENU_ITEM_DASHED, &task->grid_menu);
+  WUSS_MENU_ITEM(task->view_items, PAINTING_VIEW_TILED, "Tiled",
+                 wuss_MENU_ITEM_NONE);
+  WUSS_MENU_ITEM_MENU(task->view_items, PAINTING_VIEW_DISPLAY, "Display",
+                      wuss_MENU_ITEM_NONE, &task->dither.display);
+  WUSS_MENU_TITLE(task->view_menu, "View", task->view_items,
+                  NELEMS(task->view_items));
+  WUSS_MENU_ITEM_MENU(task->menu_items, PAINTING_MENU_VIEW, "View",
+                      wuss_MENU_ITEM_NONE, &task->view_menu);
 
   taskapp_save_row(&task->base, task->menu_items, PAINTING_MENU_SAVE,
                    wuss_MENU_ITEM_NONE);
+
+  WUSS_MENU_ITEM_SHORTCUT(task->edit_items, PAINTING_EDIT_UNDO, "Undo",
+                          wuss_MENU_ITEM_NONE, "F8");
+  WUSS_MENU_ITEM_SHORTCUT(task->edit_items, PAINTING_EDIT_REDO, "Redo",
+                          wuss_MENU_ITEM_NONE, "F9");
+  WUSS_MENU_ITEM_SHORTCUT(task->edit_items, PAINTING_EDIT_CUT, "Cut",
+                          wuss_MENU_ITEM_DASHED, "^X");
+  WUSS_MENU_ITEM_SHORTCUT(task->edit_items, PAINTING_EDIT_COPY, "Copy",
+                          wuss_MENU_ITEM_NONE, "^C");
+  WUSS_MENU_ITEM_SHORTCUT(task->edit_items, PAINTING_EDIT_PASTE, "Paste",
+                          wuss_MENU_ITEM_DASHED, "^V");
+  WUSS_MENU_ITEM_SHORTCUT(task->edit_items, PAINTING_EDIT_FILL, "Fill",
+                          wuss_MENU_ITEM_NONE, "F");
+  WUSS_MENU_ITEM_SHORTCUT(task->edit_items, PAINTING_EDIT_CLEAR, "Clear",
+                          wuss_MENU_ITEM_NONE, "DEL");
+  WUSS_MENU_TITLE(task->edit_menu, "Edit", task->edit_items,
+                  NELEMS(task->edit_items));
+  WUSS_MENU_ITEM_MENU(task->menu_items, PAINTING_MENU_EDIT, "Edit",
+                      wuss_MENU_ITEM_NONE, &task->edit_menu);
 
   WUSS_MENU_ITEM_SHORTCUT(task->sel_items, PAINTING_SEL_ALL, "Select all",
                           wuss_MENU_ITEM_NONE, "^A");
@@ -271,15 +406,54 @@ static result_t painting_build(painting_task_t            *task,
   WUSS_MENU_ITEM_MENU(task->menu_items, PAINTING_MENU_SELECTION, "Selection",
                       wuss_MENU_ITEM_NONE, &task->sel_menu);
 
-  for (i = 0; i < paintingdoc_NOZZLE__COUNT; i++)
-    WUSS_MENU_ITEM(task->nozzle_items, i, painting_nozzle_names[i],
+  rc = paintingnew_create(&task->resize, task->base.wuss, "Canvas size",
+                          "Resize", painting_resize_accept, task);
+  if (rc != result_OK)
+    return rc;
+
+  for (i = 0; i < orient__LIMIT; i++)
+    WUSS_MENU_ITEM_SHORTCUT(task->xform_items, i, painting_xform_names[i],
+                            wuss_MENU_ITEM_NONE, painting_xform_keys[i]);
+  WUSS_MENU_ITEM(task->xform_items, PAINTING_XFORM_CROP, "Crop to selection",
+                 wuss_MENU_ITEM_DASHED);
+  WUSS_MENU_ITEM(task->xform_items, PAINTING_XFORM_TRIM, "Trim",
+                 wuss_MENU_ITEM_NONE);
+  for (i = 0; i < PAINTING_SCALE__COUNT; i++)
+    WUSS_MENU_ITEM(task->scale_items, i, painting_scale_names[i],
                    wuss_MENU_ITEM_NONE);
-  WUSS_MENU_TITLE(task->nozzle_menu, "Nozzle", task->nozzle_items,
-                  NELEMS(task->nozzle_items));
-  WUSS_MENU_ITEM_MENU(task->menu_items, PAINTING_MENU_NOZZLE, "Nozzle",
-                      wuss_MENU_ITEM_DASHED, &task->nozzle_menu);
-  /* the shortcut, or a click on the row, steps to the next nozzle */
-  task->menu_items[PAINTING_MENU_NOZZLE].shortcut = "N";
+  WUSS_MENU_TITLE(task->scale_menu, "Scale", task->scale_items,
+                  NELEMS(task->scale_items));
+  WUSS_MENU_ITEM_MENU(task->xform_items, PAINTING_XFORM_SCALE, "Scale",
+                      wuss_MENU_ITEM_NONE, &task->scale_menu);
+  WUSS_MENU_ITEM_WINDOW(task->xform_items, PAINTING_XFORM_SIZE, "Canvas size",
+                        wuss_MENU_ITEM_PRE_OPEN,
+                        paintingnew_window(task->resize));
+  WUSS_MENU_TITLE(task->xform_menu, "Transform", task->xform_items,
+                  NELEMS(task->xform_items));
+  WUSS_MENU_ITEM_MENU(task->menu_items, PAINTING_MENU_TRANSFORM, "Transform",
+                      wuss_MENU_ITEM_NONE, &task->xform_menu);
+
+  text = filetype_from_riscos(filetype_RISCOS_TEXT);
+  rc   = wuss_saveas_create(&task->pal_saveas, task->base.wuss, &text,
+                            "palette.hex", painting_palette_save, task);
+  if (rc != result_OK)
+    return rc;
+
+  WUSS_MENU_ITEM(task->pal_items, PAINTING_PAL_ADD, "Add foreground",
+                 wuss_MENU_ITEM_NONE);
+  WUSS_MENU_ITEM(task->pal_items, PAINTING_PAL_EDIT, "Edit colour",
+                 wuss_MENU_ITEM_NONE);
+  WUSS_MENU_ITEM(task->pal_items, PAINTING_PAL_REMOVE, "Remove colour",
+                 wuss_MENU_ITEM_NONE);
+  WUSS_MENU_ITEM(task->pal_items, PAINTING_PAL_DESKTOP, "Desktop palette",
+                 wuss_MENU_ITEM_DASHED);
+  WUSS_MENU_ITEM_WINDOW(task->pal_items, PAINTING_PAL_SAVE, "Save palette",
+                        wuss_MENU_ITEM_NONE,
+                        wuss_saveas_window(task->pal_saveas));
+  WUSS_MENU_TITLE(task->pal_menu, "Palette", task->pal_items,
+                  NELEMS(task->pal_items));
+  WUSS_MENU_ITEM_MENU(task->menu_items, PAINTING_MENU_PALETTE, "Palette",
+                      wuss_MENU_ITEM_NONE, &task->pal_menu);
 
   WUSS_MENU_TITLE(task->base.menu, "Painting", task->menu_items,
                   NELEMS(task->menu_items));
@@ -376,7 +550,8 @@ static result_t painting_new_dialogue(wuss_t *wuss)
 
   if (g.painting_new == NULL)
   {
-    rc = paintingnew_create(&g.painting_new, wuss, painting_accept_new, wuss);
+    rc = paintingnew_create(&g.painting_new, wuss, "New Painting", "Create",
+                            painting_accept_new, wuss);
     if (rc != result_OK)
       return rc;
   }
@@ -423,16 +598,46 @@ static void painting_redraw_stage(painting_task_t *pt,
   }
 }
 
+/* a line along each edge between cells z window pixels square, laid from
+ * the canvas's top left, that falls in bounds */
+static void painting_draw_grid(screen_t    *scr,
+                               const box_t *bounds,
+                               const box_t *canvas,
+                               int          z,
+                               colour_t     colour)
+{
+  box_t clip;
+  int   i, i0, i1;
+
+  if (box_intersection(bounds, canvas, &clip))
+    return; /* none of the canvas is in bounds */
+
+  i0 = (clip.x0 - canvas->x0 + z - 1) / z;
+  i1 = (clip.x1 - 1 - canvas->x0) / z;
+  for (i = MAX(i0, 1); i <= i1; i++)
+    screen_draw_line(scr, canvas->x0 + i * z, clip.y0,
+                     canvas->x0 + i * z, clip.y1 - 1, colour);
+
+  i0 = (clip.y0 - canvas->y0 + z - 1) / z;
+  i1 = (clip.y1 - 1 - canvas->y0) / z;
+  for (i = MAX(i0, 1); i <= i1; i++)
+    screen_draw_line(scr, clip.x0, canvas->y0 + i * z,
+                     clip.x1 - 1, canvas->y0 + i * z, colour);
+}
+
 static result_t painting_redraw(painting_task_t    *pt,
                                 const wuss_event_t *event)
 {
   result_t        rc;
   const box_t    *bounds;
   screen_t       *scr;
-  int             i, ox, oy;
+  int             i, ox, oy, z, c;
   const bitmap_t *bm;
+  screen_scale_t  scale;
+  int             t, tx, ty;
   box_t           canvas;
   point_t         a, b;
+  int             size;
 
   scr    = event->data.redraw.scr;
   bounds = event->data.redraw.bounds;
@@ -444,32 +649,60 @@ static result_t painting_redraw(painting_task_t    *pt,
   /* from here on, draw relative to the canvas */
   ox    += pt->page.x;
   oy    += pt->page.y;
+  z      = pt->zoom;
+  c      = z / 2; /* a canvas pixel's centre, zoomed */
   bm     = paintingdoc_bitmap(pt->doc);
-  canvas = (box_t) BOX_POS_SIZE(ox, oy, bm->size.w, bm->size.h);
+  scale.xmul = scale.ymul = z;
+  scale.xdiv = scale.ydiv = 1;
 
-  /* the checks show through wherever the canvas is transparent */
-  task_draw_checks(scr, &canvas, POINT(ox, oy));
-  rc = screen_copy_bitmap_dithered(scr, ox, oy, bm, pt->dithering);
+  /* the canvas, and tiled its copy on every side. the checks show through
+   * wherever the canvas is transparent */
+  for (t = 0; t < 9; t++)
+  {
+    if (t != 4 && !(pt->symmetry & (1u << PAINTING_SYM_TILED)))
+      continue;
 
+    tx     = ox + (t % 3 - 1) * bm->size.w * z;
+    ty     = oy + (t / 3 - 1) * bm->size.h * z;
+    canvas = (box_t) BOX_POS_SIZE(tx, ty, bm->size.w * z, bm->size.h * z);
+    task_draw_checks(scr, &canvas, POINT(tx, ty));
+    rc = screen_copy_bitmap_scaled_dithered(scr, &canvas, bm, &scale,
+                                            pt->dithering);
+    if (rc != result_OK)
+      return rc;
+  }
+
+  canvas = (box_t) BOX_POS_SIZE(ox, oy, bm->size.w * z, bm->size.h * z);
+
+  if (z >= PAINTING_GRID_ZOOM)
+    painting_draw_grid(scr, bounds, &canvas, z,
+                       colour_rgb(0x80, 0x80, 0x80));
+  if (pt->grid * z >= PAINTING_GRID_ZOOM)
+    painting_draw_grid(scr, bounds, &canvas, pt->grid * z,
+                       colour_rgb(0x00, 0x60, 0xFF));
+
+  /* ponytail: the overlays are drawn at window resolution through zoomed
+   * pixel centres, so zoomed they only approximate the result's edges */
   if (pt->held && painting_is_rubber_band(pt))
   {
     painting_band_ends(pt, &a, &b);
-    a = POINT(a.x + ox, a.y + oy);
-    b = POINT(b.x + ox, b.y + oy);
+    a    = POINT(a.x * z + c + ox, a.y * z + c + oy);
+    b    = POINT(b.x * z + c + ox, b.y * z + c + oy);
+    size = pt->size * z;
 
     if (pt->tool == painting_TOOL_LINE)
-      paintingdoc_draw_stroke(scr, a, b, pt->size, painting_stroke_colour(pt));
+      paintingdoc_draw_stroke(scr, a, b, size, painting_stroke_colour(pt));
     else if (pt->tool == painting_TOOL_GRADIENT)
       paintingdoc_draw_stroke(scr, a, b, 1, colour_rgb(0x00, 0x00, 0x00));
     else if (pt->tool == painting_TOOL_SELECT)
       paintingdoc_draw_rect(scr, a, b, 1, 0, colour_rgb(0x00, 0x00, 0x00));
     else if (pt->tool == painting_TOOL_ELLIPSE ||
              pt->tool == painting_TOOL_ELLIPSE_FILL)
-      paintingdoc_draw_ellipse(scr, a, b, pt->size,
+      paintingdoc_draw_ellipse(scr, a, b, size,
                                pt->tool == painting_TOOL_ELLIPSE_FILL,
                                painting_stroke_colour(pt));
     else
-      paintingdoc_draw_rect(scr, a, b, pt->size, pt->tool == painting_TOOL_RECT_FILL,
+      paintingdoc_draw_rect(scr, a, b, size, pt->tool == painting_TOOL_RECT_FILL,
                          painting_stroke_colour(pt));
   }
 
@@ -478,18 +711,40 @@ static result_t painting_redraw(painting_task_t    *pt,
   if (pt->held && painting_collects_points(pt))
   {
     for (i = 1; i < pt->nlasso; i++)
-      screen_draw_line(scr, pt->lasso[i - 1].x + ox, pt->lasso[i - 1].y + oy,
-                       pt->lasso[i].x + ox, pt->lasso[i].y + oy,
+      screen_draw_line(scr,
+                       pt->lasso[i - 1].x * z + c + ox,
+                       pt->lasso[i - 1].y * z + c + oy,
+                       pt->lasso[i].x * z + c + ox,
+                       pt->lasso[i].y * z + c + oy,
                        painting_is_path(pt) ? painting_stroke_colour(pt) :
                                               colour_rgb(0x00, 0x00, 0x00));
   }
 
   painting_draw_ants(pt, scr, ox, oy);
 
-  return rc;
+  return result_OK;
 }
 
-/* a MOVE always reports the Select button, hovering or not, so a stroke in
+/* tiled, how far p lies off the canvas in whole canvases, else nothing */
+static point_t painting_wrap(const painting_task_t *pt, point_t p)
+{
+  const bitmap_t *bm;
+
+  if (!(pt->symmetry & (1u << PAINTING_SYM_TILED)))
+    return POINT(0, 0);
+
+  bm = paintingdoc_bitmap(pt->doc);
+  return POINT(FLOOR_DIV(p.x, bm->size.w) * bm->size.w,
+               FLOOR_DIV(p.y, bm->size.h) * bm->size.h);
+}
+
+/* the current layer is locked, so takes no paint */
+static int painting_locked(const painting_task_t *pt)
+{
+  return paintingdoc_layer_get(pt->doc, paintingdoc_layer(pt->doc))->locked;
+}
+
+/* a MOVE always reports the SELECT button, hovering or not, so a stroke in
  * progress is tracked in pt->held instead */
 static result_t painting_mouse(painting_task_t    *pt,
                                const wuss_event_t *event)
@@ -498,9 +753,17 @@ static result_t painting_mouse(painting_task_t    *pt,
   box_t    old;
   point_t  p;
   colour_t colour;
+  int      i;
 
-  p = POINT(event->data.mouse.point.x - pt->page.x,
-            event->data.mouse.point.y - pt->page.y); /* canvas pixels */
+  p = POINT(FLOOR_DIV(event->data.mouse.point.x - pt->page.x, pt->zoom),
+            FLOOR_DIV(event->data.mouse.point.y - pt->page.y, pt->zoom));
+
+  /* tiled, a stroke pressed on a copy of the canvas lands on the canvas, and
+   * keeps the same shift as it runs on over the edges. hovering follows the
+   * pointer, so the preview tracks a change of tiling or canvas size */
+  if (!pt->held)
+    pt->wrap = painting_wrap(pt, p);
+  p = POINT(p.x - pt->wrap.x, p.y - pt->wrap.y);
 
   switch (event->data.mouse.action)
   {
@@ -509,6 +772,13 @@ static result_t painting_mouse(painting_task_t    *pt,
      * the stroke and strand what is drawn so far */
     if (pt->held ||
         !(event->data.mouse.button & (wuss_BUTTON_SELECT | wuss_BUTTON_ADJUST)))
+      return result_OK;
+
+    /* a locked layer takes no paint: only the tools that select or pick act
+     * on it */
+    if (painting_locked(pt) &&
+        pt->tool != painting_TOOL_PICK && pt->tool != painting_TOOL_WAND &&
+        pt->tool != painting_TOOL_SELECT && pt->tool != painting_TOOL_LASSO)
       return result_OK;
 
     pt->held   = (event->data.mouse.button & wuss_BUTTON_SELECT) ?
@@ -549,9 +819,8 @@ static result_t painting_mouse(painting_task_t    *pt,
       return result_OK;
 
     case painting_TOOL_FILL:
-      colour   = painting_stroke_colour(pt);
+      dirty    = painting_fill(pt, p);
       pt->held = 0; /* a click, not a stroke */
-      dirty    = paintingdoc_fill(pt->doc, p, colour);
       break;
 
     case painting_TOOL_LASSO:
@@ -583,6 +852,11 @@ static result_t painting_mouse(painting_task_t    *pt,
       }
       pt->wobble.seed = rng_xorshift32(&pt->rng); /* a fresh wobble */
       pt->wobble.step = 0;
+      for (i = 0; i < PAINTING_COPIES; i++)
+        pt->trail[i].n = 0;
+      pt->pot.seed    = rng_xorshift32(&pt->rng); /* a refilled pot */
+      pt->pot.load    = pt->dry ? PAINTING_POT_STAMPS / pt->dry : 0;
+      pt->pot.left    = pt->pot.load;
       dirty = painting_stroke_segment(pt, p, p);
       break;
 
@@ -662,9 +936,7 @@ static result_t painting_mouse(painting_task_t    *pt,
       old = painting_points_box(pt);
       painting_invalidate_box(pt, &old);
 
-      dirty = paintingdoc_path(pt->doc, pt->lasso, pt->nlasso, pt->size,
-                               pt->tool == painting_TOOL_PATH_FILL,
-                               painting_stroke_colour(pt));
+      dirty      = painting_path_commit(pt);
       pt->nlasso = 0;
     }
     else if (painting_is_rubber_band(pt))
@@ -692,47 +964,338 @@ static result_t painting_mouse(painting_task_t    *pt,
   return result_OK;
 }
 
-/* shade Undo when there is nothing to undo and Clear selection when nothing is
- * selected, also on the menu if it is open (an ADJUST pick keeps it open) */
-static void painting_menu_shade(painting_task_t *pt)
+/* shade Edit's Undo and Redo when there is nothing to undo or redo, Clear
+ * selection, Cut, Copy, Fill and Clear when nothing is selected and Paste
+ * when nothing is copied, also on the menu if it is open (an ADJUST pick
+ * keeps it open). A shaded Fill lets its F shortcut through to pick the Fill
+ * tool */
+static void painting_menu_shade(painting_task_t *pt);
+
+/* shade Add when the palette is full, Edit colour when no swatch is
+ * selected and Remove colour then or when one colour is left */
+static void painting_palette_shade(painting_task_t *pt)
 {
-  int no_undo, no_sel;
+  int disable[PAINTING_PAL_DESKTOP];
+  int i;
 
-  no_undo = !paintingdoc_can_undo(pt->doc);
-  no_sel  = !paintingdoc_has_selection(pt->doc);
+  disable[PAINTING_PAL_ADD]    = pt->npalette == PAINTING_PALETTE_MAX;
+  disable[PAINTING_PAL_EDIT]   = pt->swatches.selected < 0;
+  disable[PAINTING_PAL_REMOVE] = pt->swatches.selected < 0 ||
+                                 pt->npalette == 1;
 
-  pt->menu_items[PAINTING_MENU_UNDO].flags = wuss_MENU_ITEM_DASHED |
-                                          (no_undo ? wuss_MENU_ITEM_DISABLED :
-                                                     wuss_MENU_ITEM_NONE);
-  pt->sel_items[PAINTING_SEL_NONE].flags   = no_sel ?
-                                          wuss_MENU_ITEM_DISABLED :
+  for (i = 0; i < PAINTING_PAL_DESKTOP; i++)
+  {
+    pt->pal_items[i].flags = disable[i] ? wuss_MENU_ITEM_DISABLED :
                                           wuss_MENU_ITEM_NONE;
-
-  wuss_menu_disable_item_live(pt->base.menu_handle, &pt->base.menu,
-                              PAINTING_MENU_UNDO, no_undo);
-  wuss_menu_disable_item_live(pt->base.menu_handle, &pt->sel_menu, PAINTING_SEL_NONE,
-                              no_sel);
+    wuss_menu_disable_item_live(pt->base.menu_handle, &pt->pal_menu, i,
+                                disable[i]);
+  }
 }
 
-static result_t painting_undo(painting_task_t *pt)
+static void painting_menu_shade(painting_task_t *pt)
 {
-  box_t dirty;
+  int      no_sel;
+  int      disable[PAINTING_EDIT__COUNT];
+  int      i;
+  size2d_t size;
+  int      big;
+
+  no_sel = !paintingdoc_has_selection(pt->doc);
+
+  disable[PAINTING_EDIT_UNDO]  = !paintingdoc_can_undo(pt->doc);
+  disable[PAINTING_EDIT_REDO]  = !paintingdoc_can_redo(pt->doc);
+  disable[PAINTING_EDIT_CUT]   = no_sel;
+  disable[PAINTING_EDIT_COPY]  = no_sel;
+  disable[PAINTING_EDIT_PASTE] = painting_clip.mask == NULL;
+  disable[PAINTING_EDIT_FILL]  = no_sel;
+  disable[PAINTING_EDIT_CLEAR] = no_sel;
+
+  for (i = 0; i < PAINTING_EDIT__COUNT; i++)
+  {
+    pt->edit_items[i].flags = (pt->edit_items[i].flags &
+                               wuss_MENU_ITEM_DASHED) |
+                              (disable[i] ? wuss_MENU_ITEM_DISABLED :
+                                            wuss_MENU_ITEM_NONE);
+    wuss_menu_disable_item_live(pt->base.menu_handle, &pt->edit_menu, i,
+                                disable[i]);
+  }
+
+  pt->sel_items[PAINTING_SEL_NONE].flags = no_sel ? wuss_MENU_ITEM_DISABLED :
+                                                    wuss_MENU_ITEM_NONE;
+  wuss_menu_disable_item_live(pt->base.menu_handle, &pt->sel_menu, PAINTING_SEL_NONE,
+                              no_sel);
+  pt->xform_items[PAINTING_XFORM_CROP].flags = wuss_MENU_ITEM_DASHED |
+                                          (no_sel ? wuss_MENU_ITEM_DISABLED :
+                                                    wuss_MENU_ITEM_NONE);
+  wuss_menu_disable_item_live(pt->base.menu_handle, &pt->xform_menu,
+                              PAINTING_XFORM_CROP, no_sel);
+
+  /* a scale is shaded if it would outgrow the New dialogue's limit */
+  for (i = 0; i < PAINTING_SCALE__COUNT; i++)
+  {
+    size = painting_scaled_size(pt, i);
+    big  = size.w > PAINTINGNEW_SIZE_MAX || size.h > PAINTINGNEW_SIZE_MAX;
+    pt->scale_items[i].flags = big ? wuss_MENU_ITEM_DISABLED :
+                                     wuss_MENU_ITEM_NONE;
+    wuss_menu_disable_item_live(pt->base.menu_handle, &pt->scale_menu, i, big);
+  }
+
+  painting_palette_shade(pt);
+}
+
+/* redraw dirty after a change that may have resized the canvas from was,
+ * refitting the window to the new size if so */
+static result_t painting_changed(painting_task_t *pt,
+                                 size2d_t         was,
+                                 box_t           *dirty)
+{
+  result_t rc;
+  size2d_t now;
+
+  rc  = result_OK;
+  now = paintingdoc_bitmap(pt->doc)->size;
+  if (now.w != was.w || now.h != was.h)
+  {
+    rc = painting_fit(pt);
+    wuss_window_invalidate_visible(pt->base.window);
+  }
+  else
+  {
+    painting_invalidate_box(pt, dirty);
+  }
+
+  painting_layers_changed(pt);
+  painting_menu_shade(pt);
+  painting_title(pt);
+
+  return rc;
+}
+
+/* undo, or if redo, redo the last step undone */
+static result_t painting_undo(painting_task_t *pt, int redo)
+{
+  size2d_t was;
+  box_t    dirty;
 
   pt->held = 0; /* abandon any stroke in progress */
 
-  dirty = paintingdoc_undo(pt->doc);
-  painting_invalidate_box(pt, &dirty);
+  was   = paintingdoc_bitmap(pt->doc)->size;
+  dirty = redo ? paintingdoc_redo(pt->doc) : paintingdoc_undo(pt->doc);
 
-  painting_menu_shade(pt);
+  return painting_changed(pt, was, &dirty);
+}
+
+/* flip or turn the whole canvas */
+static result_t painting_transform(painting_task_t *pt, int xform)
+{
+  size2d_t was;
+  box_t    dirty;
+
+  pt->held = 0; /* abandon any stroke in progress */
+
+  was = paintingdoc_bitmap(pt->doc)->size;
+  if (xform == PAINTING_XFORM_SIZE || xform == PAINTING_XFORM_SCALE)
+    return result_OK; /* a leaf's own row: its dialogue or menu does it */
+  if (xform == PAINTING_XFORM_CROP)
+    dirty = paintingdoc_resize(pt->doc, paintingdoc_selection_bounds(pt->doc),
+                               pt->bg);
+  else if (xform == PAINTING_XFORM_TRIM)
+    dirty = paintingdoc_resize(pt->doc, paintingdoc_trim_bounds(pt->doc),
+                               pt->bg);
+  else if (paintingdoc_has_selection(pt->doc) && painting_locked(pt))
+    return result_OK; /* the selection's pixels are on a locked layer */
+  else if (paintingdoc_has_selection(pt->doc))
+    dirty = paintingdoc_transform_selection(pt->doc, (orient_t) xform, pt->bg);
+  else
+    dirty = paintingdoc_transform(pt->doc, (orient_t) xform);
+
+  return painting_changed(pt, was, &dirty);
+}
+
+/* paintingnew_accept_fn_t: opaque is the painting_task_t. the canvas grows
+ * or shrinks about its centre, any new area taking the chosen background */
+static result_t painting_resize_accept(const paintingnew_params_t *params,
+                                       void                       *opaque)
+{
+  painting_task_t *pt;
+  size2d_t         was;
+  box_t            box;
+  box_t            dirty;
+
+  pt = opaque;
+  if (pt->doc == NULL)
+    return result_OK;
+
+  pt->held = 0;
+
+  was    = paintingdoc_bitmap(pt->doc)->size;
+  box.x0 = (was.w - params->size.w) / 2;
+  box.y0 = (was.h - params->size.h) / 2;
+  box.x1 = box.x0 + params->size.w;
+  box.y1 = box.y0 + params->size.h;
+  dirty  = paintingdoc_resize(pt->doc, box, params->bg);
+
+  return painting_changed(pt, was, &dirty);
+}
+
+#define PAINTING_ZOOM_MAX 64
+
+/* Set the zoom. A stroke in progress is abandoned, as its points are in the
+ * old zoom's canvas. */
+static result_t painting_set_zoom(painting_task_t *pt, int zoom)
+{
+  zoom = CLAMP(zoom, 1, PAINTING_ZOOM_MAX);
+  if (zoom == pt->zoom)
+    return result_OK;
+
+  pt->held = 0;
+  pt->zoom = zoom;
+  painting_title(pt);
+  (void) wuss_scaleview_set_percent(pt->scaleview, zoom * 100);
+  wuss_window_invalidate_visible(pt->base.window);
+  return painting_fit(pt);
+}
+
+/* Toggle the View menu's Tiled row. Tiling changes the stage, so as for a
+ * zoom a stroke in progress is abandoned. */
+static result_t painting_toggle_tiled(painting_task_t *pt)
+{
+  result_t rc;
+  point_t  was;
+
+  pt->symmetry ^= 1u << PAINTING_SYM_TILED;
+  wuss_menu_tick_item_live(pt->base.menu_handle, &pt->view_menu,
+                           PAINTING_VIEW_TILED,
+                           (pt->symmetry >> PAINTING_SYM_TILED) & 1);
+
+  pt->held = 0;
+  was      = pt->page;
+  wuss_window_invalidate_visible(pt->base.window);
+  rc = wuss_window_set_doc(pt->base.window, painting_stage_size(pt));
+  if (rc != result_OK)
+    return rc;
+
+  /* keep the canvas where it was in the window */
+  wuss_window_scroll_by(pt->base.window,
+                        POINT(pt->page.x - was.x, pt->page.y - was.y));
+
+  return result_OK;
+}
+
+/* Step the zoom by step levels, or to 1:1 if step is 0 */
+static result_t painting_zoom(painting_task_t *pt, int step)
+{
+  static const int zooms[] = { 1, 2, 3, 4, 6, 8, 12, 16, 24, 32, 48, 64 };
+
+  int i;
+
+  for (i = 0; i < (int) NELEMS(zooms) - 1 && zooms[i] < pt->zoom; i++)
+    ;
+  if (step > 0 && zooms[i] > pt->zoom)
+    i--; /* between levels, as the Scale view leaves it */
+  i = step ? CLAMP(i + step, 0, (int) NELEMS(zooms) - 1) : 0;
+
+  return painting_set_zoom(pt, zooms[i]);
+}
+
+/* The greatest zoom at which the stage fits avail, or 1 */
+static int painting_fit_zoom(painting_task_t *pt, size2d_t avail)
+{
+  int      keep;
+  int      zoom;
+  size2d_t size;
+
+  keep = pt->zoom;
+  for (zoom = PAINTING_ZOOM_MAX; zoom > 1; zoom--)
+  {
+    pt->zoom = zoom;
+    size     = painting_stage_size(pt);
+    if (size.w <= avail.w && size.h <= avail.h)
+      break;
+  }
+  pt->zoom = keep;
+  (void) painting_stage_size(pt); /* put pt->page back */
+
+  return zoom;
+}
+
+/* The "Scale view" dialogue's choice. The canvas zooms by whole steps only,
+ * so a pointer lands on one canvas pixel: a percentage rounds to the nearest
+ * one, and below 150% is 1:1. */
+static void painting_scaleview_choice(wuss_scaleview_choice_t choice,
+                                      int                     percent,
+                                      void                   *opaque)
+{
+  painting_task_t *pt;
+  size2d_t         avail;
+  box_t            visible;
+  box_t            content;
+  int              zoom;
+
+  pt = opaque;
+  if (pt->base.window == NULL)
+    return;
+
+  if (choice == wuss_SCALEVIEW_FIT_SCREEN)
+  {
+    /* a resize stops at the screen's edge, so start from its top left, then
+     * open the window to the stage and place it for its new size */
+    wuss_window_get_visible_bounds(pt->base.window, &visible);
+    wuss_window_get_content_bounds(pt->base.window, &content);
+    wuss_window_move(pt->base.window, POINT(content.x0 - visible.x0,
+                                            content.y0 - visible.y0));
+    wuss_window_get_max_content(pt->base.window, &avail);
+    if (painting_set_zoom(pt, painting_fit_zoom(pt, avail)) != result_OK)
+      return;
+    if (wuss_window_resize(pt->base.window,
+                           painting_stage_size(pt)) == result_OK)
+      (void) wuss_window_place(pt->base.window, &task_place);
+    return;
+  }
+
+  if (choice == wuss_SCALEVIEW_FIT_WINDOW)
+  {
+    wuss_window_get_content_bounds(pt->base.window, &content);
+    avail = SIZE2D(content.x1 - content.x0, content.y1 - content.y0);
+    zoom  = painting_fit_zoom(pt, avail);
+  }
+  else
+  {
+    zoom = (percent + 50) / 100;
+  }
+
+  (void) painting_set_zoom(pt, zoom);
+}
+
+/* move the selection's pixels one pixel in the arrow key's direction, or
+ * eight with Shift, leaving the background colour behind. unclaimed with no
+ * selection */
+static result_t painting_nudge(painting_task_t *pt, int code, int mods)
+{
+  int   step;
+  int   dx, dy;
+  box_t dirty;
+
+  if (!paintingdoc_has_selection(pt->doc))
+    return result_WUSS_KEY_UNCLAIMED;
+  if (pt->held || painting_locked(pt))
+    return result_OK; /* a drag is moving it already, or it may not move */
+
+  step  = (mods & wuss_KEY_MOD_SHIFT) ? 8 : 1;
+  dx    = code == wuss_KEY_LEFT ? -step : code == wuss_KEY_RIGHT ? step : 0;
+  dy    = code == wuss_KEY_UP   ? -step : code == wuss_KEY_DOWN  ? step : 0;
+  dirty = paintingdoc_nudge(pt->doc, dx, dy, &pt->bg);
+  painting_invalidate_box(pt, &dirty);
   painting_title(pt);
 
   return result_OK;
 }
 
 /* B, H, E, L, R, X, C, D, N, M, F, G, P, S, O, W and I pick the matching
- * tool, [ and ] step the size down and up, Escape drops the selection.
- * Anything else is passed back unclaimed */
-static result_t painting_key(painting_task_t *pt, int code)
+ * tool, [ and ] step the size down and up, + and - zoom, 1 returns to
+ * actual size, Space held lets a drag pan, Escape drops the selection and
+ * the arrow keys nudge it. Anything else is passed back unclaimed */
+static result_t painting_key(painting_task_t *pt, int code, int mods)
 {
   painting_tool_t tool;
   box_t           box;
@@ -760,15 +1323,83 @@ static result_t painting_key(painting_task_t *pt, int code)
   case 'v': case 'V': tool = painting_TOOL_MOVE;         break;
   case '[':           painting_step_size(pt, -1);        return result_OK;
   case ']':           painting_step_size(pt, +1);        return result_OK;
+  case '=': case '+': return painting_zoom(pt, +1);
+  case '-':           return painting_zoom(pt, -1);
+  case '1':           return painting_zoom(pt, 0);
+  case ' ':           pt->space = 1;                     return result_OK;
   case wuss_KEY_ESCAPE:
     box = paintingdoc_selection_bounds(pt->doc);
     paintingdoc_select_none(pt->doc);
     painting_invalidate_box(pt, &box);
     return result_OK;
+  case wuss_KEY_LEFT:
+  case wuss_KEY_RIGHT:
+  case wuss_KEY_UP:
+  case wuss_KEY_DOWN:
+    return painting_nudge(pt, code, mods);
   default:            return result_WUSS_KEY_UNCLAIMED;
   }
 
   return painting_set_tool(pt, tool);
+}
+
+/* paint the whole selection with colour, as one undo step */
+static void painting_selection_fill(painting_task_t *pt, colour_t colour)
+{
+  box_t box;
+
+  if (!paintingdoc_has_selection(pt->doc))
+    return;
+
+  box = paintingdoc_selection_bounds(pt->doc);
+  box = paintingdoc_rect(pt->doc, POINT(box.x0, box.y0),
+                         POINT(box.x1 - 1, box.y1 - 1), 1, 1, colour);
+  painting_invalidate_box(pt, &box);
+  painting_title(pt);
+}
+
+/* apply an Edit menu row. a paste lands where its pixels were copied from,
+ * kept on the canvas, and picks the Move tool to drag it into place */
+static void painting_edit(painting_task_t *pt, int op)
+{
+  size2d_t size;
+  point_t  p;
+  box_t    old;
+  box_t    now;
+
+  /* only Copy leaves a locked layer be */
+  if (op != PAINTING_EDIT_COPY && painting_locked(pt))
+    return;
+
+  switch (op)
+  {
+  case PAINTING_EDIT_CUT:
+  case PAINTING_EDIT_COPY:
+    if (paintingdoc_copy(pt->doc, &painting_clip) == result_OK &&
+        op == PAINTING_EDIT_CUT)
+      painting_selection_fill(pt, pt->bg);
+    break;
+
+  case PAINTING_EDIT_PASTE:
+    size = paintingdoc_bitmap(pt->doc)->size;
+    p.x  = CLAMP(painting_clip.at.x, 0,
+                 MAX(size.w - painting_clip.bm.size.w, 0));
+    p.y  = CLAMP(painting_clip.at.y, 0,
+                 MAX(size.h - painting_clip.bm.size.h, 0));
+    old  = paintingdoc_selection_bounds(pt->doc);
+    now  = paintingdoc_paste(pt->doc, &painting_clip, p);
+    painting_invalidate_box(pt, &old);
+    painting_invalidate_box(pt, &now);
+    painting_title(pt);
+    (void) painting_set_tool(pt, painting_TOOL_MOVE);
+    break;
+
+  default:
+    painting_selection_fill(pt, op == PAINTING_EDIT_FILL ? pt->fg : pt->bg);
+    break;
+  }
+
+  painting_menu_shade(pt);
 }
 
 /* apply a Selection menu row, redrawing where the selection was and is */
@@ -796,14 +1427,121 @@ static result_t painting_selection_op(painting_task_t *pt, int op)
   return rc;
 }
 
+/* a View menu row's bar, or NULL if the row has none or it is closed */
+static wuss_window_t *painting_view_bar(painting_task_t *pt, int row)
+{
+  switch (row)
+  {
+  case PAINTING_VIEW_TOOLBOX:   return pt->toolbox;
+  case PAINTING_VIEW_SIZEBAR:   return pt->sizebar;
+  case PAINTING_VIEW_OPTIONBAR: return pt->optionbar;
+  case PAINTING_VIEW_LAYERBAR:  return pt->layerbar;
+  default:                      return NULL;
+  }
+}
+
+/* hide or show a View menu row's bar, flipping its tick. the toolbox and
+ * layers bar drop below the size bar only while it shows */
+static result_t painting_view_toggle(painting_task_t *pt, int row)
+{
+  result_t       rc;
+  wuss_window_t *bar;
+  int            shown;
+
+  bar = painting_view_bar(pt, row);
+  if (bar == NULL)
+    return result_OK;
+
+  pt->hidden_bars ^= 1u << row;
+  shown            = !(pt->hidden_bars & (1u << row));
+  wuss_menu_tick_item_live(pt->base.menu_handle, &pt->view_menu, row, shown);
+  rc = wuss_window_set_hidden(bar, !shown);
+  if (rc == result_OK && row == PAINTING_VIEW_SIZEBAR)
+    rc = painting_sizebar_relayout(pt);
+
+  return rc;
+}
+
+/* hide every bar if any shows, remembering which showed, else show the bars
+ * Tab last hid, or all of them if it has hidden none */
+static result_t painting_view_all(painting_task_t *pt)
+{
+  result_t     rc;
+  unsigned int shown;
+  unsigned int flip;
+  int          row;
+
+  shown = 0;
+  for (row = PAINTING_VIEW_TOOLBOX; row <= PAINTING_VIEW_LAYERBAR; row++)
+    if (painting_view_bar(pt, row) != NULL &&
+        !(pt->hidden_bars & (1u << row)))
+      shown |= 1u << row;
+
+  if (shown)
+    flip = pt->tab_bars = shown;
+  else
+    flip = pt->tab_bars ? pt->tab_bars : ~0u;
+
+  rc = result_OK;
+  for (row = PAINTING_VIEW_TOOLBOX;
+       rc == result_OK && row <= PAINTING_VIEW_LAYERBAR;
+       row++)
+    if (flip & (1u << row))
+      rc = painting_view_toggle(pt, row);
+
+  return rc;
+}
+
+/* with Space down a SELECT drag pans the canvas, scrolling so the content
+ * point pressed stays under the pointer. returns non-zero if it took the
+ * event */
+static int painting_pan(painting_task_t *pt, const wuss_event_t *event)
+{
+  point_t p;
+
+  p = event->data.mouse.point;
+
+  switch (event->data.mouse.action)
+  {
+  case wuss_MOUSE_DOWN:
+    if (!pt->space || pt->held ||
+        !(event->data.mouse.button & wuss_BUTTON_SELECT))
+      return 0;
+    pt->panning = 1;
+    pt->pan     = p;
+    return 1;
+
+  case wuss_MOUSE_MOVE:
+    if (!pt->panning)
+      return 0;
+    wuss_window_scroll_by(pt->base.window,
+                          POINT(pt->pan.x - p.x, pt->pan.y - p.y));
+    return 1;
+
+  case wuss_MOUSE_UP:
+    if (!pt->panning)
+      return 0;
+    pt->panning = 0;
+    return 1;
+
+  default:
+    return 0;
+  }
+}
+
 /* a MENU click on the canvas opens the menu, with Undo greyed out when
  * there is nothing to undo and Clear selection when there is nothing
  * selected */
 static result_t painting_menu_open(painting_task_t *pt)
 {
-  painting_menu_shade(pt);
+  result_t rc;
 
-  wuss_menu_tick_exclusive(&pt->nozzle_menu, pt->nozzle);
+  painting_menu_shade(pt);
+  paintingnew_set_size(pt->resize, paintingdoc_bitmap(pt->doc)->size);
+
+  rc = wuss_scaleview_set_percent(pt->scaleview, pt->zoom * 100);
+  if (rc != result_OK)
+    return rc;
 
   return wuss_menu_open_at_pointer(pt->base.delegate, &pt->base.menu,
                                    &pt->base.menu_handle);
@@ -822,6 +1560,8 @@ static result_t painting_handle(wuss_window_t      *window,
   case wuss_EVENT_REDRAW:
     if (window == pt->optionbar)
       return painting_optionbar_redraw(pt, event);
+    if (window == pt->layerbar)
+      return painting_layerbar_redraw(pt, event);
     return painting_redraw(pt, event);
 
   case wuss_EVENT_MOUSE:
@@ -831,29 +1571,102 @@ static result_t painting_handle(wuss_window_t      *window,
 
     if (window == pt->optionbar)
       return painting_optionbar_mouse(pt, event);
+    if (window == pt->layerbar)
+    {
+      result_t rc;
+      box_t    dirty;
+
+      rc = painting_layerbar_mouse(pt, event, &dirty);
+      if (rc == result_OK && !box_is_empty(&dirty))
+        rc = painting_changed(pt, paintingdoc_bitmap(pt->doc)->size, &dirty);
+      return rc;
+    }
     if (window == pt->toolbox || window == pt->sizebar)
       return result_OK; /* between the buttons */
+    if (painting_pan(pt, event))
+      return result_OK;
     return painting_mouse(pt, event);
 
   case wuss_EVENT_ICON:
+    if (window == pt->layerbar)
+    {
+      result_t rc;
+      box_t    dirty;
+
+      rc = painting_layerbar_icon(pt, event, &dirty);
+      if (rc == result_OK && !box_is_empty(&dirty))
+        rc = painting_changed(pt, paintingdoc_bitmap(pt->doc)->size, &dirty);
+      return rc;
+    }
     return painting_toolbar_icon(pt, event);
+
+  case wuss_EVENT_RELAYOUT:
+    if (window == pt->base.window && pt->sizebar != NULL)
+      return painting_sizebar_relayout(pt);
+    return result_OK;
 
   case wuss_EVENT_KEY:
   {
     result_t rc;
 
+    painting_menu_shade(pt); /* the selection tools leave the shading stale */
     if (!task_key_is_plain(pt->base.delegate, &pt->base.menu, event, &rc))
       return rc;
+    if (event->data.key.code == wuss_KEY_TAB)
+      return painting_view_all(pt);
 
-    return painting_key(pt, event->data.key.code);
+    return painting_key(pt, event->data.key.code,
+                        event->data.key.modifiers);
   }
 
+  case wuss_EVENT_KEY_UP:
+    if (event->data.key.code == ' ')
+      pt->space = 0;
+    return result_OK;
+
+  case wuss_EVENT_LOSE_FOCUS:
+    pt->space = 0; /* its release goes to the new focus */
+    return result_OK;
+
   case wuss_EVENT_MENU_SELECT:
+    if (event->data.menu_select.menu == &pt->edit_menu)
+    {
+      if (event->data.menu_select.index == PAINTING_EDIT_UNDO ||
+          event->data.menu_select.index == PAINTING_EDIT_REDO)
+        return painting_undo(pt, event->data.menu_select.index ==
+                                 PAINTING_EDIT_REDO);
+      painting_edit(pt, event->data.menu_select.index);
+      return result_OK;
+    }
     if (event->data.menu_select.menu == &pt->sel_menu)
       return painting_selection_op(pt, event->data.menu_select.index);
-    if (event->data.menu_select.menu == &pt->nozzle_menu)
+    if (event->data.menu_select.menu == &pt->xform_menu)
+      return painting_transform(pt, event->data.menu_select.index);
+    if (event->data.menu_select.menu == &pt->pal_menu)
     {
-      painting_set_nozzle(pt, event->data.menu_select.index);
+      result_t rc;
+
+      rc = painting_palette_op(pt, event->data.menu_select.index);
+      painting_palette_shade(pt);
+      return rc;
+    }
+    if (event->data.menu_select.menu == &pt->scale_menu)
+    {
+      size2d_t was;
+      box_t    dirty;
+
+      pt->held = 0;
+      was      = paintingdoc_bitmap(pt->doc)->size;
+      dirty    = paintingdoc_scale(pt->doc, painting_scaled_size(pt,
+                                     event->data.menu_select.index));
+      return painting_changed(pt, was, &dirty);
+    }
+    if (event->data.menu_select.menu == &pt->grid_menu)
+    {
+      pt->grid = painting_grid_sizes[event->data.menu_select.index];
+      wuss_menu_tick_exclusive_live(pt->base.menu_handle, &pt->grid_menu,
+                                    event->data.menu_select.index);
+      wuss_window_invalidate_visible(pt->base.window);
       return result_OK;
     }
     if (event->data.menu_select.menu == &pt->dither.menu)
@@ -863,13 +1676,11 @@ static result_t painting_handle(wuss_window_t      *window,
       wuss_window_invalidate_visible(pt->base.window);
       return result_OK;
     }
-    if (event->data.menu_select.index == PAINTING_MENU_UNDO)
-      return painting_undo(pt);
-    if (event->data.menu_select.index == PAINTING_MENU_NOZZLE)
-    {
-      painting_set_nozzle(pt, (pt->nozzle + 1) % paintingdoc_NOZZLE__COUNT);
-      return result_OK;
-    }
+    if (event->data.menu_select.menu == &pt->view_menu &&
+        event->data.menu_select.index == PAINTING_VIEW_TILED)
+      return painting_toggle_tiled(pt);
+    if (event->data.menu_select.menu == &pt->view_menu)
+      return painting_view_toggle(pt, event->data.menu_select.index);
     return result_OK;
 
   case wuss_EVENT_MESSAGE:
@@ -904,11 +1715,6 @@ static result_t painting_handle(wuss_window_t      *window,
     }
     return result_OK;
 
-  case wuss_EVENT_PALETTE:
-    /* wuss_set_palette repaints the whole screen itself */
-    painting_swatches_track(pt);
-    return result_OK;
-
   case wuss_EVENT_CLOSE_ADJUST:
     if (window != pt->base.window)
       return result_OK;
@@ -921,10 +1727,20 @@ static result_t painting_handle(wuss_window_t      *window,
     pt->toolbox     = NULL;
     pt->optionbar   = NULL;
     pt->sizebar     = NULL;
+    pt->layerbar    = NULL;
+    /* the picker is on a task of its own, so would outlive the canvas */
+    wuss_colourpicker_destroy(pt->picker);
+    pt->picker      = NULL;
     return result_OK;
 
   case wuss_EVENT_QUIT:
+    wuss_colourpicker_destroy(pt->picker);
+    wuss_scaleview_destroy(pt->scaleview);
+    paintingnew_destroy(pt->resize);
+    wuss_saveas_destroy(pt->pal_saveas);
     free(pt->lasso);
+    if (pt->doc != NULL && --painting_docs == 0)
+      paintingdoc_clip_free(&painting_clip);
     paintingdoc_destroy(pt->doc);
     return result_OK;
 

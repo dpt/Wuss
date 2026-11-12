@@ -40,7 +40,7 @@ static point_t snap_to_screen(const wuss_window_t *win, point_t p)
   v.x = snap_axis(p.x - off.x, size.w, scr.w,
                   WUSS_SAFE_INSET, WUSS_SAFE_INSET);
   v.y = snap_axis(p.y - off.y, size.h, scr.h,
-                  WUSS_SAFE_INSET, WUSS_SAFE_INSET_BOTTOM);
+                  WUSS_SAFE_INSET, WUSS_SAFE_INSET_BOTTOM(win->wuss));
 
   return POINT(v.x + off.x, v.y + off.y);
 }
@@ -99,7 +99,7 @@ static result_t mouse_move(wuss_t *wuss, point_t p, wuss_window_t **hit)
 
     case wuss_FURNITURE_DRAG_VSCROLL_SAUSAGE:
     case wuss_FURNITURE_DRAG_HSCROLL_SAUSAGE:
-      /* an Adjust drag moves the other axis too, where there's a bar for it */
+      /* an ADJUST drag moves the other axis too, where there's a bar for it */
       if (wuss->furniture.drag_kind == wuss_FURNITURE_DRAG_VSCROLL_SAUSAGE ||
           (wuss->furniture.drag_both && (win->flags & wuss_WINDOW_VSCROLL)))
         wuss->furniture_ops->drag_sausage(win, y - wuss->furniture.drag.y, wuss->furniture.drag_scroll_start.y, 0);
@@ -176,13 +176,10 @@ static result_t mouse_move(wuss_t *wuss, point_t p, wuss_window_t **hit)
         wuss->pressed.icon->spec.type == wuss_ICON_TYPE_DRAGGABLE)
     {
       wuss_icon_t *icon;
-      int          dx, dy;
 
       icon = wuss->pressed.icon;
-      dx   = x - wuss->pressed.point.x;
-      dy   = y - wuss->pressed.point.y;
 
-      if (dx * dx + dy * dy >= wuss->input.drag_threshold_px * wuss->input.drag_threshold_px)
+      if (wuss_drag_past_threshold(wuss, wuss->pressed.point, POINT(x, y)))
       {
         box_t    box;
         size2d_t size;
