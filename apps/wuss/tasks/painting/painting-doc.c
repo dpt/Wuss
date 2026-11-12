@@ -1665,70 +1665,6 @@ static box_t layers_replace(paintingdoc_t *doc, const bitmap_t *next)
   return canvas_box(doc);
 }
 
-/* mask, a region within a w by h area, flipped or turned as bitmap_orient
- * turns the area's pixels, into *out (NULL if empty) */
-static result_t mask_transform(const region_t *mask,
-                               int             w,
-                               int             h,
-                               orient_t        orient,
-                               region_t      **out)
-{
-  result_t  rc;
-  size2d_t  size;
-  region_t *acc;
-  int       x, y;
-  int       x0;
-  int       sx, sy;
-  int       inside;
-  box_t     run;
-  region_t *one;
-  region_t *next;
-
-  size = orient_size(orient, SIZE2D(w, h));
-  acc  = NULL;
-
-  /* ponytail: a pixel test each and a union per run, quadratic in the
-   * runs; a region transform in DPTLib if big lassos turn slowly */
-  for (y = 0; y < size.h; y++)
-  {
-    x0 = -1;
-    for (x = 0; x <= size.w; x++)
-    {
-      inside = 0;
-      if (x < size.w)
-      {
-        orient_source(orient, w, h, x, y, &sx, &sy);
-        inside = region_contains(mask, sx, sy);
-      }
-      if (inside && x0 < 0)
-      {
-        x0 = x;
-      }
-      else if (!inside && x0 >= 0)
-      {
-        run = (box_t) BOX_POS_SIZE(x0, y, x - x0, 1);
-        rc  = region_from_box(&run, &one);
-        if (rc == result_OK)
-        {
-          rc = region_union(acc, one, &next);
-          region_destroy(one);
-        }
-        if (rc != result_OK)
-        {
-          region_destroy(acc);
-          return rc;
-        }
-        region_destroy(acc);
-        acc = next;
-        x0  = -1;
-      }
-    }
-  }
-
-  *out = acc;
-  return result_OK;
-}
-
 box_t paintingdoc_transform_selection(paintingdoc_t *doc,
                                       orient_t       orient,
                                       colour_t       leave)
@@ -1773,8 +1709,7 @@ box_t paintingdoc_transform_selection(paintingdoc_t *doc,
   if (rc == result_OK)
     rc = bitmap_orient(&clip.bm, orient, &bm);
   if (rc == result_OK)
-    rc = mask_transform(clip.mask, clip.bm.size.w, clip.bm.size.h, orient,
-                        &mask);
+    rc = region_orient(clip.mask, orient, clip.bm.size, &mask);
 
   /* turn about the centre of the selection's bounds. clip is unset if the
    * copy failed */
