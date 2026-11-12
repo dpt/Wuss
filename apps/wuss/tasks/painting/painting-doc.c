@@ -1842,30 +1842,19 @@ box_t paintingdoc_trim_bounds(const paintingdoc_t *doc)
   box_t           box;
   int             i;
   const bitmap_t *bm;
-  uint32_t        corner;
-  int             x, y;
-  const uint32_t *row;
-  int             blank;
+  box_t           b;
 
+  /* the bottom layer against its corner, those above against clear */
   box = (box_t) BOX_INIT;
   for (i = 0; i < doc->nlayers; i++)
   {
-    bm     = &doc->layers[i].bm;
-    corner = row_of(bm, 0)[0];
-    for (y = 0; y < bm->size.h; y++)
-    {
-      row = row_of(bm, y);
-      for (x = 0; x < bm->size.w; x++)
-      {
-        blank = i == 0 ? row[x] == corner : (row[x] >> 24) == 0;
-        if (blank)
-          continue;
-        box.x0 = MIN(box.x0, x);
-        box.y0 = MIN(box.y0, y);
-        box.x1 = MAX(box.x1, x + 1);
-        box.y1 = MAX(box.y1, y + 1);
-      }
-    }
+    bm = &doc->layers[i].bm;
+    b  = i == 0 ? bitmap_content_bounds(bm, row_of(bm, 0)[0], 0xFFFFFFFFu)
+                : bitmap_content_bounds(bm, 0, 0xFF000000u);
+    box.x0 = MIN(box.x0, b.x0);
+    box.y0 = MIN(box.y0, b.y0);
+    box.x1 = MAX(box.x1, b.x1);
+    box.y1 = MAX(box.y1, b.y1);
   }
 
   return box;
