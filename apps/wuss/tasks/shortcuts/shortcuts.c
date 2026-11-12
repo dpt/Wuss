@@ -326,6 +326,7 @@ shortcuts[] =
   { "Ctrl-R",         "Randomise"           },
   { "Space",          "Reseed"              },
   { "K",              "Next kind"           },
+  { "G",              "Next grain"          },
   { "Left",           "Previous colours"    },
   { "Right",          "Next colours"        },
   { "Tagging",        NULL                  },

@@ -41,11 +41,11 @@
  * per change as 8-bit values into a pixelfmt_p8 bitmap; the colour scheme
  * is only its palette, so a scheme change redraws without regenerating.
  *
- * SELECT reseeds; ADJUST steps the colour scheme. Menu > Kind and Menu >
- * Colours pick directly; Menu > Randomise picks a fresh seed, kind and
- * scheme; Menu > Save writes a single tile as a PNG. Once a click has given
- * the window the input focus, Space reseeds, Left/Right step the colour
- * scheme and K steps the kind. */
+ * SELECT reseeds; ADJUST steps the colour scheme. Menu > Kind, Menu >
+ * Colours and Menu > Grain pick directly; Menu > Randomise picks a fresh
+ * seed, kind and scheme; Menu > Save writes a single tile as a PNG. Once a
+ * click has given the window the input focus, Space reseeds, Left/Right
+ * step the colour scheme, K steps the kind and G steps the grain. */
 
 enum
 {
@@ -53,37 +53,65 @@ enum
   TEXTURING_KIND_MARBLE,
   TEXTURING_KIND_WOOD,
   TEXTURING_KIND_CELLS,
+  TEXTURING_KIND_STONE,
+  TEXTURING_KIND_WEAVE,
   TEXTURING_NKINDS
 };
 
 static const char *texturing_kind_names[TEXTURING_NKINDS] =
 {
-  "Clouds", "Marble", "Wood", "Cells"
+  "Clouds", "Marble", "Wood", "Cells", "Stone", "Weave"
 };
 
-/* Colour schemes: three stops, at values 0, 128 and 255, given as 0xRRGGBB. */
+/* Colour schemes, as 0xRRGGBB. A smooth scheme ramps through its three
+ * stops at values 0, 128 and 255. A stepped scheme maps each fifth of the
+ * value range to one of its five stops exactly, giving the few close tones
+ * of the RISC OS desktop textures; grain then speckles between them. */
 static const struct
 {
   const char  *name;
-  unsigned int stops[3];
+  int          stepped;
+  unsigned int stops[5];
 }
 texturing_schemes[] =
 {
-  { "Sky",   { 0x1E4FA0, 0x7FB0E8, 0xFFFFFF } },
-  { "Stone", { 0x202020, 0x808078, 0xE8E8E0 } },
-  { "Wood",  { 0x3A1E0C, 0x8A5528, 0xD8A868 } },
-  { "Lava",  { 0x000000, 0xC02000, 0xFFE040 } },
-  { "Moss",  { 0x102008, 0x4A7A20, 0xC8E088 } },
-  { "Ice",   { 0x002838, 0x40A0C0, 0xF0FFFF } }
+  { "Sky",     0, { 0x1E4FA0, 0x7FB0E8, 0xFFFFFF } },
+  { "Slate",   0, { 0x202020, 0x808078, 0xE8E8E0 } },
+  { "Wood",    0, { 0x3A1E0C, 0x8A5528, 0xD8A868 } },
+  { "Lava",    0, { 0x000000, 0xC02000, 0xFFE040 } },
+  { "Moss",    0, { 0x102008, 0x4A7A20, 0xC8E088 } },
+  { "Ice",     0, { 0x002838, 0x40A0C0, 0xF0FFFF } },
+  /* the 16-colour desktop's greys */
+  { "Desktop", 1, { 0x333333, 0x555555, 0x777777, 0x999999, 0xBBBBBB } },
+  /* 4-bit greys, darker */
+  { "Grey 16", 1, { 0x222222, 0x444444, 0x666666, 0x888888, 0xAAAAAA } },
+  { "Linen",   1, { 0x6E6450, 0x8A806A, 0xA69C84, 0xC2B89E, 0xDDD4BA } },
+  { "Denim",   1, { 0x1E2C44, 0x2E4060, 0x40567C, 0x566E96, 0x7088AE } }
 };
 
 #define TEXTURING_NSCHEMES ((int) NELEMS(texturing_schemes))
+
+/* Per-pixel grain: names and the noise amplitude each adds to a value. */
+static const struct
+{
+  const char *name;
+  int         amplitude;
+}
+texturing_grains[] =
+{
+  { "None",  0  },
+  { "Light", 48 },
+  { "Heavy", 96 }
+};
+
+#define TEXTURING_NGRAINS ((int) NELEMS(texturing_grains))
 
 enum
 {
   TEXTURING_MENU_SAVE = 0,
   TEXTURING_MENU_KIND,
   TEXTURING_MENU_COLOURS,
+  TEXTURING_MENU_GRAIN,
   TEXTURING_MENU_RANDOMISE
 };
 
@@ -93,14 +121,17 @@ typedef struct texturing_task
   rng_t              seed;
   int                kind;   /* TEXTURING_KIND_* */
   int                scheme; /* texturing_schemes[] row */
+  int                grain;  /* texturing_grains[] row */
   colour_t           palette[256];
   bitmap_t           bm;     /* wraps pixels[] and palette[] */
   unsigned char      pixels[TEXTURING_SIZE * TEXTURING_SIZE];
-  wuss_menu_item_t   menu_items[4];
+  wuss_menu_item_t   menu_items[5];
   wuss_menu_item_t   kind_items[TEXTURING_NKINDS];
   wuss_menu_t        kind_menu;
   wuss_menu_item_t   scheme_items[NELEMS(texturing_schemes)];
   wuss_menu_t        scheme_menu;
+  wuss_menu_item_t   grain_items[NELEMS(texturing_grains)];
+  wuss_menu_t        grain_menu;
 }
 texturing_task_t;
 
@@ -202,12 +233,71 @@ static int texturing_cells(uint32_t seed, int x, int y)
   return MIN(best >> 2, 255);
 }
 
+/* Rough stone, lit from the top left: an embossed noise height field, the
+ * slope taken across the diagonal neighbours (wrapped so it still tiles),
+ * over a gentle second noise for broad light and dark patches. Centred on
+ * 128. */
+static int texturing_rough(uint32_t seed, int x, int y)
+{
+  return (texturing_noise(seed,     x, y, 5) * 2 +
+          texturing_noise(seed + 1, x, y, 6) +
+          texturing_noise(seed + 2, x, y, 7)) >> 2;
+}
+
+static int texturing_stone(uint32_t seed, int x, int y)
+{
+  int m, slope;
+
+  m     = TEXTURING_SIZE - 1;
+  slope = texturing_rough(seed, (x - 1) & m, (y - 1) & m) -
+          texturing_rough(seed, (x + 1) & m, (y + 1) & m);
+
+  return 128 + slope + (texturing_fbm(seed ^ 0x5A5Au, x, y) - 128) / 4;
+}
+
+/* Height of a plain weave: 8-pixel threads alternate over and under in a
+ * checkerboard. Each visible thread is highest along its middle and drops
+ * toward its edges and toward the ends where it dives under its neighbour.
+ * The coordinates wobble with noise so the threads wander like yarn; the
+ * wobble repeats with the tile, so the weave still tiles. */
+static int texturing_weave_height(uint32_t seed, int x, int y)
+{
+  int over, across, along, a, b;
+
+  x += (texturing_noise(seed + 7, x, y, 4) - 128) >> 5;
+  y += (texturing_noise(seed + 8, x, y, 4) - 128) >> 5;
+  x &= TEXTURING_SIZE - 1;
+  y &= TEXTURING_SIZE - 1;
+
+  over   = ((x >> 3) + (y >> 3)) & 1; /* nonzero: the weft thread is on top */
+  across = over ? (y & 7) : (x & 7);
+  along  = over ? (x & 7) : (y & 7);
+  a      = across < 4 ? across : 7 - across; /* 0 at an edge, 3 mid-thread */
+  b      = along  < 4 ? along  : 7 - along;  /* 0 where the thread dips */
+
+  return a * 24 + b * 12 + (texturing_rough(seed, x, y) >> 2);
+}
+
+/* Woven fabric, embossed from the top left as Stone is. Centred on 128. */
+static int texturing_weave(uint32_t seed, int x, int y)
+{
+  int m, slope;
+
+  m     = TEXTURING_SIZE - 1;
+  slope = texturing_weave_height(seed, (x - 1) & m, (y - 1) & m) -
+          texturing_weave_height(seed, (x + 1) & m, (y + 1) & m);
+
+  return 128 + slope + (texturing_fbm(seed ^ 0x5A5Au, x, y) - 128) / 4;
+}
+
 static void texturing_generate(texturing_task_t *task)
 {
   unsigned char *p;
+  int            amplitude;
   int            x, y, v;
 
-  p = task->pixels;
+  p         = task->pixels;
+  amplitude = texturing_grains[task->grain].amplitude;
   for (y = 0; y < TEXTURING_SIZE; y++)
     for (x = 0; x < TEXTURING_SIZE; x++)
     {
@@ -233,28 +323,47 @@ static void texturing_generate(texturing_task_t *task)
       case TEXTURING_KIND_CELLS:
         v = texturing_cells(task->seed, x, y);
         break;
+
+      case TEXTURING_KIND_STONE:
+        v = texturing_stone(task->seed, x, y);
+        break;
+
+      case TEXTURING_KIND_WEAVE:
+        v = texturing_weave(task->seed, x, y);
+        break;
       }
 
-      *p++ = (unsigned char) v;
+      /* grain: per-pixel noise, keyed by position so it tiles too */
+      if (amplitude)
+        v += ((int) (rng_hash32(task->seed ^ 0xC3A5u,
+                                (y << TEXTURING_LOG2_SIZE) | x) & 255) - 128) *
+             amplitude / 128;
+
+      *p++ = (unsigned char) CLAMP(v, 0, 255);
     }
 }
 
-/* Build the 256-entry palette from the current scheme's three stops. */
+/* Build the 256-entry palette from the current scheme's stops. */
 static void texturing_build_palette(texturing_task_t *task)
 {
   const unsigned int *stops;
-  colour_t            c[3];
+  int                 nstops;
+  colour_t            c[5];
   int                 i;
 
-  stops = texturing_schemes[task->scheme].stops;
-  for (i = 0; i < 3; i++)
+  stops  = texturing_schemes[task->scheme].stops;
+  nstops = texturing_schemes[task->scheme].stepped ? 5 : 3;
+  for (i = 0; i < nstops; i++)
     c[i] = colour_rgb((stops[i] >> 16) & 0xFF,
                       (stops[i] >>  8) & 0xFF,
                        stops[i]        & 0xFF);
 
   for (i = 0; i < 256; i++)
-    task->palette[i] = i < 128 ? colour_mix(c[0], c[1], (unsigned) i, 128)
-                               : colour_mix(c[1], c[2], (unsigned) i - 128, 127);
+    if (texturing_schemes[task->scheme].stepped)
+      task->palette[i] = c[i * 5 >> 8];
+    else
+      task->palette[i] = i < 128 ? colour_mix(c[0], c[1], (unsigned) i, 128)
+                                 : colour_mix(c[1], c[2], (unsigned) i - 128, 127);
 }
 
 /* ----------------------------------------------------------------------- */
@@ -302,6 +411,15 @@ static result_t texturing_set_scheme(texturing_task_t *task, int scheme)
   return result_OK;
 }
 
+static result_t texturing_set_grain(texturing_task_t *task, int grain)
+{
+  task->grain = grain;
+  texturing_generate(task);
+  wuss_window_invalidate_extent(task->base.window);
+
+  return result_OK;
+}
+
 /* Randomise: fresh seed, kind and scheme. Shared by the menu row and its
  * Ctrl-R shortcut. */
 static result_t texturing_randomise(texturing_task_t *task)
@@ -329,6 +447,10 @@ static result_t texturing_key(texturing_task_t *task, int code)
   case 'k':
   case 'K':
     return texturing_set_kind(task, (task->kind + 1) % TEXTURING_NKINDS);
+
+  case 'g':
+  case 'G':
+    return texturing_set_grain(task, (task->grain + 1) % TEXTURING_NGRAINS);
 
   case wuss_KEY_LEFT:
     return texturing_set_scheme(task, (task->scheme + TEXTURING_NSCHEMES - 1) %
@@ -358,6 +480,12 @@ static result_t texturing_menu_select(texturing_task_t   *task,
     rc = texturing_set_scheme(task, event->data.menu_select.index);
     wuss_menu_tick_exclusive_live(task->base.menu_handle, &task->scheme_menu,
                                   task->scheme);
+  }
+  else if (event->data.menu_select.menu == &task->grain_menu)
+  {
+    rc = texturing_set_grain(task, event->data.menu_select.index);
+    wuss_menu_tick_exclusive_live(task->base.menu_handle, &task->grain_menu,
+                                  task->grain);
   }
   else if (wuss_menu_select_is(event, &task->base.menu,
                                TEXTURING_MENU_RANDOMISE))
@@ -398,6 +526,7 @@ static result_t texturing_handle(wuss_window_t      *window,
     {
       wuss_menu_tick_exclusive(&task->kind_menu, task->kind);
       wuss_menu_tick_exclusive(&task->scheme_menu, task->scheme);
+      wuss_menu_tick_exclusive(&task->grain_menu, task->grain);
       return wuss_menu_open_ticked(task->base.delegate, &task->base.menu, 0,
                                    wuss_get_pointer(task->base.wuss),
                                    &task->base.menu_handle);
@@ -444,6 +573,7 @@ static result_t texturing_init(texturing_task_t *task)
   task->seed   = 0x9E3779B9u;
   task->kind   = TEXTURING_KIND_CLOUDS;
   task->scheme = 0;
+  task->grain  = 1; /* Light */
 
   rc = bitmap_init(&task->bm, SIZE2D(TEXTURING_SIZE, TEXTURING_SIZE),
                    pixelfmt_p8, TEXTURING_SIZE, NULL, task->pixels);
@@ -481,6 +611,14 @@ static result_t texturing_init(texturing_task_t *task)
                   TEXTURING_NSCHEMES);
   WUSS_MENU_ITEM_MENU(task->menu_items, TEXTURING_MENU_COLOURS, "Colours",
                       wuss_MENU_ITEM_NONE, &task->scheme_menu);
+
+  for (i = 0; i < TEXTURING_NGRAINS; i++)
+    WUSS_MENU_ITEM(task->grain_items, i, texturing_grains[i].name,
+                   wuss_MENU_ITEM_NONE);
+  WUSS_MENU_TITLE(task->grain_menu, "Grain", task->grain_items,
+                  TEXTURING_NGRAINS);
+  WUSS_MENU_ITEM_MENU(task->menu_items, TEXTURING_MENU_GRAIN, "Grain",
+                      wuss_MENU_ITEM_NONE, &task->grain_menu);
 
   WUSS_MENU_ITEM_SHORTCUT(task->menu_items, TEXTURING_MENU_RANDOMISE,
                           "Randomise", wuss_MENU_ITEM_DASHED, "^R");

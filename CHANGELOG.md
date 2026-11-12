@@ -11,8 +11,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Added
 
 - Texturing: a new Visuals task that makes seamlessly tiling procedural
-  textures (Clouds, Marble, Wood and Cells) in six colour schemes, shown
-  repeated 2 x 2 so any seam would show. Save writes one 256 x 256 tile.
+  textures (Clouds, Marble, Wood, Cells, embossed Stone and woven Weave),
+  shown repeated 2 x 2 so any seam would show. Smooth colour schemes ramp;
+  stepped ones (Desktop, Grey 16, Linen, Denim) use five exact tones, as the
+  RISC OS desktop textures do. A Grain setting speckles between tones. Save
+  writes one 256 x 256 tile.
 
 ## [0.25.0] - 2026-11-12
 
