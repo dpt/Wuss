@@ -90,7 +90,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `bitmap_content_bounds`, `bitmap_loads_filetype` and `div255` in place of
   their own code. Turning a selection mask is no longer quadratic in its
   runs.
-- Wuss tracks DPTLib's `develop` branch until the next release.
+- Wuss needs DPTLib 0.9.0.
 
 ### Removed
 

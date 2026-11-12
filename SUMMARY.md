@@ -9,8 +9,7 @@ Unreleased. Changes since 0.24.0; see `CHANGELOG.md` for the full list.
 - `wuss_iconpool_frames` and `wuss_task_iconpool_frames` are gone.
 - The fixed size macros are gone: sizes come from `wuss_std_height()` and
   `wuss_std_frame_insets()`.
-- Wuss tracks DPTLib's `develop` branch until the next release, and needs
-  libjpeg through it.
+- Wuss needs DPTLib 0.9.0, and libjpeg through it.
 
 ## New tasks
 
