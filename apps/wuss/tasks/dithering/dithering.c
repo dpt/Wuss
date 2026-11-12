@@ -512,7 +512,8 @@ static result_t dithering_show(dithering_task_t *dt, const char *path)
     return rc;
 
   snprintf(dt->path, sizeof(dt->path), "%s", path);
-  task_set_doc_title(dt->base.window, path_leaf(path), "Dithering", 0);
+  task_set_doc_title(dt->base.window, path_leaf(path), "Dithering", 0,
+                     dt->scale);
   return dithering_apply(dt, 0);
 }
 
@@ -752,6 +753,8 @@ static void dithering_scaleview_choice(wuss_scaleview_choice_t choice,
 
   dt->scale = dithermenu_scale_percent(dt->base.window, choice, percent,
                                        dt->source.size);
+  task_set_doc_title(dt->base.window, path_leaf(dt->path), "Dithering", 0,
+                     dt->scale);
   wuss_window_invalidate_visible(dt->base.window);
   if (dithering_fit(dt) == result_OK && choice == wuss_SCALEVIEW_FIT_SCREEN)
     (void) wuss_window_place(dt->base.window, &dithermenu_fit_place);

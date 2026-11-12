@@ -323,6 +323,13 @@ static result_t viewing_redraw(const wuss_event_t *event, void *task_data)
   return result_OK;
 }
 
+/* title the window "LEAF at N%: Viewing"; tiling draws 1:1 */
+static void viewing_title(viewing_task_t *ic)
+{
+  task_set_doc_title(ic->base.window, path_leaf(ic->path), "Viewing", 0,
+                     ic->tile ? 100 : ic->scale);
+}
+
 /* Load the PNG or JPEG at path and show it, resizing the window to fit. On failure
  * the current image stays and the error is returned. */
 static result_t viewing_show(viewing_task_t *ic, const char *path)
@@ -346,7 +353,7 @@ static result_t viewing_show(viewing_task_t *ic, const char *path)
     return rc;
 
   snprintf(ic->path, sizeof(ic->path), "%s", path);
-  task_set_doc_title(ic->base.window, path_leaf(path), "Viewing", 0);
+  viewing_title(ic);
   return result_OK;
 }
 
@@ -409,6 +416,7 @@ static result_t viewing_zoom(viewing_task_t *ic, int percent)
     return result_OK;
 
   ic->scale = percent;
+  viewing_title(ic);
   wuss_window_invalidate_visible(ic->base.window);
   return viewing_fit(ic);
 }
@@ -666,6 +674,7 @@ static result_t viewing_toggle_tile(viewing_task_t    *ic,
 
   ic->tile     = !ic->tile;
   ic->dragging = 0;
+  viewing_title(ic);
 
   wuss_menu_tick_item_live(ic->base.menu_handle, menu, VIEWING_MENU_TILE,
                            ic->tile);

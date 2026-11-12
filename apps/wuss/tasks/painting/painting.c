@@ -82,7 +82,7 @@ static result_t painting_fit(painting_task_t *pt)
 
 /* ----------------------------------------------------------------------- */
 
-/* title the canvas window "LEAF: Painting", starred while edited */
+/* title the canvas window "LEAF at N%: Painting", starred while edited */
 static void painting_title(painting_task_t *pt)
 {
   if (pt->base.window == NULL)
@@ -90,7 +90,8 @@ static void painting_title(painting_task_t *pt)
 
   task_set_doc_title(pt->base.window,
                      pt->path[0] ? path_leaf(pt->path) : "<Untitled>",
-                     "Painting", paintingdoc_is_edited(pt->doc));
+                     "Painting", paintingdoc_is_edited(pt->doc),
+                     pt->zoom * 100);
 }
 
 /* the document is now the file at path */
@@ -1149,6 +1150,7 @@ static result_t painting_set_zoom(painting_task_t *pt, int zoom)
 
   pt->held = 0;
   pt->zoom = zoom;
+  painting_title(pt);
   wuss_window_invalidate_visible(pt->base.window);
   return painting_fit(pt);
 }

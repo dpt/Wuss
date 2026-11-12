@@ -192,7 +192,7 @@ static result_t resizing_show(resizing_task_t *rt, const char *path)
     return rc;
 
   snprintf(rt->path, sizeof(rt->path), "%s", path);
-  task_set_doc_title(rt->base.window, path_leaf(path), "Resizing", 0);
+  task_set_doc_title(rt->base.window, path_leaf(path), "Resizing", 0, 0);
   return result_OK;
 }
 

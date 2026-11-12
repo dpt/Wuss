@@ -268,7 +268,7 @@ static result_t reading_show(reading_task_t *task, const char *path)
   }
 
   snprintf(task->path, sizeof(task->path), "%s", path);
-  task_set_doc_title(task->base.window, leaf, "Reading", 0);
+  task_set_doc_title(task->base.window, leaf, "Reading", 0, 0);
   wuss_window_invalidate_visible(task->base.window);
   return result_OK;
 }

@@ -496,6 +496,8 @@ static void effecting_scaleview_choice(wuss_scaleview_choice_t choice,
 
   ec->scale = dithermenu_scale_percent(ec->base.window, choice, percent,
                                        ec->source.size);
+  task_set_doc_title(ec->base.window, path_leaf(ec->path), "Effecting", 0,
+                     ec->scale);
   wuss_window_invalidate_visible(ec->base.window);
   if (effecting_fit(ec) == result_OK && choice == wuss_SCALEVIEW_FIT_SCREEN)
     (void) wuss_window_place(ec->base.window, &dithermenu_fit_place);
@@ -536,7 +538,8 @@ static result_t effecting_show(effecting_task_t *ec, const char *path)
     return rc;
 
   snprintf(ec->path, sizeof(ec->path), "%s", path);
-  task_set_doc_title(ec->base.window, path_leaf(path), "Effecting", 0);
+  task_set_doc_title(ec->base.window, path_leaf(path), "Effecting", 0,
+                     ec->scale);
   wuss_window_invalidate_visible(ec->base.window);
   if (opening)
     return effecting_open_list(ec);

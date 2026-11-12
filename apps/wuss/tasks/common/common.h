@@ -106,16 +106,21 @@ static inline result_t task_window_fit(wuss_task_t        *task,
 }
 
 /* title window for its document: "LEAF: APP", or "*LEAF: APP" when edited,
- * or just "APP" with no document (leaf NULL) */
+ * or just "APP" with no document (leaf NULL). A view that scales passes its
+ * scale as percent, giving "LEAF at 200%: APP"; others pass 0 */
 static inline void task_set_doc_title(wuss_window_t *window,
                                       const char    *leaf,
                                       const char    *app,
-                                      int            edited)
+                                      int            edited,
+                                      int            percent)
 {
   char title[256];
 
   if (leaf == NULL)
     snprintf(title, sizeof(title), "%s", app);
+  else if (percent > 0)
+    snprintf(title, sizeof(title), "%s%s at %d%%: %s", edited ? "*" : "",
+             leaf, percent, app);
   else
     snprintf(title, sizeof(title), "%s%s: %s", edited ? "*" : "", leaf, app);
 
