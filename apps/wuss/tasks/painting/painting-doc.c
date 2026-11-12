@@ -10,6 +10,7 @@
 
 #include "base/debug.h"
 #include "base/utils.h"
+#include "framebuf/composite.h"
 #include "framebuf/pixelfmt.h"
 #include "framebuf/screen.h"
 #include "geom/region.h"
@@ -276,39 +277,6 @@ void paintingdoc_set_saved(paintingdoc_t *doc)
   doc->edited = 0;
 }
 
-/* x / 255 rounded, for x up to 255 * 255 */
-#define DIV255(x) (((x) + 128 + (((x) + 128) >> 8)) >> 8)
-
-/* straight-alpha pixel s, its alpha scaled by opacity (0..255), over d */
-static uint32_t over(uint32_t d, uint32_t s, unsigned int opacity)
-{
-  unsigned int sa, da, oa;
-  uint32_t     out;
-  unsigned int i;
-  unsigned int c;
-
-  sa = DIV255((s >> 24) * opacity);
-  da = d >> 24;
-  if (sa == 0)
-    return d;
-  if (sa == 255 || da == 0)
-    return (s & 0xFFFFFFu) | ((uint32_t) sa << 24);
-
-  da  = DIV255(da * (255 - sa)); /* what shows of d */
-  oa  = sa + da;
-  out = (uint32_t) oa << 24;
-  for (i = 0; i < 24; i += 8)
-  {
-    c = ((s >> i) & 0xFF) * sa + ((d >> i) & 0xFF) * da;
-    /* ponytail: a divide per channel where d is partly transparent; opaque
-     * below, the common case, takes the shift */
-    c = oa == 255 ? DIV255(c) : (c + oa / 2) / oa;
-    out |= (uint32_t) c << i;
-  }
-
-  return out;
-}
-
 const bitmap_t *paintingdoc_bitmap(paintingdoc_t *doc)
 {
   const paintingdoc_layer_t *l;
@@ -359,7 +327,8 @@ const bitmap_t *paintingdoc_bitmap(paintingdoc_t *doc)
       out = row_of(&doc->flat, y);
       in  = row_of(&l->bm, y);
       for (x = b.x0; x < b.x1; x++)
-        out[x] = over(out[x], in[x], (unsigned int) l->opacity);
+        out[x] = composite_over_pixel(out[x], in[x],
+                                      (unsigned int) l->opacity);
     }
   }
 
