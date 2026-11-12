@@ -121,3 +121,13 @@ pushing prompts for an SSH key passphrase and will hang.
 
 Commits are SSH-signed. Run `git commit … </dev/null` with a 30 s timeout; if it
 times out, the agent lacks the key — ask the user to `ssh-add`, do not retry.
+
+## Releases
+
+Run DPTLib's `tools/release.py` from the repo root: `python3 ../DPTLib/tools/release.py <command>`. See DPTLib's AGENTS.md for the steps (`check`, `cut --test`, `merge`, `push`, `start`). Wuss differs in three ways:
+
+- `merge` makes a `--no-ff` merge commit on `main`, as Wuss always has.
+- `cut` also turns the `Unreleased.` line in `SUMMARY.md` into `Released YYYY-MM-DD.`; `check` needs the summary headed `# Wuss X.Y.Z`.
+- `check` refuses a DPTLib `GIT_TAG` that is not a release tag (e.g. `develop`), so release DPTLib and bump the pin first.
+
+After `start`, rewrite `SUMMARY.md` for the new version when its changes are summarised.
