@@ -724,12 +724,6 @@ static result_t painting_redraw(painting_task_t    *pt,
   return result_OK;
 }
 
-/* v / d, rounding down either side of 0 */
-static int painting_floor_div(int v, int d)
-{
-  return v >= 0 ? v / d : -((d - 1 - v) / d);
-}
-
 /* tiled, how far p lies off the canvas in whole canvases, else nothing */
 static point_t painting_wrap(const painting_task_t *pt, point_t p)
 {
@@ -739,8 +733,8 @@ static point_t painting_wrap(const painting_task_t *pt, point_t p)
     return POINT(0, 0);
 
   bm = paintingdoc_bitmap(pt->doc);
-  return POINT(painting_floor_div(p.x, bm->size.w) * bm->size.w,
-               painting_floor_div(p.y, bm->size.h) * bm->size.h);
+  return POINT(FLOOR_DIV(p.x, bm->size.w) * bm->size.w,
+               FLOOR_DIV(p.y, bm->size.h) * bm->size.h);
 }
 
 /* the current layer is locked, so takes no paint */
@@ -760,10 +754,8 @@ static result_t painting_mouse(painting_task_t    *pt,
   colour_t colour;
   int      i;
 
-  p = POINT(painting_floor_div(event->data.mouse.point.x - pt->page.x,
-                               pt->zoom),
-            painting_floor_div(event->data.mouse.point.y - pt->page.y,
-                               pt->zoom));
+  p = POINT(FLOOR_DIV(event->data.mouse.point.x - pt->page.x, pt->zoom),
+            FLOOR_DIV(event->data.mouse.point.y - pt->page.y, pt->zoom));
 
   /* tiled, a stroke pressed on a copy of the canvas lands on the canvas, and
    * keeps the same shift as it runs on over the edges. hovering follows the
