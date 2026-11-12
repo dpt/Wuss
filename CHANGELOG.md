@@ -14,8 +14,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   textures (Clouds, Marble, Wood, Cells, embossed Stone and woven Weave),
   shown repeated 2 x 2 so any seam would show. Smooth colour schemes ramp;
   stepped ones (Desktop, Grey 16, Linen, Denim) use five exact tones, as the
-  RISC OS desktop textures do. A Grain setting speckles between tones. Save
-  writes one 256 x 256 tile.
+  RISC OS desktop textures do. A Grain slider speckles between tones; G steps
+  it through None, Light and Heavy presets. Menu >
+  Configuration opens a slider dialogue of the current kind's parameters
+  (scale, contrast, detail, veins, turbulence, rings, roughness, relief,
+  patches, thread width and wobble). Save writes one 256 x 256 tile.
 
 ## [0.25.0] - 2026-11-12
 
