@@ -18,6 +18,7 @@
 #include "geom/box.h"
 #include "geom/point.h"
 #include "io/path.h"
+#include "utils/maths.h"
 #include "wuss/menu.h"
 #include "wuss/window.h"
 
@@ -243,7 +244,7 @@ static void compositing_ramp_src(compositing_task_t *pd, int ramp)
       pixelfmt_any_t px = *sp++;
       unsigned int   alpha;
 
-      alpha = PIXELFMT_xxxA8888(px) * ramp / 255;
+      alpha = div255(PIXELFMT_xxxA8888(px) * ramp);
       *dp++ = (px & ~PIXELFMT_xxxA8888_MASK) |
               ((pixelfmt_any_t) alpha << PIXELFMT_xxxA8888_SHIFT);
     }
