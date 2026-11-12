@@ -101,7 +101,7 @@ Menu shortcuts (fire when the task has the focus):
 | F3            | Save / Save as  | ball chars checker clock compositing curving dithering doughnut effecting fern fireworks gradient greebling oscillating orbing painting resizing saturn sofa          |
 | Ctrl-R        | Randomise       | checker doughnut fern gradient greebling orbing oscillating saturn sofa                                                                                               |
 | R             | Reset           | checker curving doughnut fern gradient orbing oscillating saturn sofa                                                                                                 |
-| Space         | Pause           | ball compositing dithering doughnut fern fireworks oscillating saturn sofa                                                                                            |
+| Space         | Pause           | ball dithering doughnut fern fireworks oscillating saturn sofa                                                                                                        |
 | A C G D       | Add ball, Clear, Gravity, Damping | ball                                                                                                                                                |
 | D S H         | Digital, Seconds, 12-hour | clock                                                                                                                                                       |
 | H             | Hull            | curving                                                                                                                                                               |

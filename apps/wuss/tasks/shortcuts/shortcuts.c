@@ -126,7 +126,6 @@ shortcuts[] =
   { "S",              "Seconds"             },
   { "H",              "12-hour"             },
   { "Compositing",    NULL                  },
-  { "Space",          "Pause"               },
   { "F3",             "Save"                },
   { "Left",           "Previous operator"   },
   { "Right",          "Next operator"       },

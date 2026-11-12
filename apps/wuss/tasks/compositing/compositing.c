@@ -1,4 +1,4 @@
-/* wuss/tasks/compositing/compositing.c -- animated Porter-Duff compositing */
+/* wuss/tasks/compositing/compositing.c -- Porter-Duff compositing */
 
 #ifdef WUSS_APP
 
@@ -19,6 +19,9 @@
 #include "geom/point.h"
 #include "io/path.h"
 #include "utils/maths.h"
+#include "wuss/component/dialogue.h"
+#include "wuss/icon-spec.h"
+#include "wuss/icon.h"
 #include "wuss/menu.h"
 #include "wuss/window.h"
 
@@ -26,16 +29,15 @@
 #include "../common/taskapp.h"
 #include "../common/common.h"
 
-/* window's task: the two composite demo images blended under a cycling
- * Porter-Duff rule, over an alpha checkerboard. The source image's alpha is
- * ramped up and back down across each rule's turn, so every operator is seen
- * across its full range. SELECT steps to the next rule and ADJUST to the
- * previous one; Menu > Rule jumps straight to any one; Menu > Swap images
- * exchanges source and destination; Menu > Save opens a Save As dialogue
- * (drag its icon onto a Filer window, or Save with a full path already
- * typed) that writes the window's contents out. Once a click has given the
- * window the input focus, Space pauses/resumes and Left/Right step the
- * rule. */
+/* window's task: the two composite demo images blended under a Porter-Duff
+ * rule, over an alpha checkerboard. Menu > Alpha opens a slider scaling the
+ * source image's alpha, so each operator can be seen across its full range.
+ * SELECT steps to the next rule and ADJUST to the previous one; Menu > Rule
+ * jumps straight to any one; Menu > Swap images exchanges source and
+ * destination; Menu > Save opens a Save As dialogue (drag its icon onto a
+ * Filer window, or Save with a full path already typed) that writes the
+ * window's contents out. Once a click has given the window the input focus,
+ * Left/Right step the rule. */
 typedef struct compositing_task
 {
   taskapp_instance_t  base;
@@ -44,15 +46,15 @@ typedef struct compositing_task
                                        * into another's menu */
   wuss_menu_item_t    rule_items[composite_RULE__LIMIT];
   wuss_menu_t         rule_menu;
-  int                 paused; /* Menu > Pause; idle does nothing while set */
+  wuss_dialogue_t    *alpha_dialogue; /* NULL once the window closes */
+  wuss_slider_row_t   alpha_row;
+  int                 alpha; /* Menu > Alpha; source alpha scale, 0..255 */
   int                 swapped; /* Menu > Swap images; a and b exchanged */
   bitmap_t         a;              /* owned: pristine source, BGRA */
   bitmap_t         b;               /* owned: pristine destination, BGRA */
-  bitmap_t         src;             /* owned: scratch, rebuilt each frame */
-  bitmap_t         dst;             /* owned: scratch, rebuilt each frame */
+  bitmap_t         src;             /* owned: scratch, rebuilt each redraw */
+  bitmap_t         dst;             /* owned: scratch, rebuilt each redraw */
   composite_rule_t rule;
-  int              frame;           /* frames elapsed in the current rule */
-  int              frames_per_rule;
   colour_t         light;           /* checkerboard */
   colour_t         dark;            /* checkerboard */
   colour_t         fg;              /* rule name label */
@@ -64,9 +66,9 @@ compositing_task_t;
  * per-instance in compositing_task_t, not as a file-scope static */
 enum
 {
-  COMPOSITING_MENU_PAUSE,
   COMPOSITING_MENU_SAVE,
   COMPOSITING_MENU_RULE,
+  COMPOSITING_MENU_ALPHA,
   COMPOSITING_MENU_SWAP
 };
 
@@ -74,9 +76,8 @@ enum
 #define PD_CHECKER_BAND      (8) /* checkerboard square size, in pixels */
 #define PD_FORMAT          (pixelfmt_bgra8888)
 
-#define PD_FRAMES_DEFAULT  (120) /* ~2s per rule at 60 main-loop passes/sec */
-#define PD_FRAMES_MIN       (10)
-#define PD_FRAMES_MAX      (600)
+#define PD_ALPHA_DEFAULT   (192) /* part-transparent, so rules differ */
+#define PD_SLIDER_W        (128)
 
 /* ----------------------------------------------------------------------- */
 
@@ -140,6 +141,74 @@ static result_t compositing_fit(compositing_task_t *task)
   return wuss_window_resize(task->base.window, size);
 }
 
+static result_t compositing_alpha_fillout(void *opaque)
+{
+  compositing_task_t *task;
+
+  task = opaque;
+
+  return wuss_slider_row_set(wuss_dialogue_window(task->alpha_dialogue),
+                             &task->alpha_row, task->alpha);
+}
+
+/* Build the Alpha dialogue: a label, a 0..255 slider and its value echo in
+ * one row. Hover on the menu row opens it as a submenu; every drag redraws
+ * at once. */
+static result_t compositing_alpha_create(compositing_task_t *task)
+{
+  static const char title[] = "Alpha";
+
+  result_t         rc;
+  wuss_icon_spec_t specs[3];
+  wuss_icon_t     *made[3];
+  char             buf[WUSS_SLIDER_ROW_BUF];
+  int              label_w, value_w, slider_h, width, height;
+  box_t            label_box, slider_box, value_box;
+
+  label_w  = task_text_width(task->base.wuss, title);
+  /* +2: a label insets its text a pixel either side, and an overhang would
+   * be left behind when the text shrinks */
+  value_w  = task_text_width(task->base.wuss, "255") + 2;
+  slider_h = wuss_std_height(task->base.wuss, wuss_STD_SLIDER);
+  width    = 2 * wuss_STD_INSET + label_w + PD_SLIDER_W + value_w +
+             2 * wuss_STD_GAP;
+  height   = 2 * wuss_STD_INSET + slider_h;
+
+  rc = wuss_dialogue_create(&task->alpha_dialogue, task->base.delegate,
+                            SIZE2D(width, height), title,
+                            compositing_alpha_fillout, task);
+  if (rc != result_OK)
+    return rc;
+
+  wuss_dialogue_set_focusable(task->alpha_dialogue, 0);
+
+  label_box  = (box_t) BOX_POS_SIZE(wuss_STD_INSET, wuss_STD_INSET, label_w,
+                                    slider_h);
+  slider_box = (box_t) BOX_POS_SIZE(label_box.x1 + wuss_STD_GAP,
+                                    wuss_STD_INSET, PD_SLIDER_W, slider_h);
+  value_box  = (box_t) BOX_POS_SIZE(slider_box.x1 + wuss_STD_GAP,
+                                    wuss_STD_INSET, value_w, slider_h);
+
+  wuss_icon_spec_label(&specs[0], label_box, title,
+                       wuss_ICON_FLAGS_JUSTIFY_RIGHT);
+  wuss_icon_spec_slider_row(&specs[1], &specs[2], slider_box, value_box,
+                            wuss_SLIDER_HORIZONTAL, 0, 255, task->alpha, "%d",
+                            0, buf, sizeof(buf));
+
+  rc = wuss_icon_create_array(wuss_dialogue_window(task->alpha_dialogue),
+                              specs, NELEMS(specs), made);
+  if (rc != result_OK)
+  {
+    wuss_dialogue_destroy(task->alpha_dialogue);
+    task->alpha_dialogue = NULL;
+    return rc;
+  }
+
+  wuss_slider_row_bind(&task->alpha_row, made[1], made[2], "%d", 0, 255, 0);
+
+  return result_OK;
+}
+
 static result_t compositing_init(compositing_task_t *task)
 {
   result_t        rc;
@@ -150,9 +219,8 @@ static result_t compositing_init(compositing_task_t *task)
 
   wuss                  = task->base.wuss;
   palette               = wuss_get_palette(wuss, NULL);
-  task->rule            = composite_RULE_CLEAR;
-  task->frame           = 0;
-  task->frames_per_rule = PD_FRAMES_DEFAULT;
+  task->rule            = composite_RULE_SRC_OVER;
+  task->alpha           = PD_ALPHA_DEFAULT;
   task->light           = palette[palette_PICO8_LIGHT_GREY];
   task->dark            = palette[palette_PICO8_DARK_GREY];
   task->fg              = palette[palette_PICO8_WHITE];
@@ -176,9 +244,6 @@ static result_t compositing_init(compositing_task_t *task)
   if (rc != result_OK)
     return rc;
 
-  WUSS_MENU_ITEM_SHORTCUT(task->menu_items, COMPOSITING_MENU_PAUSE, "Pause",
-                          wuss_MENU_ITEM_NONE, "SPACE");
-
   taskapp_save_row(&task->base, task->menu_items, COMPOSITING_MENU_SAVE,
                    wuss_MENU_ITEM_NONE);
 
@@ -189,7 +254,11 @@ static result_t compositing_init(compositing_task_t *task)
                  NELEMS(task->rule_items));
 
   WUSS_MENU_ITEM_MENU(task->menu_items, COMPOSITING_MENU_RULE, "Rule",
-                      wuss_MENU_ITEM_DASHED, &task->rule_menu);
+                      wuss_MENU_ITEM_NONE, &task->rule_menu);
+
+  /* window set once the dialogue exists */
+  WUSS_MENU_ITEM(task->menu_items, COMPOSITING_MENU_ALPHA, "Alpha",
+                 wuss_MENU_ITEM_BORROWED_SUBMENU | wuss_MENU_ITEM_PRE_OPEN);
 
   WUSS_MENU_ITEM(task->menu_items, COMPOSITING_MENU_SWAP, "Swap images",
                  wuss_MENU_ITEM_NONE);
@@ -197,11 +266,18 @@ static result_t compositing_init(compositing_task_t *task)
   WUSS_MENU_TITLE(task->base.menu, "Compositing", task->menu_items,
                  NELEMS(task->menu_items));
 
+  rc = compositing_alpha_create(task);
+  if (rc != result_OK)
+    return rc;
+  task->menu_items[COMPOSITING_MENU_ALPHA].window =
+    wuss_dialogue_window(task->alpha_dialogue);
+
   return compositing_fit(task);
 }
 
 static void compositing_destroy(compositing_task_t *task)
 {
+  wuss_dialogue_destroy(task->alpha_dialogue);
   free(task->dst.base);
   free(task->src.base);
   free(task->b.base);
@@ -209,22 +285,6 @@ static void compositing_destroy(compositing_task_t *task)
 }
 
 /* ----------------------------------------------------------------------- */
-
-/* Triangle ramp: 0 at the start of the rule's turn, 255 at its midpoint, back
- * to 0 at its end. */
-static int compositing_ramp(const compositing_task_t *pd)
-{
-  int half;
-
-  half = pd->frames_per_rule / 2;
-  if (half <= 0)
-    return 255;
-
-  if (pd->frame < half)
-    return pd->frame * 255 / half;
-  else
-    return MAX(0, (pd->frames_per_rule - pd->frame) * 255 / half);
-}
 
 /* Copy "a" into "src", scaling its alpha channel by "ramp" (0..255). The
  * library's compositing works on non-premultiplied values, so the colour
@@ -276,12 +336,12 @@ static result_t compositing_redraw(const wuss_event_t *event,
   /* ponytail: the whole 256x256 pane is recomposited on every redraw -- two
    * full-image memcpys plus two full-image passes. Fine for one window in a
    * test harness; if the main loop ever gets tight, cache the composited
-   * bitmap and rebuild it only when the ramp value or rule actually changes. */
+   * bitmap and rebuild it only when the alpha or rule actually changes. */
   rc = bitmap_copy_pixels(&pd->b, &pd->dst);
   if (rc != result_OK)
     return rc;
 
-  compositing_ramp_src(pd, compositing_ramp(pd));
+  compositing_ramp_src(pd, pd->alpha);
 
   rc = composite(pd->rule, &pd->src, &pd->dst);
   if (rc != result_OK)
@@ -304,36 +364,7 @@ static result_t compositing_redraw(const wuss_event_t *event,
                      pd->fg, pd->bg, NULL, &pos, NULL);
 }
 
-static result_t compositing_idle(void *task_data)
-{
-  compositing_task_t *pd;
-
-  pd = task_data;
-
-  /* the shared proginfo singleton is a second window on this same
-   * (autoclose) delegate while its dialogue is open, so closing the main
-   * window alone doesn't necessarily empty task->windows immediately --
-   * guard against the dangling window in the meantime */
-  if (pd->base.window == NULL)
-    return result_OK;
-
-  if (pd->paused)
-    return result_OK;
-
-  if (++pd->frame >= pd->frames_per_rule)
-  {
-    pd->frame = 0;
-    pd->rule  = (pd->rule + 1) % composite_RULE__LIMIT;
-  }
-
-  /* the ramp changes every frame, so the whole pane is stale every frame */
-  wuss_window_invalidate_visible(pd->base.window);
-
-  return result_OK;
-}
-
-/* step the rule by dir (+1 or -1), wrapping round; paused, restart at the
- * ramp's midpoint, as compositing_pick_rule does */
+/* step the rule by dir (+1 or -1), wrapping round */
 static result_t compositing_mouse(wuss_window_t *window,
                                   int            dir,
                                   void          *task_data)
@@ -342,27 +373,7 @@ static result_t compositing_mouse(wuss_window_t *window,
 
   pd = task_data;
 
-  pd->rule  = (pd->rule + composite_RULE__LIMIT + dir) %
-              composite_RULE__LIMIT;
-  pd->frame = pd->paused ? pd->frames_per_rule / 2 : 0;
-
-  wuss_window_invalidate_visible(window);
-
-  return result_OK;
-}
-
-static result_t compositing_scroll(wuss_window_t *window,
-                                   int            delta,
-                                   void          *task_data)
-{
-  compositing_task_t *pd;
-
-  pd = task_data;
-
-  pd->frames_per_rule += delta * 10;
-  pd->frames_per_rule  = CLAMP(pd->frames_per_rule,
-                               PD_FRAMES_MIN, PD_FRAMES_MAX);
-  pd->frame            = MIN(pd->frame, pd->frames_per_rule);
+  pd->rule = (pd->rule + composite_RULE__LIMIT + dir) % composite_RULE__LIMIT;
 
   wuss_window_invalidate_visible(window);
 
@@ -383,49 +394,34 @@ static result_t compositing_key(compositing_task_t *pd,
   }
 }
 
-/* The "Pause" row stops or restarts the idle animation; the "Swap" row
- * exchanges the source and destination images (with their scratch bitmaps,
- * which are sized to match). An ADJUST pick keeps the menu open, so retick
- * the live row; a SELECT pick has already closed it. */
-static result_t compositing_toggle(compositing_task_t *pd,
-                                   const wuss_event_t *event)
+/* The "Swap" row exchanges the source and destination images (with their
+ * scratch bitmaps, which are sized to match). An ADJUST pick keeps the menu
+ * open, so retick the live row; a SELECT pick has already closed it. */
+static result_t compositing_swap(compositing_task_t *pd)
 {
-  int      index;
-  int     *flag;
   bitmap_t t;
 
-  index = event->data.menu_select.index;
+  t           = pd->a;
+  pd->a       = pd->b;
+  pd->b       = t;
+  t           = pd->src;
+  pd->src     = pd->dst;
+  pd->dst     = t;
+  pd->swapped = !pd->swapped;
 
-  if (index == COMPOSITING_MENU_SWAP)
-  {
-    t       = pd->a;
-    pd->a   = pd->b;
-    pd->b   = t;
-    t       = pd->src;
-    pd->src = pd->dst;
-    pd->dst = t;
-    flag    = &pd->swapped;
-    wuss_window_invalidate_visible(pd->base.window);
-  }
-  else
-  {
-    flag = &pd->paused;
-  }
-  *flag = !*flag;
+  wuss_window_invalidate_visible(pd->base.window);
 
-  wuss_menu_tick_item_live(pd->base.menu_handle, &pd->base.menu, index, *flag);
+  wuss_menu_tick_item_live(pd->base.menu_handle, &pd->base.menu,
+                           COMPOSITING_MENU_SWAP, pd->swapped);
 
   return result_OK;
 }
 
-/* A "Rule" submenu pick: jump straight to that rule. Paused, restart it at
- * the ramp's midpoint rather than its start, where the source is fully
- * transparent and the rule would look like DST. */
+/* A "Rule" submenu pick: jump straight to that rule. */
 static result_t compositing_pick_rule(compositing_task_t *pd,
                                       const wuss_event_t *event)
 {
-  pd->rule  = (composite_rule_t) event->data.menu_select.index;
-  pd->frame = pd->paused ? pd->frames_per_rule / 2 : 0;
+  pd->rule = (composite_rule_t) event->data.menu_select.index;
 
   wuss_menu_tick_exclusive_live(pd->base.menu_handle, &pd->rule_menu, pd->rule);
 
@@ -438,21 +434,25 @@ static result_t compositing_handle(wuss_window_t      *window,
                                    const wuss_event_t *event,
                                    void               *task_data)
 {
+  result_t            rc;
   compositing_task_t *pd;
+  int                 old;
 
   pd = task_data;
 
   switch (event->kind)
   {
   case wuss_EVENT_REDRAW:
+    if (window != pd->base.window)
+      return result_OK;
     return compositing_redraw(event, task_data);
 
   case wuss_EVENT_MOUSE:
-    if (event->data.mouse.action != wuss_MOUSE_DOWN)
+    if (event->data.mouse.action != wuss_MOUSE_DOWN ||
+        window != pd->base.window)
       return result_OK;
     if (event->data.mouse.button & wuss_BUTTON_MENU)
     {
-      wuss_menu_tick_item(&pd->base.menu, COMPOSITING_MENU_PAUSE, pd->paused);
       wuss_menu_tick_item(&pd->base.menu, COMPOSITING_MENU_SWAP, pd->swapped);
       wuss_menu_tick_exclusive(&pd->rule_menu, pd->rule);
 
@@ -465,32 +465,51 @@ static result_t compositing_handle(wuss_window_t      *window,
       return compositing_mouse(window, -1, task_data);
     return result_OK;
 
-  case wuss_EVENT_SCROLL:
-    return compositing_scroll(window, event->data.scroll.delta, task_data);
-
   case wuss_EVENT_KEY:
-  {
-    result_t rc;
-
+    if (window != pd->base.window)
+      return result_WUSS_KEY_UNCLAIMED;
     if (!task_key_is_plain(pd->base.delegate, &pd->base.menu, event, &rc))
       return rc;
-
     return compositing_key(pd, window, event->data.key.code);
-  }
-
-  case wuss_EVENT_IDLE:
-    return compositing_idle(task_data);
 
   case wuss_EVENT_RELAYOUT:
     return window == pd->base.window ? compositing_fit(pd) : result_OK;
 
   case wuss_EVENT_MENU_SELECT:
     if (event->data.menu_select.menu == &pd->base.menu &&
-        (event->data.menu_select.index == COMPOSITING_MENU_PAUSE ||
-         event->data.menu_select.index == COMPOSITING_MENU_SWAP))
-      return compositing_toggle(pd, event);
+        event->data.menu_select.index == COMPOSITING_MENU_SWAP)
+      return compositing_swap(pd);
     if (event->data.menu_select.menu == &pd->rule_menu)
       return compositing_pick_rule(pd, event);
+    return result_OK;
+
+  case wuss_EVENT_ICON:
+    /* a press or a move needn't change the slider's value */
+    old = pd->alpha;
+    if (window == wuss_dialogue_window(pd->alpha_dialogue) &&
+        wuss_slider_row_event(window, &pd->alpha_row, event, &pd->alpha) &&
+        pd->alpha != old && pd->base.window != NULL)
+      wuss_window_invalidate_visible(pd->base.window);
+    return result_OK;
+
+  case wuss_EVENT_PRE_SHOW:
+    if (window != wuss_dialogue_window(pd->alpha_dialogue))
+      return result_OK;
+    rc = wuss_dialogue_handle_pre_show(pd->alpha_dialogue);
+    if (rc != result_OK || event->data.pre_show.handle == NULL)
+      return rc;
+    return wuss_menu_open_window_now(event->data.pre_show.handle,
+                                     event->data.pre_show.index);
+
+  case wuss_EVENT_CLOSE:
+    wuss_dialogue_handle_close(pd->alpha_dialogue, window);
+    if (window == pd->base.window)
+    {
+      /* the hidden dialogue is another window on this autoclose task:
+       * close it too, else the task outlives its main window */
+      wuss_dialogue_destroy(pd->alpha_dialogue);
+      pd->alpha_dialogue = NULL;
+    }
     return result_OK;
 
   case wuss_EVENT_QUIT:
@@ -507,7 +526,7 @@ result_t compositing_app_create(wuss_t *wuss)
   static const taskapp_desc_t desc =
   {
     .name          = "Compositing",
-    .purpose       = "Animated Porter-Duff compositing",
+    .purpose       = "Porter-Duff compositing",
     .instance_size = sizeof(compositing_task_t),
     .window_size   = { PD_SIZE, PD_SIZE }, /* compositing_fit adds the label */
     .init          = (taskapp_init_fn_t) compositing_init,
