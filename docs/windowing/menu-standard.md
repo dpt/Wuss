@@ -51,9 +51,13 @@ there to break up length.
   group. Divide each group from its neighbours, never inside it.
 - Submenu rows (`Save ⇒`, `Edit ⇒`, `View ⇒`, `<Object> ⇒`) sit together
   with no dividers between them, even when reduction put them there.
-- A menu of three rows or fewer has no dividers.
+- A single object's rows that are mostly submenus join the submenu rows
+  with no divider. Dithering's `Palette ⇒`, `Method ⇒`, `Strength ⇒` and
+  `Pause` follow `Save ⇒` and `Display ⇒` undivided.
+- A menu of three rows or fewer has no dividers, except as below.
 - In a submenu, divide commands from a list of choices (Ovation Pro's
-  `Edit style, Remove` above its list of styles).
+  `Edit style, Remove` above its list of styles), however short the
+  submenu.
 
 For example, Sofa. Logically it has `File ⇒` (Save), `View ⇒` (Colours) and
 one object, the simulation (Pause, Model, Auto-cycle, Randomise, Reset).

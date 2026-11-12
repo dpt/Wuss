@@ -41,7 +41,7 @@
 #define DITHERING_SLIDER_W     128 /* slider dialogues' slider */
 #define DITHERING_SWATCHES_W   128 /* Show palette window's initial side */
 #define DITHERING_COLOURS_STEPS 8 /* Colours slider positions per doubling */
-#define DITHERING_STRENGTH_STEP 1 /* Animate strength: percent per tick */
+#define DITHERING_STRENGTH_STEP 1 /* strength animation: percent per tick */
 /* ponytail: largest per-channel miss (0..255) a screen palette may make on a
  * target colour before the dither is flagged as unshowable. A plain RGB
  * distance; a perceptual one if the warning proves too eager or lax. */
@@ -57,11 +57,12 @@
 #define DITHERING_PALETTE_CURRENT 3
 #define DITHERING_PALETTE_FIRST_HEX 4
 
-/* Palette submenu rows: a submenu per kind of palette */
+/* Palette submenu rows: a submenu per kind of palette, then Show palette */
 enum
 {
   DITHERING_PALETTE_ROW_COMPUTED,
   DITHERING_PALETTE_ROW_FIXED,
+  DITHERING_PALETTE_ROW_SHOW,
   DITHERING_PALETTE_ROW__LIMIT
 };
 
@@ -113,13 +114,12 @@ dithering_group_t;
 /* Main menu rows */
 enum
 {
-  DITHERING_MENU_DISPLAY,
   DITHERING_MENU_SAVE,
-  DITHERING_MENU_METHOD,
+  DITHERING_MENU_DISPLAY,
   DITHERING_MENU_PALETTE,
-  DITHERING_MENU_SHOW_PALETTE,
+  DITHERING_MENU_METHOD,
   DITHERING_MENU_STRENGTH,
-  DITHERING_MENU_ANIMATE,
+  DITHERING_MENU_PAUSE,
   DITHERING_MENU__LIMIT
 };
 
@@ -834,6 +834,8 @@ static result_t dithering_init(dithering_task_t *task)
   WUSS_MENU_TITLE(task->fixed_menu, "Fixed", task->fixed_items,
                   DITHERING_FIXED_FIRST_GROUP + task->ngroups);
 
+  WUSS_MENU_ITEM(task->palette_items, DITHERING_PALETTE_ROW_SHOW,
+                 "Show palette", wuss_MENU_ITEM_DASHED);
   WUSS_MENU_ITEM_MENU(task->palette_items, DITHERING_PALETTE_ROW_COMPUTED,
                       "Computed", wuss_MENU_ITEM_NONE, &task->computed_menu);
   WUSS_MENU_ITEM_MENU(task->palette_items, DITHERING_PALETTE_ROW_FIXED,
@@ -843,21 +845,19 @@ static result_t dithering_init(dithering_task_t *task)
 
   dithermenu_init(&task->dither, task->dithering);
   dithermenu_add_scale(&task->dither, wuss_scaleview_window(task->scaleview));
+  taskapp_save_row(&task->base, task->menu_items, DITHERING_MENU_SAVE,
+                   wuss_MENU_ITEM_NONE);
   WUSS_MENU_ITEM_MENU(task->menu_items, DITHERING_MENU_DISPLAY, "Display",
                       wuss_MENU_ITEM_NONE, &task->dither.display);
-  taskapp_save_row(&task->base, task->menu_items, DITHERING_MENU_SAVE,
-                   wuss_MENU_ITEM_DASHED);
-  WUSS_MENU_ITEM_MENU(task->menu_items, DITHERING_MENU_METHOD, "Method",
-                      wuss_MENU_ITEM_DASHED, &task->method_menu);
   WUSS_MENU_ITEM_MENU(task->menu_items, DITHERING_MENU_PALETTE, "Palette",
                       wuss_MENU_ITEM_NONE, &task->palette_menu);
-  WUSS_MENU_ITEM(task->menu_items, DITHERING_MENU_SHOW_PALETTE,
-                 "Show palette", wuss_MENU_ITEM_NONE);
+  WUSS_MENU_ITEM_MENU(task->menu_items, DITHERING_MENU_METHOD, "Method",
+                      wuss_MENU_ITEM_NONE, &task->method_menu);
   /* window set once the dialogue exists */
   WUSS_MENU_ITEM(task->menu_items, DITHERING_MENU_STRENGTH, "Strength",
                  wuss_MENU_ITEM_BORROWED_SUBMENU | wuss_MENU_ITEM_PRE_OPEN);
-  WUSS_MENU_ITEM(task->menu_items, DITHERING_MENU_ANIMATE,
-                 "Animate strength", wuss_MENU_ITEM_NONE);
+  WUSS_MENU_ITEM_SHORTCUT(task->menu_items, DITHERING_MENU_PAUSE, "Pause",
+                          wuss_MENU_ITEM_NONE, "SPACE");
   WUSS_MENU_TITLE(task->base.menu, "Dithering", task->menu_items,
                   DITHERING_MENU__LIMIT);
 
@@ -1131,6 +1131,8 @@ static void dithering_menu_refresh(dithering_task_t *dt)
   /* a palette's tick shows on its own row and on every row leading to it */
   group = dithering_current_group(dt);
   wuss_menu_tick_exclusive(&dt->palette_menu, dithering_palette_row(dt));
+  wuss_menu_tick_item(&dt->palette_menu, DITHERING_PALETTE_ROW_SHOW,
+                      dt->palette_window != NULL);
   wuss_menu_tick_exclusive(&dt->computed_menu, dithering_computed_row(dt));
   wuss_menu_tick_exclusive(&dt->fixed_menu, dithering_fixed_row(dt));
   for (i = 0; i < dt->ngroups; i++)
@@ -1153,10 +1155,8 @@ static result_t dithering_menu_open(dithering_task_t *dt)
     return rc;
 
   ticks = 0;
-  if (dt->palette_window != NULL)
-    ticks |= 1u << DITHERING_MENU_SHOW_PALETTE;
-  if (dt->animate)
-    ticks |= 1u << DITHERING_MENU_ANIMATE;
+  if (!dt->animate)
+    ticks |= 1u << DITHERING_MENU_PAUSE;
 
   return wuss_menu_open_ticked(dt->base.delegate, &dt->base.menu, ticks,
                                wuss_get_pointer(dt->base.wuss), &dt->base.menu_handle);
@@ -1173,7 +1173,7 @@ static result_t dithering_menu_select(dithering_task_t   *dt,
   menu  = event->data.menu_select.menu;
   index = event->data.menu_select.index;
 
-  if (menu == &dt->base.menu && index == DITHERING_MENU_SHOW_PALETTE)
+  if (menu == &dt->palette_menu && index == DITHERING_PALETTE_ROW_SHOW)
   {
     rc = dithering_toggle_palette_window(dt);
     wuss_menu_tick_item_live(dt->base.menu_handle, menu, index,
@@ -1181,10 +1181,10 @@ static result_t dithering_menu_select(dithering_task_t   *dt,
     return rc;
   }
 
-  if (menu == &dt->base.menu && index == DITHERING_MENU_ANIMATE)
+  if (menu == &dt->base.menu && index == DITHERING_MENU_PAUSE)
   {
     dt->animate = !dt->animate;
-    wuss_menu_tick_item_live(dt->base.menu_handle, menu, index, dt->animate);
+    wuss_menu_tick_item_live(dt->base.menu_handle, menu, index, !dt->animate);
     return result_OK;
   }
 
@@ -1251,6 +1251,9 @@ static result_t dithering_menu_select(dithering_task_t   *dt,
     /* the other kind's submenu is closed: refresh's data ticks cover it */
     wuss_menu_tick_exclusive_live(dt->base.menu_handle, &dt->palette_menu,
                                   dithering_palette_row(dt));
+    wuss_menu_tick_item_live(dt->base.menu_handle, &dt->palette_menu,
+                             DITHERING_PALETTE_ROW_SHOW,
+                             dt->palette_window != NULL);
     wuss_menu_tick_exclusive_live(dt->base.menu_handle, &dt->fixed_menu,
                                   dithering_fixed_row(dt));
   }
@@ -1289,7 +1292,7 @@ static int dithering_current_stale(const dithering_task_t *dt)
          memcmp(dt->target, g_tasks.bm->palette, n * sizeof(*dt->target)) != 0;
 }
 
-/* Re-dither if Current has gone stale. Animate strength: bounce strength
+/* Re-dither if Current has gone stale. Unless paused, bounce strength
  * between 0 and 100 a step per idle tick, re-dithering each time. The
  * dialogue's slider follows, in case it is open. */
 static result_t dithering_idle(dithering_task_t *dt)

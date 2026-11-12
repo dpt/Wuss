@@ -140,6 +140,7 @@ shortcuts[] =
   { "Down",           "Scroll down"         },
   { "Dithering",      NULL                  },
   { "F3",             "Save"                },
+  { "Space",          "Pause"               },
   { "Doughnut",       NULL                  },
   { "Space",          "Pause"               },
   { "F3",             "Save"                },
