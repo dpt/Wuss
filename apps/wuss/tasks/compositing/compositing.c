@@ -28,24 +28,28 @@
 #include "../apps.h"
 #include "../common/taskapp.h"
 #include "../common/common.h"
+#include "../common/dithermenu.h"
 
 /* window's task: the two composite demo images blended under a Porter-Duff
  * rule, over an alpha checkerboard. Menu > Alpha opens a slider scaling the
  * source image's alpha, so each operator can be seen across its full range.
  * SELECT steps to the next rule and ADJUST to the previous one; Menu > Rule
  * jumps straight to any one; Menu > Swap images exchanges source and
- * destination; Menu > Save opens a Save As dialogue (drag its icon onto a
+ * destination; Menu > Display > Dithering picks how the result is blitted
+ * to a shallow screen; Menu > Save opens a Save As dialogue (drag its icon onto a
  * Filer window, or Save with a full path already typed) that writes the
  * window's contents out. Once a click has given the window the input focus,
  * Left/Right step the rule. */
 typedef struct compositing_task
 {
   taskapp_instance_t  base;
-  wuss_menu_item_t    menu_items[4]; /* per-instance: a shared static would
+  wuss_menu_item_t    menu_items[5]; /* per-instance: a shared static would
                                        * leak one instance's .window pointer
                                        * into another's menu */
   wuss_menu_item_t    rule_items[composite_RULE__LIMIT];
   wuss_menu_t         rule_menu;
+  dithermenu_t        dither;    /* "Display" submenu */
+  screen_dither_t     dithering; /* how the composite is blitted */
   wuss_dialogue_t    *alpha_dialogue; /* NULL once the window closes */
   wuss_slider_row_t   alpha_row;
   int                 alpha; /* Menu > Alpha; source alpha scale, 0..255 */
@@ -67,6 +71,7 @@ compositing_task_t;
 enum
 {
   COMPOSITING_MENU_SAVE,
+  COMPOSITING_MENU_DISPLAY,
   COMPOSITING_MENU_RULE,
   COMPOSITING_MENU_ALPHA,
   COMPOSITING_MENU_SWAP
@@ -221,6 +226,7 @@ static result_t compositing_init(compositing_task_t *task)
   palette               = wuss_get_palette(wuss, NULL);
   task->rule            = composite_RULE_SRC_OVER;
   task->alpha           = PD_ALPHA_DEFAULT;
+  task->dithering       = screen_DITHER_BLUE_NOISE;
   task->light           = palette[palette_PICO8_LIGHT_GREY];
   task->dark            = palette[palette_PICO8_DARK_GREY];
   task->fg              = palette[palette_PICO8_WHITE];
@@ -246,6 +252,10 @@ static result_t compositing_init(compositing_task_t *task)
 
   taskapp_save_row(&task->base, task->menu_items, COMPOSITING_MENU_SAVE,
                    wuss_MENU_ITEM_NONE);
+
+  dithermenu_init(&task->dither, task->dithering);
+  WUSS_MENU_ITEM_MENU(task->menu_items, COMPOSITING_MENU_DISPLAY, "Display",
+                      wuss_MENU_ITEM_NONE, &task->dither.display);
 
   for (i = 0; i < composite_RULE__LIMIT; i++)
     WUSS_MENU_ITEM(task->rule_items, i, rule_names[i], wuss_MENU_ITEM_NONE);
@@ -347,7 +357,10 @@ static result_t compositing_redraw(const wuss_event_t *event,
   if (rc != result_OK)
     return rc;
 
-  screen_copy_bitmap(scr, bounds->x0 - sx, bounds->y0 - sy, &pd->dst);
+  rc = screen_copy_bitmap_dithered(scr, bounds->x0 - sx, bounds->y0 - sy,
+                                   &pd->dst, pd->dithering);
+  if (rc != result_OK)
+    return rc;
 
   /* fetched each time: a font change releases the old one */
   font = wuss_get_font_n(pd->base.wuss, 0);
@@ -455,6 +468,7 @@ static result_t compositing_handle(wuss_window_t      *window,
     {
       wuss_menu_tick_item(&pd->base.menu, COMPOSITING_MENU_SWAP, pd->swapped);
       wuss_menu_tick_exclusive(&pd->rule_menu, pd->rule);
+      wuss_menu_tick_exclusive(&pd->dither.menu, (int) pd->dithering);
 
       return wuss_menu_open_at_pointer(pd->base.delegate, &pd->base.menu,
                                        &pd->base.menu_handle);
@@ -481,6 +495,12 @@ static result_t compositing_handle(wuss_window_t      *window,
       return compositing_swap(pd);
     if (event->data.menu_select.menu == &pd->rule_menu)
       return compositing_pick_rule(pd, event);
+    if (event->data.menu_select.menu == &pd->dither.menu)
+    {
+      pd->dithering = dithermenu_select(&pd->dither, pd->base.menu_handle,
+                                        event->data.menu_select.index);
+      wuss_window_invalidate_visible(pd->base.window);
+    }
     return result_OK;
 
   case wuss_EVENT_ICON:
