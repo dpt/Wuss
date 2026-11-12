@@ -1665,83 +1665,13 @@ static box_t layers_replace(paintingdoc_t *doc, const bitmap_t *next)
   return canvas_box(doc);
 }
 
-/* the size of a w by h area once flipped or turned */
-static size2d_t xform_size(paintingdoc_xform_t xform, int w, int h)
-{
-  if (xform == paintingdoc_XFORM_ROTATE_CW ||
-      xform == paintingdoc_XFORM_ROTATE_CCW)
-    return SIZE2D(h, w);
-  return SIZE2D(w, h);
-}
-
-/* the old pixel *sx,*sy of a w by h area that its new pixel x,y takes */
-static void xform_source(paintingdoc_xform_t xform,
-                         int                 w,
-                         int                 h,
-                         int                 x,
-                         int                 y,
-                         int                *sx,
-                         int                *sy)
-{
-  switch (xform)
-  {
-  case paintingdoc_XFORM_FLIP_H:     *sx = w - 1 - x; *sy = y;         break;
-  case paintingdoc_XFORM_FLIP_V:     *sx = x;         *sy = h - 1 - y; break;
-  case paintingdoc_XFORM_ROTATE_CW:  *sx = y;         *sy = h - 1 - x; break;
-  case paintingdoc_XFORM_ROTATE_CCW: *sx = w - 1 - y; *sy = x;         break;
-  default:                           *sx = w - 1 - x; *sy = h - 1 - y; break;
-  }
-}
-
-/* a flipped or turned copy of src into *next, with its own pixel store */
-static result_t layer_transform(const bitmap_t     *src,
-                                paintingdoc_xform_t xform,
-                                bitmap_t           *next)
-{
-  result_t  rc;
-  int       w, h;
-  size2d_t  size;
-  uint32_t *pixels;
-  uint32_t *out;
-  int       x, y;
-  int       sx, sy;
-
-  w    = src->size.w;
-  h    = src->size.h;
-  size = xform_size(xform, w, h);
-
-  pixels = malloc((size_t) w * (size_t) h * 4);
-  if (pixels == NULL)
-    return result_OOM;
-
-  rc = bitmap_init(next, size, pixelfmt_bgra8888, size.w * 4, NULL, pixels);
-  if (rc != result_OK)
-  {
-    free(pixels);
-    return rc;
-  }
-
-  /* each new pixel x,y takes the old pixel sx,sy */
-  out = pixels;
-  for (y = 0; y < size.h; y++)
-  {
-    for (x = 0; x < size.w; x++)
-    {
-      xform_source(xform, w, h, x, y, &sx, &sy);
-      *out++ = row_of(src, sy)[sx];
-    }
-  }
-
-  return result_OK;
-}
-
-/* mask, a region within a w by h area, flipped or turned as layer_transform
+/* mask, a region within a w by h area, flipped or turned as bitmap_orient
  * turns the area's pixels, into *out (NULL if empty) */
-static result_t mask_transform(const region_t     *mask,
-                               int                 w,
-                               int                 h,
-                               paintingdoc_xform_t xform,
-                               region_t          **out)
+static result_t mask_transform(const region_t *mask,
+                               int             w,
+                               int             h,
+                               orient_t        orient,
+                               region_t      **out)
 {
   result_t  rc;
   size2d_t  size;
@@ -1754,7 +1684,7 @@ static result_t mask_transform(const region_t     *mask,
   region_t *one;
   region_t *next;
 
-  size = xform_size(xform, w, h);
+  size = orient_size(orient, SIZE2D(w, h));
   acc  = NULL;
 
   /* ponytail: a pixel test each and a union per run, quadratic in the
@@ -1767,7 +1697,7 @@ static result_t mask_transform(const region_t     *mask,
       inside = 0;
       if (x < size.w)
       {
-        xform_source(xform, w, h, x, y, &sx, &sy);
+        orient_source(orient, w, h, x, y, &sx, &sy);
         inside = region_contains(mask, sx, sy);
       }
       if (inside && x0 < 0)
@@ -1799,9 +1729,9 @@ static result_t mask_transform(const region_t     *mask,
   return result_OK;
 }
 
-box_t paintingdoc_transform_selection(paintingdoc_t      *doc,
-                                      paintingdoc_xform_t xform,
-                                      colour_t            leave)
+box_t paintingdoc_transform_selection(paintingdoc_t *doc,
+                                      orient_t       orient,
+                                      colour_t       leave)
 {
   result_t           rc;
   int                floating;
@@ -1841,9 +1771,9 @@ box_t paintingdoc_transform_selection(paintingdoc_t      *doc,
   mask    = NULL;
   bm.base = NULL;
   if (rc == result_OK)
-    rc = layer_transform(&clip.bm, xform, &bm);
+    rc = bitmap_orient(&clip.bm, orient, &bm);
   if (rc == result_OK)
-    rc = mask_transform(clip.mask, clip.bm.size.w, clip.bm.size.h, xform,
+    rc = mask_transform(clip.mask, clip.bm.size.w, clip.bm.size.h, orient,
                         &mask);
 
   /* turn about the centre of the selection's bounds. clip is unset if the
@@ -1851,7 +1781,7 @@ box_t paintingdoc_transform_selection(paintingdoc_t      *doc,
   lifted = NULL;
   if (rc == result_OK)
   {
-    size = xform_size(xform, clip.bm.size.w, clip.bm.size.h);
+    size = orient_size(orient, clip.bm.size);
     o.x  = clip.at.x + (clip.bm.size.w - size.w) / 2;
     o.y  = clip.at.y + (clip.bm.size.h - size.h) / 2;
     rc   = region_translate(mask, o.x, o.y, &unbounded, &lifted);
@@ -1927,14 +1857,14 @@ static result_t layer_resize(const bitmap_t *src,
   return result_OK;
 }
 
-box_t paintingdoc_transform(paintingdoc_t *doc, paintingdoc_xform_t xform)
+box_t paintingdoc_transform(paintingdoc_t *doc, orient_t orient)
 {
   bitmap_t next[PAINTINGDOC_LAYERS_MAX];
   int      i, j;
 
   for (i = 0; i < doc->nlayers; i++)
   {
-    if (layer_transform(&doc->layers[i].bm, xform, &next[i]) != result_OK)
+    if (bitmap_orient(&doc->layers[i].bm, orient, &next[i]) != result_OK)
     {
       for (j = 0; j < i; j++)
         free(next[j].base);

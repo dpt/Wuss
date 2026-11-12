@@ -145,8 +145,8 @@ static result_t painting_load(painting_task_t *pt, const char *path)
 static wuss_scaleview_choice_fn_t painting_scaleview_choice;
 static paintingnew_accept_fn_t    painting_resize_accept;
 
-/* the Transform submenu's rows, in paintingdoc_xform_t order */
-static const char *const painting_xform_names[paintingdoc_XFORM__COUNT] =
+/* the Transform submenu's rows, in orient_t order */
+static const char *const painting_xform_names[orient__LIMIT] =
 {
   "Flip horizontally",
   "Flip vertically",
@@ -156,7 +156,7 @@ static const char *const painting_xform_names[paintingdoc_XFORM__COUNT] =
 };
 
 /* their shortcuts, as Aseprite's for the flips */
-static const char *const painting_xform_keys[paintingdoc_XFORM__COUNT] =
+static const char *const painting_xform_keys[orient__LIMIT] =
 {
   WUSS_MENU_SHIFT "H",
   WUSS_MENU_SHIFT "V",
@@ -410,7 +410,7 @@ static result_t painting_build(painting_task_t            *task,
   if (rc != result_OK)
     return rc;
 
-  for (i = 0; i < paintingdoc_XFORM__COUNT; i++)
+  for (i = 0; i < orient__LIMIT; i++)
     WUSS_MENU_ITEM_SHORTCUT(task->xform_items, i, painting_xform_names[i],
                             wuss_MENU_ITEM_NONE, painting_xform_keys[i]);
   WUSS_MENU_ITEM(task->xform_items, PAINTING_XFORM_CROP, "Crop to selection",
@@ -1112,11 +1112,9 @@ static result_t painting_transform(painting_task_t *pt, int xform)
   else if (paintingdoc_has_selection(pt->doc) && painting_locked(pt))
     return result_OK; /* the selection's pixels are on a locked layer */
   else if (paintingdoc_has_selection(pt->doc))
-    dirty = paintingdoc_transform_selection(pt->doc,
-                                            (paintingdoc_xform_t) xform,
-                                            pt->bg);
+    dirty = paintingdoc_transform_selection(pt->doc, (orient_t) xform, pt->bg);
   else
-    dirty = paintingdoc_transform(pt->doc, (paintingdoc_xform_t) xform);
+    dirty = paintingdoc_transform(pt->doc, (orient_t) xform);
 
   return painting_changed(pt, was, &dirty);
 }

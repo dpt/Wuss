@@ -8,6 +8,7 @@
 #include "framebuf/colour.h"
 #include "framebuf/screen.h"
 #include "geom/box.h"
+#include "geom/orient.h"
 #include "geom/point.h"
 #include "geom/region.h"
 #include "geom/size.h"
@@ -412,23 +413,11 @@ box_t paintingdoc_paste(paintingdoc_t            *doc,
                         const paintingdoc_clip_t *clip,
                         point_t                   p);
 
-/* the ways the canvas or the selection can be flipped or turned */
-typedef enum paintingdoc_xform
-{
-  paintingdoc_XFORM_FLIP_H,     /* mirror left to right */
-  paintingdoc_XFORM_FLIP_V,     /* mirror top to bottom */
-  paintingdoc_XFORM_ROTATE_CW,  /* turn 90° clockwise */
-  paintingdoc_XFORM_ROTATE_CCW, /* turn 90° anticlockwise */
-  paintingdoc_XFORM_ROTATE_180,
-  paintingdoc_XFORM__COUNT
-}
-paintingdoc_xform_t;
-
 /* flip or turn the whole canvas, dropping the selection. a quarter turn
  * swaps the canvas's width and height; undo puts the old size back. takes
  * its own checkpoint. returns the box that changed (the whole canvas, at its
  * new size), or an empty box, the canvas left as it was, if out of memory */
-box_t paintingdoc_transform(paintingdoc_t *doc, paintingdoc_xform_t xform);
+box_t paintingdoc_transform(paintingdoc_t *doc, orient_t orient);
 
 /* flip or turn the selected pixels about the centre of the selection's
  * bounds, leaving the colour leave where they were. they float, as pasted
@@ -436,9 +425,9 @@ box_t paintingdoc_transform(paintingdoc_t *doc, paintingdoc_xform_t xform);
  * unless they float already, when it joins the step that floated them.
  * returns the box that changed, or an empty box if there is no selection or
  * no memory */
-box_t paintingdoc_transform_selection(paintingdoc_t      *doc,
-                                      paintingdoc_xform_t xform,
-                                      colour_t            leave);
+box_t paintingdoc_transform_selection(paintingdoc_t *doc,
+                                      orient_t       orient,
+                                      colour_t       leave);
 
 /* make the canvas the area box (x1/y1 exclusive) of the canvas, dropping the
  * selection: inside the canvas it crops, and beyond it the canvas grows,

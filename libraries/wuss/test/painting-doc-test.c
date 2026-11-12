@@ -732,23 +732,23 @@ result_t paintingdoc_test(const char *resources)
   CHECK(paintingdoc_create(SIZE2D(4, 2), &doc) == result_OK);
   paintingdoc_stroke(doc, POINT(0, 0), POINT(0, 0), 1, red());
 
-  paintingdoc_transform(doc, paintingdoc_XFORM_FLIP_H);
+  paintingdoc_transform(doc, orient_FLIP_H);
   CHECK(px(doc, 3, 0) == RED && px(doc, 0, 0) == WHITE);
-  paintingdoc_transform(doc, paintingdoc_XFORM_FLIP_V);
+  paintingdoc_transform(doc, orient_FLIP_V);
   CHECK(px(doc, 3, 1) == RED && px(doc, 3, 0) == WHITE);
-  paintingdoc_transform(doc, paintingdoc_XFORM_ROTATE_180);
+  paintingdoc_transform(doc, orient_ROTATE_180);
   CHECK(px(doc, 0, 0) == RED);
 
   CHECK(paintingdoc_select_all(doc) == result_OK);
-  dirty = paintingdoc_transform(doc, paintingdoc_XFORM_ROTATE_CW);
+  dirty = paintingdoc_transform(doc, orient_ROTATE_CW);
   CHECK(!paintingdoc_has_selection(doc));
   CHECK(paintingdoc_bitmap(doc)->size.w == 2);
   CHECK(paintingdoc_bitmap(doc)->size.h == 4);
   CHECK(dirty.x1 == 2 && dirty.y1 == 4);
   CHECK(px(doc, 1, 0) == RED && px(doc, 0, 0) == WHITE);
 
-  paintingdoc_transform(doc, paintingdoc_XFORM_ROTATE_CCW);
-  paintingdoc_transform(doc, paintingdoc_XFORM_ROTATE_CCW);
+  paintingdoc_transform(doc, orient_ROTATE_CCW);
+  paintingdoc_transform(doc, orient_ROTATE_CCW);
   CHECK(paintingdoc_bitmap(doc)->size.w == 2);
   CHECK(px(doc, 0, 3) == RED);
 
@@ -778,8 +778,7 @@ result_t paintingdoc_test(const char *resources)
   CHECK(paintingdoc_select_rect(doc, (box_t) { 1, 1, 4, 3 },
                                 paintingdoc_SELOP_REPLACE) == result_OK);
 
-  dirty = paintingdoc_transform_selection(doc, paintingdoc_XFORM_ROTATE_CW,
-                                          black());
+  dirty = paintingdoc_transform_selection(doc, orient_ROTATE_CW, black());
   CHECK(!box_is_empty(&dirty));
   CHECK(paintingdoc_bitmap(doc)->size.w == 8);
   dirty = paintingdoc_selection_bounds(doc);
@@ -788,7 +787,7 @@ result_t paintingdoc_test(const char *resources)
   CHECK(px(doc, 3, 1) == BLACK);
 
   /* floating already: a flip joins the turn's undo step */
-  paintingdoc_transform_selection(doc, paintingdoc_XFORM_FLIP_H, black());
+  paintingdoc_transform_selection(doc, orient_FLIP_H, black());
   CHECK(px(doc, 1, 1) == RED && px(doc, 2, 1) == WHITE);
   paintingdoc_undo(doc);
   CHECK(px(doc, 1, 1) == RED && px(doc, 3, 1) == WHITE);
@@ -940,7 +939,7 @@ result_t paintingdoc_test(const char *resources)
   CHECK(paintingdoc_layer(doc) == 0 && px(doc, 1, 0) == WHITE);
 
   /* flips take every layer with them */
-  paintingdoc_transform(doc, paintingdoc_XFORM_FLIP_H);
+  paintingdoc_transform(doc, orient_FLIP_H);
   paintingdoc_layer_move(doc, 1);
   CHECK(px(doc, 1, 0) == RED);
 

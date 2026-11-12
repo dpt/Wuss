@@ -142,11 +142,10 @@ enum
 /* the copies an op paints: four mirrorings by nine tilings */
 #define PAINTING_COPIES (4 * 9)
 
-/* the Transform submenu's rows: one per paintingdoc_xform_t, then these */
+/* the Transform submenu's rows: one per orient_t, then these */
 enum
 {
-  PAINTING_XFORM_CROP = paintingdoc_XFORM__COUNT, /* crop to the selection's
-                                                   * bounds */
+  PAINTING_XFORM_CROP = orient__LIMIT, /* crop to the selection's bounds */
   PAINTING_XFORM_TRIM, /* crop to the content's bounds */
   PAINTING_XFORM_SCALE, /* submenu: one row per painting_scales entry */
   PAINTING_XFORM_SIZE, /* leaf: the Canvas size dialogue */
