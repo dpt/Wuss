@@ -932,7 +932,7 @@ static int pinboard_selected_image(const pinboard_t *pb)
 
   for (i = 0; i < pb->npins; i++)
     if (pb->pins[i].selected && !pb->pins[i].is_dir &&
-        task_is_image_type(pb->pins[i].type.riscos))
+        bitmap_loads_filetype(pb->pins[i].type.riscos))
       return i;
 
   return -1;
@@ -1240,7 +1240,8 @@ static result_t pinboard_message(pinboard_t         *pb,
   {
     /* SHIFT and drop: an image becomes the backdrop instead of a pin */
     dot = strrchr(path_leaf(path), '.');
-    if (dot == NULL || !task_is_image_type(filetype_from_ext(dot).riscos) ||
+    if (dot == NULL ||
+        !bitmap_loads_filetype(filetype_from_ext(dot).riscos) ||
         pinboard_set_image(pb, path) != result_OK)
       return result_OK;
     return wuss_acknowledge(pb->wuss, pb->task, msg);

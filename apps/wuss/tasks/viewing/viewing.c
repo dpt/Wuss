@@ -387,7 +387,7 @@ static result_t viewing_page(viewing_task_t *ic, int step)
     if (idx == cur)
       break; /* back round to the current file */
     entry = dirlist_get(list, idx);
-    if (entry->is_dir || !task_is_image_type(entry->type.riscos))
+    if (entry->is_dir || !bitmap_loads_filetype(entry->type.riscos))
       continue;
     if (dirlen + strlen(entry->leaf) >= sizeof(next))
       continue;

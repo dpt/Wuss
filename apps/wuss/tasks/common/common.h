@@ -199,12 +199,6 @@ static inline const bitmap_t *task_file_glyph(const wuss_task_t *task,
   return bm;
 }
 
-/* nonzero if bitmap_load reads files of RISC OS type riscos */
-static inline int task_is_image_type(unsigned int riscos)
-{
-  return riscos == filetype_RISCOS_PNG || riscos == filetype_RISCOS_JPEG;
-}
-
 /* the leafname of the image at path less its ".png", ".jpg" or ".jpeg"
  * extension (all lower or all upper case), into name (capacity cap). zero if
  * it has none of them or does not fit */
