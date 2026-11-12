@@ -8,6 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.25.0] - 2026-11-12
+
 ### Added
 
 - `wuss_drag_start_grab` starts a grab: a core drag that scrolls the window so
