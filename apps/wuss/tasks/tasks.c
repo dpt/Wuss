@@ -140,7 +140,8 @@ g_visuals_tasks[] =
   { "Checker", checker_app_create },
   { "Curving", curving_app_create },
   { "Gradient", gradient_app_create },
-  { "Greebling", greebling_app_create }
+  { "Greebling", greebling_app_create },
+  { "Texturing", texturing_app_create }
 },
 g_toys_tasks[] =
 {

@@ -8,6 +8,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- Texturing: a new Visuals task that makes seamlessly tiling procedural
+  textures (Clouds, Marble, Wood and Cells) in six colour schemes, shown
+  repeated 2 x 2 so any seam would show. Save writes one 256 x 256 tile.
+
 ## [0.25.0] - 2026-11-12
 
 ### Added
