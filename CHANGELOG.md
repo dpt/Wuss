@@ -16,9 +16,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   stepped ones (Desktop, Grey 16, Linen, Denim) use five exact tones, as the
   RISC OS desktop textures do. A Grain slider speckles between tones; G steps
   it through None, Light and Heavy presets. Menu >
-  Configuration opens a slider dialogue of the current kind's parameters
-  (scale, contrast, detail, veins, turbulence, rings, roughness, relief,
-  patches, thread width and wobble). Save writes one 256 x 256 tile.
+  Configuration opens a slider dialogue of the current kind's four
+  parameters: Clouds scale, contrast, detail and warp; Marble scale, veins,
+  turbulence and slant; Wood scale, rings, roughness and detail; Cells
+  scale, contrast, jitter and edges; Stone scale, relief, patches and light
+  direction; Weave thread width, relief, wobble and pattern (plain, twill or
+  basket). Menu > Display > Dithering picks
+  Nearest, Bayer or Blue noise for the screen. Save writes one 256 x 256
+  tile.
 
 ## [0.25.0] - 2026-11-12
 

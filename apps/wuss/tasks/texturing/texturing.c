@@ -21,6 +21,7 @@
 #include "../apps.h"
 #include "../common/common.h"
 #include "../common/confdlg.h"
+#include "../common/dithermenu.h"
 #include "../common/taskapp.h"
 
 /* Texture edge in pixels, as a power of two so that every lattice step is a
@@ -37,15 +38,16 @@
 #define TEXTURING_LOG2_BASE 2
 
 /* Most parameters any kind has. */
-#define TEXTURING_NPARAMS 3
+#define TEXTURING_NPARAMS CONFDLG_MAX_ROWS
 
 /* Fills the content area with a procedural texture that tiles seamlessly:
  * every noise lattice wraps at the tile edge. The texture is generated once
  * per change as 8-bit values into a pixelfmt_p8 bitmap; the colour scheme
  * is only its palette, so a scheme change redraws without regenerating.
  *
- * SELECT reseeds; ADJUST steps the colour scheme. Menu > Kind and Menu >
- * Colours pick directly; Menu > Configuration shows the current kind's
+ * SELECT reseeds; ADJUST steps the colour scheme. Menu > Display >
+ * Dithering picks how the tile is dithered to the screen. Menu > Kind and
+ * Menu > Colours pick directly; Menu > Configuration shows the current kind's
  * parameters as sliders and Menu > Grain the grain's; Menu > Randomise
  * picks a fresh seed, kind and scheme; Menu > Save writes a single tile as
  * a PNG. Once a click has given the window the input focus, Space reseeds,
@@ -121,42 +123,70 @@ static const confdlg_row_t texturing_rows[TEXTURING_NKINDS][TEXTURING_NPARAMS] =
   { /* Clouds */
     { "Scale",      1,   5, 0, TEXTURING_PARAM(0) },
     { "Contrast",  25, 400, 0, TEXTURING_PARAM(1) },
-    { "Detail",     1,   7, 0, TEXTURING_PARAM(2) }
+    { "Detail",     1,   7, 0, TEXTURING_PARAM(2) },
+    /* pixels the coordinates are pushed about by a second noise */
+    { "Warp",       0,  32, 0, TEXTURING_PARAM(3) }
   },
   { /* Marble */
     { "Scale",      1,   5, 0, TEXTURING_PARAM(0) },
     { "Veins",      1,  16, 0, TEXTURING_PARAM(1) },
-    { "Turbulence", 0,  16, 0, TEXTURING_PARAM(2) }
+    { "Turbulence", 0,  16, 0, TEXTURING_PARAM(2) },
+    /* veins crossed per tile height, tilting them */
+    { "Slant",     -8,   8, 0, TEXTURING_PARAM(3) }
   },
   { /* Wood */
     { "Scale",      1,   5, 0, TEXTURING_PARAM(0) },
     { "Rings",      2,  32, 0, TEXTURING_PARAM(1) },
-    { "Roughness",  0,  16, 0, TEXTURING_PARAM(2) }
+    { "Roughness",  0,  16, 0, TEXTURING_PARAM(2) },
+    { "Detail",     1,   7, 0, TEXTURING_PARAM(3) }
   },
   { /* Cells */
     { "Scale",      1,   5, 0, TEXTURING_PARAM(0) },
-    { "Contrast",  25, 400, 0, TEXTURING_PARAM(1) }
+    { "Contrast",  25, 400, 0, TEXTURING_PARAM(1) },
+    /* how far each point strays from its cell's centre, % */
+    { "Jitter",     0, 100, 0, TEXTURING_PARAM(2) },
+    /* blend toward dark cell edges, % */
+    { "Edges",      0, 100, 0, TEXTURING_PARAM(3) }
   },
   { /* Stone */
     { "Scale",      3,   6, 0, TEXTURING_PARAM(0) },
     { "Relief",     0, 400, 0, TEXTURING_PARAM(1) },
-    { "Patches",    0, 100, 0, TEXTURING_PARAM(2) }
+    { "Patches",    0, 100, 0, TEXTURING_PARAM(2) },
+    /* degrees clockwise from the top that the light comes from */
+    { "Light",      0, 315, 45, TEXTURING_PARAM(3) }
   },
   { /* Weave: Thread is the log2 of the thread width in pixels */
     { "Thread",     2,   5, 0, TEXTURING_PARAM(0) },
     { "Relief",     0, 400, 0, TEXTURING_PARAM(1) },
-    { "Wobble",     0,  16, 0, TEXTURING_PARAM(2) }
+    { "Wobble",     0,  16, 0, TEXTURING_PARAM(2) },
+    /* TEXTURING_PATTERN_* */
+    { "Pattern",    0,   2, 0, TEXTURING_PARAM(3) }
   }
 };
 
 static const int texturing_defaults[TEXTURING_NKINDS][TEXTURING_NPARAMS] =
 {
-  { 2, 100,  7 }, /* Clouds */
-  { 2,   4,  4 }, /* Marble */
-  { 2,  16,  4 }, /* Wood */
-  { 3, 100,  0 }, /* Cells */
-  { 5, 100, 25 }, /* Stone */
-  { 3, 100,  4 }  /* Weave */
+  { 2, 100,   7,   0 }, /* Clouds */
+  { 2,   4,   4,   0 }, /* Marble */
+  { 2,  16,   4,   7 }, /* Wood */
+  { 3, 100, 100,   0 }, /* Cells */
+  { 5, 100,  25, 315 }, /* Stone */
+  { 3, 100,   4,   0 }  /* Weave */
+};
+
+/* Weave patterns: which thread lies on top in each thread-wide square. */
+enum
+{
+  TEXTURING_PATTERN_PLAIN,  /* alternate every square: a checkerboard */
+  TEXTURING_PATTERN_TWILL,  /* over two, under two, stepping each row */
+  TEXTURING_PATTERN_BASKET  /* plain, but in pairs of threads */
+};
+
+/* Light directions, as Stone's Light / 45: the step toward the light. */
+static const signed char texturing_light[8][2] =
+{
+  {  0, -1 }, {  1, -1 }, {  1,  0 }, {  1,  1 },
+  {  0,  1 }, { -1,  1 }, { -1,  0 }, { -1, -1 }
 };
 
 typedef struct texturing_task texturing_task_t;
@@ -174,12 +204,12 @@ static result_t texturing_applied(texturing_task_t *task, int old);
 
 static const confdlg_desc_t texturing_confs[TEXTURING_NCONFS] =
 {
-  TEXTURING_CONF(TEXTURING_KIND_CLOUDS, 3),
-  TEXTURING_CONF(TEXTURING_KIND_MARBLE, 3),
-  TEXTURING_CONF(TEXTURING_KIND_WOOD,   3),
-  TEXTURING_CONF(TEXTURING_KIND_CELLS,  2),
-  TEXTURING_CONF(TEXTURING_KIND_STONE,  3),
-  TEXTURING_CONF(TEXTURING_KIND_WEAVE,  3),
+  TEXTURING_CONF(TEXTURING_KIND_CLOUDS, 4),
+  TEXTURING_CONF(TEXTURING_KIND_MARBLE, 4),
+  TEXTURING_CONF(TEXTURING_KIND_WOOD,   4),
+  TEXTURING_CONF(TEXTURING_KIND_CELLS,  4),
+  TEXTURING_CONF(TEXTURING_KIND_STONE,  4),
+  TEXTURING_CONF(TEXTURING_KIND_WEAVE,  4),
   { &texturing_grain_row, 1, &texturing_grain_default,
     sizeof(texturing_grain_default),
     (confdlg_applied_fn_t) texturing_applied }
@@ -188,9 +218,10 @@ static const confdlg_desc_t texturing_confs[TEXTURING_NCONFS] =
 enum
 {
   TEXTURING_MENU_SAVE = 0,
+  TEXTURING_MENU_DISPLAY,
+  TEXTURING_MENU_COLOURS,
   TEXTURING_MENU_KIND,
   TEXTURING_MENU_CONFIGURATION,
-  TEXTURING_MENU_COLOURS,
   TEXTURING_MENU_GRAIN,
   TEXTURING_MENU_RANDOMISE
 };
@@ -207,11 +238,13 @@ struct texturing_task
   colour_t           palette[256];
   bitmap_t           bm;     /* wraps pixels[] and palette[] */
   unsigned char      pixels[TEXTURING_SIZE * TEXTURING_SIZE];
-  wuss_menu_item_t   menu_items[6];
+  screen_dither_t    dithering; /* how the tile is blitted to the screen */
+  wuss_menu_item_t   menu_items[7];
   wuss_menu_item_t   kind_items[TEXTURING_NKINDS];
   wuss_menu_t        kind_menu;
   wuss_menu_item_t   scheme_items[NELEMS(texturing_schemes)];
   wuss_menu_t        scheme_menu;
+  dithermenu_t       dither;    /* "Display" submenu: screen dithering */
 };
 
 /* ----------------------------------------------------------------------- */
@@ -300,45 +333,70 @@ static int texturing_fold(int v)
   return v < 256 ? v : 511 - v;
 }
 
-/* Squared distance from (x,y) to the nearest jittered feature point, one
- * per cell of a wrapping 2^log2n grid, scaled to 0..255. */
-static int texturing_cells(uint32_t seed, int x, int y, int log2n)
+/* Squared distance from (x,y) to the nearest feature point, one per cell
+ * of a wrapping 2^log2n grid, scaled to 0..255. Each point strays from its
+ * cell's centre by the 8.8 jitter multiplier. The 8.8 edges multiplier
+ * blends toward the gap between the nearest and second nearest points,
+ * which is dark along the borders between cells. */
+static int texturing_cells(uint32_t seed,
+                           int      x,
+                           int      y,
+                           int      log2n,
+                           int      jitter,
+                           int      edges)
 {
-  int log2c, mask, shift, cx, cy, best, i, j;
+  int log2c, c, mask, shift, cx, cy, best, second, i, j;
 
-  log2c = TEXTURING_LOG2_SIZE - log2n; /* log2 of the cell size in pixels */
-  mask  = (1 << log2n) - 1;
-  shift = 2 * log2c - 8; /* takes a cell size squared to 256 */
-  cx    = x >> log2c;
-  cy    = y >> log2c;
-  best  = INT_MAX;
+  log2c  = TEXTURING_LOG2_SIZE - log2n; /* log2 of the cell size in pixels */
+  c      = 1 << log2c;
+  mask   = (1 << log2n) - 1;
+  shift  = 2 * log2c - 8; /* takes a cell size squared to 256 */
+  cx     = x >> log2c;
+  cy     = y >> log2c;
+  best   = INT_MAX;
+  second = INT_MAX;
 
   for (j = -1; j <= 1; j++)
     for (i = -1; i <= 1; i++)
     {
       uint32_t h;
-      int      px, py, dx, dy;
+      int      px, py, dx, dy, d;
 
       /* point position in unwrapped pixels, hashed from the wrapped cell */
       h  = rng_hash32(seed, (((cy + j) & mask) << log2n) | ((cx + i) & mask));
-      px = (cx + i) * (1 << log2c) + (int) (h & ((1u << log2c) - 1));
-      py = (cy + j) * (1 << log2c) + (int) ((h >> 16) & ((1u << log2c) - 1));
+      px = (int) (h & (unsigned) (c - 1)) - c / 2;
+      py = (int) ((h >> 16) & (unsigned) (c - 1)) - c / 2;
+      px = (cx + i) * c + c / 2 + (px * jitter >> 8);
+      py = (cy + j) * c + c / 2 + (py * jitter >> 8);
       dx = px - x;
       dy = py - y;
-      best = MIN(best, dx * dx + dy * dy);
+      d  = dx * dx + dy * dy;
+      if (d < best)
+      {
+        second = best;
+        best   = d;
+      }
+      else if (d < second)
+      {
+        second = d;
+      }
     }
 
   /* ponytail: nearest points rarely sit more than a cell away, so the
-   * clamp seldom bites */
-  best = shift >= 0 ? best >> shift : best << -shift;
-  return MIN(best, 255);
+   * clamps seldom bite */
+  second -= best;
+  best    = shift >= 0 ? best >> shift : best << -shift;
+  second  = shift >= 0 ? second >> shift : second << -shift;
+  best    = MIN(best, 255);
+  second  = MIN(second, 255);
+  return best + ((second - best) * edges >> 8);
 }
 
-/* Rough stone, lit from the top left: an embossed noise height field on a
- * 2^log2n lattice and the two finer ones, the slope taken across the
- * diagonal neighbours (wrapped so it still tiles) and scaled by an 8.8
- * relief multiplier, over broad light and dark patches scaled by another.
- * Centred on 128. */
+/* Rough stone: an embossed noise height field on a 2^log2n lattice and the
+ * two finer ones, the slope taken between the neighbours toward and away
+ * from the light (wrapped so it still tiles) and scaled by an 8.8 relief
+ * multiplier, over broad light and dark patches scaled by another. light
+ * indexes texturing_light. Centred on 128. */
 static int texturing_rough(uint32_t seed, int x, int y, int log2n)
 {
   return (texturing_noise(seed,     x, y, log2n) * 2 +
@@ -351,39 +409,58 @@ static int texturing_stone(uint32_t seed,
                            int      y,
                            int      log2n,
                            int      relief,
-                           int      patches)
+                           int      patches,
+                           int      light)
 {
-  int m, slope;
+  int m, dx, dy, slope;
 
   m     = TEXTURING_SIZE - 1;
-  slope = texturing_rough(seed, (x - 1) & m, (y - 1) & m, log2n) -
-          texturing_rough(seed, (x + 1) & m, (y + 1) & m, log2n);
+  dx    = texturing_light[light][0];
+  dy    = texturing_light[light][1];
+  slope = texturing_rough(seed, (x + dx) & m, (y + dy) & m, log2n) -
+          texturing_rough(seed, (x - dx) & m, (y - dy) & m, log2n);
 
   return 128 + (slope * relief >> 8) +
          (texturing_patches(seed, x, y) * patches >> 8);
 }
 
-/* Height of a plain weave: 2^log2t-pixel threads alternate over and under
- * in a checkerboard. Each visible thread is highest along its middle and
- * drops toward its edges and toward the ends where it dives under its
- * neighbour. The coordinates wobble with noise, up to wobble pixels, so
- * the threads wander like yarn; the wobble repeats with the tile, so the
- * weave still tiles. */
+/* Height of a weave of 2^log2t-pixel threads, crossing over and under in
+ * the given TEXTURING_PATTERN_*. Each visible thread is highest along its
+ * middle and drops toward its edges and toward the ends of each square,
+ * where it may dive under its neighbour. The coordinates wobble with
+ * noise, up to wobble pixels, so the threads wander like yarn; the wobble
+ * repeats with the tile, so the weave still tiles. */
 static int texturing_weave_height(uint32_t seed,
                                   int      x,
                                   int      y,
                                   int      log2t,
-                                  int      wobble)
+                                  int      wobble,
+                                  int      pattern)
 {
-  int t, over, across, along, a, b;
+  int cx, cy, t, over, across, along, a, b;
 
   x += (texturing_noise(seed + 7, x, y, 4) - 128) * wobble >> 7;
   y += (texturing_noise(seed + 8, x, y, 4) - 128) * wobble >> 7;
   x &= TEXTURING_SIZE - 1;
   y &= TEXTURING_SIZE - 1;
 
+  cx = x >> log2t;
+  cy = y >> log2t;
+  switch (pattern) /* over is nonzero where the weft is on top */
+  {
+  default:
+  case TEXTURING_PATTERN_PLAIN:
+    over = (cx + cy) & 1;
+    break;
+  case TEXTURING_PATTERN_TWILL:
+    over = ((cx - cy) & 3) < 2;
+    break;
+  case TEXTURING_PATTERN_BASKET:
+    over = ((cx >> 1) + (cy >> 1)) & 1;
+    break;
+  }
+
   t      = 1 << log2t;
-  over   = ((x >> log2t) + (y >> log2t)) & 1; /* nonzero: weft on top */
   across = over ? (y & (t - 1)) : (x & (t - 1));
   along  = over ? (x & (t - 1)) : (y & (t - 1));
   a      = across < t / 2 ? across : t - 1 - across; /* 0 at an edge */
@@ -398,15 +475,16 @@ static int texturing_weave(uint32_t seed,
                            int      y,
                            int      log2t,
                            int      relief,
-                           int      wobble)
+                           int      wobble,
+                           int      pattern)
 {
   int m, slope;
 
   m     = TEXTURING_SIZE - 1;
   slope = texturing_weave_height(seed, (x - 1) & m, (y - 1) & m, log2t,
-                                 wobble) -
+                                 wobble, pattern) -
           texturing_weave_height(seed, (x + 1) & m, (y + 1) & m, log2t,
-                                 wobble);
+                                 wobble, pattern);
 
   return 128 + (slope * relief >> 8) + texturing_patches(seed, x, y) / 4;
 }
@@ -415,14 +493,17 @@ static void texturing_generate(texturing_task_t *task)
 {
   unsigned char *p;
   const int     *param;
-  int            mul, mul2;
+  int            mul, mul2, mul3;
+  int            light;
   int            amplitude;
   int            x, y, v;
 
   p         = task->pixels;
   param     = task->params[task->kind];
-  mul       = param[1] * 256 / 100; /* rows 1 and 2 as 8.8 multipliers */
+  mul       = param[1] * 256 / 100; /* percentages as 8.8 multipliers */
   mul2      = param[2] * 256 / 100;
+  mul3      = param[3] * 256 / 100;
+  light     = CLAMP(param[3] / 45, 0, 7); /* Stone's Light row */
   amplitude = task->grain;
   for (y = 0; y < TEXTURING_SIZE; y++)
     for (x = 0; x < TEXTURING_SIZE; x++)
@@ -431,13 +512,23 @@ static void texturing_generate(texturing_task_t *task)
       {
       default:
       case TEXTURING_KIND_CLOUDS:
-        v = texturing_contrast(texturing_fbm(task->seed, x, y, param[0],
-                                             param[2]), mul);
+      {
+        int wx, wy;
+
+        /* warp: push the lookup about by a coarse noise */
+        wx = (x + ((texturing_noise(task->seed + 11, x, y, 3) - 128) *
+                   param[3] >> 7)) & (TEXTURING_SIZE - 1);
+        wy = (y + ((texturing_noise(task->seed + 12, x, y, 3) - 128) *
+                   param[3] >> 7)) & (TEXTURING_SIZE - 1);
+        v  = texturing_contrast(texturing_fbm(task->seed, wx, wy, param[0],
+                                              param[2]), mul);
         break;
+      }
 
       case TEXTURING_KIND_MARBLE:
-        /* veins across the tile, bent by turbulence */
-        v = texturing_fold(x * param[1] * 512 / TEXTURING_SIZE +
+        /* veins across the tile, slanted, bent by turbulence */
+        v = texturing_fold((x * param[1] + y * param[3]) *
+                           (512 / TEXTURING_SIZE) +
                            texturing_fbm(task->seed, x, y, param[0],
                                          TEXTURING_LOG2_SIZE) * param[2]);
         break;
@@ -445,22 +536,23 @@ static void texturing_generate(texturing_task_t *task)
       case TEXTURING_KIND_WOOD:
         /* noise sliced into rings, roughened by a fine grain */
         v = texturing_fold(texturing_fbm(task->seed, x, y, param[0],
-                                         TEXTURING_LOG2_SIZE) * param[1] +
+                                         param[3]) * param[1] +
                            (texturing_noise(task->seed ^ 0x55u, x, y, 6) *
                             param[2] >> 4));
         break;
 
       case TEXTURING_KIND_CELLS:
-        v = texturing_contrast(texturing_cells(task->seed, x, y, param[0]),
-                               mul);
+        v = texturing_contrast(texturing_cells(task->seed, x, y, param[0],
+                                               mul2, mul3), mul);
         break;
 
       case TEXTURING_KIND_STONE:
-        v = texturing_stone(task->seed, x, y, param[0], mul, mul2);
+        v = texturing_stone(task->seed, x, y, param[0], mul, mul2, light);
         break;
 
       case TEXTURING_KIND_WEAVE:
-        v = texturing_weave(task->seed, x, y, param[0], mul, param[2]);
+        v = texturing_weave(task->seed, x, y, param[0], mul, param[2],
+                            param[3]);
         break;
       }
 
@@ -512,7 +604,7 @@ static result_t texturing_redraw(const wuss_event_t *event,
                                            &task->bm,
                                            POINT(bounds->x0 - event->data.redraw.scroll.x,
                                                  bounds->y0 - event->data.redraw.scroll.y),
-                                           screen_DITHER_BLUE_NOISE);
+                                           task->dithering);
 }
 
 static result_t texturing_reseed(texturing_task_t *task)
@@ -628,7 +720,15 @@ static result_t texturing_menu_select(texturing_task_t   *task,
 {
   result_t rc;
 
-  if (event->data.menu_select.menu == &task->kind_menu)
+  if (event->data.menu_select.menu == &task->dither.menu)
+  {
+    /* display only: the texture itself is unchanged */
+    task->dithering = dithermenu_select(&task->dither, task->base.menu_handle,
+                                        event->data.menu_select.index);
+    wuss_window_invalidate_visible(task->base.window);
+    rc = result_OK;
+  }
+  else if (event->data.menu_select.menu == &task->kind_menu)
   {
     rc = texturing_set_kind(task, event->data.menu_select.index);
     wuss_menu_tick_exclusive_live(task->base.menu_handle, &task->kind_menu,
@@ -744,6 +844,7 @@ static result_t texturing_init(texturing_task_t *task)
   task->kind   = TEXTURING_KIND_CLOUDS;
   task->scheme = 0;
   task->grain  = texturing_grain_default;
+  task->dithering = screen_DITHER_BLUE_NOISE;
   memcpy(task->params, texturing_defaults, sizeof(task->params));
 
   rc = bitmap_init(&task->bm, SIZE2D(TEXTURING_SIZE, TEXTURING_SIZE),
@@ -765,19 +866,14 @@ static result_t texturing_init(texturing_task_t *task)
   if (rc != result_OK)
     return rc;
 
+  /* Save, then View's rows (Display, Colours), then the texture's own rows:
+   * mostly submenus, so all undivided, as menu-standard.md has it */
   taskapp_save_row(&task->base, task->menu_items, TEXTURING_MENU_SAVE,
                    wuss_MENU_ITEM_NONE);
 
-  for (i = 0; i < TEXTURING_NKINDS; i++)
-    WUSS_MENU_ITEM(task->kind_items, i, texturing_kind_names[i],
-                   wuss_MENU_ITEM_NONE);
-  WUSS_MENU_TITLE(task->kind_menu, "Kind", task->kind_items, TEXTURING_NKINDS);
-  WUSS_MENU_ITEM_MENU(task->menu_items, TEXTURING_MENU_KIND, "Kind",
-                      wuss_MENU_ITEM_DASHED, &task->kind_menu);
-
-  WUSS_MENU_ITEM(task->menu_items, TEXTURING_MENU_CONFIGURATION,
-                 "Configuration",
-                 wuss_MENU_ITEM_BORROWED_SUBMENU | wuss_MENU_ITEM_PRE_OPEN);
+  dithermenu_init(&task->dither, task->dithering);
+  WUSS_MENU_ITEM_MENU(task->menu_items, TEXTURING_MENU_DISPLAY, "Display",
+                      wuss_MENU_ITEM_NONE, &task->dither.display);
 
   for (i = 0; i < TEXTURING_NSCHEMES; i++)
     WUSS_MENU_ITEM(task->scheme_items, i, texturing_schemes[i].name,
@@ -787,11 +883,22 @@ static result_t texturing_init(texturing_task_t *task)
   WUSS_MENU_ITEM_MENU(task->menu_items, TEXTURING_MENU_COLOURS, "Colours",
                       wuss_MENU_ITEM_NONE, &task->scheme_menu);
 
+  for (i = 0; i < TEXTURING_NKINDS; i++)
+    WUSS_MENU_ITEM(task->kind_items, i, texturing_kind_names[i],
+                   wuss_MENU_ITEM_NONE);
+  WUSS_MENU_TITLE(task->kind_menu, "Kind", task->kind_items, TEXTURING_NKINDS);
+  WUSS_MENU_ITEM_MENU(task->menu_items, TEXTURING_MENU_KIND, "Kind",
+                      wuss_MENU_ITEM_NONE, &task->kind_menu);
+
+  WUSS_MENU_ITEM(task->menu_items, TEXTURING_MENU_CONFIGURATION,
+                 "Configuration",
+                 wuss_MENU_ITEM_BORROWED_SUBMENU | wuss_MENU_ITEM_PRE_OPEN);
+
   WUSS_MENU_ITEM(task->menu_items, TEXTURING_MENU_GRAIN, "Grain",
                  wuss_MENU_ITEM_BORROWED_SUBMENU | wuss_MENU_ITEM_PRE_OPEN);
 
   WUSS_MENU_ITEM_SHORTCUT(task->menu_items, TEXTURING_MENU_RANDOMISE,
-                          "Randomise", wuss_MENU_ITEM_DASHED, "^R");
+                          "Randomise", wuss_MENU_ITEM_NONE, "^R");
 
   WUSS_MENU_TITLE(task->base.menu, "Texturing", task->menu_items,
                   NELEMS(task->menu_items));
