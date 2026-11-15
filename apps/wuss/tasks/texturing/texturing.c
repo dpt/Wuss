@@ -48,11 +48,12 @@
  * SELECT reseeds; ADJUST steps the colour scheme. Menu > Display >
  * Dithering picks how the tile is dithered to the screen. Menu > Kind and
  * Menu > Colours pick directly; Menu > Configuration shows the current kind's
- * parameters as sliders and Menu > Grain the grain's; Menu > Randomise
- * picks a fresh seed, kind and scheme; Menu > Save writes a single tile as
- * a PNG. Once a click has given the window the input focus, Space reseeds,
- * Left/Right step the colour scheme, K steps the kind and G steps the grain
- * through None, Light and Heavy presets. */
+ * parameters as sliders and Menu > Grain the grain's; Menu > Mutate (M)
+ * nudges those parameters and the grain; Menu > Randomise picks a fresh
+ * seed, kind and scheme; Menu > Save writes a single tile as a PNG. Once a
+ * click has given the window the input focus, Space reseeds, Left/Right
+ * step the colour scheme, K steps the kind and G steps the grain through
+ * None, Light and Heavy presets. */
 
 enum
 {
@@ -223,13 +224,19 @@ enum
   TEXTURING_MENU_KIND,
   TEXTURING_MENU_CONFIGURATION,
   TEXTURING_MENU_GRAIN,
+  TEXTURING_MENU_MUTATE,
   TEXTURING_MENU_RANDOMISE
 };
+
+/* Mutate nudges each of the current kind's sliders and the grain by up to
+ * this percent of its range, and always by at least a step. */
+#define TEXTURING_MUTATE 15
 
 struct texturing_task
 {
   taskapp_instance_t base;
   rng_t              seed;
+  rng_t              rng;    /* for Mutate */
   int                kind;   /* TEXTURING_KIND_* */
   int                scheme; /* texturing_schemes[] row */
   int                grain;  /* amplitude, 0..TEXTURING_GRAIN_MAX */
@@ -239,7 +246,7 @@ struct texturing_task
   bitmap_t           bm;     /* wraps pixels[] and palette[] */
   unsigned char      pixels[TEXTURING_SIZE * TEXTURING_SIZE];
   screen_dither_t    dithering; /* how the tile is blitted to the screen */
-  wuss_menu_item_t   menu_items[7];
+  wuss_menu_item_t   menu_items[8];
   wuss_menu_item_t   kind_items[TEXTURING_NKINDS];
   wuss_menu_t        kind_menu;
   wuss_menu_item_t   scheme_items[NELEMS(texturing_schemes)];
@@ -670,6 +677,35 @@ static result_t texturing_next_grain(texturing_task_t *task)
   return texturing_applied(task, 0);
 }
 
+/* Nudge *v by up to TEXTURING_MUTATE percent of the row's range, in whole
+ * snap steps and at least one, keeping it within the range. */
+static void texturing_nudge(texturing_task_t    *task,
+                            const confdlg_row_t *row,
+                            int                 *v)
+{
+  int unit, d;
+
+  unit = row->step ? row->step : 1;
+  d    = MAX(1, (row->max - row->min) / unit * TEXTURING_MUTATE / 100);
+  *v   = CLAMP(*v + (rng_range(&task->rng, 2 * d + 1) - d) * unit,
+               row->min, row->max);
+}
+
+/* Mutate: nudge the current kind's parameters and the grain; the seed, kind
+ * and scheme are left alone. An open dialogue shows the new values when next
+ * opened. */
+static result_t texturing_mutate(texturing_task_t *task)
+{
+  int i;
+
+  for (i = 0; i < texturing_confs[task->kind].nrows; i++)
+    texturing_nudge(task, &texturing_rows[task->kind][i],
+                    &task->params[task->kind][i]);
+  texturing_nudge(task, &texturing_grain_row, &task->grain);
+
+  return texturing_applied(task, 0);
+}
+
 /* Randomise: fresh seed, kind and scheme. Shared by the menu row and its
  * Ctrl-R shortcut. */
 static result_t texturing_randomise(texturing_task_t *task)
@@ -739,6 +775,11 @@ static result_t texturing_menu_select(texturing_task_t   *task,
     rc = texturing_set_scheme(task, event->data.menu_select.index);
     wuss_menu_tick_exclusive_live(task->base.menu_handle, &task->scheme_menu,
                                   task->scheme);
+  }
+  else if (wuss_menu_select_is(event, &task->base.menu,
+                               TEXTURING_MENU_MUTATE))
+  {
+    rc = texturing_mutate(task);
   }
   else if (wuss_menu_select_is(event, &task->base.menu,
                                TEXTURING_MENU_RANDOMISE))
@@ -841,6 +882,7 @@ static result_t texturing_init(texturing_task_t *task)
   wuss_window_t *grain_window;
 
   task->seed   = 0x9E3779B9u;
+  rng_seed(&task->rng, task->seed);
   task->kind   = TEXTURING_KIND_CLOUDS;
   task->scheme = 0;
   task->grain  = texturing_grain_default;
@@ -896,6 +938,9 @@ static result_t texturing_init(texturing_task_t *task)
 
   WUSS_MENU_ITEM(task->menu_items, TEXTURING_MENU_GRAIN, "Grain",
                  wuss_MENU_ITEM_BORROWED_SUBMENU | wuss_MENU_ITEM_PRE_OPEN);
+
+  WUSS_MENU_ITEM_SHORTCUT(task->menu_items, TEXTURING_MENU_MUTATE, "Mutate",
+                          wuss_MENU_ITEM_NONE, "M");
 
   WUSS_MENU_ITEM_SHORTCUT(task->menu_items, TEXTURING_MENU_RANDOMISE,
                           "Randomise", wuss_MENU_ITEM_NONE, "^R");

@@ -323,6 +323,7 @@ shortcuts[] =
   { "Delete",         "Clear cell"          },
   { "Texturing",      NULL                  },
   { "F3",             "Save"                },
+  { "M",              "Mutate"              },
   { "Ctrl-R",         "Randomise"           },
   { "Space",          "Reseed"              },
   { "K",              "Next kind"           },

@@ -109,7 +109,8 @@ Menu shortcuts (fire when the task has the focus):
 | R             | Random palettes | greebling                                                                                                                                                             |
 | N             | New game        | minesweeping sudoku                                                                                                                                                   |
 | 1-4           | Choose light    | orbing                                                                                                                                                                |
-| C M           | Light colour, Mutate | orbing                                                                                                                                                           |
+| C             | Light colour    | orbing                                                                                                                                                                |
+| M             | Mutate          | orbing texturing                                                                                                                                                      |
 | F8            | Undo            | painting                                                                                                                                                              |
 | F9            | Redo            | painting                                                                                                                                                              |
 | Ctrl-X C V    | Cut, Copy, Paste (pixels) | painting                                                                                                                                                    |
