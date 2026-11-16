@@ -120,6 +120,7 @@ endif()
 if(WUSS_GADGETS OR WUSS_COMPONENTS)
     list(APPEND PUBLIC_HEADERS include/wuss/gadget/stringset.h)
     list(APPEND PUBLIC_HEADERS include/wuss/gadget/gridview.h)
+    list(APPEND PUBLIC_HEADERS include/wuss/gadget/nodeview.h)
     list(APPEND PUBLIC_HEADERS include/wuss/gadget/rubberband.h)
     list(APPEND PUBLIC_HEADERS include/wuss/gadget/swatches.h)
     list(APPEND PUBLIC_HEADERS include/wuss/gadget/tagcloud.h)
@@ -314,6 +315,7 @@ set(WUSS_GADGET_SOURCES
     libraries/wuss/gadget/stringset.c
     libraries/wuss/gadget/popup.c
     libraries/wuss/gadget/gridview.c
+    libraries/wuss/gadget/nodeview.c
     libraries/wuss/gadget/rubberband.c
     libraries/wuss/gadget/swatches.c
     libraries/wuss/gadget/tagcloud.c)
