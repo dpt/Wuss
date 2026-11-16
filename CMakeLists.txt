@@ -518,7 +518,6 @@ if(BUILD_APPS)
         apps/wuss/tasks/doughnut/doughnut.c
         apps/wuss/tasks/duckling/duckling.c
         apps/wuss/tasks/effecting/effecting.c
-        apps/wuss/tasks/effecting/effecting-edit.c
         apps/wuss/tasks/filing/filing.c
         apps/wuss/tasks/common/fireball.c
         apps/wuss/tasks/gradient/gradient.c
@@ -559,6 +558,10 @@ if(BUILD_APPS)
         apps/wuss/tasks/texturing/texturing-gen.h
         apps/wuss/tasks/common/confdlg.c
         apps/wuss/tasks/common/confdlg.h
+        apps/wuss/tasks/common/effectstack.c
+        apps/wuss/tasks/common/effectstack.h
+        apps/wuss/tasks/common/effectstack-edit.c
+        apps/wuss/tasks/common/effectstack-edit.h
         apps/wuss/tasks/common/taskapp.c
         apps/wuss/tasks/common/taskapp.h
         apps/wuss/tasks/common/zxtask.c)

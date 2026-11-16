@@ -1,4 +1,4 @@
-/* wuss/tasks/effecting/effecting-edit.c -- effecting's editing dialogues */
+/* wuss/tasks/common/effectstack-edit.c -- effect stack editing dialogues */
 
 #ifdef WUSS_APP
 
@@ -17,8 +17,8 @@
 #include "wuss/icon.h"
 #include "wuss/icon-spec.h"
 
-#include "effecting-edit.h"
-#include "../common/common.h"
+#include "effectstack-edit.h"
+#include "common.h"
 
 #define EDIT_PLOT_SIZE 128
 #define EDIT_SLIDER_W  128
@@ -37,18 +37,18 @@
 #define TONE_ICON_RESET      (TONE_ICON_REFLECT + 1)
 #define TONE_NICONS          (TONE_ICON_RESET + 1)
 
-typedef struct effecting_dlg
+typedef struct effectstack_dlg
 {
-  effecting_edit_t      *edit;
-  effecting_edit_which_t which;
+  effectstack_edit_t      *edit;
+  effectstack_edit_which_t which;
   wuss_dialogue_t       *dialogue;
 }
-effecting_dlg_t;
+effectstack_dlg_t;
 
-struct effecting_edit
+struct effectstack_edit
 {
-  effecting_task_t   *ec;
-  effecting_dlg_t     dlg[EFFECTING_EDIT__LIMIT];
+  effectstack_t      *stack;
+  effectstack_dlg_t     dlg[EFFECTSTACK_EDIT__LIMIT];
 
   wuss_icon_t        *blur_radio[2];
   wuss_slider_row_t   blur_row;
@@ -108,7 +108,7 @@ static int *edit_tone_field(tonemap_spec_t *spec, int row)
 }
 
 /* the channel whose values the dialogue shows: RGB reads red's */
-static tonemap_channels_t edit_tone_read_channel(const effecting_edit_t *edit)
+static tonemap_channels_t edit_tone_read_channel(const effectstack_edit_t *edit)
 {
   tonemap_channels_t channels;
 
@@ -172,17 +172,17 @@ static int edit_value_width(const wuss_t *wuss,
 
 static result_t edit_blur_fillout(void *opaque)
 {
-  effecting_dlg_t     *dlg;
-  effecting_edit_t    *edit;
-  effecting_element_t *el;
-  wuss_window_t       *window;
-  result_t             rc;
+  effectstack_dlg_t     *dlg;
+  effectstack_edit_t    *edit;
+  effectstack_element_t *el;
+  wuss_window_t         *window;
+  result_t               rc;
 
   dlg    = opaque;
   edit   = dlg->edit;
   window = wuss_dialogue_window(dlg->dialogue);
-  el     = effecting_selected(edit->ec, NULL);
-  if (el == NULL || el->type != EFFECTING_BLUR)
+  el     = effectstack_selected(edit->stack, NULL);
+  if (el == NULL || el->type != EFFECTSTACK_BLUR)
     return result_OK;
 
   wuss_icon_set_selected(window, edit->blur_radio[0],
@@ -194,20 +194,20 @@ static result_t edit_blur_fillout(void *opaque)
   return rc;
 }
 
-static result_t edit_blur_create(effecting_edit_t *edit)
+static result_t edit_blur_create(effectstack_edit_t *edit)
 {
-  result_t         rc;
-  effecting_dlg_t *dlg;
-  wuss_t          *wuss;
-  wuss_icon_spec_t specs[5];
-  wuss_icon_t     *made[5];
-  char             buf[WUSS_SLIDER_ROW_BUF];
-  int              label_w, value_w, radio_w, width, height;
-  int              x, y;
-  box_t            box;
+  result_t           rc;
+  effectstack_dlg_t *dlg;
+  wuss_t            *wuss;
+  wuss_icon_spec_t   specs[5];
+  wuss_icon_t       *made[5];
+  char               buf[WUSS_SLIDER_ROW_BUF];
+  int                label_w, value_w, radio_w, width, height;
+  int                x, y;
+  box_t              box;
 
-  dlg  = &edit->dlg[EFFECTING_EDIT_BLUR];
-  wuss = edit->ec->base.wuss;
+  dlg  = &edit->dlg[EFFECTSTACK_EDIT_BLUR];
+  wuss = edit->stack->base->wuss;
 
   label_w = task_text_width(wuss, "Radius");
   value_w = edit_value_width(wuss, "%d", effects_blur_MIN_AMOUNT,
@@ -220,7 +220,7 @@ static result_t edit_blur_create(effecting_edit_t *edit)
   height  = 2 * wuss_STD_INSET + wuss_STD_GLYPH_SIZE + wuss_STD_GAP +
             wuss_std_height(wuss, wuss_STD_SLIDER);
 
-  rc = wuss_dialogue_create(&dlg->dialogue, edit->ec->base.delegate,
+  rc = wuss_dialogue_create(&dlg->dialogue, edit->stack->base->delegate,
                             SIZE2D(width, height), "Blur", edit_blur_fillout,
                             dlg);
   if (rc != result_OK)
@@ -258,23 +258,23 @@ static result_t edit_blur_create(effecting_edit_t *edit)
   return result_OK;
 }
 
-static result_t edit_blur_icon(effecting_edit_t   *edit,
+static result_t edit_blur_icon(effectstack_edit_t *edit,
                                const wuss_event_t *event)
 {
-  effecting_element_t *el;
-  wuss_window_t       *window;
-  int                  value;
-  int                  i;
+  effectstack_element_t *el;
+  wuss_window_t         *window;
+  int                    value;
+  int                    i;
 
-  window = wuss_dialogue_window(edit->dlg[EFFECTING_EDIT_BLUR].dialogue);
-  el     = effecting_selected(edit->ec, NULL);
-  if (el == NULL || el->type != EFFECTING_BLUR)
+  window = wuss_dialogue_window(edit->dlg[EFFECTSTACK_EDIT_BLUR].dialogue);
+  el     = effectstack_selected(edit->stack, NULL);
+  if (el == NULL || el->type != EFFECTSTACK_BLUR)
     return result_OK;
 
   if (wuss_slider_row_event(window, &edit->blur_row, event, &value))
   {
     el->u.blur.amount = value;
-    effecting_update(edit->ec, 1);
+    effectstack_changed(edit->stack, 1);
     return result_OK;
   }
 
@@ -287,7 +287,7 @@ static result_t edit_blur_icon(effecting_edit_t   *edit,
       continue;
 
     el->u.blur.method = i == 0 ? effects_blur_BOX : effects_blur_GAUSSIAN;
-    effecting_update(edit->ec, 1);
+    effectstack_changed(edit->stack, 1);
   }
 
   return result_OK;
@@ -297,37 +297,37 @@ static result_t edit_blur_icon(effecting_edit_t   *edit,
 
 static result_t edit_level_fillout(void *opaque)
 {
-  effecting_dlg_t *dlg;
+  effectstack_dlg_t *dlg;
 
   dlg = opaque;
 
   return wuss_slider_row_set(wuss_dialogue_window(dlg->dialogue),
-                             &dlg->edit->level_row, dlg->edit->ec->level);
+                             &dlg->edit->level_row, dlg->edit->stack->level);
 }
 
-static result_t edit_level_create(effecting_edit_t *edit)
+static result_t edit_level_create(effectstack_edit_t *edit)
 {
   static const int detents[] = { 0, 100 }; /* no effect, full effect */
 
-  result_t         rc;
-  effecting_dlg_t *dlg;
-  wuss_t          *wuss;
-  wuss_icon_spec_t specs[3];
-  wuss_icon_t     *made[3];
-  char             buf[WUSS_SLIDER_ROW_BUF];
-  int              label_w, value_w, width, height;
+  result_t           rc;
+  effectstack_dlg_t *dlg;
+  wuss_t            *wuss;
+  wuss_icon_spec_t   specs[3];
+  wuss_icon_t       *made[3];
+  char               buf[WUSS_SLIDER_ROW_BUF];
+  int                label_w, value_w, width, height;
 
-  dlg  = &edit->dlg[EFFECTING_EDIT_LEVEL];
-  wuss = edit->ec->base.wuss;
+  dlg  = &edit->dlg[EFFECTSTACK_EDIT_LEVEL];
+  wuss = edit->stack->base->wuss;
 
   label_w = task_text_width(wuss, "Level");
-  value_w = edit_value_width(wuss, "%d%%", EFFECTING_LEVEL_MIN,
-                             EFFECTING_LEVEL_MAX);
+  value_w = edit_value_width(wuss, "%d%%", EFFECTSTACK_LEVEL_MIN,
+                             EFFECTSTACK_LEVEL_MAX);
   width   = 2 * wuss_STD_INSET + label_w + EDIT_SLIDER_W + value_w +
             2 * wuss_STD_GAP;
   height  = 2 * wuss_STD_INSET + wuss_std_height(wuss, wuss_STD_SLIDER);
 
-  rc = wuss_dialogue_create(&dlg->dialogue, edit->ec->base.delegate,
+  rc = wuss_dialogue_create(&dlg->dialogue, edit->stack->base->delegate,
                             SIZE2D(width, height), "Level",
                             edit_level_fillout, dlg);
   if (rc != result_OK)
@@ -337,8 +337,8 @@ static result_t edit_level_create(effecting_edit_t *edit)
 
   edit_row_specs(wuss, &specs[0], &specs[1], &specs[2], wuss_STD_INSET,
                  wuss_STD_INSET, label_w, value_w, "Level",
-                 EFFECTING_LEVEL_MIN, EFFECTING_LEVEL_MAX, edit->ec->level,
-                 "%d%%", buf);
+                 EFFECTSTACK_LEVEL_MIN, EFFECTSTACK_LEVEL_MAX,
+                 edit->stack->level, "%d%%", buf);
   specs[1].u.slider.detents  = detents;
   specs[1].u.slider.ndetents = NELEMS(detents);
 
@@ -352,23 +352,23 @@ static result_t edit_level_create(effecting_edit_t *edit)
   }
 
   wuss_slider_row_bind(&edit->level_row, made[1], made[2], "%d%%",
-                       EFFECTING_LEVEL_MIN, EFFECTING_LEVEL_MAX, 0);
+                       EFFECTSTACK_LEVEL_MIN, EFFECTSTACK_LEVEL_MAX, 0);
 
   return result_OK;
 }
 
-static result_t edit_level_icon(effecting_edit_t   *edit,
+static result_t edit_level_icon(effectstack_edit_t *edit,
                                 const wuss_event_t *event)
 {
   int value;
 
   if (!wuss_slider_row_event(
-        wuss_dialogue_window(edit->dlg[EFFECTING_EDIT_LEVEL].dialogue),
+        wuss_dialogue_window(edit->dlg[EFFECTSTACK_EDIT_LEVEL].dialogue),
         &edit->level_row, event, &value))
     return result_OK;
 
-  edit->ec->level = value;
-  effecting_update(edit->ec, 0);
+  edit->stack->level = value;
+  effectstack_changed(edit->stack, 0);
 
   return result_OK;
 }
@@ -376,7 +376,7 @@ static result_t edit_level_icon(effecting_edit_t   *edit,
 /* ----- tone ----- */
 
 /* redraws the curve preview from the selected element */
-static void edit_tone_plot(effecting_edit_t *edit, tonemap_t *map)
+static void edit_tone_plot(effectstack_edit_t *edit, tonemap_t *map)
 {
   screen_t scr;
   box_t    area;
@@ -387,25 +387,25 @@ static void edit_tone_plot(effecting_edit_t *edit, tonemap_t *map)
   tonemap_plot(map, g_channels[edit->tone_channel].channels, &scr, &area, 1);
 
   wuss_window_invalidate(
-    wuss_dialogue_window(edit->dlg[EFFECTING_EDIT_TONE].dialogue),
+    wuss_dialogue_window(edit->dlg[EFFECTSTACK_EDIT_TONE].dialogue),
     &edit->tone_preview);
 }
 
 static result_t edit_tone_fillout(void *opaque)
 {
-  effecting_dlg_t     *dlg;
-  effecting_edit_t    *edit;
-  effecting_element_t *el;
-  wuss_window_t       *window;
-  tonemap_spec_t       spec;
-  result_t             rc;
-  int                  i;
+  effectstack_dlg_t     *dlg;
+  effectstack_edit_t    *edit;
+  effectstack_element_t *el;
+  wuss_window_t         *window;
+  tonemap_spec_t         spec;
+  result_t               rc;
+  int                    i;
 
   dlg    = opaque;
   edit   = dlg->edit;
   window = wuss_dialogue_window(dlg->dialogue);
-  el     = effecting_selected(edit->ec, NULL);
-  if (el == NULL || el->type != EFFECTING_TONE)
+  el     = effectstack_selected(edit->stack, NULL);
+  if (el == NULL || el->type != EFFECTSTACK_TONE)
     return result_OK;
 
   tonemap_get_values(el->u.tone, edit_tone_read_channel(edit), &spec);
@@ -430,26 +430,26 @@ static result_t edit_tone_fillout(void *opaque)
 
 static result_t edit_tone_reset(void *opaque, wuss_button_t button)
 {
-  effecting_dlg_t     *dlg;
-  effecting_element_t *el;
+  effectstack_dlg_t     *dlg;
+  effectstack_element_t *el;
 
   NOT_USED(button);
 
   dlg = opaque;
-  el  = effecting_selected(dlg->edit->ec, NULL);
-  if (el == NULL || el->type != EFFECTING_TONE)
+  el  = effectstack_selected(dlg->edit->stack, NULL);
+  if (el == NULL || el->type != EFFECTSTACK_TONE)
     return result_OK;
 
   tonemap_reset(el->u.tone);
-  effecting_update(dlg->edit->ec, 1);
+  effectstack_changed(dlg->edit->stack, 1);
 
   return edit_tone_fillout(dlg);
 }
 
-static result_t edit_tone_create(effecting_edit_t *edit)
+static result_t edit_tone_create(effectstack_edit_t *edit)
 {
   result_t               rc;
-  effecting_dlg_t       *dlg;
+  effectstack_dlg_t     *dlg;
   wuss_t                *wuss;
   wuss_icon_spec_t       specs[TONE_NICONS];
   wuss_icon_t           *made[TONE_NICONS];
@@ -461,8 +461,8 @@ static result_t edit_tone_create(effecting_edit_t *edit)
   int                    radio_w[EDIT_NCHANNELS];
   box_t                  box;
 
-  dlg  = &edit->dlg[EFFECTING_EDIT_TONE];
-  wuss = edit->ec->base.wuss;
+  dlg  = &edit->dlg[EFFECTSTACK_EDIT_TONE];
+  wuss = edit->stack->base->wuss;
 
   label_w = 0;
   for (i = 0; i < EDIT_NTONE; i++)
@@ -499,7 +499,7 @@ static result_t edit_tone_create(effecting_edit_t *edit)
   if (rc != result_OK)
     return rc;
 
-  rc = wuss_dialogue_create(&dlg->dialogue, edit->ec->base.delegate,
+  rc = wuss_dialogue_create(&dlg->dialogue, edit->stack->base->delegate,
                             SIZE2D(width, height), "Tone",
                             edit_tone_fillout, dlg);
   if (rc != result_OK)
@@ -589,19 +589,19 @@ failure:
   return rc;
 }
 
-static result_t edit_tone_icon(effecting_edit_t   *edit,
+static result_t edit_tone_icon(effectstack_edit_t *edit,
                                const wuss_event_t *event)
 {
-  result_t             rc;
-  effecting_element_t *el;
-  wuss_window_t       *window;
-  tonemap_spec_t       spec;
-  int                  value;
-  int                  i;
+  result_t               rc;
+  effectstack_element_t *el;
+  wuss_window_t         *window;
+  tonemap_spec_t         spec;
+  int                    value;
+  int                    i;
 
-  window = wuss_dialogue_window(edit->dlg[EFFECTING_EDIT_TONE].dialogue);
-  el     = effecting_selected(edit->ec, NULL);
-  if (el == NULL || el->type != EFFECTING_TONE)
+  window = wuss_dialogue_window(edit->dlg[EFFECTSTACK_EDIT_TONE].dialogue);
+  el     = effectstack_selected(edit->stack, NULL);
+  if (el == NULL || el->type != EFFECTSTACK_TONE)
     return result_OK;
 
   for (i = 0; i < EDIT_NTONE; i++)
@@ -613,7 +613,7 @@ static result_t edit_tone_icon(effecting_edit_t   *edit,
     *edit_tone_field(&spec, i) = value;
     tonemap_set(el->u.tone, g_channels[edit->tone_channel].channels, &spec);
     edit_tone_plot(edit, el->u.tone);
-    effecting_update(edit->ec, 1);
+    effectstack_changed(edit->stack, 1);
 
     return result_OK;
   }
@@ -627,7 +627,7 @@ static result_t edit_tone_icon(effecting_edit_t   *edit,
 
       edit->tone_channel = i;
 
-      return edit_tone_fillout(&edit->dlg[EFFECTING_EDIT_TONE]);
+      return edit_tone_fillout(&edit->dlg[EFFECTSTACK_EDIT_TONE]);
     }
 
     if (event->data.icon.icon == edit->tone_invert ||
@@ -641,13 +641,13 @@ static result_t edit_tone_icon(effecting_edit_t   *edit,
         spec.flags |= tonemap_FLAG_REFLECT;
       tonemap_set(el->u.tone, g_channels[edit->tone_channel].channels, &spec);
       edit_tone_plot(edit, el->u.tone);
-      effecting_update(edit->ec, 1);
+      effectstack_changed(edit->stack, 1);
 
       return result_OK;
     }
   }
 
-  if (wuss_dialogue_handle_icon(edit->dlg[EFFECTING_EDIT_TONE].dialogue,
+  if (wuss_dialogue_handle_icon(edit->dlg[EFFECTSTACK_EDIT_TONE].dialogue,
                                 event, &rc))
     return rc;
 
@@ -656,18 +656,19 @@ static result_t edit_tone_icon(effecting_edit_t   *edit,
 
 /* ----------------------------------------------------------------------- */
 
-result_t effecting_edit_create(effecting_task_t *ec, effecting_edit_t **out)
+result_t effectstack_edit_create(effectstack_t       *stack,
+                                 effectstack_edit_t **out)
 {
-  result_t          rc;
-  effecting_edit_t *edit;
-  int               i;
+  result_t            rc;
+  effectstack_edit_t *edit;
+  int                 i;
 
   edit = calloc(1, sizeof(*edit));
   if (edit == NULL)
     return result_OOM;
 
-  edit->ec = ec;
-  for (i = 0; i < EFFECTING_EDIT__LIMIT; i++)
+  edit->stack = stack;
+  for (i = 0; i < EFFECTSTACK_EDIT__LIMIT; i++)
   {
     edit->dlg[i].edit  = edit;
     edit->dlg[i].which = i;
@@ -680,7 +681,7 @@ result_t effecting_edit_create(effecting_task_t *ec, effecting_edit_t **out)
     rc = edit_level_create(edit);
   if (rc != result_OK)
   {
-    effecting_edit_destroy(edit);
+    effectstack_edit_destroy(edit);
     return rc;
   }
 
@@ -689,41 +690,41 @@ result_t effecting_edit_create(effecting_task_t *ec, effecting_edit_t **out)
   return result_OK;
 }
 
-void effecting_edit_closed(effecting_edit_t *edit, wuss_window_t *window)
+void effectstack_edit_closed(effectstack_edit_t *edit, wuss_window_t *window)
 {
   int i;
 
   if (edit == NULL)
     return;
 
-  for (i = 0; i < EFFECTING_EDIT__LIMIT; i++)
+  for (i = 0; i < EFFECTSTACK_EDIT__LIMIT; i++)
     wuss_dialogue_handle_close(edit->dlg[i].dialogue, window);
 }
 
-void effecting_edit_destroy(effecting_edit_t *edit)
+void effectstack_edit_destroy(effectstack_edit_t *edit)
 {
   int i;
 
   if (edit == NULL)
     return;
 
-  for (i = 0; i < EFFECTING_EDIT__LIMIT; i++)
+  for (i = 0; i < EFFECTSTACK_EDIT__LIMIT; i++)
     wuss_dialogue_destroy(edit->dlg[i].dialogue);
   free(edit);
 }
 
-wuss_window_t *effecting_edit_window(const effecting_edit_t *edit,
-                                     effecting_edit_which_t  which)
+wuss_window_t *effectstack_edit_window(const effectstack_edit_t *edit,
+                                       effectstack_edit_which_t  which)
 {
   return wuss_dialogue_window(edit->dlg[which].dialogue);
 }
 
-int effecting_edit_find(const effecting_edit_t *edit,
-                        const wuss_window_t    *window)
+int effectstack_edit_find(const effectstack_edit_t *edit,
+                          const wuss_window_t      *window)
 {
   int i;
 
-  for (i = 0; i < EFFECTING_EDIT__LIMIT; i++)
+  for (i = 0; i < EFFECTSTACK_EDIT__LIMIT; i++)
     if (edit->dlg[i].dialogue != NULL &&
         wuss_dialogue_window(edit->dlg[i].dialogue) == window)
       return i;
@@ -731,16 +732,16 @@ int effecting_edit_find(const effecting_edit_t *edit,
   return -1;
 }
 
-result_t effecting_edit_icon(effecting_edit_t      *edit,
-                             effecting_edit_which_t which,
-                             const wuss_event_t    *event)
+result_t effectstack_edit_icon(effectstack_edit_t      *edit,
+                               effectstack_edit_which_t which,
+                               const wuss_event_t      *event)
 {
   switch (which)
   {
-  case EFFECTING_EDIT_BLUR:
+  case EFFECTSTACK_EDIT_BLUR:
     return edit_blur_icon(edit, event);
 
-  case EFFECTING_EDIT_TONE:
+  case EFFECTSTACK_EDIT_TONE:
     return edit_tone_icon(edit, event);
 
   default:
@@ -748,8 +749,8 @@ result_t effecting_edit_icon(effecting_edit_t      *edit,
   }
 }
 
-result_t effecting_edit_pre_show(effecting_edit_t      *edit,
-                                 effecting_edit_which_t which)
+result_t effectstack_edit_pre_show(effectstack_edit_t      *edit,
+                                   effectstack_edit_which_t which)
 {
   return wuss_dialogue_handle_pre_show(edit->dlg[which].dialogue);
 }
