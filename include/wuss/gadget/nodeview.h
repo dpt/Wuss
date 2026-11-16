@@ -10,7 +10,8 @@
  * Each node is a rounded box titled with its class name, its input ports as
  * discs on its left edge and its output port on its right; a sink (output
  * type nodegraph_NO_OUTPUT) has none. Links are straight lines from output
- * to input.
+ * to input. Ports and links can be coloured by type; see \ref
+ * wuss_nodeview_set_type_colours.
  *
  * SELECT on a node selects it and drags it about. SELECT on an output port
  * drags out a link, made when released over an input port of the same type;
@@ -35,6 +36,7 @@ extern "C"
 
 #include "base/result.h"
 #include "datastruct/nodegraph.h"
+#include "framebuf/colour.h"
 
 #include "wuss/task.h"
 #include "wuss/window.h"
@@ -125,6 +127,19 @@ nodegraph_node_t wuss_nodeview_get_selected(const wuss_nodeview_t *nodeview);
  * \param[in] node     Node to select.
  */
 void wuss_nodeview_select(wuss_nodeview_t *nodeview, nodegraph_node_t node);
+
+/**
+ * Colour ports and links by port type: a port or link of type t is drawn in
+ * colours[t]. Types outside 0..ncolours-1 use the default colour.
+ *
+ * \param[in] nodeview Handle.
+ * \param[in] colours  Colours indexed by port type, or NULL for none. Must
+ *                     outlive the gadget, or be replaced first.
+ * \param[in] ncolours Number of colours.
+ */
+void wuss_nodeview_set_type_colours(wuss_nodeview_t *nodeview,
+                                    const colour_t  *colours,
+                                    int              ncolours);
 
 #ifdef __cplusplus
 }

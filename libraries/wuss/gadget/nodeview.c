@@ -53,6 +53,8 @@ struct wuss_nodeview
   nodeview_drag_t              drag;
   nodegraph_node_t             drag_node;
   point_t                      drag_point; /* MOVE: grab offset; LINK: end */
+  const colour_t              *type_colours; /* borrowed, or NULL */
+  int                          ntype_colours;
 };
 
 /* ----------------------------------------------------------------------- */
@@ -150,6 +152,16 @@ static void nodeview_invalidate(wuss_nodeview_t *nv)
   wuss_window_invalidate_visible(nv->window);
 }
 
+/* The colour of ports and links of port type, else fallback. */
+static colour_t nodeview_type_colour(const wuss_nodeview_t *nv,
+                                     int                    type,
+                                     colour_t               fallback)
+{
+  if (type < 0 || type >= nv->ntype_colours)
+    return fallback;
+  return nv->type_colours[type];
+}
+
 /* ----------------------------------------------------------------------- */
 
 static void nodeview_draw_port(screen_t *scr,
@@ -228,9 +240,11 @@ static void nodeview_draw_node(wuss_nodeview_t    *nv,
   }
 
   for (i = 0; i < cls->ninputs; i++)
-    nodeview_draw_port(scr, origin, nodeview_port(nv, n, i), fg);
+    nodeview_draw_port(scr, origin, nodeview_port(nv, n, i),
+                       nodeview_type_colour(nv, cls->input_types[i], fg));
   if (cls->output_type != nodegraph_NO_OUTPUT)
-    nodeview_draw_port(scr, origin, nodeview_port(nv, n, -1), fg);
+    nodeview_draw_port(scr, origin, nodeview_port(nv, n, -1),
+                       nodeview_type_colour(nv, cls->output_type, fg));
 }
 
 static void nodeview_draw_line(screen_t *scr,
@@ -272,7 +286,9 @@ static void nodeview_redraw(wuss_nodeview_t *nv, const wuss_event_t *event)
       src = nodegraph_source(nv->graph, n, i);
       if (src != nodegraph_NONE)
         nodeview_draw_line(scr, origin, nodeview_port(nv, src, -1),
-                           nodeview_port(nv, n, i), fg);
+                           nodeview_port(nv, n, i),
+                           nodeview_type_colour(nv, cls->input_types[i],
+                                                fg));
     }
   }
 
@@ -412,15 +428,17 @@ result_t wuss_nodeview_create(wuss_nodeview_t            **out,
   if (nv == NULL)
     return result_OOM;
 
-  nv->alloc     = wuss->alloc;
-  nv->window    = window;
-  nv->graph     = graph;
-  nv->activate  = activate;
-  nv->changed   = changed;
-  nv->opaque    = opaque;
-  nv->selected  = nodegraph_NONE;
-  nv->drag      = NODEVIEW_DRAG_NONE;
-  nv->drag_node = nodegraph_NONE;
+  nv->alloc         = wuss->alloc;
+  nv->window        = window;
+  nv->graph         = graph;
+  nv->activate      = activate;
+  nv->changed       = changed;
+  nv->opaque        = opaque;
+  nv->selected      = nodegraph_NONE;
+  nv->drag          = NODEVIEW_DRAG_NONE;
+  nv->drag_node     = nodegraph_NONE;
+  nv->type_colours  = NULL;
+  nv->ntype_colours = 0;
 
   /* cannot fail: both sizes are positive */
   (void) wuss_window_set_doc(window, SIZE2D(NODEVIEW_DOC_W, NODEVIEW_DOC_H));
@@ -484,5 +502,14 @@ void wuss_nodeview_select(wuss_nodeview_t *nv, nodegraph_node_t node)
     return;
 
   nv->selected = node;
+  nodeview_invalidate(nv);
+}
+
+void wuss_nodeview_set_type_colours(wuss_nodeview_t *nv,
+                                    const colour_t  *colours,
+                                    int              ncolours)
+{
+  nv->type_colours  = colours;
+  nv->ntype_colours = colours != NULL ? ncolours : 0;
   nodeview_invalidate(nv);
 }
