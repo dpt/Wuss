@@ -168,7 +168,10 @@ static const confdlg_row_t texturing_rows[TEXTURING_NKINDS][TEXTURING_NPARAMS] =
     { "Relief",     0, 400, 0, TEXTURING_PARAM(1) },
     { "Patches",    0, 100, 0, TEXTURING_PARAM(2) },
     /* degrees clockwise from the top that the light comes from */
-    { "Light",      0, 315, 45, TEXTURING_PARAM(3) }
+    { "Light",      0, 315, 45, TEXTURING_PARAM(3) },
+    /* strength of the lit slopes against the shaded ones, %: 0 leaves
+     * only shadows, cut into a flat surface */
+    { "Highlights", 0, 100, 0, TEXTURING_PARAM(4) }
   },
   { /* Weave: Thread is the log2 of the thread width in pixels */
     { "Thread",     2,   5, 0, TEXTURING_PARAM(0) },
@@ -195,7 +198,7 @@ static const int texturing_defaults[TEXTURING_NKINDS][TEXTURING_NPARAMS] =
   { 2,   4,   4,   0 }, /* Marble */
   { 2,  16,   4,   7 }, /* Wood */
   { 3, 100, 100,   0 }, /* Cells */
-  { 5, 100,  25, 315 }, /* Stone */
+  { 5, 100,  25, 315, 100 }, /* Stone */
   { 3, 100,   4,   0 }, /* Weave */
   { 6,  30,   0,  60 }  /* Veins */
 };
@@ -213,11 +216,11 @@ static const struct
 texturing_presets[] =
 {
   { "Plaster",  TEXTURING_KIND_VEINS,  { 6,  30, 0,  60 }, { 20,  0 }, 6 },
-  { "Pebbled",  TEXTURING_KIND_STONE,  { 6, 100, 0, 315 }, { 20,  0 }, 6 },
+  { "Pebbled",  TEXTURING_KIND_STONE,  { 6, 100, 0, 315, 100 }, { 20,  0 }, 6 },
   { "Streaked", TEXTURING_KIND_VEINS,  { 4,  14, 2,  70 }, { 24, -4 }, 6 },
   { "Granite",  TEXTURING_KIND_CLOUDS, { 5,  60, 3,   0 }, { 32,  0 }, 6 },
   { "Veined",   TEXTURING_KIND_VEINS,  { 4,   3, 0,   0 }, { 48, 30 }, 7 },
-  { "Rough",    TEXTURING_KIND_STONE,  { 6, 110, 25, 315 }, { 40, -16 }, 7 }
+  { "Rough",    TEXTURING_KIND_STONE,  { 6, 250, 25, 315, 0 }, { 40, 16 }, 7 }
 };
 
 #define TEXTURING_NPRESETS ((int) NELEMS(texturing_presets))
@@ -256,7 +259,7 @@ static const confdlg_desc_t texturing_confs[TEXTURING_NCONFS] =
   TEXTURING_CONF(TEXTURING_KIND_MARBLE, 4),
   TEXTURING_CONF(TEXTURING_KIND_WOOD,   4),
   TEXTURING_CONF(TEXTURING_KIND_CELLS,  4),
-  TEXTURING_CONF(TEXTURING_KIND_STONE,  4),
+  TEXTURING_CONF(TEXTURING_KIND_STONE,  5),
   TEXTURING_CONF(TEXTURING_KIND_WEAVE,  4),
   TEXTURING_CONF(TEXTURING_KIND_VEINS,  4),
   { texturing_tone_rows, 2, &texturing_tone_default,
@@ -487,7 +490,8 @@ static int texturing_stone(uint32_t seed,
                            int      log2n,
                            int      relief,
                            int      patches,
-                           int      light)
+                           int      light,
+                           int      highlights)
 {
   int m, dx, dy, slope;
 
@@ -496,6 +500,8 @@ static int texturing_stone(uint32_t seed,
   dy    = texturing_light[light][1];
   slope = texturing_rough(seed, (x + dx) & m, (y + dy) & m, log2n) -
           texturing_rough(seed, (x - dx) & m, (y - dy) & m, log2n);
+  if (slope > 0)
+    slope = slope * highlights >> 8;
 
   return 128 + (slope * relief >> 8) +
          (texturing_patches(seed, x, y) * patches >> 8);
@@ -650,7 +656,8 @@ static void texturing_generate(texturing_task_t *task)
         break;
 
       case TEXTURING_KIND_STONE:
-        v = texturing_stone(task->seed, x, y, param[0], mul, mul2, light);
+        v = texturing_stone(task->seed, x, y, param[0], mul, mul2, light,
+                            param[4] * 256 / 100);
         break;
 
       case TEXTURING_KIND_WEAVE:
