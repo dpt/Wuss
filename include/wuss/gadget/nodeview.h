@@ -7,9 +7,10 @@
  * caller's window and edits its layout and links. The task must forward
  * wuss_EVENT_REDRAW and wuss_EVENT_MOUSE to \ref wuss_nodeview_handle_event.
  *
- * Each node is a box titled with its class name, its input ports as squares
- * on its left edge and its output port on its right. Links are straight
- * lines from output to input.
+ * Each node is a rounded box titled with its class name, its input ports as
+ * discs on its left edge and its output port on its right; a sink (output
+ * type nodegraph_NO_OUTPUT) has none. Links are straight lines from output
+ * to input.
  *
  * SELECT on a node selects it and drags it about. SELECT on an output port
  * drags out a link, made when released over an input port of the same type;

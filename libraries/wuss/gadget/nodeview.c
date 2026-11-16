@@ -24,9 +24,11 @@
 
 /* ----------------------------------------------------------------------- */
 
-#define NODEVIEW_NODE_W   96  /* node box width */
-#define NODEVIEW_PORT     8   /* port square side */
-#define NODEVIEW_PITCH    16  /* vertical spacing of input ports */
+#define NODEVIEW_NODE_W   112 /* node box width */
+#define NODEVIEW_RADIUS   6   /* node box corner radius */
+#define NODEVIEW_PORT     8   /* port disc diameter */
+#define NODEVIEW_PITCH    20  /* vertical spacing of input ports */
+#define NODEVIEW_PAD      6   /* space round the title and the ports */
 #define NODEVIEW_SLOP     2   /* extra pixels round a port that still hit */
 #define NODEVIEW_DOC_W    1024
 #define NODEVIEW_DOC_H    768
@@ -57,7 +59,8 @@ struct wuss_nodeview
 
 static int nodeview_title_h(const wuss_nodeview_t *nv)
 {
-  return wuss__fontset_height(&nv->window->task->wuss->fonts, 0) + 4;
+  return wuss__fontset_height(&nv->window->task->wuss->fonts, 0) +
+         NODEVIEW_PAD;
 }
 
 /* Node's box in document coordinates. */
@@ -70,7 +73,8 @@ static box_t nodeview_node_box(const wuss_nodeview_t *nv, nodegraph_node_t n)
   (void) nodegraph_get_pos(nv->graph, n, &x, &y);
   return (box_t) BOX_POS_SIZE(x, y, NODEVIEW_NODE_W,
                               nodeview_title_h(nv) +
-                              MAX(cls->ninputs, 1) * NODEVIEW_PITCH + 4);
+                              MAX(cls->ninputs, 1) * NODEVIEW_PITCH +
+                              NODEVIEW_PAD * 2);
 }
 
 /* Centre of input port i, or of the output port when i is -1. */
@@ -81,7 +85,7 @@ static point_t nodeview_port(const wuss_nodeview_t *nv,
   int x, y;
 
   (void) nodegraph_get_pos(nv->graph, n, &x, &y);
-  y += nodeview_title_h(nv) + 2 + NODEVIEW_PITCH / 2;
+  y += nodeview_title_h(nv) + NODEVIEW_PAD + NODEVIEW_PITCH / 2;
   if (i < 0)
     return POINT(x + NODEVIEW_NODE_W, y);
   return POINT(x, y + i * NODEVIEW_PITCH);
@@ -113,7 +117,8 @@ static nodegraph_node_t nodeview_hit(const wuss_nodeview_t *nv,
        n = nodegraph_next(nv->graph, n))
   {
     cls = nodegraph_class(nv->graph, n);
-    if (nodeview_near(nodeview_port(nv, n, -1), p))
+    if (cls->output_type != nodegraph_NO_OUTPUT &&
+        nodeview_near(nodeview_port(nv, n, -1), p))
     {
       hit   = n;
       *port = -1;
@@ -152,9 +157,24 @@ static void nodeview_draw_port(screen_t *scr,
                                point_t   c,
                                colour_t  colour)
 {
-  screen_fill_rect(scr, origin.x + c.x - NODEVIEW_PORT / 2,
-                   origin.y + c.y - NODEVIEW_PORT / 2,
-                   SIZE2D(NODEVIEW_PORT, NODEVIEW_PORT), colour);
+  screen_fill_circle(scr, origin.x + c.x, origin.y + c.y, NODEVIEW_PORT / 2,
+                     colour);
+}
+
+/* Fill the part of the rounded node box that lies within part. */
+static void nodeview_fill_part(const screen_t *scr,
+                               const box_t    *box,
+                               const box_t    *part,
+                               colour_t        colour)
+{
+  screen_t clipped;
+
+  clipped = *scr;
+  if (box_intersection(&scr->clip, part, &clipped.clip))
+    return;
+  screen_fill_rounded_rect(&clipped, box->x0, box->y0,
+                           SIZE2D(box->x1 - box->x0, box->y1 - box->y0),
+                           NODEVIEW_RADIUS, colour);
 }
 
 static void nodeview_draw_node(wuss_nodeview_t    *nv,
@@ -166,7 +186,7 @@ static void nodeview_draw_node(wuss_nodeview_t    *nv,
   screen_t                *scr;
   const nodegraph_class_t *cls;
   bmfont_t                *font;
-  box_t                    box, title, clip;
+  box_t                    box, title, body, clip;
   screen_t                 clipped;
   colour_t                 fg, title_bg;
   point_t                  pos;
@@ -185,24 +205,23 @@ static void nodeview_draw_node(wuss_nodeview_t    *nv,
 
   title_bg = n == nv->selected ? wuss->palette[wuss->accent]
                                : wuss->palette[wuss->button.pressed];
-  screen_fill_rect(scr, box.x0, box.y0,
-                   SIZE2D(box.x1 - box.x0, box.y1 - box.y0),
-                   wuss->palette[wuss->button.bg]);
   title    = box;
   title.y1 = box.y0 + nodeview_title_h(nv);
-  screen_fill_rect(scr, title.x0, title.y0,
-                   SIZE2D(title.x1 - title.x0, title.y1 - title.y0),
-                   title_bg);
-  screen_draw_bevel_edge(scr, &box, wuss->palette[wuss->bevel.light],
-                         wuss->palette[wuss->bevel.dark]);
+  body     = box;
+  body.y0  = title.y1;
+  nodeview_fill_part(scr, &box, &title, title_bg);
+  nodeview_fill_part(scr, &box, &body, wuss->palette[wuss->button.bg]);
+  screen_draw_rounded_rect(scr, box.x0, box.y0,
+                           SIZE2D(box.x1 - box.x0, box.y1 - box.y0),
+                           NODEVIEW_RADIUS, wuss->palette[wuss->bevel.dark]);
 
   if (font != NULL && !box_intersection(&scr->clip, &title, &clip))
   {
     clipped      = *scr;
     clipped.clip = clip;
     bmfont_get_info(font, NULL, NULL, &ascent, NULL);
-    pos.x = title.x0 + 4;
-    pos.y = title.y0 + 2 + ascent;
+    pos.x = title.x0 + NODEVIEW_PAD;
+    pos.y = title.y0 + NODEVIEW_PAD / 2 + ascent;
     (void) wuss__text_draw_str(wuss, font, &clipped, cls->name, fg,
                                wuss__text_ground(wuss, title_bg), &pos,
                                NULL);
@@ -210,7 +229,8 @@ static void nodeview_draw_node(wuss_nodeview_t    *nv,
 
   for (i = 0; i < cls->ninputs; i++)
     nodeview_draw_port(scr, origin, nodeview_port(nv, n, i), fg);
-  nodeview_draw_port(scr, origin, nodeview_port(nv, n, -1), fg);
+  if (cls->output_type != nodegraph_NO_OUTPUT)
+    nodeview_draw_port(scr, origin, nodeview_port(nv, n, -1), fg);
 }
 
 static void nodeview_draw_line(screen_t *scr,
