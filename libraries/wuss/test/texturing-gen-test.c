@@ -41,7 +41,7 @@ static result_t texturinggen_check(const char             *what,
     return rc;
 
   memset(got, 0xAA, TEXTURING_NPIXELS);
-  rc = texturing_chain(graph, &ctx, kind, params, tone);
+  rc = texturing_chain(graph, &ctx, kind, params, tone, 0);
   if (rc == result_OK)
     rc = nodegraph_evaluate(graph);
   nodegraph_destroy(graph);
@@ -61,13 +61,16 @@ static result_t texturinggen_check(const char             *what,
   return result_OK;
 }
 
-/* An unconnected Output gives flat mid-grey. */
-static result_t texturinggen_unlinked(unsigned char *got)
+/* An Output fed by a Fill of level, or unconnected when level is NULL,
+ * gives flat want. */
+static result_t texturinggen_flat(unsigned char *got,
+                                  const int     *level,
+                                  int            want)
 {
   result_t         rc;
   texturing_ctx_t  ctx;
   nodegraph_t     *graph;
-  nodegraph_node_t out;
+  nodegraph_node_t out, fill;
   int              i;
 
   ctx.seed   = SEED;
@@ -80,6 +83,13 @@ static result_t texturinggen_unlinked(unsigned char *got)
   memset(got, 0, TEXTURING_NPIXELS);
   rc = texturing_node_add(graph, &ctx, TEXTURING_NODE_OUTPUT, NULL, 0, 0,
                           &out);
+  if (rc == result_OK && level != NULL)
+  {
+    rc = texturing_node_add(graph, &ctx, TEXTURING_NODE_FILL, level, 0, 0,
+                            &fill);
+    if (rc == result_OK)
+      rc = nodegraph_link(graph, fill, out, 0);
+  }
   if (rc == result_OK)
     rc = nodegraph_evaluate(graph);
   nodegraph_destroy(graph);
@@ -87,14 +97,18 @@ static result_t texturinggen_unlinked(unsigned char *got)
     return rc;
 
   for (i = 0; i < TEXTURING_NPIXELS; i++)
-    if (got[i] != 128)
+    if (got[i] != want)
     {
-      printf("texturinggen: unlinked Output: pixel %d is %d\n", i, got[i]);
+      printf("texturinggen: flat Output: pixel %d is %d, not %d\n", i,
+             got[i], want);
       return result_TEST_FAILED;
     }
 
   return result_OK;
 }
+
+static const int fill_low[TEXTURING_NPARAMS]  = { 40 };
+static const int fill_high[TEXTURING_NPARAMS] = { 300 };
 
 result_t texturinggen_test(const char *resources)
 {
@@ -133,7 +147,11 @@ result_t texturinggen_test(const char *resources)
       goto exit;
   }
 
-  rc = texturinggen_unlinked(got);
+  rc = texturinggen_flat(got, NULL, 128);
+  if (rc == result_OK)
+    rc = texturinggen_flat(got, fill_low, 40);
+  if (rc == result_OK)
+    rc = texturinggen_flat(got, fill_high, 255); /* clamped */
 
 exit:
   free(want);

@@ -19,13 +19,14 @@
  * Stone and Weave's broad patches (log2). */
 #define TEXTURING_LOG2_BASE 2
 
-/* The one port type: a tile of unclamped values. */
+/* Port types: a tile of unclamped values, and a colour scheme. */
 #define TEXTURING_TYPE_VALUES 0
+#define TEXTURING_TYPE_SCHEME 1
 
 const char *texturing_node_names[TEXTURING_NNODES] =
 {
   "Clouds", "Marble", "Wood", "Cells", "Stone", "Weave", "Veins",
-  "Tone", "Blend", "Output"
+  "Tone", "Blend", "Fill", "Output", "Colours"
 };
 
 const int texturing_defaults[TEXTURING_NNODES][TEXTURING_NPARAMS] =
@@ -39,7 +40,9 @@ const int texturing_defaults[TEXTURING_NNODES][TEXTURING_NPARAMS] =
   { 6,  30,   0,  60      }, /* Veins */
   { 48,  0                }, /* Tone: grain, level */
   { 50                    }, /* Blend: amount, % of B */
-  { 0                     }  /* Output */
+  { 128                   }, /* Fill: level */
+  { 0                     }, /* Output */
+  { 0                     }  /* Colours: scheme */
 };
 
 /* Presets after the RISC OS desktop textures: a kind and its parameters, the
@@ -512,9 +515,18 @@ static result_t texturing_evaluate(void       *state,
     }
     break;
 
+  case TEXTURING_NODE_FILL:
+    for (i = 0; i < TEXTURING_NPIXELS; i++)
+      n->values[i] = n->params[0];
+    break;
+
   case TEXTURING_NODE_OUTPUT:
     texturing_clamp(a, n->ctx->pixels);
     break;
+
+  case TEXTURING_NODE_COLOURS:
+    *output = n->params; /* the task reads the scheme, not this */
+    return result_OK;
 
   default:
     texturing_fill(n->ctx->seed, n->kind, n->params, n->values);
@@ -547,8 +559,11 @@ static const nodegraph_class_t texturing_classes[TEXTURING_NNODES] =
     texturing_evaluate, texturing_destroy },
   { "Blend", 2, { TEXTURING_TYPE_VALUES, TEXTURING_TYPE_VALUES },
     TEXTURING_TYPE_VALUES, texturing_evaluate, texturing_destroy },
-  { "Output", 1, { TEXTURING_TYPE_VALUES }, TEXTURING_TYPE_VALUES,
-    texturing_evaluate, texturing_destroy }
+  TEXTURING_GENERATOR("Fill"),
+  { "Output", 2, { TEXTURING_TYPE_VALUES, TEXTURING_TYPE_SCHEME },
+    nodegraph_NO_OUTPUT, texturing_evaluate, texturing_destroy },
+  { "Colours", 0, { 0 }, TEXTURING_TYPE_SCHEME, texturing_evaluate,
+    texturing_destroy }
 };
 
 result_t texturing_node_add(nodegraph_t           *graph,
@@ -587,29 +602,39 @@ result_t texturing_chain(nodegraph_t            *graph,
                          const texturing_ctx_t  *ctx,
                          int                     kind,
                          const int              *params,
-                         const texturing_tone_t *tone)
+                         const texturing_tone_t *tone,
+                         int                     scheme)
 {
   result_t         rc;
-  nodegraph_node_t n, gen, tn, out;
+  nodegraph_node_t n, gen, tn, out, col;
   int              tparams[TEXTURING_NPARAMS];
+  int              cparams[TEXTURING_NPARAMS];
 
   while ((n = nodegraph_next(graph, nodegraph_NONE)) != nodegraph_NONE)
     (void) nodegraph_remove(graph, n);
 
   memset(tparams, 0, sizeof(tparams));
   memcpy(tparams, tone, sizeof(*tone));
+  memset(cparams, 0, sizeof(cparams));
+  cparams[0] = scheme;
 
-  rc = texturing_node_add(graph, ctx, kind, params, 16, 32, &gen);
+  /* a row with room between nodes for the links to show */
+  rc = texturing_node_add(graph, ctx, kind, params, 24, 32, &gen);
   if (rc == result_OK)
-    rc = texturing_node_add(graph, ctx, TEXTURING_NODE_TONE, tparams, 144,
+    rc = texturing_node_add(graph, ctx, TEXTURING_NODE_TONE, tparams, 184,
                             32, &tn);
   if (rc == result_OK)
-    rc = texturing_node_add(graph, ctx, TEXTURING_NODE_OUTPUT, NULL, 272, 32,
+    rc = texturing_node_add(graph, ctx, TEXTURING_NODE_OUTPUT, NULL, 344, 32,
                             &out);
+  if (rc == result_OK)
+    rc = texturing_node_add(graph, ctx, TEXTURING_NODE_COLOURS, cparams, 184,
+                            120, &col);
   if (rc == result_OK)
     rc = nodegraph_link(graph, gen, tn, 0);
   if (rc == result_OK)
     rc = nodegraph_link(graph, tn, out, 0);
+  if (rc == result_OK)
+    rc = nodegraph_link(graph, col, out, TEXTURING_OUTPUT_COLOURS);
 
   return rc;
 }

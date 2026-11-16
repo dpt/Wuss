@@ -30,7 +30,9 @@ enum
   TEXTURING_NKINDS,
   TEXTURING_NODE_TONE = TEXTURING_NKINDS, /* grain, level; one input */
   TEXTURING_NODE_BLEND,                   /* amount; inputs A and B */
-  TEXTURING_NODE_OUTPUT,                  /* one input, into the pixels */
+  TEXTURING_NODE_FILL,                    /* level; no inputs */
+  TEXTURING_NODE_OUTPUT,                  /* values into the pixels; scheme */
+  TEXTURING_NODE_COLOURS,                 /* scheme; no inputs */
   TEXTURING_NNODES
 };
 
@@ -94,13 +96,18 @@ result_t texturing_node_add(nodegraph_t           *graph,
 /* The node's state, as passed to texturing_node_add. */
 texturing_node_t *texturing_node(nodegraph_t *graph, nodegraph_node_t node);
 
+/* The Output's input for the colour scheme, from a Colours node. The pixels
+ * do not depend on it: the task reads the scheme from the linked node. */
+#define TEXTURING_OUTPUT_COLOURS 1
+
 /* Empty graph and fill it with a generator of kind feeding a Tone feeding
- * the Output. */
+ * the Output, and a Colours node of scheme feeding the Output too. */
 result_t texturing_chain(nodegraph_t            *graph,
                          const texturing_ctx_t  *ctx,
                          int                     kind,
                          const int              *params,
-                         const texturing_tone_t *tone);
+                         const texturing_tone_t *tone,
+                         int                     scheme);
 
 /* Dirty every node, as after a reseed. */
 void texturing_dirty_all(nodegraph_t *graph);

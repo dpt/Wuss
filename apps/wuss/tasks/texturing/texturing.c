@@ -34,26 +34,26 @@
 
 /* Fills the content area with a procedural texture that tiles seamlessly:
  * every noise lattice wraps at the tile edge. The texture is the output of a
- * node graph (see texturing-gen.h): generators feed Tone and Blend nodes,
- * which feed the one Output node, whose 8-bit values go into a pixelfmt_p8
- * bitmap; the colour scheme is only its palette, so a scheme change redraws
- * without regenerating.
+ * node graph (see texturing-gen.h): generators and constant Fills feed Tone
+ * and Blend nodes, which feed the one Output node, whose 8-bit values go
+ * into a pixelfmt_p8 bitmap. A Colours node linked to the Output picks the
+ * colour scheme, which is only the bitmap's palette, so a scheme change
+ * redraws without regenerating.
  *
- * SELECT reseeds; ADJUST steps the colour scheme. Menu > Display >
- * Dithering picks how the tile is dithered to the screen. Menu > Kind and
- * Menu > Presets replace the graph with a chain of a generator, a Tone and
- * the Output; Menu > Colours picks the scheme; Menu > Configuration shows
- * the selected node's parameters as sliders, or the first generator's, and
- * Menu > Tone the first Tone's grain and level; Menu > Mutate (M) nudges the
- * selected node's parameters, or every generator's; Menu > Randomise picks a
- * fresh seed, kind and scheme; Menu > Graph opens the graph window; Menu >
- * Save writes a single tile as a PNG. Once a click has given the window the
- * input focus, Space reseeds, Left/Right step the colour scheme, K steps the
- * kind and G steps the grain through None, Light and Heavy presets.
+ * SELECT reseeds; ADJUST steps the colour scheme. Menu > Graph opens the
+ * graph window; Menu > Save writes a single tile as a PNG; Menu > Display >
+ * Dithering picks how the tile is dithered to the screen; Menu > Presets
+ * replaces the graph with a chain of a generator, a Tone, a Colours node and
+ * the Output; Menu > Mutate (M) nudges the selected node's parameters, or
+ * every generator's; Menu > Randomise picks a fresh seed, kind and scheme.
+ * Once a click has given the window the input focus, Space reseeds,
+ * Left/Right step the colour scheme, K steps the kind and G steps the grain
+ * through None, Light and Heavy presets.
  *
- * In the graph window, Menu > Add puts a node at the pointer and Menu >
- * Delete (Delete) removes the selected node, though never the Output. A
- * double-click on a node opens its parameters. */
+ * In the graph window, Menu > Add puts a node at the pointer, from
+ * submenus by what the node does, and Menu > Delete (Delete) removes the
+ * selected node, though never the Output. A double-click on a node opens
+ * its parameters, or for a Colours node the list of schemes. */
 
 /* Colour schemes, as 0xRRGGBB. A smooth scheme ramps through its three
  * stops at values 0, 128 and 255. A stepped scheme maps each fifth of the
@@ -161,6 +161,9 @@ static const confdlg_row_t texturing_rows[TEXTURING_NCONFS][TEXTURING_NPARAMS] =
   },
   { /* Blend: how much of B to mix into A, % */
     { "Amount",     0, 100, 0, TEXTURING_PARAM(0) }
+  },
+  { /* Fill: one value everywhere, so one colour of the scheme */
+    { "Level",      0, 255, 0, TEXTURING_PARAM(0) }
   }
 };
 
@@ -183,21 +186,18 @@ static const confdlg_desc_t texturing_confs[TEXTURING_NCONFS] =
   TEXTURING_CONF(TEXTURING_KIND_WEAVE,  4),
   TEXTURING_CONF(TEXTURING_KIND_VEINS,  4),
   TEXTURING_CONF(TEXTURING_NODE_TONE,   2),
-  TEXTURING_CONF(TEXTURING_NODE_BLEND,  1)
+  TEXTURING_CONF(TEXTURING_NODE_BLEND,  1),
+  TEXTURING_CONF(TEXTURING_NODE_FILL,   1)
 };
 
 enum
 {
-  TEXTURING_MENU_SAVE = 0,
+  TEXTURING_MENU_GRAPH = 0,
+  TEXTURING_MENU_SAVE,
   TEXTURING_MENU_DISPLAY,
-  TEXTURING_MENU_COLOURS,
-  TEXTURING_MENU_KIND,
   TEXTURING_MENU_PRESETS,
-  TEXTURING_MENU_CONFIGURATION,
-  TEXTURING_MENU_TONE,
   TEXTURING_MENU_MUTATE,
   TEXTURING_MENU_RANDOMISE,
-  TEXTURING_MENU_GRAPH,
   TEXTURING_MENU__LIMIT
 };
 
@@ -209,23 +209,43 @@ enum
   TEXTURING_GRAPH__LIMIT
 };
 
+/* Menu > Add's submenus: the node kinds grouped by what they do. */
+static const struct
+{
+  const char *name;
+  int         nkinds;
+  int         kinds[TEXTURING_NKINDS];
+}
+texturing_add_groups[] =
+{
+  { "Input",    2, { TEXTURING_NODE_FILL, TEXTURING_NODE_COLOURS } },
+  { "Generate", TEXTURING_NKINDS,
+    { TEXTURING_KIND_CLOUDS, TEXTURING_KIND_MARBLE, TEXTURING_KIND_WOOD,
+      TEXTURING_KIND_CELLS, TEXTURING_KIND_STONE, TEXTURING_KIND_WEAVE,
+      TEXTURING_KIND_VEINS } },
+  { "Adjust",   1, { TEXTURING_NODE_TONE } },
+  { "Combine",  1, { TEXTURING_NODE_BLEND } }
+};
+
+#define TEXTURING_NGROUPS ((int) NELEMS(texturing_add_groups))
+
 /* Mutate nudges each slider by up to this percent of its range, and always
  * by at least a step. */
 #define TEXTURING_MUTATE 15
 
 /* Graph window's visible size; the gadget sets its document. */
-#define TEXTURING_GRAPH_W 416
-#define TEXTURING_GRAPH_H 192
+#define TEXTURING_GRAPH_W 480
+#define TEXTURING_GRAPH_H 224
 
 struct texturing_task
 {
   taskapp_instance_t base;
   texturing_ctx_t    ctx;    /* seed and pixels, shared by every node */
   rng_t              rng;    /* for Mutate */
-  int                kind;   /* last kind picked, for K and the ticks */
-  int                scheme; /* texturing_schemes[] row */
+  int                kind;   /* last kind chained, for K */
   nodegraph_t       *graph;
   nodegraph_node_t   output; /* the one Output node */
+  nodegraph_node_t   colours; /* the Colours node the scheme menu sets */
   int                scratch[TEXTURING_NPARAMS]; /* dialogues on no node */
   confdlg_t          confs[TEXTURING_NCONFS]; /* see texturing_confs */
   colour_t           palette[256];
@@ -236,8 +256,6 @@ struct texturing_task
   wuss_nodeview_t   *nodeview;
   point_t            add_at; /* where Menu > Add puts a node */
   wuss_menu_item_t   menu_items[TEXTURING_MENU__LIMIT];
-  wuss_menu_item_t   kind_items[TEXTURING_NKINDS];
-  wuss_menu_t        kind_menu;
   wuss_menu_item_t   preset_items[16];
   wuss_menu_t        preset_menu;
   wuss_menu_item_t   scheme_items[NELEMS(texturing_schemes)];
@@ -245,29 +263,50 @@ struct texturing_task
   dithermenu_t       dither;    /* "Display" submenu: screen dithering */
   wuss_menu_item_t   graph_items[TEXTURING_GRAPH__LIMIT];
   wuss_menu_t        graph_menu;
-  wuss_menu_item_t   add_items[TEXTURING_NCONFS];
+  wuss_menu_item_t   add_items[TEXTURING_NGROUPS];
   wuss_menu_t        add_menu;
+  wuss_menu_item_t   group_items[TEXTURING_NGROUPS][TEXTURING_NKINDS];
+  wuss_menu_t        group_menus[TEXTURING_NGROUPS]; /* Add's submenus */
 };
 
 /* ----------------------------------------------------------------------- */
 
+/* The Colours node linked to the Output, or nodegraph_NONE. */
+static nodegraph_node_t texturing_linked_colours(texturing_task_t *task)
+{
+  if (task->graph == NULL || task->output == nodegraph_NONE)
+    return nodegraph_NONE;
+  return nodegraph_source(task->graph, task->output, TEXTURING_OUTPUT_COLOURS);
+}
+
+/* The scheme the Output shows: its Colours node's, else the first. */
+static int texturing_scheme(texturing_task_t *task)
+{
+  nodegraph_node_t n;
+
+  n = texturing_linked_colours(task);
+  return n != nodegraph_NONE ? texturing_node(task->graph, n)->params[0] : 0;
+}
+
 /* Build the 256-entry palette from the current scheme's stops. */
 static void texturing_build_palette(texturing_task_t *task)
 {
+  int                 scheme;
   const unsigned int *stops;
   int                 nstops;
   colour_t            c[5];
   int                 i;
 
-  stops  = texturing_schemes[task->scheme].stops;
-  nstops = texturing_schemes[task->scheme].stepped ? 5 : 3;
+  scheme = texturing_scheme(task);
+  stops  = texturing_schemes[scheme].stops;
+  nstops = texturing_schemes[scheme].stepped ? 5 : 3;
   for (i = 0; i < nstops; i++)
     c[i] = colour_rgb((stops[i] >> 16) & 0xFF,
                       (stops[i] >>  8) & 0xFF,
                        stops[i]        & 0xFF);
 
   for (i = 0; i < 256; i++)
-    if (texturing_schemes[task->scheme].stepped)
+    if (texturing_schemes[scheme].stepped)
       task->palette[i] = c[i * 5 >> 8];
     else
       task->palette[i] = i < 128 ? colour_mix(c[0], c[1], (unsigned) i, 128)
@@ -306,8 +345,7 @@ static nodegraph_node_t texturing_find(texturing_task_t *task,
   return nodegraph_NONE;
 }
 
-/* The Tone node G and Menu > Tone act on: the selected node if a Tone, else
- * the first. */
+/* The Tone node G acts on: the selected node if a Tone, else the first. */
 static nodegraph_node_t texturing_tone_node(texturing_task_t *task)
 {
   nodegraph_node_t n;
@@ -337,31 +375,13 @@ static void texturing_unbind_all(texturing_task_t *task)
     task->confs[k].config = task->scratch;
 }
 
-/* Point Menu > Configuration at the selected node's dialogue, or the first
- * generator's, and Menu > Tone at the Tone node's. */
-static void texturing_retarget(texturing_task_t *task)
-{
-  nodegraph_node_t n;
-  int              conf;
-
-  n = texturing_selected(task);
-  if (n == nodegraph_NONE || texturing_kind_of(task, n) == TEXTURING_NODE_TONE ||
-      texturing_kind_of(task, n) == TEXTURING_NODE_OUTPUT)
-    n = texturing_find(task, 0, TEXTURING_NKINDS);
-  conf = n != nodegraph_NONE ? texturing_kind_of(task, n) : task->kind;
-  texturing_bind(task, conf, n);
-  task->menu_items[TEXTURING_MENU_CONFIGURATION].window =
-    wuss_dialogue_window(task->confs[conf].dialogue);
-
-  texturing_bind(task, TEXTURING_NODE_TONE, texturing_tone_node(task));
-}
-
-/* Evaluate what changed and show it. */
+/* Evaluate what changed and show it, in the linked Colours node's scheme. */
 static result_t texturing_update(texturing_task_t *task)
 {
   result_t rc;
 
   rc = nodegraph_evaluate(task->graph);
+  texturing_build_palette(task);
   if (task->base.window != NULL)
     wuss_window_invalidate_extent(task->base.window);
 
@@ -378,15 +398,20 @@ static result_t texturing_refresh_all(texturing_task_t *task)
 }
 
 /* Replace the graph with a chain of a generator of kind, a Tone and the
- * Output. */
+ * Output, with a Colours node of scheme, or of the current scheme if
+ * negative. */
 static result_t texturing_rechain(texturing_task_t       *task,
                                   int                     kind,
                                   const int              *params,
-                                  const texturing_tone_t *tone)
+                                  const texturing_tone_t *tone,
+                                  int                     scheme)
 {
   result_t         rc;
   texturing_tone_t keep;
   nodegraph_node_t n;
+
+  if (scheme < 0)
+    scheme = texturing_scheme(task);
 
   if (tone == NULL)
   {
@@ -400,7 +425,8 @@ static result_t texturing_rechain(texturing_task_t       *task,
 
   texturing_unbind_all(task);
   task->kind = kind;
-  rc = texturing_chain(task->graph, &task->ctx, kind, params, tone);
+  task->colours = nodegraph_NONE;
+  rc = texturing_chain(task->graph, &task->ctx, kind, params, tone, scheme);
   task->output = texturing_find(task, TEXTURING_NODE_OUTPUT,
                                 TEXTURING_NODE_OUTPUT + 1);
   if (task->nodeview != NULL)
@@ -446,13 +472,28 @@ static result_t texturing_applied(texturing_task_t *task, int old)
   return texturing_refresh_all(task);
 }
 
-static result_t texturing_set_scheme(texturing_task_t *task, int scheme)
+/* Set Colours node n's scheme. Only the palette changes, so nothing is
+ * evaluated. */
+static result_t texturing_set_scheme(texturing_task_t *task,
+                                     nodegraph_node_t  n,
+                                     int               scheme)
 {
-  task->scheme = scheme;
+  if (n == nodegraph_NONE || nodegraph_class(task->graph, n) == NULL)
+    return result_OK;
+
+  texturing_node(task->graph, n)->params[0] = scheme;
   texturing_build_palette(task);
   wuss_window_invalidate_extent(task->base.window);
 
   return result_OK;
+}
+
+/* ADJUST, Left and Right: step the linked Colours node's scheme by delta. */
+static result_t texturing_step_scheme(texturing_task_t *task, int delta)
+{
+  return texturing_set_scheme(task, texturing_linked_colours(task),
+                              (texturing_scheme(task) + delta +
+                               TEXTURING_NSCHEMES) % TEXTURING_NSCHEMES);
 }
 
 /* G: step the Tone's grain to the next preset above it, wrapping. */
@@ -529,12 +570,10 @@ static result_t texturing_mutate(texturing_task_t *task)
 /* Take on a preset's chain and scheme, keeping the seed. */
 static result_t texturing_preset(texturing_task_t *task, int preset)
 {
-  task->scheme = texturing_presets[preset].scheme;
-  texturing_build_palette(task);
-
   return texturing_rechain(task, texturing_presets[preset].kind,
                            texturing_presets[preset].params,
-                           &texturing_presets[preset].tone);
+                           &texturing_presets[preset].tone,
+                           texturing_presets[preset].scheme);
 }
 
 /* Randomise: fresh seed, kind and scheme. Shared by the menu row and its
@@ -542,20 +581,20 @@ static result_t texturing_preset(texturing_task_t *task, int preset)
 static result_t texturing_randomise(texturing_task_t *task)
 {
   rng_t s;
-  int   kind;
+  int   kind, scheme;
 
   rng_lcg32(&task->ctx.seed);
   rng_seed(&s, task->ctx.seed);
-  kind         = rng_range(&s, TEXTURING_NKINDS);
-  task->scheme = rng_range(&s, TEXTURING_NSCHEMES);
-  texturing_build_palette(task);
+  kind   = rng_range(&s, TEXTURING_NKINDS);
+  scheme = rng_range(&s, TEXTURING_NSCHEMES);
 
-  return texturing_rechain(task, kind, NULL, NULL);
+  return texturing_rechain(task, kind, NULL, NULL, scheme);
 }
 
 /* ----------------------------------------------------------------------- */
 
-/* wuss_nodeview_activate_fn_t: open the node's dialogue by the pointer */
+/* wuss_nodeview_activate_fn_t: open the node's dialogue by the pointer, or
+ * a Colours node's scheme menu */
 static void texturing_activate(wuss_nodeview_t *nodeview,
                                nodegraph_node_t node,
                                void            *opaque)
@@ -568,8 +607,18 @@ static void texturing_activate(wuss_nodeview_t *nodeview,
 
   task = opaque;
   conf = texturing_kind_of(task, node);
+  if (conf == TEXTURING_NODE_COLOURS)
+  {
+    task->colours = node;
+    (void) wuss_menu_open_ticked(task->base.delegate, &task->scheme_menu,
+                                 1u << texturing_node(task->graph,
+                                                      node)->params[0],
+                                 wuss_get_pointer(task->base.wuss),
+                                 &task->base.menu_handle);
+    return;
+  }
   if (conf >= TEXTURING_NCONFS)
-    return; /* the Output's settings are the Colours and Display menus */
+    return; /* the Output's settings are the Display menu */
 
   texturing_bind(task, conf, node);
   win = wuss_dialogue_window(task->confs[conf].dialogue);
@@ -680,36 +729,33 @@ static result_t texturing_key(texturing_task_t *task, int code)
   case 'k':
   case 'K':
     return texturing_rechain(task, (task->kind + 1) % TEXTURING_NKINDS, NULL,
-                             NULL);
+                             NULL, -1);
 
   case 'g':
   case 'G':
     return texturing_next_grain(task);
 
   case wuss_KEY_LEFT:
-    return texturing_set_scheme(task, (task->scheme + TEXTURING_NSCHEMES - 1) %
-                                      TEXTURING_NSCHEMES);
+    return texturing_step_scheme(task, -1);
 
   case wuss_KEY_RIGHT:
-    return texturing_set_scheme(task, (task->scheme + 1) % TEXTURING_NSCHEMES);
+    return texturing_step_scheme(task, 1);
 
   default:
     return result_WUSS_KEY_UNCLAIMED;
   }
 }
 
-static void texturing_tick(texturing_task_t *task)
-{
-  wuss_menu_tick_exclusive_live(task->base.menu_handle, &task->kind_menu,
-                                task->kind);
-  wuss_menu_tick_exclusive_live(task->base.menu_handle, &task->scheme_menu,
-                                task->scheme);
-}
-
 static result_t texturing_menu_select(texturing_task_t   *task,
                                       const wuss_event_t *event)
 {
   result_t rc;
+  int      g;
+
+  for (g = 0; g < TEXTURING_NGROUPS; g++)
+    if (event->data.menu_select.menu == &task->group_menus[g])
+      return texturing_add(task, texturing_add_groups[g].kinds
+                                 [event->data.menu_select.index]);
 
   if (event->data.menu_select.menu == &task->dither.menu)
   {
@@ -719,24 +765,16 @@ static result_t texturing_menu_select(texturing_task_t   *task,
     wuss_window_invalidate_visible(task->base.window);
     rc = result_OK;
   }
-  else if (event->data.menu_select.menu == &task->kind_menu)
-  {
-    rc = texturing_rechain(task, event->data.menu_select.index, NULL, NULL);
-    texturing_tick(task);
-  }
   else if (event->data.menu_select.menu == &task->scheme_menu)
   {
-    rc = texturing_set_scheme(task, event->data.menu_select.index);
-    texturing_tick(task);
+    rc = texturing_set_scheme(task, task->colours,
+                              event->data.menu_select.index);
+    wuss_menu_tick_exclusive_live(task->base.menu_handle, &task->scheme_menu,
+                                  event->data.menu_select.index);
   }
   else if (event->data.menu_select.menu == &task->preset_menu)
   {
     rc = texturing_preset(task, event->data.menu_select.index);
-    texturing_tick(task);
-  }
-  else if (event->data.menu_select.menu == &task->add_menu)
-  {
-    rc = texturing_add(task, event->data.menu_select.index);
   }
   else if (wuss_menu_select_is(event, &task->graph_menu,
                                TEXTURING_GRAPH_DELETE))
@@ -752,7 +790,6 @@ static result_t texturing_menu_select(texturing_task_t   *task,
                                TEXTURING_MENU_RANDOMISE))
   {
     rc = texturing_randomise(task);
-    texturing_tick(task);
   }
   else if (wuss_menu_select_is(event, &task->base.menu, TEXTURING_MENU_GRAPH))
   {
@@ -841,18 +878,13 @@ static result_t texturing_handle(wuss_window_t      *window,
         event->data.mouse.action != wuss_MOUSE_DOWN)
       return result_OK;
     if (event->data.mouse.button & wuss_BUTTON_MENU)
-    {
-      texturing_retarget(task);
-      wuss_menu_tick_exclusive(&task->kind_menu, task->kind);
-      wuss_menu_tick_exclusive(&task->scheme_menu, task->scheme);
       return wuss_menu_open_ticked(task->base.delegate, &task->base.menu, 0,
                                    wuss_get_pointer(task->base.wuss),
                                    &task->base.menu_handle);
-    }
     if (event->data.mouse.button & wuss_BUTTON_SELECT)
       return texturing_reseed(task);
     if (event->data.mouse.button & wuss_BUTTON_ADJUST)
-      return texturing_set_scheme(task, (task->scheme + 1) % TEXTURING_NSCHEMES);
+      return texturing_step_scheme(task, 1);
     return result_OK;
 
   case wuss_EVENT_KEY:
@@ -891,15 +923,15 @@ static result_t texturing_saveas_save(const char *path, void *opaque)
 static result_t texturing_init(texturing_task_t *task)
 {
   result_t       rc;
-  int            i;
+  int            i, g;
   wuss_window_t *win;
 
   task->ctx.seed   = 0x9E3779B9u;
   task->ctx.pixels = task->pixels;
   rng_seed(&task->rng, task->ctx.seed);
-  task->scheme     = 0;
   task->dithering  = screen_DITHER_BLUE_NOISE;
   task->output     = nodegraph_NONE;
+  task->colours    = nodegraph_NONE;
 
   rc = bitmap_init(&task->bm, SIZE2D(TEXTURING_SIZE, TEXTURING_SIZE),
                    pixelfmt_p8, TEXTURING_SIZE, NULL, task->pixels);
@@ -918,7 +950,7 @@ static result_t texturing_init(texturing_task_t *task)
 
   rc = texturing_rechain(task, TEXTURING_KIND_CLOUDS, NULL,
                          (const texturing_tone_t *)
-                         texturing_defaults[TEXTURING_NODE_TONE]);
+                         texturing_defaults[TEXTURING_NODE_TONE], 0);
   if (rc != result_OK)
     return rc;
 
@@ -929,10 +961,14 @@ static result_t texturing_init(texturing_task_t *task)
   if (rc != result_OK)
     return rc;
 
-  /* Save, then View's rows (Display, Colours), then the texture's own rows:
-   * mostly submenus, so all undivided, as menu-standard.md has it */
+  /* Graph first, as the graph is the main control. Then Save, View's
+   * Display and the texture's own rows: mostly submenus, so undivided, as
+   * menu-standard.md has it */
+  WUSS_MENU_ITEM(task->menu_items, TEXTURING_MENU_GRAPH, "Graph",
+                 wuss_MENU_ITEM_NONE);
+
   taskapp_save_row(&task->base, task->menu_items, TEXTURING_MENU_SAVE,
-                   wuss_MENU_ITEM_NONE);
+                   wuss_MENU_ITEM_DASHED);
 
   dithermenu_init(&task->dither, task->dithering);
   WUSS_MENU_ITEM_MENU(task->menu_items, TEXTURING_MENU_DISPLAY, "Display",
@@ -943,15 +979,6 @@ static result_t texturing_init(texturing_task_t *task)
                    wuss_MENU_ITEM_NONE);
   WUSS_MENU_TITLE(task->scheme_menu, "Colours", task->scheme_items,
                   TEXTURING_NSCHEMES);
-  WUSS_MENU_ITEM_MENU(task->menu_items, TEXTURING_MENU_COLOURS, "Colours",
-                      wuss_MENU_ITEM_NONE, &task->scheme_menu);
-
-  for (i = 0; i < TEXTURING_NKINDS; i++)
-    WUSS_MENU_ITEM(task->kind_items, i, texturing_node_names[i],
-                   wuss_MENU_ITEM_NONE);
-  WUSS_MENU_TITLE(task->kind_menu, "Kind", task->kind_items, TEXTURING_NKINDS);
-  WUSS_MENU_ITEM_MENU(task->menu_items, TEXTURING_MENU_KIND, "Kind",
-                      wuss_MENU_ITEM_NONE, &task->kind_menu);
 
   for (i = 0; i < texturing_npresets; i++)
     WUSS_MENU_ITEM(task->preset_items, i, texturing_presets[i].name,
@@ -961,29 +988,27 @@ static result_t texturing_init(texturing_task_t *task)
   WUSS_MENU_ITEM_MENU(task->menu_items, TEXTURING_MENU_PRESETS, "Presets",
                       wuss_MENU_ITEM_NONE, &task->preset_menu);
 
-  WUSS_MENU_ITEM(task->menu_items, TEXTURING_MENU_CONFIGURATION,
-                 "Configuration",
-                 wuss_MENU_ITEM_BORROWED_SUBMENU | wuss_MENU_ITEM_PRE_OPEN);
-
-  WUSS_MENU_ITEM(task->menu_items, TEXTURING_MENU_TONE, "Tone",
-                 wuss_MENU_ITEM_BORROWED_SUBMENU | wuss_MENU_ITEM_PRE_OPEN);
-
   WUSS_MENU_ITEM_SHORTCUT(task->menu_items, TEXTURING_MENU_MUTATE, "Mutate",
                           wuss_MENU_ITEM_NONE, "M");
 
   WUSS_MENU_ITEM_SHORTCUT(task->menu_items, TEXTURING_MENU_RANDOMISE,
                           "Randomise", wuss_MENU_ITEM_NONE, "^R");
 
-  WUSS_MENU_ITEM(task->menu_items, TEXTURING_MENU_GRAPH, "Graph",
-                 wuss_MENU_ITEM_NONE);
-
   WUSS_MENU_TITLE(task->base.menu, "Texturing", task->menu_items,
                   NELEMS(task->menu_items));
 
-  for (i = 0; i < TEXTURING_NCONFS; i++)
-    WUSS_MENU_ITEM(task->add_items, i, texturing_node_names[i],
-                   wuss_MENU_ITEM_NONE);
-  WUSS_MENU_TITLE(task->add_menu, "Add", task->add_items, TEXTURING_NCONFS);
+  for (g = 0; g < TEXTURING_NGROUPS; g++)
+  {
+    for (i = 0; i < texturing_add_groups[g].nkinds; i++)
+      WUSS_MENU_ITEM(task->group_items[g], i,
+                     texturing_node_names[texturing_add_groups[g].kinds[i]],
+                     wuss_MENU_ITEM_NONE);
+    WUSS_MENU_TITLE(task->group_menus[g], texturing_add_groups[g].name,
+                    task->group_items[g], texturing_add_groups[g].nkinds);
+    WUSS_MENU_ITEM_MENU(task->add_items, g, texturing_add_groups[g].name,
+                        wuss_MENU_ITEM_NONE, &task->group_menus[g]);
+  }
+  WUSS_MENU_TITLE(task->add_menu, "Add", task->add_items, TEXTURING_NGROUPS);
   WUSS_MENU_ITEM_MENU(task->graph_items, TEXTURING_GRAPH_ADD, "Add",
                       wuss_MENU_ITEM_NONE, &task->add_menu);
   WUSS_MENU_ITEM_SHORTCUT(task->graph_items, TEXTURING_GRAPH_DELETE,
@@ -1001,11 +1026,10 @@ static result_t texturing_init(texturing_task_t *task)
 
   win = wuss_dialogue_window(task->confs[TEXTURING_NODE_TONE].dialogue);
   wuss_window_set_title(win, "Tone");
-  task->menu_items[TEXTURING_MENU_TONE].window = win;
   win = wuss_dialogue_window(task->confs[TEXTURING_NODE_BLEND].dialogue);
   wuss_window_set_title(win, "Blend");
-
-  texturing_retarget(task);
+  win = wuss_dialogue_window(task->confs[TEXTURING_NODE_FILL].dialogue);
+  wuss_window_set_title(win, "Fill");
 
   return result_OK;
 }
