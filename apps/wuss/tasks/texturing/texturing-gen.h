@@ -7,6 +7,8 @@
 
 #include "base/result.h"
 #include "datastruct/nodegraph.h"
+#include "framebuf/colour.h"
+#include "framebuf/pixelfmt.h"
 
 /* Texture edge in pixels, as a power of two so that every lattice step is a
  * shift and a mask. */
@@ -31,10 +33,30 @@ enum
   TEXTURING_NODE_TONE = TEXTURING_NKINDS, /* grain, level; one input */
   TEXTURING_NODE_BLEND,                   /* amount; inputs A and B */
   TEXTURING_NODE_FILL,                    /* level; no inputs */
-  TEXTURING_NODE_OUTPUT,                  /* values into the pixels; scheme */
+  TEXTURING_NODE_OUTPUT,                  /* an image into the pixels */
   TEXTURING_NODE_COLOURS,                 /* scheme; no inputs */
+  TEXTURING_NODE_SEED,                    /* seed; no inputs */
+  TEXTURING_NODE_COLOURISE,               /* values, scheme to an image */
+  TEXTURING_NODE_EFFECTS,                 /* an image through effects */
   TEXTURING_NNODES
 };
+
+/* Port types: a tile of unclamped values, a colour scheme, a seed and a
+ * tile of rgba8888 pixels. */
+#define TEXTURING_TYPE_VALUES 0
+#define TEXTURING_TYPE_SCHEME 1
+#define TEXTURING_TYPE_SEED   2
+#define TEXTURING_TYPE_IMAGE  3
+#define TEXTURING_NTYPES      4
+
+/* Colourise's input for the colour scheme, from a Colours node. An unlinked
+ * scheme input reads as the first scheme. */
+#define TEXTURING_COLOURISE_SCHEME 1
+
+/* The seed input of a generator, and of a Tone for its grain. An unlinked
+ * seed input reads as zero. */
+#define TEXTURING_GENERATOR_SEED 0
+#define TEXTURING_TONE_SEED      1
 
 /* Tone's parameters, laid out as a node's params[]: per-pixel grain, the
  * noise amplitude it adds to a value, and a level added to every value. */
@@ -47,25 +69,62 @@ texturing_tone_t;
 
 #define TEXTURING_GRAIN_MAX 128
 
-/* What every node of one graph shares: the seed, and the 8-bit pixels the
- * Output node writes. */
+/* Run an Effects node's effects, kept in its client, over in into out. */
+typedef result_t (texturing_effect_fn_t)(void                      *client,
+                                         const pixelfmt_rgba8888_t *in,
+                                         pixelfmt_rgba8888_t       *out);
+
+/* Free an Effects node's client, as the node goes. */
+typedef void (texturing_forget_fn_t)(void *client);
+
+/* What every node of one graph shares: the pixels the Output node writes,
+ * and the hooks behind Effects nodes. With effect NULL, an Effects node
+ * passes its image through. */
 typedef struct texturing_ctx
 {
-  uint32_t       seed;
-  unsigned char *pixels; /* TEXTURING_NPIXELS */
+  pixelfmt_rgba8888_t   *pixels; /* TEXTURING_NPIXELS */
+  texturing_effect_fn_t *effect;
+  texturing_forget_fn_t *forget;
 }
 texturing_ctx_t;
 
-/* A node's state. Its output is values[]: unclamped, so a level added
- * downstream sees what a clamp would have lost. */
+/* A node's state. Its output is values[], unclamped, so a level added
+ * downstream sees what a clamp would have lost, or for Colourise and
+ * Effects an image. An Effects node's client is set by the task. */
 typedef struct texturing_node
 {
   const texturing_ctx_t *ctx;
   int                    kind;
   int                    params[TEXTURING_NPARAMS];
-  int                    values[TEXTURING_NPIXELS];
+  void                  *client;
+  union
+  {
+    int                 values[TEXTURING_NPIXELS];
+    pixelfmt_rgba8888_t image[TEXTURING_NPIXELS];
+  }
+  out;
 }
 texturing_node_t;
+
+/* A colour scheme, as 0xRRGGBB. A smooth scheme ramps through its first
+ * three stops at values 0, 128 and 255. A stepped scheme maps each fifth of
+ * the value range to one of its five stops exactly, giving the few close
+ * tones of the RISC OS desktop textures; grain then speckles between
+ * them. */
+typedef struct texturing_scheme
+{
+  const char  *name;
+  int          stepped;
+  unsigned int stops[5];
+}
+texturing_scheme_t;
+
+#define TEXTURING_NSCHEMES 10
+
+extern const texturing_scheme_t texturing_schemes[TEXTURING_NSCHEMES];
+
+/* Fill palette[] with scheme's colour for each value 0..255. */
+void texturing_palette(int scheme, colour_t palette[256]);
 
 /* A preset: a generator and its parameters, the tone and a colour scheme. */
 typedef struct texturing_preset
@@ -96,20 +155,18 @@ result_t texturing_node_add(nodegraph_t           *graph,
 /* The node's state, as passed to texturing_node_add. */
 texturing_node_t *texturing_node(nodegraph_t *graph, nodegraph_node_t node);
 
-/* The Output's input for the colour scheme, from a Colours node. The pixels
- * do not depend on it: the task reads the scheme from the linked node. */
-#define TEXTURING_OUTPUT_COLOURS 1
-
-/* Empty graph and fill it with a generator of kind feeding a Tone feeding
- * the Output, and a Colours node of scheme feeding the Output too. */
+/* Empty graph and fill it with a generator of kind feeding a Tone feeding a
+ * Colourise feeding the Output, a Seed node of seed feeding the generator
+ * and the Tone, and a Colours node of scheme feeding the Colourise. */
 result_t texturing_chain(nodegraph_t            *graph,
                          const texturing_ctx_t  *ctx,
+                         uint32_t                seed,
                          int                     kind,
                          const int              *params,
                          const texturing_tone_t *tone,
                          int                     scheme);
 
-/* Dirty every node, as after a reseed. */
+/* Dirty every node, as after a parameter change. */
 void texturing_dirty_all(nodegraph_t *graph);
 
 /* The texture straight from a kind and a tone, without a graph, as before

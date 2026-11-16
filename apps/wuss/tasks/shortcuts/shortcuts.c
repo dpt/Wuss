@@ -331,6 +331,7 @@ shortcuts[] =
   { "Left",           "Previous colours"    },
   { "Right",          "Next colours"        },
   { "Delete",         "Delete node"         },
+  { "Delete",         "Delete effect"       },
   { "Tagging",        NULL                  },
   { "F2",             "List"                },
   { "F3",             "Cloud"               },

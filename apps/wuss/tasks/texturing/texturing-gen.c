@@ -19,14 +19,27 @@
  * Stone and Weave's broad patches (log2). */
 #define TEXTURING_LOG2_BASE 2
 
-/* Port types: a tile of unclamped values, and a colour scheme. */
-#define TEXTURING_TYPE_VALUES 0
-#define TEXTURING_TYPE_SCHEME 1
-
 const char *texturing_node_names[TEXTURING_NNODES] =
 {
   "Clouds", "Marble", "Wood", "Cells", "Stone", "Weave", "Veins",
-  "Tone", "Blend", "Fill", "Output", "Colours"
+  "Tone", "Blend", "Fill", "Output", "Colours", "Seed", "Colourise",
+  "Effects"
+};
+
+const texturing_scheme_t texturing_schemes[TEXTURING_NSCHEMES] =
+{
+  { "Sky",     0, { 0x1E4FA0, 0x7FB0E8, 0xFFFFFF } },
+  { "Slate",   0, { 0x202020, 0x808078, 0xE8E8E0 } },
+  { "Wood",    0, { 0x3A1E0C, 0x8A5528, 0xD8A868 } },
+  { "Lava",    0, { 0x000000, 0xC02000, 0xFFE040 } },
+  { "Moss",    0, { 0x102008, 0x4A7A20, 0xC8E088 } },
+  { "Ice",     0, { 0x002838, 0x40A0C0, 0xF0FFFF } },
+  /* the 16-colour desktop's greys */
+  { "Desktop", 1, { 0x333333, 0x555555, 0x777777, 0x999999, 0xBBBBBB } },
+  /* 4-bit greys, darker */
+  { "Grey 16", 1, { 0x222222, 0x444444, 0x666666, 0x888888, 0xAAAAAA } },
+  { "Linen",   1, { 0x6E6450, 0x8A806A, 0xA69C84, 0xC2B89E, 0xDDD4BA } },
+  { "Denim",   1, { 0x1E2C44, 0x2E4060, 0x40567C, 0x566E96, 0x7088AE } }
 };
 
 const int texturing_defaults[TEXTURING_NNODES][TEXTURING_NPARAMS] =
@@ -42,7 +55,10 @@ const int texturing_defaults[TEXTURING_NNODES][TEXTURING_NPARAMS] =
   { 50                    }, /* Blend: amount, % of B */
   { 128                   }, /* Fill: level */
   { 0                     }, /* Output */
-  { 0                     }  /* Colours: scheme */
+  { 0                     }, /* Colours: scheme */
+  { 0                     }, /* Seed: seed, as an int */
+  { 0                     }, /* Colourise */
+  { 0                     }  /* Effects: the task's client holds them */
 };
 
 /* Presets after the RISC OS desktop textures: a kind and its parameters, the
@@ -464,6 +480,42 @@ static void texturing_clamp(const int *in, unsigned char *pixels)
     pixels[i] = (unsigned char) CLAMP(in ? in[i] : 128, 0, 255);
 }
 
+void texturing_palette(int scheme, colour_t palette[256])
+{
+  const unsigned int *stops;
+  int                 nstops;
+  colour_t            c[5];
+  int                 i;
+
+  scheme = CLAMP(scheme, 0, TEXTURING_NSCHEMES - 1);
+  stops  = texturing_schemes[scheme].stops;
+  nstops = texturing_schemes[scheme].stepped ? 5 : 3;
+  for (i = 0; i < nstops; i++)
+    c[i] = colour_rgb((stops[i] >> 16) & 0xFF,
+                      (stops[i] >>  8) & 0xFF,
+                       stops[i]        & 0xFF);
+
+  for (i = 0; i < 256; i++)
+    if (texturing_schemes[scheme].stepped)
+      palette[i] = c[i * 5 >> 8];
+    else
+      palette[i] = i < 128 ? colour_mix(c[0], c[1], (unsigned) i, 128)
+                           : colour_mix(c[1], c[2], (unsigned) i - 128, 127);
+}
+
+/* Colour in[] (NULL for a flat 128), clamped, by scheme into out[]. */
+static void texturing_colourise(int                  scheme,
+                                const int           *in,
+                                pixelfmt_rgba8888_t *out)
+{
+  colour_t palette[256];
+  int      i;
+
+  texturing_palette(scheme, palette);
+  for (i = 0; i < TEXTURING_NPIXELS; i++)
+    out[i] = palette[CLAMP(in ? in[i] : 128, 0, 255)].primary;
+}
+
 result_t texturing_reference(uint32_t                seed,
                              int                     kind,
                              const int              *params,
@@ -486,65 +538,129 @@ result_t texturing_reference(uint32_t                seed,
 
 /* ----------------------------------------------------------------------- */
 
+/* The seed on a seed input: a Seed node's params, or NULL for zero. */
+static uint32_t texturing_seed_of(const void *input)
+{
+  return input ? (uint32_t) *(const int *) input : 0;
+}
+
+/* Copy image in, or flat grey if NULL, into out. */
+static void texturing_copy_image(const pixelfmt_rgba8888_t *in,
+                                 pixelfmt_rgba8888_t       *out)
+{
+  pixelfmt_rgba8888_t grey;
+  int                 i;
+
+  if (in != NULL)
+  {
+    memcpy(out, in, TEXTURING_NPIXELS * sizeof(*out));
+    return;
+  }
+
+  grey = colour_rgb(128, 128, 128).primary;
+  for (i = 0; i < TEXTURING_NPIXELS; i++)
+    out[i] = grey;
+}
+
+/* An Effects node: its effects over its input image, through the task's
+ * hook, or the image unchanged without one. */
+static result_t texturing_effects(texturing_node_t          *n,
+                                  const pixelfmt_rgba8888_t *in)
+{
+  if (in == NULL)
+  {
+    /* effect reads in before it writes out, so the grey may sit there */
+    texturing_copy_image(NULL, n->out.image);
+    in = n->out.image;
+  }
+
+  if (n->ctx->effect == NULL || n->client == NULL)
+  {
+    if (in != n->out.image)
+      texturing_copy_image(in, n->out.image);
+    return result_OK;
+  }
+
+  return n->ctx->effect(n->client, in, n->out.image);
+}
+
 /* nodegraph_evaluate_t for every kind */
 static result_t texturing_evaluate(void       *state,
                                    void *const inputs[],
                                    void      **output)
 {
+  result_t          rc;
   texturing_node_t *n;
-  const int        *a, *b;
+  const int        *a, *b, *scheme;
   int               mul, i, va;
 
-  n = state;
-  a = inputs[0];
-  b = inputs[1];
+  rc = result_OK;
+  n  = state;
+  a  = inputs[0];
+  b  = inputs[1];
 
   switch (n->kind)
   {
   case TEXTURING_NODE_TONE:
-    texturing_tone(n->ctx->seed, (const texturing_tone_t *) n->params, a,
-                   n->values);
+    texturing_tone(texturing_seed_of(inputs[TEXTURING_TONE_SEED]),
+                   (const texturing_tone_t *) n->params, a, n->out.values);
     break;
 
   case TEXTURING_NODE_BLEND:
     mul = n->params[0] * 256 / 100;
     for (i = 0; i < TEXTURING_NPIXELS; i++)
     {
-      va           = a ? a[i] : 128;
-      n->values[i] = va + (((b ? b[i] : 128) - va) * mul >> 8);
+      va               = a ? a[i] : 128;
+      n->out.values[i] = va + (((b ? b[i] : 128) - va) * mul >> 8);
     }
     break;
 
   case TEXTURING_NODE_FILL:
     for (i = 0; i < TEXTURING_NPIXELS; i++)
-      n->values[i] = n->params[0];
+      n->out.values[i] = n->params[0];
     break;
 
   case TEXTURING_NODE_OUTPUT:
-    texturing_clamp(a, n->ctx->pixels);
+    texturing_copy_image(inputs[0], n->ctx->pixels);
     break;
 
   case TEXTURING_NODE_COLOURS:
-    *output = n->params; /* the task reads the scheme, not this */
+  case TEXTURING_NODE_SEED:
+    *output = n->params;
     return result_OK;
 
+  case TEXTURING_NODE_COLOURISE:
+    scheme = inputs[TEXTURING_COLOURISE_SCHEME];
+    texturing_colourise(scheme ? scheme[0] : 0, a, n->out.image);
+    break;
+
+  case TEXTURING_NODE_EFFECTS:
+    rc = texturing_effects(n, inputs[0]);
+    break;
+
   default:
-    texturing_fill(n->ctx->seed, n->kind, n->params, n->values);
+    texturing_fill(texturing_seed_of(inputs[TEXTURING_GENERATOR_SEED]),
+                   n->kind, n->params, n->out.values);
     break;
   }
 
-  *output = n->values;
-  return result_OK;
+  *output = &n->out;
+  return rc;
 }
 
 static void texturing_destroy(void *state)
 {
-  free(state);
+  texturing_node_t *n;
+
+  n = state;
+  if (n->client != NULL && n->ctx->forget != NULL)
+    n->ctx->forget(n->client);
+  free(n);
 }
 
 #define TEXTURING_GENERATOR(name) \
-  { name, 0, { 0 }, TEXTURING_TYPE_VALUES, texturing_evaluate, \
-    texturing_destroy }
+  { name, 1, { TEXTURING_TYPE_SEED }, TEXTURING_TYPE_VALUES, \
+    texturing_evaluate, texturing_destroy }
 
 static const nodegraph_class_t texturing_classes[TEXTURING_NNODES] =
 {
@@ -555,15 +671,22 @@ static const nodegraph_class_t texturing_classes[TEXTURING_NNODES] =
   TEXTURING_GENERATOR("Stone"),
   TEXTURING_GENERATOR("Weave"),
   TEXTURING_GENERATOR("Veins"),
-  { "Tone", 1, { TEXTURING_TYPE_VALUES }, TEXTURING_TYPE_VALUES,
-    texturing_evaluate, texturing_destroy },
+  { "Tone", 2, { TEXTURING_TYPE_VALUES, TEXTURING_TYPE_SEED },
+    TEXTURING_TYPE_VALUES, texturing_evaluate, texturing_destroy },
   { "Blend", 2, { TEXTURING_TYPE_VALUES, TEXTURING_TYPE_VALUES },
     TEXTURING_TYPE_VALUES, texturing_evaluate, texturing_destroy },
-  TEXTURING_GENERATOR("Fill"),
-  { "Output", 2, { TEXTURING_TYPE_VALUES, TEXTURING_TYPE_SCHEME },
-    nodegraph_NO_OUTPUT, texturing_evaluate, texturing_destroy },
+  { "Fill", 0, { 0 }, TEXTURING_TYPE_VALUES, texturing_evaluate,
+    texturing_destroy },
+  { "Output", 1, { TEXTURING_TYPE_IMAGE }, nodegraph_NO_OUTPUT,
+    texturing_evaluate, texturing_destroy },
   { "Colours", 0, { 0 }, TEXTURING_TYPE_SCHEME, texturing_evaluate,
-    texturing_destroy }
+    texturing_destroy },
+  { "Seed", 0, { 0 }, TEXTURING_TYPE_SEED, texturing_evaluate,
+    texturing_destroy },
+  { "Colourise", 2, { TEXTURING_TYPE_VALUES, TEXTURING_TYPE_SCHEME },
+    TEXTURING_TYPE_IMAGE, texturing_evaluate, texturing_destroy },
+  { "Effects", 1, { TEXTURING_TYPE_IMAGE }, TEXTURING_TYPE_IMAGE,
+    texturing_evaluate, texturing_destroy }
 };
 
 result_t texturing_node_add(nodegraph_t           *graph,
@@ -581,8 +704,9 @@ result_t texturing_node_add(nodegraph_t           *graph,
   if (n == NULL)
     return result_OOM;
 
-  n->ctx  = ctx;
-  n->kind = kind;
+  n->ctx    = ctx;
+  n->kind   = kind;
+  n->client = NULL;
   memcpy(n->params, params ? params : texturing_defaults[kind],
          sizeof(n->params));
 
@@ -600,15 +724,17 @@ texturing_node_t *texturing_node(nodegraph_t *graph, nodegraph_node_t node)
 
 result_t texturing_chain(nodegraph_t            *graph,
                          const texturing_ctx_t  *ctx,
+                         uint32_t                seed,
                          int                     kind,
                          const int              *params,
                          const texturing_tone_t *tone,
                          int                     scheme)
 {
   result_t         rc;
-  nodegraph_node_t n, gen, tn, out, col;
+  nodegraph_node_t n, gen, tn, cz, out, col, sd;
   int              tparams[TEXTURING_NPARAMS];
   int              cparams[TEXTURING_NPARAMS];
+  int              sparams[TEXTURING_NPARAMS];
 
   while ((n = nodegraph_next(graph, nodegraph_NONE)) != nodegraph_NONE)
     (void) nodegraph_remove(graph, n);
@@ -617,24 +743,39 @@ result_t texturing_chain(nodegraph_t            *graph,
   memcpy(tparams, tone, sizeof(*tone));
   memset(cparams, 0, sizeof(cparams));
   cparams[0] = scheme;
+  memset(sparams, 0, sizeof(sparams));
+  sparams[0] = (int) seed;
 
-  /* a row with room between nodes for the links to show */
+  /* a row with room between nodes for the links to show, the Seed, Colours
+   * and Output below */
   rc = texturing_node_add(graph, ctx, kind, params, 24, 32, &gen);
   if (rc == result_OK)
     rc = texturing_node_add(graph, ctx, TEXTURING_NODE_TONE, tparams, 184,
                             32, &tn);
   if (rc == result_OK)
-    rc = texturing_node_add(graph, ctx, TEXTURING_NODE_OUTPUT, NULL, 344, 32,
-                            &out);
+    rc = texturing_node_add(graph, ctx, TEXTURING_NODE_COLOURISE, NULL, 344,
+                            32, &cz);
+  if (rc == result_OK)
+    rc = texturing_node_add(graph, ctx, TEXTURING_NODE_OUTPUT, NULL, 344,
+                            120, &out);
   if (rc == result_OK)
     rc = texturing_node_add(graph, ctx, TEXTURING_NODE_COLOURS, cparams, 184,
                             120, &col);
   if (rc == result_OK)
+    rc = texturing_node_add(graph, ctx, TEXTURING_NODE_SEED, sparams, 24,
+                            120, &sd);
+  if (rc == result_OK)
+    rc = nodegraph_link(graph, sd, gen, TEXTURING_GENERATOR_SEED);
+  if (rc == result_OK)
+    rc = nodegraph_link(graph, sd, tn, TEXTURING_TONE_SEED);
+  if (rc == result_OK)
     rc = nodegraph_link(graph, gen, tn, 0);
   if (rc == result_OK)
-    rc = nodegraph_link(graph, tn, out, 0);
+    rc = nodegraph_link(graph, tn, cz, 0);
   if (rc == result_OK)
-    rc = nodegraph_link(graph, col, out, TEXTURING_OUTPUT_COLOURS);
+    rc = nodegraph_link(graph, col, cz, TEXTURING_COLOURISE_SCHEME);
+  if (rc == result_OK)
+    rc = nodegraph_link(graph, cz, out, 0);
 
   return rc;
 }
