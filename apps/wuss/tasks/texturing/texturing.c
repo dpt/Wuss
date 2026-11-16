@@ -2,9 +2,7 @@
 
 #ifdef WUSS_APP
 
-#include <limits.h>
 #include <stddef.h>
-#include <stdlib.h>
 #include <string.h>
 
 #ifdef FORTIFY
@@ -12,11 +10,13 @@
 #endif
 
 #include "base/utils.h"
+#include "datastruct/nodegraph.h"
 #include "framebuf/bitmap.h"
 #include "framebuf/colour.h"
 #include "framebuf/screen.h"
 #include "geom/box.h"
 #include "utils/rng.h"
+#include "wuss/gadget/nodeview.h"
 #include "wuss/menu.h"
 #include "wuss/window.h"
 
@@ -26,54 +26,34 @@
 #include "../common/dithermenu.h"
 #include "../common/taskapp.h"
 
-/* Texture edge in pixels, as a power of two so that every lattice step is a
- * shift and a mask. */
-#define TEXTURING_LOG2_SIZE 8
-#define TEXTURING_SIZE      (1 << TEXTURING_LOG2_SIZE)
+#include "texturing-gen.h"
 
 /* The window shows the texture repeated this many times each way, so that
  * any seam would show. */
 #define TEXTURING_REPEAT 2
 
-/* Lattice cells across the tile in the coarsest octave of the noise behind
- * Stone and Weave's broad patches (log2). */
-#define TEXTURING_LOG2_BASE 2
-
-/* Most parameters any kind has. */
-#define TEXTURING_NPARAMS CONFDLG_MAX_ROWS
-
 /* Fills the content area with a procedural texture that tiles seamlessly:
- * every noise lattice wraps at the tile edge. The texture is generated once
- * per change as 8-bit values into a pixelfmt_p8 bitmap; the colour scheme
- * is only its palette, so a scheme change redraws without regenerating.
+ * every noise lattice wraps at the tile edge. The texture is the output of a
+ * node graph (see texturing-gen.h): generators feed Tone and Blend nodes,
+ * which feed the one Output node, whose 8-bit values go into a pixelfmt_p8
+ * bitmap; the colour scheme is only its palette, so a scheme change redraws
+ * without regenerating.
  *
  * SELECT reseeds; ADJUST steps the colour scheme. Menu > Display >
  * Dithering picks how the tile is dithered to the screen. Menu > Kind and
- * Menu > Colours pick directly; Menu > Presets picks a kind, its parameters,
- * the tone and a scheme after a RISC OS desktop texture; Menu >
- * Configuration shows the current kind's parameters as sliders and Menu >
- * Tone the grain and level; Menu > Mutate (M) nudges those parameters and
- * the tone; Menu > Randomise picks a fresh seed, kind and scheme; Menu >
+ * Menu > Presets replace the graph with a chain of a generator, a Tone and
+ * the Output; Menu > Colours picks the scheme; Menu > Configuration shows
+ * the selected node's parameters as sliders, or the first generator's, and
+ * Menu > Tone the first Tone's grain and level; Menu > Mutate (M) nudges the
+ * selected node's parameters, or every generator's; Menu > Randomise picks a
+ * fresh seed, kind and scheme; Menu > Graph opens the graph window; Menu >
  * Save writes a single tile as a PNG. Once a click has given the window the
  * input focus, Space reseeds, Left/Right step the colour scheme, K steps the
- * kind and G steps the grain through None, Light and Heavy presets. */
-
-enum
-{
-  TEXTURING_KIND_CLOUDS,
-  TEXTURING_KIND_MARBLE,
-  TEXTURING_KIND_WOOD,
-  TEXTURING_KIND_CELLS,
-  TEXTURING_KIND_STONE,
-  TEXTURING_KIND_WEAVE,
-  TEXTURING_KIND_VEINS,
-  TEXTURING_NKINDS
-};
-
-static const char *texturing_kind_names[TEXTURING_NKINDS] =
-{
-  "Clouds", "Marble", "Wood", "Cells", "Stone", "Weave", "Veins"
-};
+ * kind and G steps the grain through None, Light and Heavy presets.
+ *
+ * In the graph window, Menu > Add puts a node at the pointer and Menu >
+ * Delete (Delete) removes the selected node, though never the Output. A
+ * double-click on a node opens its parameters. */
 
 /* Colour schemes, as 0xRRGGBB. A smooth scheme ramps through its three
  * stops at values 0, 128 and 255. A stepped scheme maps each fifth of the
@@ -103,37 +83,20 @@ texturing_schemes[] =
 
 #define TEXTURING_NSCHEMES ((int) NELEMS(texturing_schemes))
 
-/* Tone, edited by its own dialogue: per-pixel grain, the noise amplitude it
- * adds to a value, and a level added to every value, which moves a stepped
- * scheme's balance between its tones. G steps the grain through these
- * presets. */
-#define TEXTURING_GRAIN_MAX 128
-
+/* G steps the grain through these presets. */
 static const int texturing_grain_presets[] = { 0, 48, 96 };
 
-typedef struct texturing_tone
-{
-  int grain; /* amplitude, 0..TEXTURING_GRAIN_MAX */
-  int level;
-}
-texturing_tone_t;
-
-static const confdlg_row_t texturing_tone_rows[2] =
-{
-  { "Grain", 0, TEXTURING_GRAIN_MAX, 0, offsetof(texturing_tone_t, grain) },
-  { "Level", -64, 64, 0, offsetof(texturing_tone_t, level) }
-};
-
-static const texturing_tone_t texturing_tone_default = { 48, 0 };
-
-/* Each kind's parameters are ints in a row of params[][], edited by its own
- * Configuration dialogue. A "Scale" is the log2 of the lattice cells across
- * the tile, so higher is finer; every lattice is a power of two and every
- * band count a whole number, so the texture always tiles. Percentages are
- * turned into 8.8 multipliers once per generate, not divided per pixel. */
+/* Each node's parameters are ints in its params[], edited by the dialogue
+ * for its kind. A "Scale" is the log2 of the lattice cells across the tile,
+ * so higher is finer; every lattice is a power of two and every band count
+ * a whole number, so the texture always tiles. Percentages are turned into
+ * 8.8 multipliers once per evaluation, not divided per pixel. */
 #define TEXTURING_PARAM(i) ((i) * sizeof(int))
 
-static const confdlg_row_t texturing_rows[TEXTURING_NKINDS][TEXTURING_NPARAMS] =
+/* A dialogue per kind of node bar the Output, which has none. */
+#define TEXTURING_NCONFS TEXTURING_NODE_OUTPUT
+
+static const confdlg_row_t texturing_rows[TEXTURING_NCONFS][TEXTURING_NPARAMS] =
 {
   { /* Clouds */
     { "Scale",      1,   5, 0, TEXTURING_PARAM(0) },
@@ -177,7 +140,7 @@ static const confdlg_row_t texturing_rows[TEXTURING_NKINDS][TEXTURING_NPARAMS] =
     { "Thread",     2,   5, 0, TEXTURING_PARAM(0) },
     { "Relief",     0, 400, 0, TEXTURING_PARAM(1) },
     { "Wobble",     0,  16, 0, TEXTURING_PARAM(2) },
-    /* TEXTURING_PATTERN_* */
+    /* plain, twill or basket */
     { "Pattern",    0,   2, 0, TEXTURING_PARAM(3) }
   },
   { /* Veins */
@@ -189,55 +152,16 @@ static const confdlg_row_t texturing_rows[TEXTURING_NKINDS][TEXTURING_NPARAMS] =
     { "Stretch",    0,   3, 0, TEXTURING_PARAM(2) },
     /* fine dark mottling between the veins, % */
     { "Dark",       0, 100, 0, TEXTURING_PARAM(3) }
+  },
+  { /* Tone: the grain's amplitude, and a level added to every value, which
+     * moves a stepped scheme's balance between its tones */
+    { "Grain",      0, TEXTURING_GRAIN_MAX, 0,
+      offsetof(texturing_tone_t, grain) },
+    { "Level",    -64,  64, 0, offsetof(texturing_tone_t, level) }
+  },
+  { /* Blend: how much of B to mix into A, % */
+    { "Amount",     0, 100, 0, TEXTURING_PARAM(0) }
   }
-};
-
-static const int texturing_defaults[TEXTURING_NKINDS][TEXTURING_NPARAMS] =
-{
-  { 2, 100,   7,   0 }, /* Clouds */
-  { 2,   4,   4,   0 }, /* Marble */
-  { 2,  16,   4,   7 }, /* Wood */
-  { 3, 100, 100,   0 }, /* Cells */
-  { 5, 100,  25, 315, 100 }, /* Stone */
-  { 3, 100,   4,   0 }, /* Weave */
-  { 6,  30,   0,  60 }  /* Veins */
-};
-
-/* Presets after the RISC OS desktop textures: a kind and its parameters, the
- * tone and a stepped scheme. Reseeding keeps the look. */
-static const struct
-{
-  const char      *name;
-  int              kind;
-  int              params[TEXTURING_NPARAMS];
-  texturing_tone_t tone;
-  int              scheme; /* texturing_schemes[] row */
-}
-texturing_presets[] =
-{
-  { "Plaster",  TEXTURING_KIND_VEINS,  { 6,  30, 0,  60 }, { 20,  0 }, 6 },
-  { "Pebbled",  TEXTURING_KIND_STONE,  { 6, 100, 0, 315, 100 }, { 20,  0 }, 6 },
-  { "Streaked", TEXTURING_KIND_VEINS,  { 4,  14, 2,  70 }, { 24, -4 }, 6 },
-  { "Granite",  TEXTURING_KIND_CLOUDS, { 5,  60, 3,   0 }, { 32,  0 }, 6 },
-  { "Veined",   TEXTURING_KIND_VEINS,  { 4,   3, 0,   0 }, { 48, 30 }, 7 },
-  { "Rough",    TEXTURING_KIND_STONE,  { 6, 250, 25, 315, 0 }, { 40, 16 }, 7 }
-};
-
-#define TEXTURING_NPRESETS ((int) NELEMS(texturing_presets))
-
-/* Weave patterns: which thread lies on top in each thread-wide square. */
-enum
-{
-  TEXTURING_PATTERN_PLAIN,  /* alternate every square: a checkerboard */
-  TEXTURING_PATTERN_TWILL,  /* over two, under two, stepping each row */
-  TEXTURING_PATTERN_BASKET  /* plain, but in pairs of threads */
-};
-
-/* Light directions, as Stone's Light / 45: the step toward the light. */
-static const signed char texturing_light[8][2] =
-{
-  {  0, -1 }, {  1, -1 }, {  1,  0 }, {  1,  1 },
-  {  0,  1 }, { -1,  1 }, { -1,  0 }, { -1, -1 }
 };
 
 typedef struct texturing_task texturing_task_t;
@@ -249,10 +173,6 @@ static result_t texturing_applied(texturing_task_t *task, int old);
     sizeof(texturing_defaults[kind]), \
     (confdlg_applied_fn_t) texturing_applied }
 
-/* A dialogue per kind, then the tone's. */
-#define TEXTURING_CONF_TONE TEXTURING_NKINDS
-#define TEXTURING_NCONFS    (TEXTURING_NKINDS + 1)
-
 static const confdlg_desc_t texturing_confs[TEXTURING_NCONFS] =
 {
   TEXTURING_CONF(TEXTURING_KIND_CLOUDS, 4),
@@ -262,9 +182,8 @@ static const confdlg_desc_t texturing_confs[TEXTURING_NCONFS] =
   TEXTURING_CONF(TEXTURING_KIND_STONE,  5),
   TEXTURING_CONF(TEXTURING_KIND_WEAVE,  4),
   TEXTURING_CONF(TEXTURING_KIND_VEINS,  4),
-  { texturing_tone_rows, 2, &texturing_tone_default,
-    sizeof(texturing_tone_default),
-    (confdlg_applied_fn_t) texturing_applied }
+  TEXTURING_CONF(TEXTURING_NODE_TONE,   2),
+  TEXTURING_CONF(TEXTURING_NODE_BLEND,  1)
 };
 
 enum
@@ -277,411 +196,60 @@ enum
   TEXTURING_MENU_CONFIGURATION,
   TEXTURING_MENU_TONE,
   TEXTURING_MENU_MUTATE,
-  TEXTURING_MENU_RANDOMISE
+  TEXTURING_MENU_RANDOMISE,
+  TEXTURING_MENU_GRAPH,
+  TEXTURING_MENU__LIMIT
 };
 
-/* Mutate nudges each of the current kind's sliders and the grain by up to
- * this percent of its range, and always by at least a step. */
+/* The graph window's menu. */
+enum
+{
+  TEXTURING_GRAPH_ADD = 0,
+  TEXTURING_GRAPH_DELETE,
+  TEXTURING_GRAPH__LIMIT
+};
+
+/* Mutate nudges each slider by up to this percent of its range, and always
+ * by at least a step. */
 #define TEXTURING_MUTATE 15
+
+/* Graph window's visible size; the gadget sets its document. */
+#define TEXTURING_GRAPH_W 416
+#define TEXTURING_GRAPH_H 192
 
 struct texturing_task
 {
   taskapp_instance_t base;
-  rng_t              seed;
+  texturing_ctx_t    ctx;    /* seed and pixels, shared by every node */
   rng_t              rng;    /* for Mutate */
-  int                kind;   /* TEXTURING_KIND_* */
+  int                kind;   /* last kind picked, for K and the ticks */
   int                scheme; /* texturing_schemes[] row */
-  texturing_tone_t   tone;
-  int                params[TEXTURING_NKINDS][TEXTURING_NPARAMS];
+  nodegraph_t       *graph;
+  nodegraph_node_t   output; /* the one Output node */
+  int                scratch[TEXTURING_NPARAMS]; /* dialogues on no node */
   confdlg_t          confs[TEXTURING_NCONFS]; /* see texturing_confs */
   colour_t           palette[256];
   bitmap_t           bm;     /* wraps pixels[] and palette[] */
-  unsigned char      pixels[TEXTURING_SIZE * TEXTURING_SIZE];
+  unsigned char      pixels[TEXTURING_NPIXELS];
   screen_dither_t    dithering; /* how the tile is blitted to the screen */
-  wuss_menu_item_t   menu_items[9];
+  wuss_window_t     *graph_window;
+  wuss_nodeview_t   *nodeview;
+  point_t            add_at; /* where Menu > Add puts a node */
+  wuss_menu_item_t   menu_items[TEXTURING_MENU__LIMIT];
   wuss_menu_item_t   kind_items[TEXTURING_NKINDS];
   wuss_menu_t        kind_menu;
-  wuss_menu_item_t   preset_items[NELEMS(texturing_presets)];
+  wuss_menu_item_t   preset_items[16];
   wuss_menu_t        preset_menu;
   wuss_menu_item_t   scheme_items[NELEMS(texturing_schemes)];
   wuss_menu_t        scheme_menu;
   dithermenu_t       dither;    /* "Display" submenu: screen dithering */
+  wuss_menu_item_t   graph_items[TEXTURING_GRAPH__LIMIT];
+  wuss_menu_t        graph_menu;
+  wuss_menu_item_t   add_items[TEXTURING_NCONFS];
+  wuss_menu_t        add_menu;
 };
 
 /* ----------------------------------------------------------------------- */
-
-/* Lattice value 0..255 at cell (cx,cy) of a lattice 2^log2nx cells across
- * and 2^log2ny down that wraps. */
-static int texturing_lattice(uint32_t seed,
-                             int      cx,
-                             int      cy,
-                             int      log2nx,
-                             int      log2ny)
-{
-  int maskx, masky;
-
-  maskx = (1 << log2nx) - 1;
-  masky = (1 << log2ny) - 1;
-
-  return (int) (rng_hash32(seed, ((cy & masky) << log2nx) | (cx & maskx)) &
-                255);
-}
-
-/* Smoothstep over a 0..256 fraction. */
-static int texturing_ease(int f)
-{
-  return f * f * (768 - 2 * f) >> 16;
-}
-
-/* Bilinear smooth value noise, 0..255, on a lattice 2^log2nx cells across
- * the tile and 2^log2ny down. */
-static int texturing_noise_xy(uint32_t seed,
-                              int      x,
-                              int      y,
-                              int      log2nx,
-                              int      log2ny)
-{
-  int log2cx, log2cy, cx, cy, fx, fy, a, b, c, d, top, bot;
-
-  log2cx = TEXTURING_LOG2_SIZE - log2nx; /* log2 of the cell size in pixels */
-  log2cy = TEXTURING_LOG2_SIZE - log2ny;
-  cx     = x >> log2cx;
-  cy     = y >> log2cy;
-  fx     = texturing_ease(((x & ((1 << log2cx) - 1)) << 8) >> log2cx);
-  fy     = texturing_ease(((y & ((1 << log2cy) - 1)) << 8) >> log2cy);
-
-  a = texturing_lattice(seed, cx,     cy,     log2nx, log2ny);
-  b = texturing_lattice(seed, cx + 1, cy,     log2nx, log2ny);
-  c = texturing_lattice(seed, cx,     cy + 1, log2nx, log2ny);
-  d = texturing_lattice(seed, cx + 1, cy + 1, log2nx, log2ny);
-
-  top = a + ((b - a) * fx >> 8);
-  bot = c + ((d - c) * fx >> 8);
-
-  return top + ((bot - top) * fy >> 8);
-}
-
-/* Bilinear smooth value noise, 0..255, on a 2^log2n lattice across the
- * tile. */
-static int texturing_noise(uint32_t seed, int x, int y, int log2n)
-{
-  return texturing_noise_xy(seed, x, y, log2n, log2n);
-}
-
-/* Fractal sum of up to octaves noise octaves, 0..255, starting from a
- * 2^log2base lattice: each octave doubles the lattice and halves the
- * weight, stopping at one-pixel cells. The last octave takes the weight
- * left over, so the weights always sum to 256. */
-static int texturing_fbm(uint32_t seed,
-                         int      x,
-                         int      y,
-                         int      log2base,
-                         int      octaves)
-{
-  int sum, log2n, last, weight;
-
-  sum    = 0;
-  last   = MIN(log2base + octaves - 1, TEXTURING_LOG2_SIZE);
-  weight = 128;
-  for (log2n = log2base; log2n <= last; log2n++)
-  {
-    sum    += texturing_noise(seed + (uint32_t) log2n, x, y, log2n) *
-              (log2n == last ? weight * 2 : weight);
-    weight >>= 1;
-  }
-
-  return sum >> 8;
-}
-
-/* The broad light and dark patches under Stone and Weave, -128..127. */
-static int texturing_patches(uint32_t seed, int x, int y)
-{
-  return texturing_fbm(seed ^ 0x5A5Au, x, y, TEXTURING_LOG2_BASE,
-                       TEXTURING_LOG2_SIZE) - 128;
-}
-
-/* Scale v about 128 by an 8.8 multiplier. */
-static int texturing_contrast(int v, int mul)
-{
-  return 128 + ((v - 128) * mul >> 8);
-}
-
-/* Fold a value into a 0..255 triangle wave of period 512. */
-static int texturing_fold(int v)
-{
-  v &= 511;
-  return v < 256 ? v : 511 - v;
-}
-
-/* Squared distance from (x,y) to the nearest feature point, one per cell
- * of a wrapping 2^log2n grid, scaled to 0..255. Each point strays from its
- * cell's centre by the 8.8 jitter multiplier. The 8.8 edges multiplier
- * blends toward the gap between the nearest and second nearest points,
- * which is dark along the borders between cells. */
-static int texturing_cells(uint32_t seed,
-                           int      x,
-                           int      y,
-                           int      log2n,
-                           int      jitter,
-                           int      edges)
-{
-  int log2c, c, mask, shift, cx, cy, best, second, i, j;
-
-  log2c  = TEXTURING_LOG2_SIZE - log2n; /* log2 of the cell size in pixels */
-  c      = 1 << log2c;
-  mask   = (1 << log2n) - 1;
-  shift  = 2 * log2c - 8; /* takes a cell size squared to 256 */
-  cx     = x >> log2c;
-  cy     = y >> log2c;
-  best   = INT_MAX;
-  second = INT_MAX;
-
-  for (j = -1; j <= 1; j++)
-    for (i = -1; i <= 1; i++)
-    {
-      uint32_t h;
-      int      px, py, dx, dy, d;
-
-      /* point position in unwrapped pixels, hashed from the wrapped cell */
-      h  = rng_hash32(seed, (((cy + j) & mask) << log2n) | ((cx + i) & mask));
-      px = (int) (h & (unsigned) (c - 1)) - c / 2;
-      py = (int) ((h >> 16) & (unsigned) (c - 1)) - c / 2;
-      px = (cx + i) * c + c / 2 + (px * jitter >> 8);
-      py = (cy + j) * c + c / 2 + (py * jitter >> 8);
-      dx = px - x;
-      dy = py - y;
-      d  = dx * dx + dy * dy;
-      if (d < best)
-      {
-        second = best;
-        best   = d;
-      }
-      else if (d < second)
-      {
-        second = d;
-      }
-    }
-
-  /* ponytail: nearest points rarely sit more than a cell away, so the
-   * clamps seldom bite */
-  second -= best;
-  best    = shift >= 0 ? best >> shift : best << -shift;
-  second  = shift >= 0 ? second >> shift : second << -shift;
-  best    = MIN(best, 255);
-  second  = MIN(second, 255);
-  return best + ((second - best) * edges >> 8);
-}
-
-/* Rough stone: an embossed noise height field on a 2^log2n lattice and the
- * two finer ones, the slope taken between the neighbours toward and away
- * from the light (wrapped so it still tiles) and scaled by an 8.8 relief
- * multiplier, over broad light and dark patches scaled by another. light
- * indexes texturing_light. Centred on 128. */
-static int texturing_rough(uint32_t seed, int x, int y, int log2n)
-{
-  return (texturing_noise(seed,     x, y, log2n) * 2 +
-          texturing_noise(seed + 1, x, y, log2n + 1) +
-          texturing_noise(seed + 2, x, y, log2n + 2)) >> 2;
-}
-
-static int texturing_stone(uint32_t seed,
-                           int      x,
-                           int      y,
-                           int      log2n,
-                           int      relief,
-                           int      patches,
-                           int      light,
-                           int      highlights)
-{
-  int m, dx, dy, slope;
-
-  m     = TEXTURING_SIZE - 1;
-  dx    = texturing_light[light][0];
-  dy    = texturing_light[light][1];
-  slope = texturing_rough(seed, (x + dx) & m, (y + dy) & m, log2n) -
-          texturing_rough(seed, (x - dx) & m, (y - dy) & m, log2n);
-  if (slope > 0)
-    slope = slope * highlights >> 8;
-
-  return 128 + (slope * relief >> 8) +
-         (texturing_patches(seed, x, y) * patches >> 8);
-}
-
-/* Height of a weave of 2^log2t-pixel threads, crossing over and under in
- * the given TEXTURING_PATTERN_*. Each visible thread is highest along its
- * middle and drops toward its edges and toward the ends of each square,
- * where it may dive under its neighbour. The coordinates wobble with
- * noise, up to wobble pixels, so the threads wander like yarn; the wobble
- * repeats with the tile, so the weave still tiles. */
-static int texturing_weave_height(uint32_t seed,
-                                  int      x,
-                                  int      y,
-                                  int      log2t,
-                                  int      wobble,
-                                  int      pattern)
-{
-  int cx, cy, t, over, across, along, a, b;
-
-  x += (texturing_noise(seed + 7, x, y, 4) - 128) * wobble >> 7;
-  y += (texturing_noise(seed + 8, x, y, 4) - 128) * wobble >> 7;
-  x &= TEXTURING_SIZE - 1;
-  y &= TEXTURING_SIZE - 1;
-
-  cx = x >> log2t;
-  cy = y >> log2t;
-  switch (pattern) /* over is nonzero where the weft is on top */
-  {
-  default:
-  case TEXTURING_PATTERN_PLAIN:
-    over = (cx + cy) & 1;
-    break;
-  case TEXTURING_PATTERN_TWILL:
-    over = ((cx - cy) & 3) < 2;
-    break;
-  case TEXTURING_PATTERN_BASKET:
-    over = ((cx >> 1) + (cy >> 1)) & 1;
-    break;
-  }
-
-  t      = 1 << log2t;
-  across = over ? (y & (t - 1)) : (x & (t - 1));
-  along  = over ? (x & (t - 1)) : (y & (t - 1));
-  a      = across < t / 2 ? across : t - 1 - across; /* 0 at an edge */
-  b      = along  < t / 2 ? along  : t - 1 - along;  /* 0 where it dips */
-
-  return a * 24 + b * 12 + (texturing_rough(seed, x, y, 5) >> 2);
-}
-
-/* Woven fabric, embossed from the top left as Stone is. Centred on 128. */
-static int texturing_weave(uint32_t seed,
-                           int      x,
-                           int      y,
-                           int      log2t,
-                           int      relief,
-                           int      wobble,
-                           int      pattern)
-{
-  int m, slope;
-
-  m     = TEXTURING_SIZE - 1;
-  slope = texturing_weave_height(seed, (x - 1) & m, (y - 1) & m, log2t,
-                                 wobble, pattern) -
-          texturing_weave_height(seed, (x + 1) & m, (y + 1) & m, log2t,
-                                 wobble, pattern);
-
-  return 128 + (slope * relief >> 8) + texturing_patches(seed, x, y) / 4;
-}
-
-/* Thin light veins, a step brighter, where a noise on a 2^log2n lattice
- * comes within width of its middle, over a fine dark mottling scaled by an
- * 8.8 multiplier. A stretch turns the lattice to the diagonals and makes it
- * 2^stretch times finer across them than along, so the veins run that way;
- * (x+y, x-y) still wraps with the tile. Centred a little below 128, as the
- * veins brighten. */
-static int texturing_veins(uint32_t seed,
-                           int      x,
-                           int      y,
-                           int      log2n,
-                           int      width,
-                           int      stretch,
-                           int      dark)
-{
-  int m, u, w, n;
-
-  m = TEXTURING_SIZE - 1;
-  u = stretch ? (x + y) & m : x;
-  w = stretch ? (x - y) & m : y;
-  n = texturing_noise_xy(seed, u, w, log2n,
-                         MIN(log2n + stretch, TEXTURING_LOG2_SIZE));
-
-  return 112 + (abs(n - 128) < width ? 55 : 0) +
-         ((texturing_fbm(seed ^ 0x77u, x, y, 5, 3) - 128) * dark >> 8);
-}
-
-static void texturing_generate(texturing_task_t *task)
-{
-  unsigned char *p;
-  const int     *param;
-  int            mul, mul2, mul3;
-  int            light;
-  int            amplitude;
-  int            x, y, v;
-
-  p         = task->pixels;
-  param     = task->params[task->kind];
-  mul       = param[1] * 256 / 100; /* percentages as 8.8 multipliers */
-  mul2      = param[2] * 256 / 100;
-  mul3      = param[3] * 256 / 100;
-  light     = CLAMP(param[3] / 45, 0, 7); /* Stone's Light row */
-  amplitude = task->tone.grain;
-  for (y = 0; y < TEXTURING_SIZE; y++)
-    for (x = 0; x < TEXTURING_SIZE; x++)
-    {
-      switch (task->kind)
-      {
-      default:
-      case TEXTURING_KIND_CLOUDS:
-      {
-        int wx, wy;
-
-        /* warp: push the lookup about by a coarse noise */
-        wx = (x + ((texturing_noise(task->seed + 11, x, y, 3) - 128) *
-                   param[3] >> 7)) & (TEXTURING_SIZE - 1);
-        wy = (y + ((texturing_noise(task->seed + 12, x, y, 3) - 128) *
-                   param[3] >> 7)) & (TEXTURING_SIZE - 1);
-        v  = texturing_contrast(texturing_fbm(task->seed, wx, wy, param[0],
-                                              param[2]), mul);
-        break;
-      }
-
-      case TEXTURING_KIND_MARBLE:
-        /* veins across the tile, slanted, bent by turbulence */
-        v = texturing_fold((x * param[1] + y * param[3]) *
-                           (512 / TEXTURING_SIZE) +
-                           texturing_fbm(task->seed, x, y, param[0],
-                                         TEXTURING_LOG2_SIZE) * param[2]);
-        break;
-
-      case TEXTURING_KIND_WOOD:
-        /* noise sliced into rings, roughened by a fine grain */
-        v = texturing_fold(texturing_fbm(task->seed, x, y, param[0],
-                                         param[3]) * param[1] +
-                           (texturing_noise(task->seed ^ 0x55u, x, y, 6) *
-                            param[2] >> 4));
-        break;
-
-      case TEXTURING_KIND_CELLS:
-        v = texturing_contrast(texturing_cells(task->seed, x, y, param[0],
-                                               mul2, mul3), mul);
-        break;
-
-      case TEXTURING_KIND_STONE:
-        v = texturing_stone(task->seed, x, y, param[0], mul, mul2, light,
-                            param[4] * 256 / 100);
-        break;
-
-      case TEXTURING_KIND_WEAVE:
-        v = texturing_weave(task->seed, x, y, param[0], mul, param[2],
-                            param[3]);
-        break;
-
-      case TEXTURING_KIND_VEINS:
-        v = texturing_veins(task->seed, x, y, param[0], param[1], param[2],
-                            mul3);
-        break;
-      }
-
-      v += task->tone.level;
-
-      /* grain: per-pixel noise, keyed by position so it tiles too */
-      if (amplitude)
-        v += ((int) (rng_hash32(task->seed ^ 0xC3A5u,
-                                (y << TEXTURING_LOG2_SIZE) | x) & 255) - 128) *
-             amplitude >> 7;
-
-      *p++ = (unsigned char) CLAMP(v, 0, 255);
-    }
-}
 
 /* Build the 256-entry palette from the current scheme's stops. */
 static void texturing_build_palette(texturing_task_t *task)
@@ -708,6 +276,143 @@ static void texturing_build_palette(texturing_task_t *task)
 
 /* ----------------------------------------------------------------------- */
 
+static int texturing_kind_of(texturing_task_t *task, nodegraph_node_t node)
+{
+  return texturing_node(task->graph, node)->kind;
+}
+
+/* The selected node, or nodegraph_NONE. */
+static nodegraph_node_t texturing_selected(texturing_task_t *task)
+{
+  return task->nodeview ? wuss_nodeview_get_selected(task->nodeview)
+                        : nodegraph_NONE;
+}
+
+/* The first node whose kind is in lo..hi-1, or nodegraph_NONE. */
+static nodegraph_node_t texturing_find(texturing_task_t *task,
+                                       int               lo,
+                                       int               hi)
+{
+  nodegraph_node_t n;
+  int              kind;
+
+  for (n = nodegraph_next(task->graph, nodegraph_NONE); n != nodegraph_NONE;
+       n = nodegraph_next(task->graph, n))
+  {
+    kind = texturing_kind_of(task, n);
+    if (kind >= lo && kind < hi)
+      return n;
+  }
+  return nodegraph_NONE;
+}
+
+/* The Tone node G and Menu > Tone act on: the selected node if a Tone, else
+ * the first. */
+static nodegraph_node_t texturing_tone_node(texturing_task_t *task)
+{
+  nodegraph_node_t n;
+
+  n = texturing_selected(task);
+  if (n != nodegraph_NONE && texturing_kind_of(task, n) == TEXTURING_NODE_TONE)
+    return n;
+  return texturing_find(task, TEXTURING_NODE_TONE, TEXTURING_NODE_TONE + 1);
+}
+
+/* Point dialogue conf at node's parameters, or at scratch for none. */
+static void texturing_bind(texturing_task_t *task,
+                           int               conf,
+                           nodegraph_node_t  node)
+{
+  task->confs[conf].config = node != nodegraph_NONE
+                           ? texturing_node(task->graph, node)->params
+                           : task->scratch;
+}
+
+/* Point every dialogue at scratch, before nodes go. */
+static void texturing_unbind_all(texturing_task_t *task)
+{
+  int k;
+
+  for (k = 0; k < TEXTURING_NCONFS; k++)
+    task->confs[k].config = task->scratch;
+}
+
+/* Point Menu > Configuration at the selected node's dialogue, or the first
+ * generator's, and Menu > Tone at the Tone node's. */
+static void texturing_retarget(texturing_task_t *task)
+{
+  nodegraph_node_t n;
+  int              conf;
+
+  n = texturing_selected(task);
+  if (n == nodegraph_NONE || texturing_kind_of(task, n) == TEXTURING_NODE_TONE ||
+      texturing_kind_of(task, n) == TEXTURING_NODE_OUTPUT)
+    n = texturing_find(task, 0, TEXTURING_NKINDS);
+  conf = n != nodegraph_NONE ? texturing_kind_of(task, n) : task->kind;
+  texturing_bind(task, conf, n);
+  task->menu_items[TEXTURING_MENU_CONFIGURATION].window =
+    wuss_dialogue_window(task->confs[conf].dialogue);
+
+  texturing_bind(task, TEXTURING_NODE_TONE, texturing_tone_node(task));
+}
+
+/* Evaluate what changed and show it. */
+static result_t texturing_update(texturing_task_t *task)
+{
+  result_t rc;
+
+  rc = nodegraph_evaluate(task->graph);
+  if (task->base.window != NULL)
+    wuss_window_invalidate_extent(task->base.window);
+
+  return rc;
+}
+
+/* ponytail: any parameter change re-evaluates every node, as the dialogue
+ * does not say which node it edited; dirty only that node if big graphs
+ * lag */
+static result_t texturing_refresh_all(texturing_task_t *task)
+{
+  texturing_dirty_all(task->graph);
+  return texturing_update(task);
+}
+
+/* Replace the graph with a chain of a generator of kind, a Tone and the
+ * Output. */
+static result_t texturing_rechain(texturing_task_t       *task,
+                                  int                     kind,
+                                  const int              *params,
+                                  const texturing_tone_t *tone)
+{
+  result_t         rc;
+  texturing_tone_t keep;
+  nodegraph_node_t n;
+
+  if (tone == NULL)
+  {
+    /* keep the current Tone's grain and level */
+    n    = texturing_tone_node(task);
+    keep = n != nodegraph_NONE
+         ? *(const texturing_tone_t *) texturing_node(task->graph, n)->params
+         : *(const texturing_tone_t *) texturing_defaults[TEXTURING_NODE_TONE];
+    tone = &keep;
+  }
+
+  texturing_unbind_all(task);
+  task->kind = kind;
+  rc = texturing_chain(task->graph, &task->ctx, kind, params, tone);
+  task->output = texturing_find(task, TEXTURING_NODE_OUTPUT,
+                                TEXTURING_NODE_OUTPUT + 1);
+  if (task->nodeview != NULL)
+    wuss_nodeview_refresh(task->nodeview);
+  if (rc != result_OK)
+    return rc;
+
+  return texturing_update(task);
+}
+
+/* ----------------------------------------------------------------------- */
+
 static result_t texturing_redraw(const wuss_event_t *event,
                                  texturing_task_t   *task)
 {
@@ -726,21 +431,11 @@ static result_t texturing_redraw(const wuss_event_t *event,
 
 static result_t texturing_reseed(texturing_task_t *task)
 {
-  rng_lcg32(&task->seed);
-  texturing_generate(task);
-  wuss_window_invalidate_extent(task->base.window);
-
-  return result_OK;
+  rng_lcg32(&task->ctx.seed);
+  return texturing_refresh_all(task);
 }
 
-/* Point Menu > Configuration at the current kind's dialogue. */
-static void texturing_retarget(texturing_task_t *task)
-{
-  task->menu_items[TEXTURING_MENU_CONFIGURATION].window =
-    wuss_dialogue_window(task->confs[task->kind].dialogue);
-}
-
-/* confdlg_applied_fn_t: a dialogue's Apply or Default changed params[] */
+/* confdlg_applied_fn_t: a dialogue's Apply or Default changed a node */
 static result_t texturing_applied(texturing_task_t *task, int old)
 {
   NOT_USED(old);
@@ -748,20 +443,7 @@ static result_t texturing_applied(texturing_task_t *task, int old)
   if (task->base.window == NULL)
     return result_OK; /* window closed while the dialogue lingers */
 
-  texturing_generate(task);
-  wuss_window_invalidate_extent(task->base.window);
-
-  return result_OK;
-}
-
-static result_t texturing_set_kind(texturing_task_t *task, int kind)
-{
-  task->kind = kind;
-  texturing_retarget(task);
-  texturing_generate(task);
-  wuss_window_invalidate_extent(task->base.window);
-
-  return result_OK;
+  return texturing_refresh_all(task);
 }
 
 static result_t texturing_set_scheme(texturing_task_t *task, int scheme)
@@ -773,16 +455,23 @@ static result_t texturing_set_scheme(texturing_task_t *task, int scheme)
   return result_OK;
 }
 
-/* G: step to the next grain preset above the slider's value, wrapping. */
+/* G: step the Tone's grain to the next preset above it, wrapping. */
 static result_t texturing_next_grain(texturing_task_t *task)
 {
-  int i;
+  nodegraph_node_t n;
+  int             *grain;
+  int              i;
 
+  n = texturing_tone_node(task);
+  if (n == nodegraph_NONE)
+    return result_OK;
+
+  grain = &texturing_node(task->graph, n)->params[0];
   for (i = 0; i < (int) NELEMS(texturing_grain_presets); i++)
-    if (texturing_grain_presets[i] > task->tone.grain)
+    if (texturing_grain_presets[i] > *grain)
       break;
-  task->tone.grain = i < (int) NELEMS(texturing_grain_presets) ?
-                     texturing_grain_presets[i] : texturing_grain_presets[0];
+  *grain = i < (int) NELEMS(texturing_grain_presets) ?
+           texturing_grain_presets[i] : texturing_grain_presets[0];
 
   return texturing_applied(task, 0);
 }
@@ -801,36 +490,51 @@ static void texturing_nudge(texturing_task_t    *task,
                row->min, row->max);
 }
 
-/* Mutate: nudge the current kind's parameters and the tone; the seed, kind
- * and scheme are left alone. An open dialogue shows the new values when next
- * opened. */
+static void texturing_nudge_node(texturing_task_t *task, nodegraph_node_t n)
+{
+  texturing_node_t *node;
+  int               i;
+
+  node = texturing_node(task->graph, n);
+  if (node->kind >= TEXTURING_NCONFS)
+    return; /* the Output has no parameters */
+
+  for (i = 0; i < texturing_confs[node->kind].nrows; i++)
+    texturing_nudge(task, &texturing_rows[node->kind][i], &node->params[i]);
+}
+
+/* Mutate: nudge the selected node's parameters, or every generator's; the
+ * seed and scheme are left alone. An open dialogue shows the new values
+ * when next opened. */
 static result_t texturing_mutate(texturing_task_t *task)
 {
-  int i;
+  nodegraph_node_t n;
 
-  for (i = 0; i < texturing_confs[task->kind].nrows; i++)
-    texturing_nudge(task, &texturing_rows[task->kind][i],
-                    &task->params[task->kind][i]);
-  texturing_nudge(task, &texturing_tone_rows[0], &task->tone.grain);
-  texturing_nudge(task, &texturing_tone_rows[1], &task->tone.level);
+  n = texturing_selected(task);
+  if (n != nodegraph_NONE)
+  {
+    texturing_nudge_node(task, n);
+  }
+  else
+  {
+    for (n = nodegraph_next(task->graph, nodegraph_NONE);
+         n != nodegraph_NONE; n = nodegraph_next(task->graph, n))
+      if (texturing_kind_of(task, n) < TEXTURING_NKINDS)
+        texturing_nudge_node(task, n);
+  }
 
   return texturing_applied(task, 0);
 }
 
-/* Take on a preset's kind, parameters, tone and scheme, keeping the seed. */
+/* Take on a preset's chain and scheme, keeping the seed. */
 static result_t texturing_preset(texturing_task_t *task, int preset)
 {
-  task->kind   = texturing_presets[preset].kind;
   task->scheme = texturing_presets[preset].scheme;
-  task->tone   = texturing_presets[preset].tone;
-  memcpy(task->params[task->kind], texturing_presets[preset].params,
-         sizeof(task->params[task->kind]));
-  texturing_retarget(task);
   texturing_build_palette(task);
-  texturing_generate(task);
-  wuss_window_invalidate_extent(task->base.window);
 
-  return result_OK;
+  return texturing_rechain(task, texturing_presets[preset].kind,
+                           texturing_presets[preset].params,
+                           &texturing_presets[preset].tone);
 }
 
 /* Randomise: fresh seed, kind and scheme. Shared by the menu row and its
@@ -838,18 +542,133 @@ static result_t texturing_preset(texturing_task_t *task, int preset)
 static result_t texturing_randomise(texturing_task_t *task)
 {
   rng_t s;
+  int   kind;
 
-  rng_lcg32(&task->seed);
-  rng_seed(&s, task->seed);
-  task->kind   = rng_range(&s, TEXTURING_NKINDS);
+  rng_lcg32(&task->ctx.seed);
+  rng_seed(&s, task->ctx.seed);
+  kind         = rng_range(&s, TEXTURING_NKINDS);
   task->scheme = rng_range(&s, TEXTURING_NSCHEMES);
-  texturing_retarget(task);
   texturing_build_palette(task);
-  texturing_generate(task);
-  wuss_window_invalidate_extent(task->base.window);
 
-  return result_OK;
+  return texturing_rechain(task, kind, NULL, NULL);
 }
+
+/* ----------------------------------------------------------------------- */
+
+/* wuss_nodeview_activate_fn_t: open the node's dialogue by the pointer */
+static void texturing_activate(wuss_nodeview_t *nodeview,
+                               nodegraph_node_t node,
+                               void            *opaque)
+{
+  texturing_task_t *task;
+  wuss_window_t    *win;
+  int               conf;
+
+  NOT_USED(nodeview);
+
+  task = opaque;
+  conf = texturing_kind_of(task, node);
+  if (conf >= TEXTURING_NCONFS)
+    return; /* the Output's settings are the Colours and Display menus */
+
+  texturing_bind(task, conf, node);
+  win = wuss_dialogue_window(task->confs[conf].dialogue);
+  (void) wuss_window_set_hidden(win, 1); /* so showing refills it */
+  wuss_window_move(win, wuss_get_pointer(task->base.wuss));
+  (void) wuss_window_set_hidden(win, 0);
+  wuss_window_restack(win, wuss_ZORDER_FRONT); /* shows where it last was */
+}
+
+/* wuss_nodeview_changed_fn_t: a link was made or broken */
+static void texturing_changed(wuss_nodeview_t *nodeview, void *opaque)
+{
+  NOT_USED(nodeview);
+
+  (void) texturing_update(opaque);
+}
+
+static result_t texturing_open_graph(texturing_task_t *task)
+{
+  result_t     rc;
+  wuss_place_t place;
+
+  if (task->graph_window != NULL)
+    return result_OK;
+
+  place = task_place_after(task->base.window);
+  rc = wuss_window_create_at(task->base.delegate, &place,
+                             SIZE2D(TEXTURING_GRAPH_W, TEXTURING_GRAPH_H),
+                             "Texture graph",
+                             wuss_WINDOW_DEFAULT | wuss_WINDOW_FOCUSABLE,
+                             wuss_NO_BACKDROP,
+                             SIZE2D(TEXTURING_GRAPH_W, TEXTURING_GRAPH_H),
+                             SIZE2D(0, 0), &task->graph_window);
+  if (rc != result_OK)
+    return rc;
+
+  return wuss_nodeview_create(&task->nodeview, task->graph_window,
+                              task->graph, texturing_activate,
+                              texturing_changed, task);
+}
+
+static result_t texturing_add(texturing_task_t *task, int kind)
+{
+  result_t         rc;
+  nodegraph_node_t n;
+
+  rc = texturing_node_add(task->graph, &task->ctx, kind, NULL,
+                          MAX(task->add_at.x, 0), MAX(task->add_at.y, 0), &n);
+  if (rc != result_OK)
+    return rc;
+
+  wuss_nodeview_select(task->nodeview, n);
+  wuss_nodeview_refresh(task->nodeview);
+
+  return texturing_update(task);
+}
+
+static result_t texturing_delete(texturing_task_t *task)
+{
+  result_t         rc;
+  nodegraph_node_t n;
+  int             *params;
+  int              k;
+
+  n = texturing_selected(task);
+  if (n == nodegraph_NONE || n == task->output)
+    return result_OK;
+
+  params = texturing_node(task->graph, n)->params;
+  for (k = 0; k < TEXTURING_NCONFS; k++)
+    if (task->confs[k].config == params)
+      task->confs[k].config = task->scratch;
+
+  rc = nodegraph_remove(task->graph, n);
+  wuss_nodeview_refresh(task->nodeview);
+  if (rc != result_OK)
+    return rc;
+
+  return texturing_update(task);
+}
+
+static result_t texturing_graph_mouse(texturing_task_t   *task,
+                                      const wuss_event_t *event)
+{
+  if (task->nodeview == NULL ||
+      wuss_nodeview_handle_event(task->nodeview, event))
+    return result_OK;
+
+  if (event->data.mouse.action != wuss_MOUSE_DOWN ||
+      !(event->data.mouse.button & wuss_BUTTON_MENU))
+    return result_OK;
+
+  task->add_at = event->data.mouse.point;
+  return wuss_menu_open_ticked(task->base.delegate, &task->graph_menu, 0,
+                               wuss_get_pointer(task->base.wuss),
+                               &task->base.menu_handle);
+}
+
+/* ----------------------------------------------------------------------- */
 
 static result_t texturing_key(texturing_task_t *task, int code)
 {
@@ -860,7 +679,8 @@ static result_t texturing_key(texturing_task_t *task, int code)
 
   case 'k':
   case 'K':
-    return texturing_set_kind(task, (task->kind + 1) % TEXTURING_NKINDS);
+    return texturing_rechain(task, (task->kind + 1) % TEXTURING_NKINDS, NULL,
+                             NULL);
 
   case 'g':
   case 'G':
@@ -878,6 +698,14 @@ static result_t texturing_key(texturing_task_t *task, int code)
   }
 }
 
+static void texturing_tick(texturing_task_t *task)
+{
+  wuss_menu_tick_exclusive_live(task->base.menu_handle, &task->kind_menu,
+                                task->kind);
+  wuss_menu_tick_exclusive_live(task->base.menu_handle, &task->scheme_menu,
+                                task->scheme);
+}
+
 static result_t texturing_menu_select(texturing_task_t   *task,
                                       const wuss_event_t *event)
 {
@@ -893,23 +721,27 @@ static result_t texturing_menu_select(texturing_task_t   *task,
   }
   else if (event->data.menu_select.menu == &task->kind_menu)
   {
-    rc = texturing_set_kind(task, event->data.menu_select.index);
-    wuss_menu_tick_exclusive_live(task->base.menu_handle, &task->kind_menu,
-                                  task->kind);
+    rc = texturing_rechain(task, event->data.menu_select.index, NULL, NULL);
+    texturing_tick(task);
   }
   else if (event->data.menu_select.menu == &task->scheme_menu)
   {
     rc = texturing_set_scheme(task, event->data.menu_select.index);
-    wuss_menu_tick_exclusive_live(task->base.menu_handle, &task->scheme_menu,
-                                  task->scheme);
+    texturing_tick(task);
   }
   else if (event->data.menu_select.menu == &task->preset_menu)
   {
     rc = texturing_preset(task, event->data.menu_select.index);
-    wuss_menu_tick_exclusive_live(task->base.menu_handle, &task->kind_menu,
-                                  task->kind);
-    wuss_menu_tick_exclusive_live(task->base.menu_handle, &task->scheme_menu,
-                                  task->scheme);
+    texturing_tick(task);
+  }
+  else if (event->data.menu_select.menu == &task->add_menu)
+  {
+    rc = texturing_add(task, event->data.menu_select.index);
+  }
+  else if (wuss_menu_select_is(event, &task->graph_menu,
+                               TEXTURING_GRAPH_DELETE))
+  {
+    rc = texturing_delete(task);
   }
   else if (wuss_menu_select_is(event, &task->base.menu,
                                TEXTURING_MENU_MUTATE))
@@ -920,10 +752,11 @@ static result_t texturing_menu_select(texturing_task_t   *task,
                                TEXTURING_MENU_RANDOMISE))
   {
     rc = texturing_randomise(task);
-    wuss_menu_tick_exclusive_live(task->base.menu_handle, &task->kind_menu,
-                                  task->kind);
-    wuss_menu_tick_exclusive_live(task->base.menu_handle, &task->scheme_menu,
-                                  task->scheme);
+    texturing_tick(task);
+  }
+  else if (wuss_menu_select_is(event, &task->base.menu, TEXTURING_MENU_GRAPH))
+  {
+    rc = texturing_open_graph(task);
   }
   else
   {
@@ -945,11 +778,37 @@ static result_t texturing_handle(wuss_window_t      *window,
 
   switch (event->kind)
   {
-  case wuss_EVENT_ICON:
   case wuss_EVENT_CLOSE:
-  case wuss_EVENT_QUIT:
-  case wuss_EVENT_RELAYOUT:
+    if (window == task->base.window && task->graph_window != NULL)
+    {
+      /* the graph is meaningless without its texture; its own CLOSE tears
+       * down the gadget */
+      wuss_window_close(task->graph_window);
+    }
+    else if (window == task->graph_window)
+    {
+      wuss_nodeview_destroy(task->nodeview);
+      task->nodeview     = NULL;
+      task->graph_window = NULL;
+    }
     /* each dialogue ignores what is not its own window's */
+    for (k = 0; k < TEXTURING_NCONFS; k++)
+    {
+      rc = confdlg_event(&task->confs[k], window, event);
+      if (rc != result_OK)
+        return rc;
+    }
+    return result_OK;
+
+  case wuss_EVENT_QUIT:
+    wuss_nodeview_destroy(task->nodeview);
+    task->nodeview = NULL;
+    nodegraph_destroy(task->graph);
+    task->graph = NULL;
+    /* FALLTHROUGH */
+
+  case wuss_EVENT_ICON:
+  case wuss_EVENT_RELAYOUT:
     for (k = 0; k < TEXTURING_NCONFS; k++)
     {
       rc = confdlg_event(&task->confs[k], window, event);
@@ -963,17 +822,27 @@ static result_t texturing_handle(wuss_window_t      *window,
     for (k = 0; k < TEXTURING_NCONFS; k++)
       if (window == wuss_dialogue_window(task->confs[k].dialogue))
         break;
-    return confdlg_event(&task->confs[k < TEXTURING_NCONFS ? k : task->kind],
-                         window, event);
+    if (k == TEXTURING_NCONFS)
+      return result_OK;
+    return confdlg_event(&task->confs[k], window, event);
 
   case wuss_EVENT_REDRAW:
+    if (window == task->graph_window)
+    {
+      (void) wuss_nodeview_handle_event(task->nodeview, event);
+      return result_OK;
+    }
     return texturing_redraw(event, task);
 
   case wuss_EVENT_MOUSE:
-    if (event->data.mouse.action != wuss_MOUSE_DOWN)
+    if (window == task->graph_window)
+      return texturing_graph_mouse(task, event);
+    if (window != task->base.window ||
+        event->data.mouse.action != wuss_MOUSE_DOWN)
       return result_OK;
     if (event->data.mouse.button & wuss_BUTTON_MENU)
     {
+      texturing_retarget(task);
       wuss_menu_tick_exclusive(&task->kind_menu, task->kind);
       wuss_menu_tick_exclusive(&task->scheme_menu, task->scheme);
       return wuss_menu_open_ticked(task->base.delegate, &task->base.menu, 0,
@@ -987,6 +856,15 @@ static result_t texturing_handle(wuss_window_t      *window,
     return result_OK;
 
   case wuss_EVENT_KEY:
+    if (window == task->graph_window)
+    {
+      if (!task_key_is_plain(task->base.delegate, &task->graph_menu, event,
+                             &rc))
+        return rc;
+      return result_WUSS_KEY_UNCLAIMED;
+    }
+    if (window != task->base.window)
+      return result_WUSS_KEY_UNCLAIMED;
     if (!task_key_is_plain(task->base.delegate, &task->base.menu, event, &rc))
       return rc;
 
@@ -1014,15 +892,14 @@ static result_t texturing_init(texturing_task_t *task)
 {
   result_t       rc;
   int            i;
-  wuss_window_t *tone_window;
+  wuss_window_t *win;
 
-  task->seed   = 0x9E3779B9u;
-  rng_seed(&task->rng, task->seed);
-  task->kind   = TEXTURING_KIND_CLOUDS;
-  task->scheme = 0;
-  task->tone   = texturing_tone_default;
-  task->dithering = screen_DITHER_BLUE_NOISE;
-  memcpy(task->params, texturing_defaults, sizeof(task->params));
+  task->ctx.seed   = 0x9E3779B9u;
+  task->ctx.pixels = task->pixels;
+  rng_seed(&task->rng, task->ctx.seed);
+  task->scheme     = 0;
+  task->dithering  = screen_DITHER_BLUE_NOISE;
+  task->output     = nodegraph_NONE;
 
   rc = bitmap_init(&task->bm, SIZE2D(TEXTURING_SIZE, TEXTURING_SIZE),
                    pixelfmt_p8, TEXTURING_SIZE, NULL, task->pixels);
@@ -1034,7 +911,16 @@ static result_t texturing_init(texturing_task_t *task)
   task->bm.palette = task->palette;
 
   texturing_build_palette(task);
-  texturing_generate(task);
+
+  rc = nodegraph_create(&task->graph);
+  if (rc != result_OK)
+    return rc;
+
+  rc = texturing_rechain(task, TEXTURING_KIND_CLOUDS, NULL,
+                         (const texturing_tone_t *)
+                         texturing_defaults[TEXTURING_NODE_TONE]);
+  if (rc != result_OK)
+    return rc;
 
   rc = task_window_create(task->base.delegate,
                           SIZE2D(TEXTURING_SIZE * TEXTURING_REPEAT,
@@ -1061,17 +947,17 @@ static result_t texturing_init(texturing_task_t *task)
                       wuss_MENU_ITEM_NONE, &task->scheme_menu);
 
   for (i = 0; i < TEXTURING_NKINDS; i++)
-    WUSS_MENU_ITEM(task->kind_items, i, texturing_kind_names[i],
+    WUSS_MENU_ITEM(task->kind_items, i, texturing_node_names[i],
                    wuss_MENU_ITEM_NONE);
   WUSS_MENU_TITLE(task->kind_menu, "Kind", task->kind_items, TEXTURING_NKINDS);
   WUSS_MENU_ITEM_MENU(task->menu_items, TEXTURING_MENU_KIND, "Kind",
                       wuss_MENU_ITEM_NONE, &task->kind_menu);
 
-  for (i = 0; i < TEXTURING_NPRESETS; i++)
+  for (i = 0; i < texturing_npresets; i++)
     WUSS_MENU_ITEM(task->preset_items, i, texturing_presets[i].name,
                    wuss_MENU_ITEM_NONE);
   WUSS_MENU_TITLE(task->preset_menu, "Presets", task->preset_items,
-                  TEXTURING_NPRESETS);
+                  texturing_npresets);
   WUSS_MENU_ITEM_MENU(task->menu_items, TEXTURING_MENU_PRESETS, "Presets",
                       wuss_MENU_ITEM_NONE, &task->preset_menu);
 
@@ -1088,25 +974,36 @@ static result_t texturing_init(texturing_task_t *task)
   WUSS_MENU_ITEM_SHORTCUT(task->menu_items, TEXTURING_MENU_RANDOMISE,
                           "Randomise", wuss_MENU_ITEM_NONE, "^R");
 
+  WUSS_MENU_ITEM(task->menu_items, TEXTURING_MENU_GRAPH, "Graph",
+                 wuss_MENU_ITEM_NONE);
+
   WUSS_MENU_TITLE(task->base.menu, "Texturing", task->menu_items,
                   NELEMS(task->menu_items));
 
-  for (i = 0; i < TEXTURING_NKINDS; i++)
+  for (i = 0; i < TEXTURING_NCONFS; i++)
+    WUSS_MENU_ITEM(task->add_items, i, texturing_node_names[i],
+                   wuss_MENU_ITEM_NONE);
+  WUSS_MENU_TITLE(task->add_menu, "Add", task->add_items, TEXTURING_NCONFS);
+  WUSS_MENU_ITEM_MENU(task->graph_items, TEXTURING_GRAPH_ADD, "Add",
+                      wuss_MENU_ITEM_NONE, &task->add_menu);
+  WUSS_MENU_ITEM_SHORTCUT(task->graph_items, TEXTURING_GRAPH_DELETE,
+                          "Delete", wuss_MENU_ITEM_NONE, "DEL");
+  WUSS_MENU_TITLE(task->graph_menu, "Graph", task->graph_items,
+                  TEXTURING_GRAPH__LIMIT);
+
+  for (i = 0; i < TEXTURING_NCONFS; i++)
   {
     rc = confdlg_create(&task->confs[i], &task->base, &texturing_confs[i],
-                        task->params[i]);
+                        task->scratch);
     if (rc != result_OK)
       return rc;
   }
 
-  rc = confdlg_create(&task->confs[TEXTURING_CONF_TONE], &task->base,
-                      &texturing_confs[TEXTURING_CONF_TONE], &task->tone);
-  if (rc != result_OK)
-    return rc;
-
-  tone_window = wuss_dialogue_window(task->confs[TEXTURING_CONF_TONE].dialogue);
-  wuss_window_set_title(tone_window, "Tone");
-  task->menu_items[TEXTURING_MENU_TONE].window = tone_window;
+  win = wuss_dialogue_window(task->confs[TEXTURING_NODE_TONE].dialogue);
+  wuss_window_set_title(win, "Tone");
+  task->menu_items[TEXTURING_MENU_TONE].window = win;
+  win = wuss_dialogue_window(task->confs[TEXTURING_NODE_BLEND].dialogue);
+  wuss_window_set_title(win, "Blend");
 
   texturing_retarget(task);
 
@@ -1122,6 +1019,7 @@ result_t texturing_app_create(wuss_t *wuss)
     .instance_size = sizeof(texturing_task_t),
     .init          = (taskapp_init_fn_t) texturing_init,
     .handle        = texturing_handle,
+    .all_windows   = true, /* the graph window takes clicks and keys too */
     .save_name     = "texture.png",
     .save          = texturing_saveas_save
   };

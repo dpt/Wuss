@@ -182,6 +182,7 @@ Direct keys:
 | texturing                           | Space               | Reseed (SELECT)                                         |
 | texturing                           | K                   | Next kind                                               |
 | texturing                           | G                   | Next grain                                              |
+| texturing                           | Delete              | Delete node (graph window)                              |
 | viewing                             | Space / Shift-Space | Next / previous image                                   |
 | viewing                             | `+` `=` / `-`       | Zoom in / out (not while tiled)                         |
 | viewing                             | `1`                 | Actual size                                             |

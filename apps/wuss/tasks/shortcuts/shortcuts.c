@@ -330,6 +330,7 @@ shortcuts[] =
   { "G",              "Next grain"          },
   { "Left",           "Previous colours"    },
   { "Right",          "Next colours"        },
+  { "Delete",         "Delete node"         },
   { "Tagging",        NULL                  },
   { "F2",             "List"                },
   { "F3",             "Cloud"               },

@@ -50,10 +50,13 @@ static result_t confdlg_fillout(void *opaque)
   return rc;
 }
 
+/* Close the menu chain the dialogue hangs from, or the dialogue itself when
+ * it was shown standalone (as from a graph node). */
 static void confdlg_dismiss(confdlg_t *conf)
 {
   wuss_menu_close(conf->instance->menu_handle);
   conf->instance->menu_handle = NULL;
+  (void) wuss_dialogue_hide(conf->dialogue);
 }
 
 /* SELECT dismisses the menu chain; ADJUST resets the sliders instead */

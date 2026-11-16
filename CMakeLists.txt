@@ -413,6 +413,7 @@ if(BUILD_TESTS)
         libraries/wuss/test/api-test.c
         libraries/wuss/test/gridview-bench-test.c
         libraries/wuss/test/painting-doc-test.c
+        libraries/wuss/test/texturing-gen-test.c
         libraries/wuss/test/harness.c
         libraries/wuss/test/harness.h
         libraries/wuss/menu/test/menu-test.c
@@ -454,6 +455,8 @@ if(BUILD_TESTS)
         libraries/wuss/furniture/test/furniture-test.c
         apps/wuss/tasks/painting/painting-doc.c
         apps/wuss/tasks/painting/painting-doc.h
+        apps/wuss/tasks/texturing/texturing-gen.c
+        apps/wuss/tasks/texturing/texturing-gen.h
         libraries/wuss/test/wuss-test.c)
 
     source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}" FILES ${TEST_SOURCES})
@@ -552,6 +555,8 @@ if(BUILD_APPS)
         apps/wuss/tasks/resizing/resizing.c
         apps/wuss/tasks/tagging/tagging.c
         apps/wuss/tasks/texturing/texturing.c
+        apps/wuss/tasks/texturing/texturing-gen.c
+        apps/wuss/tasks/texturing/texturing-gen.h
         apps/wuss/tasks/common/confdlg.c
         apps/wuss/tasks/common/confdlg.h
         apps/wuss/tasks/common/taskapp.c
