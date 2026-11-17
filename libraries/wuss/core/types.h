@@ -302,6 +302,8 @@ struct wuss
     int double_click_px;
     int drag_threshold_px;
     int outline_drags;
+    int no_window_snap;
+    int no_safe_area_snap;
   }
   input;
 #ifdef WUSS_FURNITURE

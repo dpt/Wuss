@@ -6,16 +6,23 @@
 
 #ifdef WUSS_FURNITURE
 /* Snap one axis of a visible box starting at "v" of length "len" to whichever
- * screen or safe area edge it is within WUSS_SNAP_PX of. */
-static int snap_axis(int v, int len, int scr, int inset_lo, int inset_hi)
+ * screen edge (if "edges") or safe area edge (if "safe") it is within
+ * WUSS_SNAP_PX of. */
+static int snap_axis(int v,
+                     int len,
+                     int scr,
+                     int inset_lo,
+                     int inset_hi,
+                     int edges,
+                     int safe)
 {
-  if (abs(v) < WUSS_SNAP_PX)
+  if (edges && abs(v) < WUSS_SNAP_PX)
     return 0;
-  if (abs(v - inset_lo) < WUSS_SNAP_PX)
+  if (safe && abs(v - inset_lo) < WUSS_SNAP_PX)
     return inset_lo;
-  if (abs(v + len - scr) < WUSS_SNAP_PX)
+  if (edges && abs(v + len - scr) < WUSS_SNAP_PX)
     return scr - len;
-  if (abs(v + len - (scr - inset_hi)) < WUSS_SNAP_PX)
+  if (safe && abs(v + len - (scr - inset_hi)) < WUSS_SNAP_PX)
     return scr - inset_hi - len;
 
   return v;
@@ -23,13 +30,19 @@ static int snap_axis(int v, int len, int scr, int inset_lo, int inset_hi)
 
 /* Snap a move-drag's content top-left "p" so that the window's visible box
  * sits flush against any screen or safe area edge it comes within
- * WUSS_SNAP_PX of. */
+ * WUSS_SNAP_PX of, as far as the config lets each kind snap. */
 static point_t snap_to_screen(const wuss_window_t *win, point_t p)
 {
+  int      edges, safe;
   box_t    content;
   point_t  off;
   size2d_t size, scr;
   point_t  v;
+
+  edges = !win->wuss->input.no_window_snap;
+  safe  = !win->wuss->input.no_safe_area_snap;
+  if (!edges && !safe)
+    return p;
 
   wuss__content_box(win, &content);
   off.x  = content.x0 - win->visible.x0;
@@ -38,9 +51,10 @@ static point_t snap_to_screen(const wuss_window_t *win, point_t p)
   scr    = win->wuss->scr->size;
 
   v.x = snap_axis(p.x - off.x, size.w, scr.w,
-                  WUSS_SAFE_INSET, WUSS_SAFE_INSET);
+                  WUSS_SAFE_INSET, WUSS_SAFE_INSET, edges, safe);
   v.y = snap_axis(p.y - off.y, size.h, scr.h,
-                  WUSS_SAFE_INSET, WUSS_SAFE_INSET_BOTTOM(win->wuss));
+                  WUSS_SAFE_INSET, WUSS_SAFE_INSET_BOTTOM(win->wuss), edges,
+                  safe);
 
   return POINT(v.x + off.x, v.y + off.y);
 }

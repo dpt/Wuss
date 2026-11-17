@@ -30,6 +30,7 @@ enum
   CONFIGURING_SECTION_FONTS,
   CONFIGURING_SECTION_BACKDROP,
   CONFIGURING_SECTION_THEME,
+  CONFIGURING_SECTION_WINDOWING,
   CONFIGURING_SECTION__LIMIT
 };
 
@@ -48,7 +49,10 @@ enum
  * row, a fill-pattern grid, a result swatch mixing the three, and a "Set
  * backdrop" action applying the result via wuss_set_backdrop. "Theme" shows
  * the current theme with a "Choose" action opening a menu of themes; a pick
- * applies its palette, chrome, titlebar height and font. Opened once
+ * applies its palette, chrome, titlebar height and font. "Windowing" has a
+ * "Windows" frame with two option icons turning a dragged window's snapping
+ * to screen edges and to the safe area on or off
+ * (wuss_config_t::mouse.no_window_snap and no_safe_area_snap). Opened once
  * from run_wuss, and from the icon bar. */
 typedef struct configuring_task
 {
@@ -91,7 +95,9 @@ typedef struct configuring_task
   wuss_icon_t         *set_backdrop_icon;
   wuss_icon_t         *theme_name_icon;
   wuss_icon_t         *choose_theme_icon;
-  char                 theme_names[THEME_MAX][32];
+  wuss_icon_t         *snap_icon;
+  wuss_icon_t         *snap_safe_icon;
+  char               theme_names[THEME_MAX][32];
   int                  ntheme_names;
   wuss_menu_item_t     theme_items[THEME_MAX];
   wuss_menu_t          theme_menu;

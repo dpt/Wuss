@@ -357,7 +357,7 @@ result_t wuss_placement_test(const char *resources)
   }
 
   printf("test: a dragged window snaps flush to a screen or safe area edge it "
-         "comes within WUSS_SNAP_PX of\n");
+         "comes within WUSS_SNAP_PX of, unless that kind of snapping is off\n");
 
   {
     static test_task_t tc_sn;
@@ -366,6 +366,7 @@ result_t wuss_placement_test(const char *resources)
     wuss_window_t     *win_sn;
     point_t            grab;
     size2d_t           scr;
+    wuss_config_t      config;
 
     delegate_sn = mk_task(wuss, test_handle, &tc_sn);
     if (delegate_sn == NULL) goto Failure;
@@ -408,6 +409,37 @@ result_t wuss_placement_test(const char *resources)
     wuss_mouse_move(wuss, POINT(grab.x + scr.w - WUSS_SAFE_INSET - start.x1 + 2, grab.y + scr.h - WUSS_SAFE_INSET_BOTTOM(wuss) - start.y1 - 2), NULL);
     wuss_window_get_visible_bounds(win_sn, &visible);
     if (visible.x1 != scr.w - WUSS_SAFE_INSET || visible.y1 != scr.h - WUSS_SAFE_INSET_BOTTOM(wuss)) goto Failure;
+
+    /* with screen edge snapping off: follows the pointer even within range */
+    wuss_get_config(wuss, &config);
+    config.mouse.no_window_snap = 1;
+    rc = wuss_set_config(wuss, &config);
+    if (rc != result_OK) goto Failure;
+    wuss_mouse_move(wuss, POINT(grab.x - start.x0 + WUSS_SNAP_PX - 1, grab.y - start.y0 + WUSS_SNAP_PX - 1), NULL);
+    wuss_window_get_visible_bounds(win_sn, &visible);
+    if (visible.x0 != WUSS_SNAP_PX - 1 || visible.y0 != WUSS_SNAP_PX - 1) goto Failure;
+
+    /* ...but still snaps to the safe area */
+    wuss_mouse_move(wuss, POINT(grab.x - start.x0 + WUSS_SAFE_INSET + 2, grab.y - start.y0 + WUSS_SAFE_INSET - 2), NULL);
+    wuss_window_get_visible_bounds(win_sn, &visible);
+    if (visible.x0 != WUSS_SAFE_INSET || visible.y0 != WUSS_SAFE_INSET) goto Failure;
+
+    /* with safe area snapping off instead: follows the pointer near the safe
+     * area, but still snaps to the screen edges */
+    config.mouse.no_window_snap    = 0;
+    config.mouse.no_safe_area_snap = 1;
+    rc = wuss_set_config(wuss, &config);
+    if (rc != result_OK) goto Failure;
+    wuss_mouse_move(wuss, POINT(grab.x - start.x0 + WUSS_SAFE_INSET + 2, grab.y - start.y0 + WUSS_SAFE_INSET - 2), NULL);
+    wuss_window_get_visible_bounds(win_sn, &visible);
+    if (visible.x0 != WUSS_SAFE_INSET + 2 || visible.y0 != WUSS_SAFE_INSET - 2) goto Failure;
+    wuss_mouse_move(wuss, POINT(grab.x - start.x0 + WUSS_SNAP_PX - 1, grab.y - start.y0 + WUSS_SNAP_PX - 1), NULL);
+    wuss_window_get_visible_bounds(win_sn, &visible);
+    if (visible.x0 != 0 || visible.y0 != 0) goto Failure;
+
+    config.mouse.no_safe_area_snap = 0;
+    rc = wuss_set_config(wuss, &config);
+    if (rc != result_OK) goto Failure;
 
     wuss_mouse_click(wuss, grab, wuss_BUTTON_SELECT, wuss_MOUSE_UP, NULL);
     wuss_window_close(win_sn);

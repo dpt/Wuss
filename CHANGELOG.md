@@ -26,6 +26,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   basket). Menu > Display > Dithering picks
   Nearest, Bayer or Blue noise for the screen. Save writes one 256 x 256
   tile.
+- `wuss_config_t::mouse.no_window_snap` and `no_safe_area_snap` stop a
+  dragged window snapping to screen edges and to safe area edges. Configuring
+  has a new Windowing section with "Snap to screen edges" and "Snap to safe
+  area" options to set them.
+
+### Fixed
+
+- `wuss_gridview_fit_window` given a place no longer drops columns that
+  would have fitted had the window not opened near the screen's right edge.
 
 ## [0.25.0] - 2026-11-12
 

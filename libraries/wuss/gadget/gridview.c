@@ -1383,6 +1383,11 @@ void wuss_gridview_fit_window(wuss_gridview_t    *gv,
   int      cols;
   size2d_t size;
 
+  /* placed afterwards anyway: start at the origin so the cap below leaves
+   * the whole screen to grow into */
+  if (place != NULL)
+    wuss_window_move(gv->window, POINT(0, 0));
+
   (void) wuss_window_resize(gv->window,
                             wuss_gridview_natural_size(gv, columns, max_rows));
 

@@ -247,7 +247,10 @@ result_t wuss__apply_config(wuss_t *w, const wuss_config_t *config)
   else
     w->input.drag_threshold_px = WUSS_DEFAULT_DRAG_THRESHOLD_PX;
 
-  w->input.outline_drags = (config != NULL && config->mouse.outline_drags);
+  w->input.outline_drags     = (config != NULL && config->mouse.outline_drags);
+  w->input.no_window_snap    = (config != NULL && config->mouse.no_window_snap);
+  w->input.no_safe_area_snap = (config != NULL &&
+                                config->mouse.no_safe_area_snap);
 
 #ifdef WUSS_ICONS
   {

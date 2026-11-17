@@ -630,6 +630,18 @@ typedef struct wuss_config
      * drags.
      */
     int outline_drags;
+
+    /**
+     * Non-zero to stop a dragged window snapping flush to a screen edge it
+     * comes near. 0 (the default) snaps.
+     */
+    int no_window_snap;
+
+    /**
+     * Non-zero to stop a dragged window snapping flush to a safe area edge
+     * it comes near. 0 (the default) snaps.
+     */
+    int no_safe_area_snap;
   }
   mouse;
 }
