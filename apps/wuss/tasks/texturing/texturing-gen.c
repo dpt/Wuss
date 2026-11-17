@@ -34,12 +34,25 @@ const texturing_scheme_t texturing_schemes[TEXTURING_NSCHEMES] =
   { "Lava",    0, { 0x000000, 0xC02000, 0xFFE040 } },
   { "Moss",    0, { 0x102008, 0x4A7A20, 0xC8E088 } },
   { "Ice",     0, { 0x002838, 0x40A0C0, 0xF0FFFF } },
+  { "Sand",    0, { 0x5A4020, 0xC8A060, 0xFFF0C8 } },
+  { "Rust",    0, { 0x200800, 0x8A3410, 0xE0A060 } },
+  { "Copper",  0, { 0x281008, 0xB06030, 0xFFD0A0 } },
+  { "Gold",    0, { 0x301800, 0xC09020, 0xFFF8B0 } },
+  { "Rose",    0, { 0x400818, 0xC05070, 0xFFE0E8 } },
+  { "Plum",    0, { 0x180818, 0x6A2A6A, 0xE0B0E0 } },
+  { "Ocean",   0, { 0x000818, 0x084878, 0x60D0C8 } },
+  { "Toxic",   0, { 0x000000, 0x308000, 0xE0FF40 } },
   /* the 16-colour desktop's greys */
   { "Desktop", 1, { 0x333333, 0x555555, 0x777777, 0x999999, 0xBBBBBB } },
   /* 4-bit greys, darker */
   { "Grey 16", 1, { 0x222222, 0x444444, 0x666666, 0x888888, 0xAAAAAA } },
   { "Linen",   1, { 0x6E6450, 0x8A806A, 0xA69C84, 0xC2B89E, 0xDDD4BA } },
-  { "Denim",   1, { 0x1E2C44, 0x2E4060, 0x40567C, 0x566E96, 0x7088AE } }
+  { "Denim",   1, { 0x1E2C44, 0x2E4060, 0x40567C, 0x566E96, 0x7088AE } },
+  { "Sage",    1, { 0x3C4836, 0x52604A, 0x6A7A60, 0x849678, 0xA0B294 } },
+  { "Clay",    1, { 0x5A2E1E, 0x74402C, 0x8E543C, 0xA86C50, 0xC28866 } },
+  { "Lilac",   1, { 0x4A3C5E, 0x605078, 0x786892, 0x9282AC, 0xAEA0C6 } },
+  { "Ochre",   1, { 0x6A4C10, 0x86621C, 0xA27C2C, 0xBC9640, 0xD6B25C } },
+  { "Teal",    1, { 0x123C3C, 0x1C5252, 0x286A6A, 0x388484, 0x4CA0A0 } }
 };
 
 const int texturing_defaults[TEXTURING_NNODES][TEXTURING_NPARAMS] =
@@ -65,12 +78,12 @@ const int texturing_defaults[TEXTURING_NNODES][TEXTURING_NPARAMS] =
  * tone and a stepped scheme. Reseeding keeps the look. */
 const texturing_preset_t texturing_presets[] =
 {
-  { "Plaster",  TEXTURING_KIND_VEINS,  { 6,  30,  0,  60      }, { 20,  0 }, 6 },
-  { "Pebbled",  TEXTURING_KIND_STONE,  { 6, 100,  0, 315, 100 }, { 20,  0 }, 6 },
-  { "Streaked", TEXTURING_KIND_VEINS,  { 4,  14,  2,  70      }, { 24, -4 }, 6 },
-  { "Granite",  TEXTURING_KIND_CLOUDS, { 5,  60,  3,   0      }, { 32,  0 }, 6 },
-  { "Veined",   TEXTURING_KIND_VEINS,  { 4,   3,  0,   0      }, { 48, 30 }, 7 },
-  { "Rough",    TEXTURING_KIND_STONE,  { 6, 250, 25, 315,   0 }, { 40, 16 }, 7 }
+  { "Plaster",  TEXTURING_KIND_VEINS,  { 6,  30,  0,  60      }, { 20,  0 }, 14 },
+  { "Pebbled",  TEXTURING_KIND_STONE,  { 6, 100,  0, 315, 100 }, { 20,  0 }, 14 },
+  { "Streaked", TEXTURING_KIND_VEINS,  { 4,  14,  2,  70      }, { 24, -4 }, 14 },
+  { "Granite",  TEXTURING_KIND_CLOUDS, { 5,  60,  3,   0      }, { 32,  0 }, 14 },
+  { "Veined",   TEXTURING_KIND_VEINS,  { 4,   3,  0,   0      }, { 48, 30 }, 15 },
+  { "Rough",    TEXTURING_KIND_STONE,  { 6, 250, 25, 315,   0 }, { 40, 16 }, 15 }
 };
 
 const int texturing_npresets = (int) NELEMS(texturing_presets);

@@ -119,7 +119,7 @@ typedef struct texturing_scheme
 }
 texturing_scheme_t;
 
-#define TEXTURING_NSCHEMES 10
+#define TEXTURING_NSCHEMES 23
 
 extern const texturing_scheme_t texturing_schemes[TEXTURING_NSCHEMES];
 
