@@ -1,19 +1,29 @@
 # [Wuss](https://github.com/dpt/Wuss) > key reference
 
-Survey of every key the wuss demo (`apps/wuss`) and its libraries react to, split into **system** keys (handled by wuss or the launcher whatever is focused) and **application** keys (handled by one task when its window has the focus). Ends with proposed standard keys (RISC OS style first, macOS where the guide is silent).
+Survey of every key the wuss demo (`apps/wuss`) and its libraries react to. It splits them into two kinds:
+
+- **system** keys, which wuss or the launcher handles, whatever has the focus
+- **application** keys, which one task handles when its window has the focus.
+
+It ends with proposed standard keys (RISC OS style first, macOS where the guide is silent).
 
 ## How a key travels
 
-1. The frontend (`frontend-sdl.c`, `frontend-riscos.c`) turns a key press into a Unicode code point or a `wuss_KEY_*` constant plus modifiers (Shift, Ctrl, Alt). On macOS Cmd is folded into Ctrl, so "Ctrl" below means Cmd there.
+1. The frontend (`frontend-sdl.c`, `frontend-riscos.c`) turns a key press into a Unicode code point or a `wuss_KEY_*` constant plus modifiers (Shift, Ctrl, Alt). On macOS the frontend folds Cmd into Ctrl, so "Ctrl" below means Cmd there.
 2. `main.c` offers it to `tasks_system_key`, which handles the window and app chords, then checks for Ctrl-Shift-3.
 3. `wuss_key` (`core/key.c`) offers it in order to:
-   1. an active window drag (Escape cancels it);
-   2. an open menu chain (Escape dismisses it);
-   3. the caret's writable icon (editing keys);
+   1. an active window drag (Escape cancels it)
+   2. an open menu chain (Escape dismisses it)
+   3. the caret's writable icon (editing keys)
    4. the focused window's task, as `wuss_EVENT_KEY`.
 4. A task that does not want the key returns `result_WUSS_KEY_UNCLAIMED`. `main.c` then passes the key to `tasks_launcher_key`, which handles the zoom keys and tries the Wuss menu's shortcut labels.
 
-A task's menu shortcuts only fire while one of its windows has the focus (`wuss_menu_dispatch_shortcut`). Labels match as follows: `^X` needs Ctrl; a bare label forbids Ctrl; Alt never matches; Shift is required by a `WUSS_MENU_SHIFT` prefix and forbidden for SPACE, DEL and F1..F12.
+A task's menu shortcuts only fire while one of its windows has the focus (`wuss_menu_dispatch_shortcut`). Labels match as follows:
+
+- `^X` needs Ctrl.
+- A bare label forbids Ctrl.
+- Alt never matches.
+- A `WUSS_MENU_SHIFT` prefix requires Shift. SPACE, DEL and F1..F12 forbid Shift.
 
 ## System keys
 
@@ -52,7 +62,7 @@ Notes:
 
 ### Text editing (writable icons)
 
-Active whenever a writable icon holds the caret. Alt-anything is ignored.
+Active whenever a writable icon holds the caret. The icon ignores Alt-anything.
 
 | Key                      | Action                                 |
 | ------------------------ | -------------------------------------- |
@@ -72,7 +82,7 @@ Active whenever a writable icon holds the caret. Alt-anything is ignored.
 
 ### Text editing (Jottings)
 
-Active while a note is being edited. A note is not a writable icon: `jotting_key` handles these itself. On macOS, Cmd acts as Ctrl. Lines to move by are wrapped lines, and lines to clear are the source's.
+Active while the user edits a note. A note is not a writable icon: `jotting_key` handles these itself. On macOS, Cmd acts as Ctrl. Line movement uses the wrapped lines. Line clearing uses the source's lines.
 
 | Key                                  | Action                     |
 | ------------------------------------ | -------------------------- |
@@ -129,7 +139,7 @@ Menu shortcuts (fire when the task has the focus):
 | Ctrl-] Ctrl-[ | Faster, Slower  | zxtask                                                                                                                                                                |
 | Ctrl-M        | Monochromatic   | zxtask                                                                                                                                                                |
 
-One label never fires. System F7 (next window) runs ahead of Tagging's F7 (Sort by count). Painting's F fills the selection while there is one; with nothing selected the row is shaded and F picks the Fill tool.
+One label never fires. System F7 (next window) runs ahead of Tagging's F7 (Sort by count). Painting's F fills the selection while there is one. With nothing selected, the menu shades the row and F picks the Fill tool.
 
 Direct keys:
 
@@ -209,7 +219,7 @@ Rules for the proposals below:
 4. Never use F12, Shift-F12, Ctrl-F12 or Ctrl-Shift-F12. RISC OS owns them.
 5. Shift modifies a function key into a related action. Ctrl gives an unrelated one.
 
-Taken today by existing tasks: F3 (Save) F8 (painting Undo) F9 (painting Redo) Ctrl-R P M U; Escape; Return. Ctrl-P and Ctrl-M (zxtask) are safe: the guide uses the Print key and does not define Ctrl-P or Ctrl-M.
+Taken today by existing tasks: F3 (Save), F8 (painting Undo), F9 (painting Redo), Ctrl-R, Ctrl-P, Ctrl-M, Ctrl-U, Escape and Return. Ctrl-P and Ctrl-M (zxtask) are safe: the guide uses the Print key and does not define Ctrl-P or Ctrl-M.
 
 ## Standard keys: RISC OS style
 
@@ -256,17 +266,17 @@ Ctrl-D, Ctrl-T, Ctrl-B and Ctrl-I are text-editor keys. The guide applies them o
 | Key             | Action                                                       |
 | --------------- | ------------------------------------------------------------ |
 | Escape          | Cancel operation                                             |
-| Return          | New line in an editor; default action in a dialogue          |
+| Return          | New line in an editor. Default action in a dialogue          |
 | Print           | Print document                                               |
-| Tab / Shift-Tab | Tab stop in an editor; next / previous field in a dialogue   |
+| Tab / Shift-Tab | Tab stop in an editor. Next / previous field in a dialogue   |
 | Insert          | Paste at the caret                                           |
-| Backspace       | Delete left of the caret; with no caret, cut the selection   |
+| Backspace       | Delete left of the caret. With no caret, cut the selection   |
 | Delete          | As Backspace                                                 |
-| Copy            | Delete right of the caret; with no caret, copy the selection |
+| Copy            | Delete right of the caret. With no caret, copy the selection |
 | Home            | Start of document                                            |
 | Page Up / Down  | Scroll a page                                                |
 | Left / Right    | Move one character                                           |
-| Up / Down       | Move one line; in a dialogue, previous / next field          |
+| Up / Down       | Move one line. In a dialogue, previous / next field          |
 
 The guide also requires keys for word, page, line and document movement, but the arrow glyphs are lost in the PDF text. Wuss already uses Shift-Left / Right for a word and Ctrl-Left / Right for the ends of text. Check the printed guide before relying on the rest. On a PC keyboard the Copy key becomes End and Backspace / Delete never cut.
 
@@ -293,9 +303,21 @@ Used only where the guide is silent.
 | Ctrl-Shift-3    | Save framebuffer PNG   | Done: writes wuss-N.png to the current directory. Not on Emscripten.                                      |
 | Ctrl-Shift-Esc  | Kill the focused task  | No unsaved-data prompt. Done.                                                                             |
 
-Deferred, because no task has a function for them yet: Ctrl-N, Ctrl-G, Ctrl-Shift-G, Ctrl-E, Ctrl-, (opening Configuring only installs its icon), Ctrl-[ and Ctrl-], Ctrl-Shift-N (the filer has no make directory), Ctrl-D and Ctrl-I (the filer has Info only on the icon bar menu).
+Deferred, because no task has a function for them yet:
 
-Dropped, because the guide already covers them: Ctrl-O (F2), Ctrl-F (F4), Ctrl-L (F5), Ctrl-Shift-S (F3 opens the save dialogue), Ctrl-Shift-Z and Ctrl-Y (F9), Ctrl-W (Ctrl-F2), Ctrl-/ (F1) and Ctrl-Backspace for trash (Ctrl-K).
+- Ctrl-N, Ctrl-G, Ctrl-Shift-G, Ctrl-E
+- Ctrl-, (opening Configuring only installs its icon)
+- Ctrl-[ and Ctrl-]
+- Ctrl-Shift-N (the filer has no make directory)
+- Ctrl-D and Ctrl-I (the filer has Info only on the icon bar menu).
+
+Dropped, because the guide already covers them:
+
+- Ctrl-O (F2), Ctrl-F (F4), Ctrl-L (F5)
+- Ctrl-Shift-S (F3 opens the save dialogue)
+- Ctrl-Shift-Z and Ctrl-Y (F9)
+- Ctrl-W (Ctrl-F2), Ctrl-/ (F1)
+- Ctrl-Backspace for trash (Ctrl-K).
 
 ## System shortcuts: window and task management
 
@@ -308,7 +330,7 @@ The guide is silent on these, so macOS chords lead. Each has a function-key fall
 | Quit Wuss                                        | Ctrl-Shift-Q   | none      | Replaces F4. Not on Emscripten.                                                         |
 | Hide app (all its windows)                       | Ctrl-H         | F11       | Uses the hidden state (see below).                                                      |
 | Hide others                                      | Ctrl-Shift-H   | Shift-F11 | Hides every task but the focused one.                                                   |
-| Show all / restore                               | none           | Ctrl-F11  | Restores every hidden task; focus returns to the last one hidden.                       |
+| Show all / restore                               | none           | Ctrl-F11  | Restores every hidden task. Focus returns to the last one hidden.                       |
 | Next window in app                               | Ctrl-\`        | F7        | Cycles the focused task's windows back to front.                                        |
 | Previous window in app                           | Ctrl-Shift-\`  | Shift-F7  |                                                                                         |
 | Next app                                         | Ctrl-Tab       | F10       | Raises the front window of the next task in recency order.                              |
@@ -328,7 +350,7 @@ The guide is silent on these, so macOS chords lead. Each has a function-key fall
   | Zoom out             | Shift-F2 | Ctrl--        |
   | Quit Wuss            | F4       | Ctrl-Shift-Q  |
 
-- painting: Undo moved from Ctrl-Z to F8. Ctrl-Z is now Clear selection; Escape also drops the selection. Redo is on F9.
+- painting: Undo moved from Ctrl-Z to F8. Ctrl-Z is now Clear selection. Escape also drops the selection. Redo is on F9.
 - Wuss menu shortcut labels use the guide's symbols: `^` for Ctrl and `WUSS_MENU_SHIFT` for Shift. Function key labels show plain, such as `F8`.
 
 ## Dispatch changes
@@ -336,7 +358,7 @@ The guide is silent on these, so macOS chords lead. Each has a function-key fall
 - Done: `tasks_system_key` is a system layer in `main.c` ahead of `wuss_key`, matching only the window and task chords above plus Ctrl-F2, Ctrl-Shift-F and Ctrl-Shift-Q. An app cannot swallow them. The zoom and debug keys stay in `tasks_launcher_key`, so a task may claim them first.
 - Standard editing and file keys (F1 to F9, Ctrl-C and friends) go to the focused task first. If it returns `result_WUSS_KEY_UNCLAIMED`, the launcher may handle them (Ctrl-= and Ctrl-- zoom the desktop).
 - Done: writable icons handle Ctrl-A, Ctrl-C, Ctrl-X, Ctrl-V, Ctrl-Z and Insert, and Backspace and Delete remove the selection. The Copy key (End on RISC OS) is not wired, and Shift-arrows still move by word, so a selection comes only from Ctrl-A.
-- **Caret owns Ctrl-D, Ctrl-I, Ctrl-K, Ctrl-T and Ctrl-B.** While a writable holds the caret (for example an inline rename in the filer), it swallows these item-level keys and the task never sees them, so Ctrl-D or Ctrl-I cannot trigger Duplicate or Get info mid-rename. Other Ctrl-letter keys such as Ctrl-R still reach the task, so a seed field does not block them. System-layer chords (Ctrl-F2, Ctrl-Q and so on) run before the caret and still work. Done in `icon/writable.c`.
+- **Caret owns Ctrl-D, Ctrl-I, Ctrl-K, Ctrl-T and Ctrl-B.** A writable can hold the caret, for example during an inline rename in the filer. It then swallows these item-level keys and the task never sees them. So Ctrl-D or Ctrl-I cannot trigger Duplicate or Get info mid-rename. Other Ctrl-letter keys such as Ctrl-R still reach the task, so a seed field does not block them. System-layer chords (Ctrl-F2, Ctrl-Q and so on) run before the caret and still work. Done in `icon/writable.c`.
 - Do not route the system layer through menu shortcut labels. They need a focused window.
 - The RISC OS frontend must pass F12 and its Shift and Ctrl forms to the OS untouched.
 
@@ -348,4 +370,4 @@ The guide is silent on these, so macOS chords lead. Each has a function-key fall
 - **Cycle and raise**: done as `wuss_task_front`, `wuss_task_cycle_windows` and `wuss_cycle_tasks`, with no recency list. Next app raises the rearmost other app and previous app sends the front app behind the rest, so repeated presses walk the whole z-order. Only visible focusable regular windows take part, and an app is a task together with its child tasks.
 - **Quit app**: done as `wuss_task_close_windows`.
 
-Build order: every step is done except the deferred macOS fill-ins and the remaining function keys.
+Build order: every step is complete except the deferred macOS fill-ins and the remaining function keys.

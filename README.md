@@ -10,7 +10,7 @@ version 0.26.0
 
 Wuss is a minimal window manager written in portable C99. It handles window creation, z-ordering, mouse routing, dirty-region redraw and client-delegated content. On top of that core sit optional layers: window furniture, icons, menus, gadgets and shared components.
 
-Wuss was split out of [DPTLib](https://github.com/dpt/DPTLib), which it uses for bitmaps, fonts, geometry and the other basics. CMake fetches DPTLib automatically.
+Wuss began as part of [DPTLib](https://github.com/dpt/DPTLib). It still uses DPTLib for bitmaps, fonts, geometry and the other basics. CMake fetches DPTLib automatically.
 
 ## Modules
 
@@ -55,7 +55,7 @@ To build against a local DPTLib checkout instead of the pinned commit, add `-DFE
 
 The bitmap fonts come from DPTLib: configuring links `resources/bmfonts` to DPTLib's copy.
 
-RISC OS is built with a GCCSDK toolchain file. WebAssembly builds of the demo use `emcmake`; see [AGENTS.md](AGENTS.md).
+Build for RISC OS with a GCCSDK toolchain file. Build the WebAssembly demo with `emcmake`. See [AGENTS.md](AGENTS.md).
 
 ## Testing
 
@@ -65,7 +65,7 @@ Run from the repository root:
 ./build/WussTest -resources .
 ```
 
-(Debug builds name the binary `WussTest-debug`.) Name tests to run a subset, e.g. `wuss wuss-menu`. If successful you'll see:
+(Debug builds name the binary `WussTest-debug`.) Name tests to run a subset, e.g. `wuss wuss-menu`. When all tests pass, the binary prints:
 
 ```
 ++ Tests completed in 0.9909s: N of N tests passed.

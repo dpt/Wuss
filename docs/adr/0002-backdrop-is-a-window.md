@@ -5,12 +5,12 @@ Status: accepted
 ## Context
 
 The desktop backdrop is paint only: a `wuss_backdrop_t` fill and image. A
-click on empty desktop is discarded in `libraries/wuss/core/mouse-click.c`
-(`if (win == NULL) return`). We want a backdrop with a menu, pinned files, a
+click on empty desktop goes nowhere: `libraries/wuss/core/mouse-click.c`
+discards it (`if (win == NULL) return`). We want a backdrop with a menu, pinned files, a
 look that can change at run time and room for notes (see
 [backdrop.md](../windowing/backdrop.md)).
 
-Two models were considered:
+We considered two models:
 
 - **Core desktop hook.** A task registers as the desktop owner. Clicks,
   menus and drops on empty desktop go to it with `window == NULL`, as icon

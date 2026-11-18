@@ -1,7 +1,7 @@
 # Wuss 0.25.0
 
-Released 2026-11-12. Changes since 0.24.0; see `CHANGELOG.md` for the full
-list.
+Released 2026-11-12. This summary lists the changes since 0.24.0. See
+`CHANGELOG.md` for the full list.
 
 ## Breaking
 
@@ -44,11 +44,11 @@ list.
   re-lay themselves out when it changes.
 - **Pinboard actors:** other tasks can show bitmaps on the backdrop, drawn by
   depth then nearest last.
-- **Gridview:** small icons and full info display modes. Filing uses them and
+- **Gridview:** small icons and full info view modes. Filing uses them and
   gains the rest of the RISC OS Filer's menu, shaded where unimplemented.
 - **Icon pools** load sprite sheets.
 - **Drags:** `wuss_drag_start_grab()` scrolls a window to follow the pointer.
-- **Icon bar:** pops to the front when the pointer is held at the bottom of
+- **Icon bar:** comes to the front when the pointer stays at the bottom of
   the screen.
 - **Toolbars:** overrun toolbars and panes scroll near their ends.
 - Disabled bitmap icons draw faded, and buttons leave two spaces either side
