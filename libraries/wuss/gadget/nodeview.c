@@ -4,6 +4,8 @@
 #include "fortify/fortify.h"
 #endif
 
+#include <stdio.h>
+
 #include "base/result.h"
 #include "base/utils.h"
 #include "datastruct/nodegraph.h"
@@ -204,6 +206,7 @@ static void nodeview_draw_node(wuss_nodeview_t    *nv,
   colour_t                 fg, title_bg;
   point_t                  pos;
   int                      ascent, i;
+  char                     number[12];
 
   wuss = nv->window->task->wuss;
   scr  = event->data.redraw.scr;
@@ -236,6 +239,13 @@ static void nodeview_draw_node(wuss_nodeview_t    *nv,
     pos.x = title.x0 + NODEVIEW_PAD;
     pos.y = title.y0 + NODEVIEW_PAD / 2 + ascent;
     (void) wuss__text_draw_str(wuss, font, &clipped, cls->name, fg,
+                               wuss__text_ground(wuss, title_bg), &pos,
+                               NULL);
+
+    /* the handle, never reused, numbers the node at the title's right */
+    snprintf(number, sizeof(number), "%d", n + 1);
+    pos.x = title.x1 - NODEVIEW_PAD - wuss__text_width(font, number);
+    (void) wuss__text_draw_str(wuss, font, &clipped, number, fg,
                                wuss__text_ground(wuss, title_bg), &pos,
                                NULL);
   }
