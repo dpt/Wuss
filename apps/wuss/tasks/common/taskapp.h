@@ -56,6 +56,15 @@ typedef result_t (*taskapp_init_fn_t)(void *instance);
  * acknowledged. */
 typedef result_t (*taskapp_data_load_fn_t)(void *instance, const char *path);
 
+/* Take bm, a pixelfmt_rgba8888 bitmap made by bitmap_convert, into an
+ * instance, as data_load would take the file: a RAM transfer from a Save As.
+ * Owns bm on success, freeing it with bitmap_destroy once done; on failure
+ * leaves it alone, for the bounce of the unacknowledged message to free.
+ * leafname names the document. */
+typedef result_t (*taskapp_data_load_bitmap_fn_t)(void       *instance,
+                                                  bitmap_t   *bm,
+                                                  const char *leafname);
+
 /* Open the app's "new instance" dialogue. Optional in a taskapp_desc: with
  * one, SELECT on the icon of the app with no windows and the "New..." row in
  * its menu call it in place of create. The dialogue opens an instance
@@ -116,6 +125,12 @@ struct taskapp_desc
   wuss_saveas_save_fn_t *save;       /* optional: writes the file, its opaque
                                       * the block; if NULL, a snapshot of the
                                       * main window through handle */
+  wuss_saveas_bitmap_fn_t *save_bitmap; /* optional, with save: the document
+                                      * as a bitmap for a RAM transfer; a
+                                      * snapshot is always offered */
+  taskapp_data_load_bitmap_fn_t data_load_bitmap; /* optional, with
+                                      * data_load: takes a RAM transfer in
+                                      * place of a scrap file */
 };
 
 /* Install the app for desc: a task with an icon bar icon (labelled name,
@@ -136,7 +151,9 @@ struct taskapp_desc
  * on the icon, or on an instance's main window, gets a
  * wuss_MESSAGE_DATA_SAVE_ACK naming an unsafe scrap file (path_scrap) if
  * desc->data_load is set and, when desc->opens is, the type is in it; the
- * scrap file is deleted once loaded. With desc->drop_only, SELECT does
+ * scrap file is deleted once loaded. If desc->data_load_bitmap is set and
+ * the Save As offers one, it gets a wuss_MESSAGE_RAM_FETCH instead and the
+ * bitmap arrives in a wuss_MESSAGE_RAM_TRANSMIT. With desc->drop_only, SELECT does
  * nothing, so a drop is the only way to open an instance.
  * Does nothing, returning result_OK, if desc is already installed. Without
  * the icon bar, calls desc->create at once instead. */
@@ -177,7 +194,9 @@ result_t taskapp_spawn(wuss_t               *wuss,
 
 /* A DataLoad on an instance's window: load the file it names through load
  * and acknowledge it. A file that will not load is not acknowledged, so the
- * send bounces to the sender. Messages of any other action are ignored. Call
+ * send bounces to the sender. A RamTransmit goes the same way through the
+ * instance's desc->data_load_bitmap. Messages of any other action are
+ * ignored. Call
  * it from the instance's wuss_EVENT_MESSAGE handler, after checking the
  * message is for the instance's main window. */
 result_t taskapp_window_data_load(wuss_t                *wuss,

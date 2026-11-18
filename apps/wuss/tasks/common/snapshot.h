@@ -19,6 +19,14 @@ result_t snapshot_save_png(wuss_window_t    *window,
                            void             *task_data,
                            const char       *filename);
 
+/* redraw window's content as snapshot_save_png does, into a new
+ * pixelfmt_rgba8888 bitmap made by bitmap_convert, for a RAM transfer.
+ * result_BAD_ARG if window is NULL */
+result_t snapshot_bitmap(wuss_window_t    *window,
+                         wuss_window_fn_t *handle,
+                         void             *task_data,
+                         bitmap_t        **out);
+
 /* create a Save As dialogue for PNG files: wuss_saveas_create with the
  * filetype filled in */
 result_t snapshot_saveas_create(wuss_saveas_t        **out,

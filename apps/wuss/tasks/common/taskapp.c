@@ -60,6 +60,11 @@ static result_t app_data_save(wuss_t               *wuss,
       return result_OK; /* not a type we load: let it bounce */
   }
 
+  /* take a bitmap straight from the saver when both sides can */
+  if (payload->ram && desc->data_load_bitmap != NULL)
+    return wuss_send(wuss, task, payload->reply_window,
+                     wuss_MESSAGE_RAM_FETCH, NULL, 0, msg->my_ref);
+
   if (!path_leaf_valid(payload->leafname) ||
       !path_scrap(SCRAP_APP, payload->leafname, ack.path, sizeof(ack.path)))
     return result_OK;
@@ -91,6 +96,30 @@ static result_t app_load(wuss_t                *wuss,
   return rc;
 }
 
+/* A RamTransmit: hand its bitmap to instance's loader and acknowledge it.
+ * Unacknowledged, it bounces and the saver frees the bitmap. */
+static void app_load_bitmap(wuss_t               *wuss,
+                            wuss_task_t          *delegate,
+                            void                 *instance,
+                            const wuss_message_t *msg)
+{
+  result_t                      rc;
+  taskapp_data_load_bitmap_fn_t load;
+  const wuss_ram_transmit_t    *payload;
+
+  load = ((taskapp_instance_t *) instance)->desc->data_load_bitmap;
+  if (load == NULL || msg->size < sizeof(*payload))
+    return;
+
+  payload = (const wuss_ram_transmit_t *) msg->data;
+  wuss_hourglass_on(wuss);
+  rc = load(instance, payload->bitmap, payload->leafname);
+  wuss_hourglass_off(wuss);
+
+  if (rc == result_OK)
+    (void) wuss_acknowledge(wuss, delegate, msg);
+}
+
 result_t taskapp_window_data_load(wuss_t                *wuss,
                                   wuss_task_t           *delegate,
                                   void                  *instance,
@@ -100,6 +129,8 @@ result_t taskapp_window_data_load(wuss_t                *wuss,
   char   path[DPTLIB_MAXPATH];
   size_t len;
 
+  if (msg->action == wuss_MESSAGE_RAM_TRANSMIT)
+    app_load_bitmap(wuss, delegate, instance, msg);
   if (msg->action != wuss_MESSAGE_DATA_LOAD)
     return result_OK;
 
@@ -170,6 +201,17 @@ static result_t instance_save(const char *path, void *opaque)
                            path);
 }
 
+/* wuss_saveas_bitmap_fn_t: opaque is the taskapp_instance_t */
+static result_t instance_bitmap(bitmap_t **out, void *opaque)
+{
+  taskapp_instance_t *instance;
+
+  instance = opaque;
+
+  return snapshot_bitmap(instance->window, instance->desc->handle, instance,
+                         out);
+}
+
 void taskapp_save_row(taskapp_instance_t    *instance,
                       wuss_menu_item_t      *items,
                       int                    row,
@@ -228,6 +270,9 @@ result_t taskapp_instance_create(wuss_t               *wuss,
                                   save, instance);
     if (rc != result_OK)
       goto failure;
+    wuss_saveas_set_bitmap_fn(instance->saveas,
+                              desc->save != NULL ? desc->save_bitmap
+                                                 : instance_bitmap);
   }
 
   if (desc->init != NULL)
@@ -450,6 +495,14 @@ static result_t app_data_load(app_t *app, const wuss_message_t *msg)
   void    *instance;
   char     path[DPTLIB_MAXPATH];
   size_t   len;
+
+  if (msg->action == wuss_MESSAGE_RAM_TRANSMIT &&
+      app->desc->data_load_bitmap != NULL)
+  {
+    if (app_spawn_instance(app, &instance) == result_OK)
+      app_load_bitmap(app->wuss, app->task, instance, msg);
+    return result_OK;
+  }
 
   if (msg->action != wuss_MESSAGE_DATA_LOAD || app->desc->data_load == NULL)
     return result_OK;
