@@ -170,13 +170,34 @@ static result_t saveas_test_save(const char *path, void *opaque)
   return result_OK;
 }
 
+static int saveas_test_bitmap_calls;
+
+/* bitmap_fn for a RAM transfer: a 3x2 bgrx8888 image, converted as a task
+ * would convert its document */
+static result_t saveas_test_bitmap(bitmap_t **out, void *opaque)
+{
+  unsigned int px[6];
+  bitmap_t     bm;
+
+  NOT_USED(opaque);
+
+  saveas_test_bitmap_calls++;
+  memset(px, 0, sizeof(px));
+  bitmap_init(&bm, SIZE2D(3, 2), pixelfmt_bgrx8888, 3 * 4, NULL, px);
+
+  return bitmap_convert(&bm, pixelfmt_rgba8888, out);
+}
+
 typedef struct saveas_recv
 {
   wuss_t        *wuss;
   wuss_task_t   *self;
   const char    *dir;
   int            suppress_ack;
-  int            unsafe; /* ack with a scrap path, as a loading task does */
+  int            unsafe;     /* ack with a scrap path, as a loading task does */
+  int            ram;        /* answer a DataSave offering RAM with RamFetch */
+  int            refuse_ram; /* leave the RamTransmit unacknowledged */
+  size2d_t       received;   /* size of the last bitmap taken */
 }
 saveas_recv_t;
 
@@ -201,6 +222,14 @@ static result_t saveas_recv_handle(wuss_window_t      *window,
     wuss_data_save_ack_t    ack;
 
     payload = (const wuss_data_save_t *) event->data.message->data;
+    if (tc->ram && payload->ram)
+    {
+      (void) wuss_send(tc->wuss, tc->self, payload->reply_window,
+                       wuss_MESSAGE_RAM_FETCH, NULL, 0,
+                       event->data.message->my_ref);
+      return result_OK;
+    }
+
     ack.unsafe = tc->unsafe;
     snprintf(ack.path, sizeof(ack.path), "%s/saved.txt", tc->dir);
     (void) wuss_send(tc->wuss, tc->self, payload->reply_window,
@@ -209,6 +238,17 @@ static result_t saveas_recv_handle(wuss_window_t      *window,
   }
   else if (event->data.message->action == wuss_MESSAGE_DATA_LOAD)
   {
+    (void) wuss_acknowledge(tc->wuss, tc->self, event->data.message);
+  }
+  else if (event->data.message->action == wuss_MESSAGE_RAM_TRANSMIT &&
+           !tc->refuse_ram)
+  {
+    const wuss_ram_transmit_t *payload;
+
+    payload = (const wuss_ram_transmit_t *) event->data.message->data;
+    if (payload->bitmap->format == pixelfmt_rgba8888)
+      tc->received = payload->bitmap->size;
+    bitmap_destroy(payload->bitmap);
     (void) wuss_acknowledge(tc->wuss, tc->self, event->data.message);
   }
 
@@ -1320,6 +1360,48 @@ ColourSetOK: ;
       rc = wuss_idle(sawuss);
       if (rc != result_OK) goto SaveAsFail;
       if (sa_save_calls != 6) goto SaveAsFail;
+    }
+
+    /* RAM transfer: a receiver that takes a bitmap gets one and no file is
+     * written; a refused bitmap is freed on the bounce (ASan would see a
+     * leak); a receiver that does not take one still gets a file */
+    {
+      wuss_saveas_set_bitmap_fn(sa, saveas_test_bitmap);
+      saveas_test_bitmap_calls = 0;
+      strncpy(sa_path, wuss_saveas_get_path(sa), sizeof(sa_path) - 1);
+      sa_path[sizeof(sa_path) - 1] = '\0';
+
+      (void) wuss_window_set_hidden(sawin, 0);
+      sarecv_tc.ram              = 1;
+      ev.kind                    = wuss_EVENT_DRAG_END;
+      ev.data.drag_end.drop      = sarecvwin;
+      ev.data.drag_end.point     = POINT(50, 50);
+      ev.data.drag_end.cancelled = 0;
+      ev.data.drag_end.button    = wuss_BUTTON_SELECT;
+      if (!wuss_saveas_handle_event(sa, sawin, &ev)) goto SaveAsFail;
+      rc = wuss_idle(sawuss);
+      if (rc != result_OK) goto SaveAsFail;
+      if (saveas_test_bitmap_calls != 1 || sa_save_calls != 6) goto SaveAsFail;
+      if (sarecv_tc.received.w != 3 || sarecv_tc.received.h != 2)
+        goto SaveAsFail;
+      if ((sawin->flags & wuss_WINDOW_HIDDEN) == 0) goto SaveAsFail;
+      if (strcmp(wuss_saveas_get_path(sa), sa_path) != 0) goto SaveAsFail;
+
+      sarecv_tc.refuse_ram = 1;
+      if (!wuss_saveas_handle_event(sa, sawin, &ev)) goto SaveAsFail;
+      rc = wuss_idle(sawuss);
+      if (rc != result_OK) goto SaveAsFail;
+      sarecv_tc.refuse_ram = 0;
+      if (saveas_test_bitmap_calls != 2) goto SaveAsFail;
+
+      /* the bounce ended the transfer: a fresh drag starts another */
+      sarecv_tc.ram = 0;
+      if (!wuss_saveas_handle_event(sa, sawin, &ev)) goto SaveAsFail;
+      rc = wuss_idle(sawuss);
+      if (rc != result_OK) goto SaveAsFail;
+      if (saveas_test_bitmap_calls != 2 || sa_save_calls != 7) goto SaveAsFail;
+
+      wuss_saveas_set_bitmap_fn(sa, NULL);
     }
 
     /* the file icon follows the filetype: b60 has its own, data falls back
