@@ -497,6 +497,13 @@ nodegraph_node_t wuss_nodeview_get_selected(const wuss_nodeview_t *nv)
   return nv->selected;
 }
 
+nodegraph_node_t wuss_nodeview_node_at(const wuss_nodeview_t *nv, point_t p)
+{
+  int port;
+
+  return nodeview_hit(nv, p, &port);
+}
+
 void wuss_nodeview_select(wuss_nodeview_t *nv, nodegraph_node_t node)
 {
   if (node == nv->selected)

@@ -121,6 +121,18 @@ void wuss_nodeview_refresh(wuss_nodeview_t *nodeview);
 nodegraph_node_t wuss_nodeview_get_selected(const wuss_nodeview_t *nodeview);
 
 /**
+ * Find the node under a point, as SELECT would, e.g. to open a menu for the
+ * node under a MENU click.
+ *
+ * \param[in] nodeview Handle.
+ * \param[in] p        Point in window-local content (document) coordinates,
+ *                     as a wuss_EVENT_MOUSE's point.
+ * \return The topmost node whose box or ports contain p, or nodegraph_NONE.
+ */
+nodegraph_node_t wuss_nodeview_node_at(const wuss_nodeview_t *nodeview,
+                                       point_t                p);
+
+/**
  * Select a node, or nodegraph_NONE for none.
  *
  * \param[in] nodeview Handle.
