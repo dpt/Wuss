@@ -945,7 +945,7 @@ static result_t dithering_toggle_palette_window(dithering_task_t *dt)
                                SIZE2D(DITHERING_SWATCHES_W,
                                       DITHERING_SWATCHES_W),
                                "Target palette",
-                               wuss_WINDOW_DEFAULT | wuss_WINDOW_NO_RESIZE_BLIT, /* the grid spans the window, so a resize redraws all of it */
+                               (wuss_WINDOW_DEFAULT & ~wuss_WINDOW_HSCROLL) | wuss_WINDOW_NO_RESIZE_BLIT, /* the grid spans the window, so a resize redraws all of it */
                                wuss_BACKDROP_COLOUR(wuss_COLOUR_WINDOW),
                                SIZE2D(DITHERING_SWATCHES_W,
                                       DITHERING_SWATCHES_W),
