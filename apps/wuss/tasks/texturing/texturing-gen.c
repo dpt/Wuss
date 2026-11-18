@@ -21,7 +21,7 @@
 
 const char *texturing_node_names[TEXTURING_NNODES] =
 {
-  "Clouds", "Marble", "Wood", "Cells", "Stone", "Weave", "Veins",
+  "Clouds", "Marble", "Wood", "Cells", "Stone", "Weave", "Veins", "Checks",
   "Tone", "Blend", "Fill", "Output", "Colours", "Seed", "Colourise",
   "Effects"
 };
@@ -65,6 +65,7 @@ const int texturing_defaults[TEXTURING_NNODES][TEXTURING_NPARAMS] =
   { 5, 100,  25, 315, 100 }, /* Stone */
   { 3, 100,   4,   0      }, /* Weave */
   { 6,  30,   0,  60      }, /* Veins */
+  { 3,  64, 192           }, /* Checks */
   { 48,  0                }, /* Tone: grain, level */
   { 50                    }, /* Blend: amount, % of B */
   { 128                   }, /* Fill: level */
@@ -461,6 +462,14 @@ static void texturing_fill(uint32_t   seed,
       case TEXTURING_KIND_VEINS:
         v = texturing_veins(seed, x, y, param[0], param[1], param[2], mul3);
         break;
+
+      case TEXTURING_KIND_CHECKS:
+        /* 2^param[0] squares across, so the tile always ends on a whole
+         * pair and tiles; the seed goes unused */
+        v = (((x >> (TEXTURING_LOG2_SIZE - param[0])) +
+              (y >> (TEXTURING_LOG2_SIZE - param[0]))) & 1) ? param[2]
+                                                            : param[1];
+        break;
       }
 
       *out++ = v;
@@ -685,6 +694,7 @@ static const nodegraph_class_t texturing_classes[TEXTURING_NNODES] =
   TEXTURING_GENERATOR("Stone"),
   TEXTURING_GENERATOR("Weave"),
   TEXTURING_GENERATOR("Veins"),
+  TEXTURING_GENERATOR("Checks"),
   { "Tone", 2, { TEXTURING_TYPE_VALUES, TEXTURING_TYPE_SEED },
     TEXTURING_TYPE_VALUES, texturing_evaluate, texturing_destroy },
   { "Blend", 2, { TEXTURING_TYPE_VALUES, TEXTURING_TYPE_VALUES },

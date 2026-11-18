@@ -143,6 +143,11 @@ static const confdlg_row_t texturing_rows[TEXTURING_NCONFS][TEXTURING_NPARAMS] =
     /* fine dark mottling between the veins, % */
     { "Dark",       0, 100, 0, TEXTURING_PARAM(3) }
   },
+  { /* Checks: log2 of the squares across, and the two squares' values */
+    { "Scale",      1,   6, 0, TEXTURING_PARAM(0) },
+    { "Low",        0, 255, 0, TEXTURING_PARAM(1) },
+    { "High",       0, 255, 0, TEXTURING_PARAM(2) }
+  },
   { /* Tone: the grain's amplitude, and a level added to every value, which
      * moves a stepped scheme's balance between its tones */
     { "Grain",      0, TEXTURING_GRAIN_MAX, 0,
@@ -175,6 +180,7 @@ static const confdlg_desc_t texturing_confs[TEXTURING_NCONFS] =
   TEXTURING_CONF(TEXTURING_KIND_STONE,  5),
   TEXTURING_CONF(TEXTURING_KIND_WEAVE,  4),
   TEXTURING_CONF(TEXTURING_KIND_VEINS,  4),
+  TEXTURING_CONF(TEXTURING_KIND_CHECKS, 3),
   TEXTURING_CONF(TEXTURING_NODE_TONE,   2),
   TEXTURING_CONF(TEXTURING_NODE_BLEND,  1),
   TEXTURING_CONF(TEXTURING_NODE_FILL,   1)
@@ -213,7 +219,7 @@ texturing_add_groups[] =
   { "Generate", TEXTURING_NKINDS,
     { TEXTURING_KIND_CLOUDS, TEXTURING_KIND_MARBLE, TEXTURING_KIND_WOOD,
       TEXTURING_KIND_CELLS, TEXTURING_KIND_STONE, TEXTURING_KIND_WEAVE,
-      TEXTURING_KIND_VEINS } },
+      TEXTURING_KIND_VEINS, TEXTURING_KIND_CHECKS } },
   { "Adjust",   1, { TEXTURING_NODE_TONE } },
   { "Combine",  1, { TEXTURING_NODE_BLEND } },
   { "Image",    2, { TEXTURING_NODE_COLOURISE, TEXTURING_NODE_EFFECTS } }
