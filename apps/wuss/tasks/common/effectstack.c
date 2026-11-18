@@ -302,15 +302,27 @@ static void effectstack_free_element(effectstack_element_t *el)
     tonemap_destroy(el->u.tone);
 }
 
-static void effectstack_delete(effectstack_t *stack, int index)
+/* Deletes every selected element. */
+static void effectstack_delete_selected(effectstack_t *stack)
 {
-  effectstack_free_element(&stack->elements[index]);
-  array_delete_element(stack->elements, sizeof(stack->elements[0]),
-                       stack->nelements, index);
-  stack->nelements--;
+  int i;
 
-  if (stack->list != NULL)
-    wuss_gridview_clear_selection(stack->list);
+  if (stack->list == NULL || wuss_gridview_selected_count(stack->list) == 0)
+    return;
+
+  /* last first, so a delete moves no element still to be tested */
+  for (i = stack->nelements - 1; i >= 0; i--)
+  {
+    if (!wuss_gridview_is_selected(stack->list, i))
+      continue;
+
+    effectstack_free_element(&stack->elements[i]);
+    array_delete_element(stack->elements, sizeof(stack->elements[0]),
+                         stack->nelements, i);
+    stack->nelements--;
+  }
+
+  wuss_gridview_clear_selection(stack->list);
   effectstack_list_changed(stack);
   effectstack_changed(stack, 1);
 }
@@ -509,7 +521,8 @@ void effectstack_menu_rows(effectstack_t    *stack,
 
   WUSS_MENU_ITEM_MENU(items, first + EFFECTSTACK_ROW_ADD, "Add",
                       wuss_MENU_ITEM_BORROWED_SUBMENU, &stack->add_menu);
-  WUSS_MENU_ITEM(items, first + EFFECTSTACK_ROW_EDIT, "Edit",
+  snprintf(stack->edit_text, sizeof(stack->edit_text), "Edit");
+  WUSS_MENU_ITEM(items, first + EFFECTSTACK_ROW_EDIT, stack->edit_text,
                  wuss_MENU_ITEM_DISABLED);
   WUSS_MENU_ITEM(items, first + EFFECTSTACK_ROW_DELETE, "Delete",
                  wuss_MENU_ITEM_NONE);
@@ -527,6 +540,7 @@ void effectstack_menu_update(effectstack_t *stack)
   wuss_menu_handle_t     handle;
   wuss_menu_item_t      *edit_row;
   effectstack_element_t *el;
+  int                    single;
 
   if (stack->menu == NULL)
     return;
@@ -534,11 +548,22 @@ void effectstack_menu_update(effectstack_t *stack)
   handle   = stack->base->menu_handle;
   el       = effectstack_selected(stack, NULL);
   edit_row = &stack->rows[EFFECTSTACK_ROW_EDIT];
+  single   = el != NULL && wuss_gridview_selected_count(stack->list) == 1;
+
+  /* "Edit 'Blur'" for one element; plain and shaded for several */
+  if (single)
+    snprintf(stack->edit_text, sizeof(stack->edit_text), "Edit '%s'",
+             g_names[el->type]);
+  else
+    snprintf(stack->edit_text, sizeof(stack->edit_text), "Edit");
+  wuss_menu_set_item_text_live(handle, stack->menu,
+                               stack->first + EFFECTSTACK_ROW_EDIT,
+                               stack->edit_text);
 
   edit_row->submenu = NULL;
   edit_row->window  = NULL;
   edit_row->flags   = wuss_MENU_ITEM_DISABLED;
-  if (el != NULL)
+  if (single)
   {
     switch (el->type)
     {
@@ -585,7 +610,6 @@ static result_t effectstack_menu_select(effectstack_t      *stack,
 {
   effectstack_element_t *el;
   colour_t               colour;
-  int                    selected;
 
   *handled = 1;
 
@@ -609,8 +633,7 @@ static result_t effectstack_menu_select(effectstack_t      *stack,
   if (wuss_menu_select_is(event, stack->menu,
                           stack->first + EFFECTSTACK_ROW_DELETE))
   {
-    if (effectstack_selected(stack, &selected) != NULL)
-      effectstack_delete(stack, selected);
+    effectstack_delete_selected(stack);
     return result_OK;
   }
 
@@ -725,8 +748,7 @@ int effectstack_event(effectstack_t      *stack,
   case wuss_EVENT_KEY:
     if (!in_list || event->data.key.code != wuss_KEY_DELETE)
       return 0;
-    if (effectstack_selected(stack, &which) != NULL)
-      effectstack_delete(stack, which);
+    effectstack_delete_selected(stack);
     return 1;
 
   default:

@@ -97,6 +97,7 @@ typedef struct effectstack
   wuss_menu_t              *menu;  /* the owner's menu holding the rows */
   wuss_menu_item_t         *rows;  /* EFFECTSTACK_NROWS of its items */
   int                       first; /* index of rows[0] in menu */
+  char                      edit_text[32]; /* the Edit row's label */
   struct effectstack_edit  *edit;  /* the editing dialogues */
 }
 effectstack_t;
