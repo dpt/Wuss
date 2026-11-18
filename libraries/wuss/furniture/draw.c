@@ -132,39 +132,13 @@ static void draw_title(wuss_t        *wuss,
   if (titlefont == NULL)
     return;
 
-  text_x0 = titlebar->x0 + 2;
-  if (window->flags & wuss_WINDOW_CLOSE)
-  {
-    box_t close;
-
-    wuss__close_box(window, &close);
-    text_x0 = close.x1 + 2;
-  }
-  else if (window->flags & wuss_WINDOW_BACK)
-  {
-    box_t back;
-
-    wuss__back_box(window, &back);
-    text_x0 = back.x1 + 2;
-  }
-
-  text_x1 = titlebar->x1 - 2;
-  if (window->flags & wuss_WINDOW_TOGGLE_SIZE)
-  {
-    box_t toggle;
-
-    wuss__toggle_box(window, &toggle);
-    text_x1 = toggle.x0 - 2;
-  }
-
   /* A title too wide for its slot mustn't bleed into a neighbouring icon:
    * clip drawing to the slot itself, not just the whole titlebar, so a
    * too-long title is cut off cleanly rather than overdrawing whatever
    * furniture the current redraw didn't happen to touch. */
-  text_box.x0 = text_x0;
-  text_box.y0 = titlebar->y0;
-  text_box.x1 = text_x1;
-  text_box.y1 = titlebar->y1;
+  wuss__title_slot_box(window, &text_box);
+  text_x0 = text_box.x0;
+  text_x1 = text_box.x1;
   if (text_x1 <= text_x0 || box_intersection(&text_box, titlebar_clip, &text_clip))
     return;
 

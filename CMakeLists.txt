@@ -218,6 +218,7 @@ set(WUSS_CORE_SOURCES
     libraries/wuss/core/window/get-scroll.c
     libraries/wuss/core/window/get-task.c
     libraries/wuss/core/window/get-title.c
+    libraries/wuss/core/window/get-title-width.c
     libraries/wuss/core/window/get-visible-bounds.c
     libraries/wuss/core/window/invalidate.c
     libraries/wuss/core/window/move.c

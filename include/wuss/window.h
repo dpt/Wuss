@@ -547,6 +547,17 @@ void wuss_window_set_title(wuss_window_t *window, const char *title);
  */
 const char *wuss_window_get_title(const wuss_window_t *window);
 
+/**
+ * The least content width at which a window's titlebar shows its whole
+ * title, between its titlebar icons. Pass it as a minimum width, for example
+ * to wuss_gridview_set_min_width.
+ *
+ * \param[in] window Window to query.
+ * \return Content width in pixels. 0 when the window has no title or no
+ *         titlebar, or when built without furniture.
+ */
+int wuss_window_get_title_width(const wuss_window_t *window);
+
 /* ----------------------------------------------------------------------- */
 
 /** The edge of a parent window that a toolbar or pane attaches to. The

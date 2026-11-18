@@ -24,7 +24,6 @@
 #include "common.h"
 
 #define EFFECTSTACK_LABEL_CHARS 22
-#define EFFECTSTACK_LIST_MIN_W  150 /* content width that fits the title */
 #define EFFECTSTACK_LIST_ROWS   8
 
 static const char *const g_names[EFFECTSTACK__LIMIT] =
@@ -224,29 +223,24 @@ static void effectstack_item(int                   index,
   out->label = stack->label;
 }
 
+/* Sizes the list window to its rows. The gridview's minimum width keeps it
+ * wide enough for its title. */
+static void effectstack_fit_list(effectstack_t *stack)
+{
+  wuss_gridview_fit_window(stack->list, 1, EFFECTSTACK_LIST_ROWS, NULL);
+}
+
 static void effectstack_list_changed(effectstack_t *stack)
 {
   if (stack->list != NULL)
+  {
     (void) wuss_gridview_set_count(stack->list, stack->nelements);
+    /* shrink as well as grow, so a delete leaves no blank rows */
+    effectstack_fit_list(stack);
+  }
 
   /* an open menu must reflect the new stack and selection */
   effectstack_menu_update(stack);
-}
-
-/* Sizes the list window to its rows, but never too narrow for its title. */
-static void effectstack_fit_list(effectstack_t *stack)
-{
-  box_t    bounds;
-  size2d_t sz;
-
-  wuss_gridview_fit_window(stack->list, 1, EFFECTSTACK_LIST_ROWS, NULL);
-
-  wuss_window_get_content_bounds(stack->list_window, &bounds);
-  if (bounds.x1 - bounds.x0 < EFFECTSTACK_LIST_MIN_W)
-  {
-    sz = SIZE2D(EFFECTSTACK_LIST_MIN_W, bounds.y1 - bounds.y0);
-    (void) wuss_window_resize(stack->list_window, sz);
-  }
 }
 
 /* Appends an element of the given type, selects it and re-runs. */
@@ -292,10 +286,7 @@ static result_t effectstack_add(effectstack_t     *stack,
 
   effectstack_list_changed(stack);
   if (stack->list != NULL)
-  {
     wuss_gridview_select(stack->list, stack->nelements - 1);
-    effectstack_fit_list(stack);
-  }
 
   /* the new element is selected only now */
   effectstack_menu_update(stack);
@@ -436,6 +427,8 @@ result_t effectstack_open(effectstack_t *stack, wuss_window_t *window)
     return rc;
 
   wuss_gridview_set_layout(stack->list, 1, 0, 4);
+  wuss_gridview_set_min_width(stack->list,
+                              wuss_window_get_title_width(stack->list_window));
   wuss_gridview_set_drag(stack->list, effectstack_drag);
   (void) wuss_gridview_set_count(stack->list, stack->nelements);
   effectstack_fit_list(stack);

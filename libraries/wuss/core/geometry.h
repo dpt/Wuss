@@ -38,6 +38,9 @@ point_t wuss__toolbar_scroll_clamp(const wuss_window_t *window,
 #ifdef WUSS_FURNITURE
 void            wuss__titlebar_box(const wuss_window_t *window, box_t *out);
 void            wuss__title_hit_box(const wuss_window_t *window, box_t *out);
+/* the part of the titlebar the title text may use, between its icons */
+void            wuss__title_slot_box(const wuss_window_t *window,
+                                     box_t               *out);
 void            wuss__close_box(const wuss_window_t *window, box_t *out);
 void            wuss__close_hit_box(const wuss_window_t *window, box_t *out);
 void            wuss__inner_box(const wuss_window_t *window, box_t *out);
