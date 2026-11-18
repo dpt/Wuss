@@ -164,13 +164,36 @@ static void resizing_saveas_name(resizing_task_t *rt)
   wuss_saveas_set_leafname(rt->base.saveas, leafname);
 }
 
+/* Resize next, an rgba8888 bitmap whose pixels it takes, named path and
+ * name */
+static result_t resizing_take(resizing_task_t *rt,
+                              const bitmap_t  *next,
+                              const char      *path,
+                              const char      *name)
+{
+  result_t rc;
+
+  free(rt->source.base);
+  rt->source = *next;
+  strcpy(rt->name, name);
+  resizing_saveas_name(rt);
+
+  rc = resizing_apply(rt);
+  if (rc != result_OK)
+    return rc;
+
+  snprintf(rt->path, sizeof(rt->path), "%s", path);
+  task_set_doc_title(rt->base.window, path_leaf(path), "Resizing", 0, 0);
+  return result_OK;
+}
+
 /* Load the PNG or JPEG at path and resize it. A load failure keeps the
  * current image and is returned. */
 static result_t resizing_show(resizing_task_t *rt, const char *path)
 {
   result_t rc;
-  bitmap_t next;
   char     name[RESIZING_MAX_NAME_LEN];
+  bitmap_t next;
 
   if (!task_image_name(path, name, sizeof(name)))
     return result_BAD_ARG;
@@ -182,18 +205,34 @@ static result_t resizing_show(resizing_task_t *rt, const char *path)
     return rc;
   }
 
-  free(rt->source.base);
-  rt->source = next;
-  strcpy(rt->name, name);
-  resizing_saveas_name(rt);
+  return resizing_take(rt, &next, path, name);
+}
 
-  rc = resizing_apply(rt);
-  if (rc != result_OK)
-    return rc;
+/* taskapp_data_load_bitmap_fn_t: resize a RAM transfer, named leafname */
+static result_t resizing_show_bitmap(void       *instance,
+                                     bitmap_t   *bm,
+                                     const char *leafname)
+{
+  char name[RESIZING_MAX_NAME_LEN];
 
-  snprintf(rt->path, sizeof(rt->path), "%s", path);
-  task_set_doc_title(rt->base.window, path_leaf(path), "Resizing", 0, 0);
+  if (!task_image_name(leafname, name, sizeof(name)))
+    return result_BAD_ARG;
+
+  (void) resizing_take(instance, bm, leafname, name);
+  free(bm); /* its pixels are taken */
   return result_OK;
+}
+
+/* wuss_saveas_bitmap_fn_t: opaque is the resizing_task_t */
+static result_t resizing_saveas_bitmap(bitmap_t **out, void *opaque)
+{
+  resizing_task_t *rt;
+
+  rt = opaque;
+  if (rt->resized == NULL)
+    return result_BAD_ARG;
+
+  return bitmap_convert(rt->resized, pixelfmt_rgba8888, out);
 }
 
 /* ----------------------------------------------------------------------- */
@@ -364,7 +403,9 @@ result_t resizing_app_create(wuss_t *wuss)
     .instance_size = sizeof(resizing_task_t),
     .init          = (taskapp_init_fn_t) resizing_init,
     .handle        = resizing_handle,
-    .save          = resizing_saveas_save
+    .save          = resizing_saveas_save,
+    .save_bitmap   = resizing_saveas_bitmap,
+    .data_load_bitmap = resizing_show_bitmap
   };
 
   return taskapp_install(wuss, &desc);

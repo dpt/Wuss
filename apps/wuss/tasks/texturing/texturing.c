@@ -1289,6 +1289,16 @@ static result_t texturing_saveas_save(const char *path, void *opaque)
   return bitmap_save_png(&task->bm, path);
 }
 
+/* wuss_saveas_bitmap_fn_t: opaque is the texturing_task_t; sends one tile */
+static result_t texturing_saveas_bitmap(bitmap_t **out, void *opaque)
+{
+  texturing_task_t *task;
+
+  task = opaque;
+
+  return bitmap_convert(&task->bm, pixelfmt_rgba8888, out);
+}
+
 static result_t texturing_init(texturing_task_t *task)
 {
   result_t       rc;
@@ -1423,7 +1433,8 @@ result_t texturing_app_create(wuss_t *wuss)
     .handle        = texturing_handle,
     .all_windows   = true, /* the graph window takes clicks and keys too */
     .save_name     = "texture.png",
-    .save          = texturing_saveas_save
+    .save          = texturing_saveas_save,
+    .save_bitmap   = texturing_saveas_bitmap
   };
 
   return taskapp_install(wuss, &desc);

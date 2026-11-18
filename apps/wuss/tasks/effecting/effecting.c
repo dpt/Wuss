@@ -129,28 +129,19 @@ static void effecting_scaleview_choice(wuss_scaleview_choice_t choice,
     (void) wuss_window_place(ec->base.window, &dithermenu_fit_place);
 }
 
-/* Load the PNG or JPEG at path and re-apply, resizing the window to fit. The
- * image and list windows open with the first image, sized and placed for it.
- * A load failure keeps the current image and is returned. */
-static result_t effecting_show(effecting_task_t *ec, const char *path)
+/* Re-apply to next, an rgba8888 bitmap whose pixels it takes, named path and
+ * name, resizing the window to fit. The image and list windows open with the
+ * first image, sized and placed for it. */
+static result_t effecting_take(effecting_task_t *ec,
+                               const bitmap_t   *next,
+                               const char       *path,
+                               const char       *name)
 {
   result_t rc;
-  bitmap_t next;
-  char     name[EFFECTING_MAX_NAME_LEN];
   int      opening;
 
-  if (!task_image_name(path, name, sizeof(name)))
-    return result_BAD_ARG;
-
-  rc = bitmap_load_deep(&next, path, pixelfmt_rgba8888);
-  if (rc != result_OK)
-  {
-    logf_warning("effecting: cannot load \"%s\" (rc=0x%X)", path, rc);
-    return rc;
-  }
-
   free(ec->source.base);
-  ec->source = next;
+  ec->source = *next;
   strcpy(ec->name, name);
   effecting_saveas_name(ec);
 
@@ -171,6 +162,55 @@ static result_t effecting_show(effecting_task_t *ec, const char *path)
     return effectstack_open(&ec->stack, ec->base.window);
 
   return result_OK;
+}
+
+/* Load the PNG or JPEG at path and re-apply, as effecting_take. A load
+ * failure keeps the current image and is returned. */
+static result_t effecting_show(effecting_task_t *ec, const char *path)
+{
+  result_t rc;
+  char     name[EFFECTING_MAX_NAME_LEN];
+  bitmap_t next;
+
+  if (!task_image_name(path, name, sizeof(name)))
+    return result_BAD_ARG;
+
+  rc = bitmap_load_deep(&next, path, pixelfmt_rgba8888);
+  if (rc != result_OK)
+  {
+    logf_warning("effecting: cannot load \"%s\" (rc=0x%X)", path, rc);
+    return rc;
+  }
+
+  return effecting_take(ec, &next, path, name);
+}
+
+/* taskapp_data_load_bitmap_fn_t: re-apply to a RAM transfer, named
+ * leafname */
+static result_t effecting_show_bitmap(void       *instance,
+                                      bitmap_t   *bm,
+                                      const char *leafname)
+{
+  char name[EFFECTING_MAX_NAME_LEN];
+
+  if (!task_image_name(leafname, name, sizeof(name)))
+    return result_BAD_ARG;
+
+  (void) effecting_take(instance, bm, leafname, name);
+  free(bm); /* its pixels are taken */
+  return result_OK;
+}
+
+/* wuss_saveas_bitmap_fn_t: opaque is the effecting_task_t */
+static result_t effecting_saveas_bitmap(bitmap_t **out, void *opaque)
+{
+  effecting_task_t *ec;
+
+  ec = opaque;
+  if (ec->stack.result.base == NULL)
+    return result_BAD_ARG;
+
+  return bitmap_convert(&ec->stack.result, pixelfmt_rgba8888, out);
 }
 
 /* ----------------------------------------------------------------------- */
@@ -392,7 +432,9 @@ result_t effecting_app_create(wuss_t *wuss)
     .init          = (taskapp_init_fn_t) effecting_init,
     .handle        = effecting_handle,
     .all_windows   = true, /* the list window takes clicks and keys too */
-    .save          = effecting_saveas_save
+    .save          = effecting_saveas_save,
+    .save_bitmap   = effecting_saveas_bitmap,
+    .data_load_bitmap = effecting_show_bitmap
   };
 
   return taskapp_install(wuss, &desc);

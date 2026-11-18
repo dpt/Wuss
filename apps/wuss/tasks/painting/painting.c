@@ -120,6 +120,17 @@ static result_t painting_saveas_save(const char *path, void *opaque)
   return result_OK;
 }
 
+/* wuss_saveas_bitmap_fn_t: opaque is the painting_task_t; a copy for another
+ * task, so the document stays unsaved */
+static result_t painting_saveas_bitmap(bitmap_t **out, void *opaque)
+{
+  painting_task_t *pt;
+
+  pt = opaque;
+
+  return bitmap_convert(paintingdoc_bitmap(pt->doc), pixelfmt_rgba8888, out);
+}
+
 /* load the PNG or JPEG at path as the canvas, shrinking the window to the
  * image's stage if that is smaller than the usual view. A file that is no
  * image is tried as a .hex palette. A failure keeps the current canvas and
@@ -486,7 +497,8 @@ static const taskapp_desc_t painting_desc =
   .handle        = painting_handle,
   .all_windows   = true, /* the toolbars take clicks too */
   .save_name     = "painting.png",
-  .save          = painting_saveas_save
+  .save          = painting_saveas_save,
+  .save_bitmap   = painting_saveas_bitmap
 };
 
 /* as painting_create, but with a canvas of the given size and colour */
