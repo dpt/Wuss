@@ -111,6 +111,7 @@
 
 #endif
 #define WUSS_MIN_CONTENT  20 /* resize-drag floor: content can never be squeezed smaller than this */
+#define WUSS_MIN_WELL     5  /* resize-drag floor: a scrollbar's well can never be squeezed shorter than this */
 #define WUSS_SCROLL_INSET 2  /* sausage cross-axis margin from its well's edges, purely cosmetic */
 #define WUSS_DIVIDER_PX   1  /* interior rule between the content area and the furniture on its right/bottom */
 
