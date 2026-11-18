@@ -36,6 +36,9 @@
  * any seam would show. */
 #define TEXTURING_REPEAT 2
 
+/* Arm length of the crosshair marking each tile's top-left. */
+#define TEXTURING_CROSS 3
+
 /* Fills the content area with a procedural texture that tiles seamlessly:
  * every noise lattice wraps at the tile edge. The texture is the output of a
  * node graph (see texturing-gen.h): generators and constant Fills feed Tone
@@ -46,7 +49,8 @@
  * nodes hold the randomness: each feeds the generators and Tones linked to
  * it, and one left unlinked reads as zero.
  *
- * SELECT reseeds every Seed node; ADJUST steps the colour scheme. Menu >
+ * A SELECT drag moves the tiles, a crosshair marking each tile's top-left;
+ * ADJUST steps the colour scheme. Menu >
  * Graph opens the graph window; Menu > Save writes a single tile as a PNG;
  * Menu > Display > Dithering picks how the tile is dithered to the screen;
  * Menu > Presets replaces the graph with a chain of a generator, a Tone, a
@@ -256,6 +260,9 @@ struct texturing_task
   wuss_nodeview_t   *nodeview;
   colour_t           type_colours[TEXTURING_NTYPES]; /* ports and links */
   point_t            add_at; /* where Menu > Add puts a node */
+  point_t            origin; /* a tile's top-left, within one tile */
+  point_t            grab;   /* pointer position at the last drag event */
+  int                dragging; /* SELECT held: pointer moves drag origin */
   wuss_menu_item_t   menu_items[TEXTURING_MENU__LIMIT];
   wuss_menu_item_t   preset_items[16];
   wuss_menu_t        preset_menu;
@@ -604,20 +611,51 @@ static result_t texturing_rechain(texturing_task_t       *task,
 
 /* ----------------------------------------------------------------------- */
 
+/* Draw a small crosshair centred on p: black, with a white centre line, so
+ * it shows on any texture. */
+static void texturing_crosshair(screen_t *scr, point_t p)
+{
+  const int r = TEXTURING_CROSS;
+
+  screen_fill_rect(scr, p.x - r, p.y - 1, SIZE2D(2 * r + 1, 3),
+                   colour_rgb(0x00, 0x00, 0x00));
+  screen_fill_rect(scr, p.x - 1, p.y - r, SIZE2D(3, 2 * r + 1),
+                   colour_rgb(0x00, 0x00, 0x00));
+  screen_fill_hline(scr, p.x - r + 1, p.y, 2 * r - 1,
+                    colour_rgb(0xFF, 0xFF, 0xFF));
+  screen_fill_rect(scr, p.x, p.y - r + 1, SIZE2D(1, 2 * r - 1),
+                   colour_rgb(0xFF, 0xFF, 0xFF));
+}
+
 static result_t texturing_redraw(const wuss_event_t *event,
                                  texturing_task_t   *task)
 {
+  result_t     rc;
   const box_t *bounds;
+  const box_t *content;
+  point_t      base;
+  int          x, y;
 
-  bounds = event->data.redraw.bounds;
+  bounds  = event->data.redraw.bounds;
+  content = event->data.redraw.content;
+  base    = POINT(bounds->x0 - event->data.redraw.scroll.x + task->origin.x,
+                  bounds->y0 - event->data.redraw.scroll.y + task->origin.y);
 
   /* dithered, as the desktop is often 16 colours */
-  return screen_copy_bitmap_tiled_dithered(event->data.redraw.scr,
-                                           event->data.redraw.content,
-                                           &task->bm,
-                                           POINT(bounds->x0 - event->data.redraw.scroll.x,
-                                                 bounds->y0 - event->data.redraw.scroll.y),
-                                           task->dithering);
+  rc = screen_copy_bitmap_tiled_dithered(event->data.redraw.scr, content,
+                                         &task->bm, base, task->dithering);
+  if (rc != result_OK)
+    return rc;
+
+  /* origin is within one tile, so the tile before base starts off the
+   * content's top-left */
+  for (y = base.y - TEXTURING_SIZE; y <= content->y1 + TEXTURING_CROSS;
+       y += TEXTURING_SIZE)
+    for (x = base.x - TEXTURING_SIZE; x <= content->x1 + TEXTURING_CROSS;
+         x += TEXTURING_SIZE)
+      texturing_crosshair(event->data.redraw.scr, POINT(x, y));
+
+  return result_OK;
 }
 
 static result_t texturing_reseed(texturing_task_t *task)
@@ -673,6 +711,47 @@ static result_t texturing_step_scheme(texturing_task_t *task, int delta)
   return texturing_set_scheme(task, texturing_colours_node(task),
                               (texturing_scheme(task) + delta +
                                TEXTURING_NSCHEMES) % TEXTURING_NSCHEMES);
+}
+
+/* MENU opens the menu, ADJUST steps the colour scheme and a SELECT drag
+ * moves the tile origin. */
+static result_t texturing_mouse(texturing_task_t   *task,
+                                const wuss_event_t *event)
+{
+  point_t point;
+
+  point = event->data.mouse.point;
+
+  if (event->data.mouse.action == wuss_MOUSE_UP)
+  {
+    task->dragging = 0;
+  }
+  else if (event->data.mouse.action == wuss_MOUSE_DOWN)
+  {
+    if (event->data.mouse.button & wuss_BUTTON_MENU)
+      return wuss_menu_open_ticked(task->base.delegate, &task->base.menu, 0,
+                                   wuss_get_pointer(task->base.wuss),
+                                   &task->base.menu_handle);
+    if (event->data.mouse.button & wuss_BUTTON_SELECT)
+    {
+      task->dragging = 1;
+      task->grab     = point;
+    }
+    if (event->data.mouse.button & wuss_BUTTON_ADJUST)
+      return texturing_step_scheme(task, 1);
+  }
+  else if (task->dragging) /* wuss_MOUSE_MOVE */
+  {
+    /* the tile size is a power of two, so masking wraps both signs */
+    task->origin.x = (task->origin.x + point.x - task->grab.x) &
+                     (TEXTURING_SIZE - 1);
+    task->origin.y = (task->origin.y + point.y - task->grab.y) &
+                     (TEXTURING_SIZE - 1);
+    task->grab     = point;
+    wuss_window_invalidate_visible(task->base.window);
+  }
+
+  return result_OK;
 }
 
 /* G: step the Tone's grain to the next preset above it, wrapping. */
@@ -1099,18 +1178,9 @@ static result_t texturing_handle(wuss_window_t      *window,
   case wuss_EVENT_MOUSE:
     if (window == task->graph_window)
       return texturing_graph_mouse(task, event);
-    if (window != task->base.window ||
-        event->data.mouse.action != wuss_MOUSE_DOWN)
+    if (window != task->base.window)
       return result_OK;
-    if (event->data.mouse.button & wuss_BUTTON_MENU)
-      return wuss_menu_open_ticked(task->base.delegate, &task->base.menu, 0,
-                                   wuss_get_pointer(task->base.wuss),
-                                   &task->base.menu_handle);
-    if (event->data.mouse.button & wuss_BUTTON_SELECT)
-      return texturing_reseed(task);
-    if (event->data.mouse.button & wuss_BUTTON_ADJUST)
-      return texturing_step_scheme(task, 1);
-    return result_OK;
+    return texturing_mouse(task, event);
 
   case wuss_EVENT_KEY:
     if (window == task->graph_window)

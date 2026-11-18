@@ -179,7 +179,7 @@ Direct keys:
 | sudoku                              | 1-9                 | Enter digit                                             |
 | sudoku                              | 0 Space Backspace Delete | Clear cell                                         |
 | texturing                           | Left / Right        | Previous / next colours (Right = ADJUST)                |
-| texturing                           | Space               | Reseed (SELECT)                                         |
+| texturing                           | Space               | Reseed                                                  |
 | texturing                           | K                   | Next kind                                               |
 | texturing                           | G                   | Next grain                                              |
 | texturing                           | Delete              | Delete node (graph window)                              |
