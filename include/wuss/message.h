@@ -29,6 +29,7 @@ extern "C"
 #include <stddef.h>
 
 #include "base/result.h"
+#include "framebuf/bitmap.h"
 #include "io/filetype.h"
 #include "io/path.h"
 
@@ -51,7 +52,8 @@ extern "C"
 
 /** Core transfer protocol action codes: DataSave -> DataSaveAck -> (saver
  *  writes the file) -> DataLoad -> DataLoadAck, every step a recorded
- *  send. See docs/windowing/drag-save-plan.md. */
+ *  send, or DataSave -> RamFetch -> RamTransmit -> DataLoadAck to pass a
+ *  bitmap with no file. See docs/windowing/drag-save-plan.md. */
 enum
 {
   wuss_MESSAGE_DATA_SAVE,     /**< Saver -> target: offering a save. */
@@ -83,7 +85,15 @@ enum
   wuss_MESSAGE_PINBOARD_ACTOR_CLICK,
   /** Pinboard -> broadcast: an actor drag ended; see
    *  wuss_pinboard_actor_drop_t. */
-  wuss_MESSAGE_PINBOARD_ACTOR_DROP
+  wuss_MESSAGE_PINBOARD_ACTOR_DROP,
+  /** Target -> saver: in place of a DataSaveAck, take the document as a
+   *  bitmap rather than a file. Sent only if the DataSave set
+   *  wuss_data_save_t::ram. No payload. */
+  wuss_MESSAGE_RAM_FETCH,
+  /** Saver -> target: the document as a bitmap, in reply to a RAM_FETCH; see
+   *  wuss_ram_transmit_t. Recorded: acknowledging it completes the transfer
+   *  as a DataLoad does. */
+  wuss_MESSAGE_RAM_TRANSMIT
 };
 
 /** Operations for wuss_pinboard_actor_t::op. */
@@ -160,14 +170,32 @@ wuss_pinboard_actor_drop_t;
  * reply_window is the saver's own window (see wuss_saveas_window),
  * single-process-valid, so a generic recipient (e.g. Filer) can address the
  * DataSaveAck back to the saver without any task-to-window lookup in core.
+ *
+ * ram is non-zero if the saver can also send the document as a bitmap: a
+ * target that takes one may reply \ref wuss_MESSAGE_RAM_FETCH in place of a
+ * DataSaveAck, and no file is written.
  */
 typedef struct
 {
   filetype_t     filetype;
   char           leafname[DPTLIB_MAXPATH];
   wuss_window_t *reply_window;
+  int            ram;
 }
 wuss_data_save_t;
+
+/**
+ * Wire payload for \ref wuss_MESSAGE_RAM_TRANSMIT. The bitmap is
+ * pixelfmt_rgba8888, allocated as bitmap_convert does. A target that
+ * acknowledges the message owns it and frees it with bitmap_destroy; one
+ * that does not leaves it to the saver, which frees it on the bounce.
+ */
+typedef struct
+{
+  bitmap_t *bitmap;                   /**< The document. */
+  char      leafname[DPTLIB_MAXPATH]; /**< Its name, as in the DataSave. */
+}
+wuss_ram_transmit_t;
 
 /**
  * Wire payload for \ref wuss_MESSAGE_DATA_SAVE_ACK. A target that keeps the
