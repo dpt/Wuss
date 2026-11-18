@@ -81,15 +81,15 @@ struct wuss_saveas
 
   /* Transfer state; transfer_active gates a fresh drag from starting a
    * second one and gates a stray reply after a bounce. save_target is the
-   * window the DataSave was addressed to -- the DataLoad that follows must
-   * go back to the same window, since a wuss_task_t has no single "the"
-   * window to derive it from. */
+   * window, and icon if any (an icon bar icon), the DataSave was addressed
+   * to -- the DataLoad that follows must go back to the same place, since a
+   * wuss_task_t has no single "the" window to derive it from. */
   int                      transfer_active;
   int                      keep_open; /* set from the drag's button: an
                                        * ADJUST drag-save leaves the dialogue
                                        * open for a repeat save, a SELECT one
                                        * closes it once the transfer completes */
-  wuss_window_t           *save_target;
+  wuss_msg_target_t        save_target;
   unsigned int             save_ref;
   unsigned int             load_ref;
 };
@@ -340,7 +340,8 @@ result_t wuss_saveas_create(wuss_saveas_t        **out,
   sa->save_fn         = save_fn;
   sa->opaque          = opaque;
   sa->transfer_active = 0;
-  sa->save_target     = NULL;
+  sa->save_target.window = NULL;
+  sa->save_target.icon   = NULL;
 
   rc = saveas_solve(wuss, &size, boxes);
   if (rc != result_OK)
@@ -446,8 +447,9 @@ result_t wuss_saveas_open(wuss_saveas_t *saveas)
 static int saveas_handle_drag_end(wuss_saveas_t      *sa,
                                   const wuss_event_t *event)
 {
-  wuss_data_save_t payload;
-  const char      *leafname;
+  const char       *leafname;
+  wuss_data_save_t  payload;
+  wuss_msg_target_t target;
 
   if (sa->transfer_active)
     return 1; /* a transfer is already running: ignore this drag */
@@ -461,12 +463,16 @@ static int saveas_handle_drag_end(wuss_saveas_t      *sa,
   payload.reply_window = wuss_dialogue_window(sa->dialogue);
   strncpy(payload.leafname, leafname, sizeof(payload.leafname) - 1);
 
-  if (wuss_send_recorded(sa->wuss, sa->task, event->data.drag_end.drop,
-                         wuss_MESSAGE_DATA_SAVE, &payload, sizeof(payload),
-                         0, &sa->save_ref) == result_OK)
+  /* over an icon bar icon, the icon's own task is the target */
+  target.window = event->data.drag_end.drop;
+  target.icon   = event->data.drag_end.drop_icon;
+
+  if (wuss_send_recorded_to(sa->wuss, sa->task, &target,
+                            wuss_MESSAGE_DATA_SAVE, &payload, sizeof(payload),
+                            0, &sa->save_ref) == result_OK)
   {
     sa->transfer_active = 1;
-    sa->save_target     = event->data.drag_end.drop;
+    sa->save_target     = target;
     sa->keep_open       = (event->data.drag_end.button &
                            wuss_BUTTON_ADJUST) != 0;
   }
@@ -489,24 +495,30 @@ static int saveas_handle_message(wuss_saveas_t      *sa,
   if (msg->action == wuss_MESSAGE_DATA_SAVE_ACK &&
      msg->your_ref == sa->save_ref)
   {
-    char   path[DPTLIB_MAXPATH];
-    size_t len;
+    wuss_data_save_ack_t ack;
 
-    len = MIN(msg->size, sizeof(path) - 1);
-    strncpy(path, (const char *) msg->data, len);
-    path[len] = '\0';
+    if (msg->size < sizeof(ack))
+    {
+      sa->transfer_active = 0;
+      return 1;
+    }
+    memcpy(&ack, msg->data, sizeof(ack));
+    ack.path[sizeof(ack.path) - 1] = '\0';
 
-    if (saveas_call_save(sa, path) != result_OK)
+    if (saveas_call_save(sa, ack.path) != result_OK)
     {
       sa->transfer_active = 0;
       return 1;
     }
 
-    (void) wuss_icon_set_text(wuss_dialogue_window(sa->dialogue),
-                              sa->leaf_icon, path);
-    if (wuss_send_recorded(sa->wuss, sa->task, sa->save_target,
-                           wuss_MESSAGE_DATA_LOAD, path,
-                           strlen(path) + 1, 0, &sa->load_ref) != result_OK)
+    /* a scrap file is not the document's new home: keep the name */
+    if (!ack.unsafe)
+      (void) wuss_icon_set_text(wuss_dialogue_window(sa->dialogue),
+                                sa->leaf_icon, ack.path);
+    if (wuss_send_recorded_to(sa->wuss, sa->task, &sa->save_target,
+                              wuss_MESSAGE_DATA_LOAD, ack.path,
+                              strlen(ack.path) + 1, 0,
+                              &sa->load_ref) != result_OK)
       sa->transfer_active = 0;
 
     return 1;

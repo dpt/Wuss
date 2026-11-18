@@ -176,6 +176,7 @@ typedef struct saveas_recv
   wuss_task_t   *self;
   const char    *dir;
   int            suppress_ack;
+  int            unsafe; /* ack with a scrap path, as a loading task does */
 }
 saveas_recv_t;
 
@@ -196,13 +197,14 @@ static result_t saveas_recv_handle(wuss_window_t      *window,
 
   if (event->data.message->action == wuss_MESSAGE_DATA_SAVE)
   {
-    char                    path[DPTLIB_MAXPATH];
     const wuss_data_save_t *payload;
+    wuss_data_save_ack_t    ack;
 
     payload = (const wuss_data_save_t *) event->data.message->data;
-    snprintf(path, sizeof(path), "%s/saved.txt", tc->dir);
+    ack.unsafe = tc->unsafe;
+    snprintf(ack.path, sizeof(ack.path), "%s/saved.txt", tc->dir);
     (void) wuss_send(tc->wuss, tc->self, payload->reply_window,
-                     wuss_MESSAGE_DATA_SAVE_ACK, path, strlen(path) + 1,
+                     wuss_MESSAGE_DATA_SAVE_ACK, &ack, sizeof(ack),
                      event->data.message->my_ref);
   }
   else if (event->data.message->action == wuss_MESSAGE_DATA_LOAD)
@@ -1304,10 +1306,20 @@ ColourSetOK: ;
       sarecv_tc.dir = sa_scratch;
       if (sa_save_calls != 4) goto SaveAsFail;
       if (strcmp(wuss_saveas_get_path(sa), "renamed") != 0) goto SaveAsFail;
+
+      /* a scrap (unsafe) DataSaveAck saves but keeps the leafname */
+      sarecv_tc.unsafe = 1;
       if (!wuss_saveas_handle_event(sa, sawin, &ev)) goto SaveAsFail;
       rc = wuss_idle(sawuss);
       if (rc != result_OK) goto SaveAsFail;
+      sarecv_tc.unsafe = 0;
       if (sa_save_calls != 5) goto SaveAsFail;
+      if (strcmp(wuss_saveas_get_path(sa), "renamed") != 0) goto SaveAsFail;
+
+      if (!wuss_saveas_handle_event(sa, sawin, &ev)) goto SaveAsFail;
+      rc = wuss_idle(sawuss);
+      if (rc != result_OK) goto SaveAsFail;
+      if (sa_save_calls != 6) goto SaveAsFail;
     }
 
     /* the file icon follows the filetype: b60 has its own, data falls back

@@ -132,8 +132,12 @@ struct taskapp_desc
  * is acknowledged only if that returns result_OK. A wuss_MESSAGE_DATA_OPEN
  * broadcast (a file double-clicked in a Filer) whose filetype is in
  * desc->opens is acknowledged at once and then opened the same way; a load
- * that fails is left for desc->data_load to report. With desc->drop_only,
- * SELECT does nothing, so a drop is the only way to open an instance.
+ * that fails is left for desc->data_load to report. A Save As icon dropped
+ * on the icon, or on an instance's main window, gets a
+ * wuss_MESSAGE_DATA_SAVE_ACK naming an unsafe scrap file (path_scrap) if
+ * desc->data_load is set and, when desc->opens is, the type is in it; the
+ * scrap file is deleted once loaded. With desc->drop_only, SELECT does
+ * nothing, so a drop is the only way to open an instance.
  * Does nothing, returning result_OK, if desc is already installed. Without
  * the icon bar, calls desc->create at once instead. */
 result_t taskapp_install(wuss_t *wuss, const taskapp_desc_t *desc);

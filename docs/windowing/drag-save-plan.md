@@ -8,7 +8,7 @@ below is implemented.
 
 - v1 is **save only**: drag the Save As icon onto a Filer directory window.
 - Deferred, but the protocol leaves room for them: load from the Filer,
-  task-to-task transfer and RAM transfer.
+  task-to-task transfer and RAM transfer. The first two have since landed.
 - wuss messaging is internal. It is not bridged to the real RISC OS Wimp; on
   RISC OS the whole of wuss runs inside one Wimp task.
 
@@ -90,7 +90,11 @@ Every step is a recorded send:
 
 1. The saver sends `DataSave(point, estimated size or -1, filetype,
    leafname)` to the drop target; the target window is in the header.
-2. The target replies `DataSaveAck(full path)`.
+2. The target replies `DataSaveAck(unsafe, full path)`. A Filer sends
+   `unsafe = 0` and the saver adopts the path. A task that only loads the
+   data sends a scrap path (`path_scrap`) with `unsafe = 1`: the saver keeps
+   its name and the target deletes the file once loaded. See
+   [live-links-plan.md](live-links-plan.md).
 3. The saver writes the file, calls `filetype_set`, then sends
    `DataLoad(path)`.
 4. The target replies `DataLoadAck`.
@@ -233,7 +237,8 @@ All steps are complete. Each was committed separately, with its tests.
 
 ## Deferred
 
-- Load from the Filer, task-to-task transfer and RAM transfer.
+- RAM transfer. (Load from the Filer and task-to-task transfer are done;
+  for the latter see [live-links-plan.md](live-links-plan.md).)
 - Error and query boxes.
 - Sprite drag visuals (after masked sprites).
 - Filer copy, move, delete and rename; other views; ADJUST-closes-parent.

@@ -4,6 +4,7 @@
 
 #include <ctype.h>
 #include <stdbool.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -26,17 +27,66 @@
 #include "snapshot.h"
 #include "taskapp.h"
 
-/* Loading a file can take a while: show the hourglass meanwhile. */
+/* ----- app-to-app transfer ----------------------------------------------
+ *
+ * A Save As icon dropped on an instance window or an app's icon gets a
+ * DataSaveAck naming a scrap file with the saver's leafname, so the loader
+ * titles it sensibly, marked unsafe so the saver keeps its own name. The
+ * DataLoad that follows loads the file and app_load deletes it. */
+
+#define SCRAP_APP "Wuss"
+
+/* Answers a DataSave for an app that loads files, and so takes the type */
+static result_t app_data_save(wuss_t               *wuss,
+                              wuss_task_t          *task,
+                              const taskapp_desc_t *desc,
+                              const wuss_message_t *msg)
+{
+  const wuss_data_save_t *payload;
+  const unsigned short   *type;
+  wuss_data_save_ack_t    ack;
+
+  if (msg->action != wuss_MESSAGE_DATA_SAVE || desc->data_load == NULL ||
+      msg->size < sizeof(*payload))
+    return result_OK;
+
+  payload = (const wuss_data_save_t *) msg->data;
+  if (desc->opens != NULL)
+  {
+    for (type = desc->opens; *type != 0; type++)
+      if (*type == payload->filetype.riscos)
+        break;
+    if (*type == 0)
+      return result_OK; /* not a type we load: let it bounce */
+  }
+
+  if (!path_leaf_valid(payload->leafname) ||
+      !path_scrap(SCRAP_APP, payload->leafname, ack.path, sizeof(ack.path)))
+    return result_OK;
+
+  ack.unsafe = 1;
+  return wuss_send(wuss, task, payload->reply_window,
+                   wuss_MESSAGE_DATA_SAVE_ACK, &ack, sizeof(ack),
+                   msg->my_ref);
+}
+
+/* Loading a file can take a while: show the hourglass meanwhile. A scrap
+ * file from app_data_save is deleted afterwards, loaded or not. */
 static result_t app_load(wuss_t                *wuss,
                          taskapp_data_load_fn_t load,
                          void                  *instance,
                          const char            *path)
 {
   result_t rc;
+  char     scrap[DPTLIB_MAXPATH];
 
   wuss_hourglass_on(wuss);
   rc = load(instance, path);
   wuss_hourglass_off(wuss);
+
+  if (path_scrap(SCRAP_APP, path_leaf(path), scrap, sizeof(scrap)) &&
+      strcmp(scrap, path) == 0)
+    (void) remove(path);
 
   return rc;
 }
@@ -85,6 +135,14 @@ static result_t instance_handle(wuss_window_t      *window,
 
   if (wuss_menu_select_is(event, &instance->menu, instance->save_row))
     return wuss_saveas_open(instance->saveas);
+
+  /* a Save As dropped on the window; the task's own handler takes the
+   * DataLoad that follows, through taskapp_window_data_load */
+  if (event->kind == wuss_EVENT_MESSAGE && window != NULL &&
+      window == instance->window &&
+      event->data.message->action == wuss_MESSAGE_DATA_SAVE)
+    return app_data_save(instance->wuss, instance->delegate, instance->desc,
+                         event->data.message);
 
   rc = instance->desc->handle(window, event, task_data);
 
@@ -484,6 +542,9 @@ static result_t app_handle(wuss_window_t      *window,
       return result_OK;
     if (event->data.message->action == wuss_MESSAGE_DATA_OPEN)
       return app_data_open(app, event->data.message);
+    if (event->data.message->action == wuss_MESSAGE_DATA_SAVE)
+      return app_data_save(app->wuss, app->task, app->desc,
+                           event->data.message);
     return app_data_load(app, event->data.message);
 
   case wuss_EVENT_MENU_SELECT:

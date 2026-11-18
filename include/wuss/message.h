@@ -55,7 +55,8 @@ extern "C"
 enum
 {
   wuss_MESSAGE_DATA_SAVE,     /**< Saver -> target: offering a save. */
-  wuss_MESSAGE_DATA_SAVE_ACK, /**< Target -> saver: full path to write to. */
+  wuss_MESSAGE_DATA_SAVE_ACK, /**< Target -> saver: where to write; see
+                               *   wuss_data_save_ack_t. */
   wuss_MESSAGE_DATA_LOAD,     /**< Saver -> target: file has been written. */
   wuss_MESSAGE_DATA_LOAD_ACK, /**< Target -> saver: transfer complete. */
   wuss_MESSAGE_DATA_OPEN,     /**< Filer -> broadcast: a file was
@@ -151,9 +152,10 @@ wuss_pinboard_actor_drop_t;
 
 /**
  * Wire payload for \ref wuss_MESSAGE_DATA_SAVE (wuss_message_t::data, cast
- * from the raw bytes). \ref wuss_MESSAGE_DATA_SAVE_ACK/_LOAD_ACK carry no
- * payload of their own shape: the ack's path travels as a plain
- * NUL-terminated string in wuss_message_t::data.
+ * from the raw bytes). \ref wuss_MESSAGE_DATA_SAVE_ACK carries a \ref
+ * wuss_data_save_ack_t; \ref wuss_MESSAGE_DATA_LOAD carries the path as a
+ * plain NUL-terminated string and \ref wuss_MESSAGE_DATA_LOAD_ACK carries
+ * nothing.
  *
  * reply_window is the saver's own window (see wuss_saveas_window),
  * single-process-valid, so a generic recipient (e.g. Filer) can address the
@@ -166,6 +168,21 @@ typedef struct
   wuss_window_t *reply_window;
 }
 wuss_data_save_t;
+
+/**
+ * Wire payload for \ref wuss_MESSAGE_DATA_SAVE_ACK. A target that keeps the
+ * file (a Filer) sends \c unsafe as zero and the saver may adopt \c path as
+ * its document's name. A task that only loads the file sends a scrap path
+ * (see path_scrap) with \c unsafe set, as RISC OS does for `<Wimp$Scrap>`:
+ * the saver writes there but keeps its name, and the target deletes the file
+ * once loaded.
+ */
+typedef struct
+{
+  int  unsafe;               /**< Non-zero if \c path is a scrap file. */
+  char path[DPTLIB_MAXPATH]; /**< Full path to write to. */
+}
+wuss_data_save_ack_t;
 
 /**
  * Wire payload for \ref wuss_MESSAGE_DATA_OPEN (wuss_message_t::data, cast

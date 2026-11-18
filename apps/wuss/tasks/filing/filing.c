@@ -974,21 +974,22 @@ static result_t filing_message(filing_task_t      *task,
 
   if (msg->action == wuss_MESSAGE_DATA_SAVE)
   {
-    char                    path[DPTLIB_MAXPATH];
     const wuss_data_save_t *payload;
+    wuss_data_save_ack_t    ack;
 
     fw = filing_find_by_window(task, window);
     if (fw == NULL)
       return result_OK; /* not one of ours; leave it to bounce */
 
     payload = (const wuss_data_save_t *) msg->data;
-    if (filing_build_save_path(fw, payload->leafname, path,
-                              sizeof(path)) != result_OK)
+    if (filing_build_save_path(fw, payload->leafname, ack.path,
+                              sizeof(ack.path)) != result_OK)
       return result_OK; /* invalid leaf or path too long: never
                          * acknowledged, so the send bounces naturally */
 
+    ack.unsafe = 0;
     (void) wuss_send(task->wuss, task->delegate, payload->reply_window,
-                     wuss_MESSAGE_DATA_SAVE_ACK, path, strlen(path) + 1,
+                     wuss_MESSAGE_DATA_SAVE_ACK, &ack, sizeof(ack),
                      msg->my_ref);
     return result_OK;
   }
