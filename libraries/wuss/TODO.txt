@@ -40,7 +40,6 @@ LAYER 4 - WINDOW FURNITURE & INTERACTION (needs bug layer, text layer)
 LAYER 5 - DRAG & TEMPLATES (needs sprites, config-after-the-fact)
 
 - Window and menu templates (text format?)
-- Drag & Drop: RAM transfer (see docs/windowing/drag-save-plan.md)
 
 
 LAYER 6 - MULTI-TASK (needs stable windows, templates)

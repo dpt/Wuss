@@ -29,7 +29,7 @@ All tasks share one process and one message bus (`include/wuss/message.h`), so a
 
 - **Gesture:** Shift while dropping the Save As icon asks for a link. A plain drop stays a one-shot copy. If Save As cannot see modifiers at drop time, use a "Link" option icon in the dialogue instead.
 - **Source side:** a link is `{target window, path, filetype}`, held by the source instance (`taskapp_instance_t`). It is created when the receiver's LOAD_ACK arrives for a linked save.
-- **Change hook:** add `taskapp_changed(instance)`. Each source app calls it after an edit (a Painting stroke ends, an effect parameter changes). It records the `wuss` time. On `wuss_EVENT_IDLE`, if a change is pending and 250 ms have passed (the debounce), taskapp calls `desc.save(path)` and sends a recorded DATA_LOAD to the target again.
+- **Change hook:** add `taskapp_changed(instance)`. Each source app calls it after an edit (a Painting stroke ends, an effect parameter changes). It records the `wuss` time. On `wuss_EVENT_IDLE`, if a change is pending and 250 ms have passed (the debounce), taskapp calls `desc.save(path)` and sends a recorded DATA_LOAD to the target again. A link made by RAM transfer (see [drag-save-plan.md](drag-save-plan.md)) instead resends RAM_TRANSMIT with a fresh bitmap, so no PNG is encoded per push.
 - **Receiver side:** no change. A repeat DATA_LOAD simply reloads (`painting_load`, Viewing and so on). Protecting a receiver's own unsaved edits from a reload is out of scope for v1.
 - **Teardown:** when the target closes, the recorded DATA_LOAD bounces (`wuss_EVENT_MESSAGE_BOUNCED`) and the source drops the link. When the source instance closes, its links are freed. There is one link per target window; linking again replaces it.
 - **Hot reload to file:** Shift-drop on the Filer gives a link whose target is the Filer window. Each push rewrites the file and the Filer's DATA_LOAD handler rescans. Tasks that opened that file independently get no update; a file watcher (mtime poll on idle) would cover them later.
@@ -37,7 +37,6 @@ All tasks share one process and one message bus (`include/wuss/message.h`), so a
 
 ### Not in v1
 
-- In-memory (RAM) transfer. Scrap files are simple and need no new message. Add a RAM message later if encoding a PNG per push proves too slow.
 - Large fan-out or loop detection. A loop (A to B to A) cannot ping-pong: only local edits call `taskapp_changed`, and loads never do.
 - File watching.
 

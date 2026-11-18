@@ -8,7 +8,7 @@ below is implemented.
 
 - v1 is **save only**: drag the Save As icon onto a Filer directory window.
 - Deferred, but the protocol leaves room for them: load from the Filer,
-  task-to-task transfer and RAM transfer. The first two have since landed.
+  task-to-task transfer and RAM transfer. All three have since landed.
 - wuss messaging is internal. It is not bridged to the real RISC OS Wimp; on
   RISC OS the whole of wuss runs inside one Wimp task.
 
@@ -98,6 +98,27 @@ Every step is a recorded send:
 3. The saver writes the file, calls `filetype_set`, then sends
    `DataLoad(path)`.
 4. The target replies `DataLoadAck`.
+
+#### RAM transfer
+
+All tasks share one process, so an image moves between them as a bitmap, not
+as encoded bytes:
+
+1. `DataSave` carries `ram = 1` when the Save As has a bitmap function
+   (`wuss_saveas_set_bitmap_fn`).
+2. A target that takes bitmaps replies `RamFetch` (no payload) in place of
+   `DataSaveAck`. Any other target replies as above, so the file path is the
+   fallback.
+3. The saver makes a `pixelfmt_rgba8888` bitmap with `bitmap_convert` and
+   sends `RamTransmit(bitmap, leafname)`.
+4. The target takes the bitmap and acknowledges, which core turns into a
+   `DataLoadAck`, so the dialogue closes as before. Unacknowledged, the
+   message bounces and the saver frees the bitmap.
+
+The saver keeps its leafname, as for a scrap file. In the demo, `taskapp`
+sets the bitmap function for every snapshot-saved task and for tasks with
+`save_bitmap`; Viewing, Dithering, Effecting and Resizing take bitmaps through
+`data_load_bitmap`.
 
 Because of the priority rule, the whole handshake completes within the
 `wuss_mouse_click` that ends the drag.
@@ -237,8 +258,6 @@ All steps are complete. Each was committed separately, with its tests.
 
 ## Deferred
 
-- RAM transfer. (Load from the Filer and task-to-task transfer are done;
-  for the latter see [live-links-plan.md](live-links-plan.md).)
 - Error and query boxes.
 - Sprite drag visuals (after masked sprites).
 - Filer copy, move, delete and rename; other views; ADJUST-closes-parent.
