@@ -259,8 +259,11 @@ struct texturing_task
   wuss_menu_item_t   menu_items[TEXTURING_MENU__LIMIT];
   wuss_menu_item_t   preset_items[16];
   wuss_menu_t        preset_menu;
-  wuss_menu_item_t   scheme_items[TEXTURING_NSCHEMES];
-  wuss_menu_t        scheme_menu;
+  wuss_menu_item_t   scheme_items[TEXTURING_NSCHEMES]; /* stepped, smooth */
+  wuss_menu_t        stepped_menu; /* the stepped run of scheme_items */
+  wuss_menu_t        smooth_menu;  /* the smooth run of scheme_items */
+  wuss_menu_item_t   depth_items[2];
+  wuss_menu_t        scheme_menu;  /* Stepped and Smooth submenus */
   dithermenu_t       dither;    /* "Display" submenu: screen dithering */
   wuss_menu_item_t   graph_items[TEXTURING_GRAPH__LIMIT];
   wuss_menu_t        graph_menu;
@@ -634,6 +637,22 @@ static result_t texturing_applied(texturing_task_t *task, int old)
   return texturing_refresh_all(task);
 }
 
+/* Tick scheme in its Colours submenu and that submenu's row, unticking the
+ * rest; handle is the open chain to redraw, or NULL. */
+static void texturing_tick_scheme(texturing_task_t  *task,
+                                  wuss_menu_handle_t handle,
+                                  int                scheme)
+{
+  int stepped;
+
+  stepped = scheme < TEXTURING_NSTEPPED;
+  wuss_menu_tick_exclusive_live(handle, &task->scheme_menu, stepped ? 0 : 1);
+  wuss_menu_tick_exclusive_live(handle, &task->stepped_menu,
+                                stepped ? scheme : -1);
+  wuss_menu_tick_exclusive_live(handle, &task->smooth_menu,
+                                stepped ? -1 : scheme - TEXTURING_NSTEPPED);
+}
+
 /* Set Colours node n's scheme. */
 static result_t texturing_set_scheme(texturing_task_t *task,
                                      nodegraph_node_t  n,
@@ -777,11 +796,11 @@ static void texturing_activate(wuss_nodeview_t *nodeview,
   if (conf == TEXTURING_NODE_COLOURS)
   {
     task->colours = node;
-    (void) wuss_menu_open_ticked(task->base.delegate, &task->scheme_menu,
-                                 1u << texturing_node(task->graph,
-                                                      node)->params[0],
-                                 wuss_get_pointer(task->base.wuss),
-                                 &task->base.menu_handle);
+    texturing_tick_scheme(task, NULL,
+                          texturing_node(task->graph, node)->params[0]);
+    (void) wuss_menu_open(task->base.delegate, &task->scheme_menu,
+                          wuss_get_pointer(task->base.wuss),
+                          &task->base.menu_handle);
     return;
   }
   if (conf == TEXTURING_NODE_SEED)
@@ -945,6 +964,7 @@ static result_t texturing_menu_select(texturing_task_t   *task,
 {
   result_t rc;
   int      g;
+  int      scheme;
 
   for (g = 0; g < TEXTURING_NGROUPS; g++)
     if (event->data.menu_select.menu == &task->group_menus[g])
@@ -959,12 +979,14 @@ static result_t texturing_menu_select(texturing_task_t   *task,
     wuss_window_invalidate_visible(task->base.window);
     rc = result_OK;
   }
-  else if (event->data.menu_select.menu == &task->scheme_menu)
+  else if (event->data.menu_select.menu == &task->stepped_menu ||
+           event->data.menu_select.menu == &task->smooth_menu)
   {
-    rc = texturing_set_scheme(task, task->colours,
-                              event->data.menu_select.index);
-    wuss_menu_tick_exclusive_live(task->base.menu_handle, &task->scheme_menu,
-                                  event->data.menu_select.index);
+    scheme = event->data.menu_select.index;
+    if (event->data.menu_select.menu == &task->smooth_menu)
+      scheme += TEXTURING_NSTEPPED;
+    rc = texturing_set_scheme(task, task->colours, scheme);
+    texturing_tick_scheme(task, task->base.menu_handle, scheme);
   }
   else if (event->data.menu_select.menu == &task->preset_menu)
   {
@@ -1149,7 +1171,8 @@ static result_t texturing_init(texturing_task_t *task)
 
   rc = texturing_rechain(task, TEXTURING_KIND_CLOUDS, NULL,
                          (const texturing_tone_t *)
-                         texturing_defaults[TEXTURING_NODE_TONE], 0);
+                         texturing_defaults[TEXTURING_NODE_TONE],
+                         TEXTURING_SCHEME_SKY);
   if (rc != result_OK)
     return rc;
 
@@ -1180,8 +1203,16 @@ static result_t texturing_init(texturing_task_t *task)
   for (i = 0; i < TEXTURING_NSCHEMES; i++)
     WUSS_MENU_ITEM(task->scheme_items, i, texturing_schemes[i].name,
                    wuss_MENU_ITEM_NONE);
-  WUSS_MENU_TITLE(task->scheme_menu, "Colours", task->scheme_items,
-                  TEXTURING_NSCHEMES);
+  WUSS_MENU_TITLE(task->stepped_menu, "Stepped", task->scheme_items,
+                  TEXTURING_NSTEPPED);
+  WUSS_MENU_TITLE(task->smooth_menu, "Smooth",
+                  task->scheme_items + TEXTURING_NSTEPPED,
+                  TEXTURING_NSCHEMES - TEXTURING_NSTEPPED);
+  WUSS_MENU_ITEM_MENU(task->depth_items, 0, "Stepped", wuss_MENU_ITEM_NONE,
+                      &task->stepped_menu);
+  WUSS_MENU_ITEM_MENU(task->depth_items, 1, "Smooth", wuss_MENU_ITEM_NONE,
+                      &task->smooth_menu);
+  WUSS_MENU_TITLE(task->scheme_menu, "Colours", task->depth_items, 2);
 
   for (i = 0; i < texturing_npresets; i++)
     WUSS_MENU_ITEM(task->preset_items, i, texturing_presets[i].name,

@@ -121,6 +121,12 @@ texturing_scheme_t;
 
 #define TEXTURING_NSCHEMES 23
 
+/* The stepped schemes come first, then the smooth ones. */
+#define TEXTURING_NSTEPPED 9
+
+/* The first smooth scheme, which a new Colours node starts on. */
+#define TEXTURING_SCHEME_SKY TEXTURING_NSTEPPED
+
 extern const texturing_scheme_t texturing_schemes[TEXTURING_NSCHEMES];
 
 /* Fill palette[] with scheme's colour for each value 0..255. */
