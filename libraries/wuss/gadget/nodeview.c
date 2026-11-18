@@ -25,7 +25,8 @@
 /* ----------------------------------------------------------------------- */
 
 #define NODEVIEW_NODE_W   112 /* node box width */
-#define NODEVIEW_RADIUS   6   /* node box corner radius */
+#define NODEVIEW_RADIUS   7   /* node box corner radius: 6 rasterises as a
+                                 45-degree chamfer, so looks squared off */
 #define NODEVIEW_PORT     8   /* port disc diameter */
 #define NODEVIEW_PITCH    20  /* vertical spacing of input ports */
 #define NODEVIEW_PAD      6   /* space round the title and the ports */
