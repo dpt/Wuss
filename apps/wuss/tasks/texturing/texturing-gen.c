@@ -11,6 +11,8 @@
 #include "base/result.h"
 #include "base/utils.h"
 #include "datastruct/nodegraph.h"
+#include "framebuf/bitmap.h"
+#include "geom/size.h"
 #include "utils/rng.h"
 
 #include "texturing-gen.h"
@@ -23,7 +25,7 @@ const char *texturing_node_names[TEXTURING_NNODES] =
 {
   "Clouds", "Marble", "Wood", "Cells", "Stone", "Weave", "Veins", "Checks",
   "Tone", "Blend", "Fill", "Output", "Colours", "Seed", "Colourise",
-  "Effects"
+  "Effects", "Picture"
 };
 
 const texturing_scheme_t texturing_schemes[TEXTURING_NSCHEMES] =
@@ -73,7 +75,8 @@ const int texturing_defaults[TEXTURING_NNODES][TEXTURING_NPARAMS] =
   { TEXTURING_SCHEME_SKY  }, /* Colours: scheme */
   { 0                     }, /* Seed: seed, as an int */
   { 0                     }, /* Colourise */
-  { 0                     }  /* Effects: the task's client holds them */
+  { 0                     }, /* Effects: the task's client holds them */
+  { 0                     }  /* Picture: non-zero once loaded */
 };
 
 /* Presets after the RISC OS desktop textures: a kind and its parameters, the
@@ -661,6 +664,12 @@ static result_t texturing_evaluate(void       *state,
     rc = texturing_effects(n, inputs[0]);
     break;
 
+  case TEXTURING_NODE_PICTURE:
+    /* a loaded picture already sits in out.image */
+    if (!n->params[0])
+      texturing_copy_image(NULL, n->out.image);
+    break;
+
   default:
     texturing_fill(texturing_seed_of(inputs[TEXTURING_GENERATOR_SEED]),
                    n->kind, n->params, n->out.values);
@@ -710,7 +719,9 @@ static const nodegraph_class_t texturing_classes[TEXTURING_NNODES] =
   { "Colourise", 2, { TEXTURING_TYPE_VALUES, TEXTURING_TYPE_SCHEME },
     TEXTURING_TYPE_IMAGE, texturing_evaluate, texturing_destroy },
   { "Effects", 1, { TEXTURING_TYPE_IMAGE }, TEXTURING_TYPE_IMAGE,
-    texturing_evaluate, texturing_destroy }
+    texturing_evaluate, texturing_destroy },
+  { "Picture", 0, { 0 }, TEXTURING_TYPE_IMAGE, texturing_evaluate,
+    texturing_destroy }
 };
 
 result_t texturing_node_add(nodegraph_t           *graph,
@@ -739,6 +750,40 @@ result_t texturing_node_add(nodegraph_t           *graph,
     free(n);
 
   return rc;
+}
+
+result_t texturing_picture_load(texturing_node_t *n, const char *path)
+{
+  result_t                   rc;
+  bitmap_t                   source;
+  bitmap_t                  *sized;
+  const pixelfmt_rgba8888_t *row;
+  int                        x, y;
+
+  rc = bitmap_load_deep(&source, path, pixelfmt_rgba8888);
+  if (rc != result_OK)
+    return rc;
+
+  /* ponytail: stretched to the square tile, not cropped; the edges still
+   * meet only if the picture already tiles */
+  rc = bitmap_resize(&source, SIZE2D(TEXTURING_SIZE, TEXTURING_SIZE),
+                     bitmap_resample_LANCZOS3, 0, &sized);
+  free(source.base);
+  if (rc != result_OK)
+    return rc;
+
+  for (y = 0; y < TEXTURING_SIZE; y++)
+  {
+    row = (const pixelfmt_rgba8888_t *)
+          ((const unsigned char *) sized->base + y * sized->rowbytes);
+    for (x = 0; x < TEXTURING_SIZE; x++)
+      n->out.image[y * TEXTURING_SIZE + x] =
+        row[x] | (pixelfmt_rgba8888_t) PIXELFMT_MAKE_RGBA8888(0, 0, 0, 255);
+  }
+  bitmap_destroy(sized);
+
+  n->params[0] = 1;
+  return result_OK;
 }
 
 texturing_node_t *texturing_node(nodegraph_t *graph, nodegraph_node_t node)

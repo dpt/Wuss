@@ -12,6 +12,7 @@
 #include "base/utils.h"
 #include "datastruct/nodegraph.h"
 #include "framebuf/colour.h"
+#include "io/path.h"
 
 #include "../../../apps/wuss/tasks/texturing/texturing-gen.h"
 
@@ -139,6 +140,69 @@ static result_t texturinggen_flat(pixelfmt_rgba8888_t *got,
   return result_OK;
 }
 
+/* A Picture feeding an Output gives grey until a load, which a missing file
+ * fails and a real one fills, opaque, into the Output. */
+static result_t texturinggen_picture(pixelfmt_rgba8888_t *got,
+                                     const char          *resources)
+{
+  result_t          rc;
+  texturing_ctx_t   ctx;
+  nodegraph_t      *graph;
+  nodegraph_node_t  out, pic;
+  texturing_node_t *n;
+  int               i;
+
+  memset(&ctx, 0, sizeof(ctx));
+  ctx.pixels = got;
+
+  rc = nodegraph_create(&graph);
+  if (rc != result_OK)
+    return rc;
+
+  rc = texturing_node_add(graph, &ctx, TEXTURING_NODE_OUTPUT, NULL, 0, 0,
+                          &out);
+  if (rc == result_OK)
+    rc = texturing_node_add(graph, &ctx, TEXTURING_NODE_PICTURE, NULL, 0, 0,
+                            &pic);
+  if (rc == result_OK)
+    rc = nodegraph_link(graph, pic, out, 0);
+  if (rc == result_OK)
+    rc = nodegraph_evaluate(graph);
+  if (rc != result_OK)
+    goto exit;
+
+  n = texturing_node(graph, pic);
+  if (got[0] != colour_rgb(128, 128, 128).primary ||
+      texturing_picture_load(n, "no-such-picture.png") == result_OK ||
+      n->params[0] != 0)
+  {
+    printf("texturinggen: unloaded Picture is not grey\n");
+    rc = result_TEST_FAILED;
+    goto exit;
+  }
+
+  rc = texturing_picture_load(n, pathf("%s/resources/bmfonts/Tiny/Regular.png",
+                                       resources));
+  if (rc != result_OK)
+    goto exit;
+  nodegraph_dirty(graph, pic);
+  rc = nodegraph_evaluate(graph);
+  if (rc != result_OK)
+    goto exit;
+
+  for (i = 0; i < TEXTURING_NPIXELS; i++)
+    if (got[i] != n->out.image[i] || PIXELFMT_xxxA8888(got[i]) != 255)
+    {
+      printf("texturinggen: loaded Picture: pixel %d is wrong\n", i);
+      rc = result_TEST_FAILED;
+      goto exit;
+    }
+
+exit:
+  nodegraph_destroy(graph);
+  return rc;
+}
+
 static const int fill_low[TEXTURING_NPARAMS]  = { 40 };
 static const int fill_high[TEXTURING_NPARAMS] = { 300 };
 
@@ -148,8 +212,6 @@ result_t texturinggen_test(const char *resources)
   pixelfmt_rgba8888_t *got;
   unsigned char       *want;
   int                  k;
-
-  NOT_USED(resources);
 
   got  = malloc(TEXTURING_NPIXELS * sizeof(*got));
   want = malloc(TEXTURING_NPIXELS);
@@ -184,6 +246,8 @@ result_t texturinggen_test(const char *resources)
     rc = texturinggen_flat(got, want, fill_low, 40);
   if (rc == result_OK)
     rc = texturinggen_flat(got, want, fill_high, 255); /* clamped */
+  if (rc == result_OK)
+    rc = texturinggen_picture(got, resources);
 
 exit:
   free(want);

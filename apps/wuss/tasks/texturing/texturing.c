@@ -47,7 +47,9 @@
  * effect stack (see effectstack.h) over an image, so may be chained, and the
  * one Output node's image is what the window shows and Save writes. Seed
  * nodes hold the randomness: each feeds the generators and Tones linked to
- * it, and one left unlinked reads as zero.
+ * it, and one left unlinked reads as zero. A PNG or JPEG dropped on the
+ * graph window loads, stretched to the tile, into the Picture node under the
+ * pointer or a new one there, an image to feed Effects or the Output.
  *
  * A SELECT drag moves the tiles, a crosshair marking each tile's top-left;
  * ADJUST steps the colour scheme. Menu >
@@ -214,8 +216,8 @@ static const struct
 }
 texturing_add_groups[] =
 {
-  { "Input",    3, { TEXTURING_NODE_FILL, TEXTURING_NODE_COLOURS,
-                     TEXTURING_NODE_SEED } },
+  { "Input",    4, { TEXTURING_NODE_FILL, TEXTURING_NODE_COLOURS,
+                     TEXTURING_NODE_SEED, TEXTURING_NODE_PICTURE } },
   { "Generate", TEXTURING_NKINDS,
     { TEXTURING_KIND_CLOUDS, TEXTURING_KIND_MARBLE, TEXTURING_KIND_WOOD,
       TEXTURING_KIND_CELLS, TEXTURING_KIND_STONE, TEXTURING_KIND_WEAVE,
@@ -992,6 +994,54 @@ static result_t texturing_delete(texturing_task_t *task)
   return texturing_update(task);
 }
 
+/* A PNG or JPEG dropped on the graph window: load it into the Picture node
+ * under the pointer, or into a new one there. A new node whose load fails
+ * goes again. */
+static result_t texturing_drop(texturing_task_t *task, const char *path)
+{
+  result_t         rc;
+  box_t            content;
+  point_t          scroll;
+  point_t          p;
+  nodegraph_node_t n;
+  int              added;
+
+  wuss_window_get_content_bounds(task->graph_window, &content);
+  wuss_window_get_scroll(task->graph_window, &scroll);
+  p   = wuss_get_pointer(task->base.wuss);
+  p.x = p.x - content.x0 + scroll.x;
+  p.y = p.y - content.y0 + scroll.y;
+
+  n     = wuss_nodeview_node_at(task->nodeview, p);
+  added = n == nodegraph_NONE ||
+          texturing_kind_of(task, n) != TEXTURING_NODE_PICTURE;
+  if (added)
+  {
+    task->add_at = p;
+    rc = texturing_add(task, TEXTURING_NODE_PICTURE);
+    if (rc != result_OK)
+      return rc;
+    n = texturing_selected(task);
+  }
+
+  rc = texturing_picture_load(texturing_node(task->graph, n), path);
+  if (rc != result_OK)
+  {
+    logf_warning("texturing: cannot load \"%s\" (rc=0x%X)", path, rc);
+    if (added)
+    {
+      (void) nodegraph_remove(task->graph, n);
+      wuss_nodeview_refresh(task->nodeview);
+    }
+    return rc;
+  }
+
+  nodegraph_dirty(task->graph, n);
+  wuss_nodeview_select(task->nodeview, n);
+  wuss_nodeview_refresh(task->nodeview);
+  return texturing_update(task);
+}
+
 /* MENU over a Colours node opens its scheme menu, elsewhere the graph
  * menu. */
 static result_t texturing_graph_mouse(texturing_task_t   *task,
@@ -1216,6 +1266,13 @@ static result_t texturing_handle(wuss_window_t      *window,
 
   case wuss_EVENT_MENU_SELECT:
     return texturing_menu_select(task, event);
+
+  case wuss_EVENT_MESSAGE:
+    if (window == NULL || window != task->graph_window)
+      return result_OK;
+    return taskapp_window_data_load(task->base.wuss, task->base.delegate, task,
+                                    (taskapp_data_load_fn_t) texturing_drop,
+                                    event->data.message);
 
   default:
     return result_OK;

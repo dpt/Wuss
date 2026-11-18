@@ -39,6 +39,7 @@ enum
   TEXTURING_NODE_SEED,                    /* seed; no inputs */
   TEXTURING_NODE_COLOURISE,               /* values, scheme to an image */
   TEXTURING_NODE_EFFECTS,                 /* an image through effects */
+  TEXTURING_NODE_PICTURE,                 /* an image from a file */
   TEXTURING_NNODES
 };
 
@@ -158,6 +159,11 @@ result_t texturing_node_add(nodegraph_t           *graph,
                             int                    x,
                             int                    y,
                             nodegraph_node_t      *node);
+
+/* Load the PNG or JPEG at path into a Picture node, resampled to fill the
+ * tile and made opaque. Until a load succeeds the node gives flat grey. On
+ * failure the node keeps what it had. The caller dirties the node. */
+result_t texturing_picture_load(texturing_node_t *n, const char *path);
 
 /* The node's state, as passed to texturing_node_add. */
 texturing_node_t *texturing_node(nodegraph_t *graph, nodegraph_node_t node);
