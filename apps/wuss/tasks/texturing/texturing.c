@@ -64,10 +64,10 @@
  *
  * In the graph window, Menu > Add puts a node at the pointer, from
  * submenus by what the node does, and Menu > Delete (Delete) removes the
- * selected node, though never the Output. A double-click on a node opens
- * its parameters, or for a Colours node the list of schemes, or reseeds a
- * Seed node, or opens an Effects node's stack, whose own menu adds, edits
- * and deletes effects and sets the level. */
+ * selected node, though never the Output; MENU over a Colours node opens
+ * its list of schemes instead. A double-click on a node opens its
+ * parameters, or reseeds a Seed node, or opens an Effects node's stack,
+ * whose own menu adds, edits and deletes effects and sets the level. */
 
 /* The seed of the first chain, and of any chain made without a Seed node to
  * take it from. */
@@ -850,8 +850,7 @@ static result_t texturing_randomise(texturing_task_t *task)
 /* ----------------------------------------------------------------------- */
 
 /* wuss_nodeview_activate_fn_t: open the node's dialogue by the pointer, or
- * a Colours node's scheme menu, or reroll a Seed node, or open an Effects
- * node's stack */
+ * reroll a Seed node, or open an Effects node's stack */
 static void texturing_activate(wuss_nodeview_t *nodeview,
                                nodegraph_node_t node,
                                void            *opaque)
@@ -873,16 +872,6 @@ static void texturing_activate(wuss_nodeview_t *nodeview,
       (void) effectstack_open(&fx->stack, task->graph_window);
     return;
   }
-  if (conf == TEXTURING_NODE_COLOURS)
-  {
-    task->colours = node;
-    texturing_tick_scheme(task, NULL,
-                          texturing_node(task->graph, node)->params[0]);
-    (void) wuss_menu_open(task->base.delegate, &task->scheme_menu,
-                          wuss_get_pointer(task->base.wuss),
-                          &task->base.menu_handle);
-    return;
-  }
   if (conf == TEXTURING_NODE_SEED)
   {
     texturing_reroll(task, node);
@@ -890,7 +879,8 @@ static void texturing_activate(wuss_nodeview_t *nodeview,
     return;
   }
   if (conf >= TEXTURING_NCONFS)
-    return; /* the Output's settings are the Display menu */
+    return; /* the Output's settings are the Display menu; a Colours node's
+             * scheme menu opens on MENU */
 
   texturing_bind(task, conf, node);
   win = wuss_dialogue_window(task->confs[conf].dialogue);
@@ -996,9 +986,13 @@ static result_t texturing_delete(texturing_task_t *task)
   return texturing_update(task);
 }
 
+/* MENU over a Colours node opens its scheme menu, elsewhere the graph
+ * menu. */
 static result_t texturing_graph_mouse(texturing_task_t   *task,
                                       const wuss_event_t *event)
 {
+  nodegraph_node_t n;
+
   if (task->nodeview == NULL ||
       wuss_nodeview_handle_event(task->nodeview, event))
     return result_OK;
@@ -1006,6 +1000,19 @@ static result_t texturing_graph_mouse(texturing_task_t   *task,
   if (event->data.mouse.action != wuss_MOUSE_DOWN ||
       !(event->data.mouse.button & wuss_BUTTON_MENU))
     return result_OK;
+
+  n = wuss_nodeview_node_at(task->nodeview, event->data.mouse.point);
+  if (n != nodegraph_NONE &&
+      texturing_kind_of(task, n) == TEXTURING_NODE_COLOURS)
+  {
+    wuss_nodeview_select(task->nodeview, n);
+    task->colours = n;
+    texturing_tick_scheme(task, NULL,
+                          texturing_node(task->graph, n)->params[0]);
+    return wuss_menu_open(task->base.delegate, &task->scheme_menu,
+                          wuss_get_pointer(task->base.wuss),
+                          &task->base.menu_handle);
+  }
 
   task->add_at = event->data.mouse.point;
   return wuss_menu_open_ticked(task->base.delegate, &task->graph_menu, 0,
