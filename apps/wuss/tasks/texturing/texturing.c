@@ -860,6 +860,7 @@ static void texturing_activate(wuss_nodeview_t *nodeview,
   int                  conf;
   texturing_effects_t *fx;
   wuss_window_t       *win;
+  wuss_place_t         place;
 
   NOT_USED(nodeview);
 
@@ -894,7 +895,10 @@ static void texturing_activate(wuss_nodeview_t *nodeview,
   texturing_bind(task, conf, node);
   win = wuss_dialogue_window(task->confs[conf].dialogue);
   (void) wuss_window_set_hidden(win, 1); /* so showing refills it */
-  wuss_window_move(win, wuss_get_pointer(task->base.wuss));
+  /* centred on the pointer, kept within the safe area */
+  place       = task_place;
+  place.flags = wuss_PLACE_POINTER;
+  (void) wuss_window_place(win, &place);
   (void) wuss_window_set_hidden(win, 0);
   wuss_window_restack(win, wuss_ZORDER_FRONT); /* shows where it last was */
 }
