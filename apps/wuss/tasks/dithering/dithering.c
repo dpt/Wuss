@@ -484,26 +484,17 @@ static result_t dithering_fit(dithering_task_t *dt)
                          SIZE2D(0, 0));
 }
 
-/* Load the PNG or JPEG at path and dither it, resizing the window to fit. A
- * load failure keeps the current image and is returned. */
-static result_t dithering_show(dithering_task_t *dt, const char *path)
+/* Dither next, an rgba8888 bitmap whose pixels it takes, named path and
+ * name, resizing the window to fit */
+static result_t dithering_take(dithering_task_t *dt,
+                               const bitmap_t   *next,
+                               const char       *path,
+                               const char       *name)
 {
   result_t rc;
-  bitmap_t next;
-  char     name[DITHERING_MAX_NAME_LEN];
-
-  if (!task_image_name(path, name, sizeof(name)))
-    return result_BAD_ARG;
-
-  rc = bitmap_load_deep(&next, path, pixelfmt_rgba8888);
-  if (rc != result_OK)
-  {
-    logf_warning("dithering: cannot load \"%s\" (rc=0x%X)", path, rc);
-    return rc;
-  }
 
   free(dt->source.base);
-  dt->source = next;
+  dt->source = *next;
   strcpy(dt->name, name);
   dithering_saveas_name(dt);
 
@@ -515,6 +506,54 @@ static result_t dithering_show(dithering_task_t *dt, const char *path)
   task_set_doc_title(dt->base.window, path_leaf(path), "Dithering", 0,
                      dt->scale);
   return dithering_apply(dt, 0);
+}
+
+/* Load the PNG or JPEG at path and dither it, resizing the window to fit. A
+ * load failure keeps the current image and is returned. */
+static result_t dithering_show(dithering_task_t *dt, const char *path)
+{
+  result_t rc;
+  char     name[DITHERING_MAX_NAME_LEN];
+  bitmap_t next;
+
+  if (!task_image_name(path, name, sizeof(name)))
+    return result_BAD_ARG;
+
+  rc = bitmap_load_deep(&next, path, pixelfmt_rgba8888);
+  if (rc != result_OK)
+  {
+    logf_warning("dithering: cannot load \"%s\" (rc=0x%X)", path, rc);
+    return rc;
+  }
+
+  return dithering_take(dt, &next, path, name);
+}
+
+/* taskapp_data_load_bitmap_fn_t: dither a RAM transfer, named leafname */
+static result_t dithering_show_bitmap(void       *instance,
+                                      bitmap_t   *bm,
+                                      const char *leafname)
+{
+  char name[DITHERING_MAX_NAME_LEN];
+
+  if (!task_image_name(leafname, name, sizeof(name)))
+    return result_BAD_ARG;
+
+  (void) dithering_take(instance, bm, leafname, name);
+  free(bm); /* its pixels are taken */
+  return result_OK;
+}
+
+/* wuss_saveas_bitmap_fn_t: opaque is the dithering_task_t */
+static result_t dithering_saveas_bitmap(bitmap_t **out, void *opaque)
+{
+  dithering_task_t *dt;
+
+  dt = opaque;
+  if (dt->dithered == NULL)
+    return result_BAD_ARG;
+
+  return bitmap_convert(dt->dithered, pixelfmt_rgba8888, out);
 }
 
 /* ----- slider dialogues ----- */
@@ -906,7 +945,7 @@ static result_t dithering_toggle_palette_window(dithering_task_t *dt)
                                SIZE2D(DITHERING_SWATCHES_W,
                                       DITHERING_SWATCHES_W),
                                "Target palette",
-                               wuss_WINDOW_DEFAULT | wuss_WINDOW_NO_RESIZE_BLIT, /* the grid spans the window, so a resize redraws all of it */
+                               (wuss_WINDOW_DEFAULT & ~wuss_WINDOW_HSCROLL) | wuss_WINDOW_NO_RESIZE_BLIT, /* the grid spans the window, so a resize redraws all of it */
                                wuss_BACKDROP_COLOUR(wuss_COLOUR_WINDOW),
                                SIZE2D(DITHERING_SWATCHES_W,
                                       DITHERING_SWATCHES_W),
@@ -1484,7 +1523,9 @@ result_t dithering_app_create(wuss_t *wuss)
     .init          = (taskapp_init_fn_t) dithering_init,
     .handle        = dithering_handle,
     .all_windows   = true, /* the palette window takes clicks too */
-    .save          = dithering_saveas_save
+    .save          = dithering_saveas_save,
+    .save_bitmap   = dithering_saveas_bitmap,
+    .data_load_bitmap = dithering_show_bitmap
   };
 
   return taskapp_install(wuss, &desc);

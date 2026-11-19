@@ -30,3 +30,31 @@ void wuss__title_hit_box(const wuss_window_t *window, box_t *out)
   out->x1 = window->visible.x1;
   out->y1 = window->visible.y0 + outline_px + wuss__titlebar_height(window);
 }
+
+/* The titlebar less the close (or back) icon on its left, the toggle-size
+ * icon on its right and a 2-pixel margin each side. */
+void wuss__title_slot_box(const wuss_window_t *window, box_t *out)
+{
+  box_t icon;
+
+  wuss__titlebar_box(window, out);
+
+  out->x0 += 2;
+  if (window->flags & wuss_WINDOW_CLOSE)
+  {
+    wuss__close_box(window, &icon);
+    out->x0 = icon.x1 + 2;
+  }
+  else if (window->flags & wuss_WINDOW_BACK)
+  {
+    wuss__back_box(window, &icon);
+    out->x0 = icon.x1 + 2;
+  }
+
+  out->x1 -= 2;
+  if (window->flags & wuss_WINDOW_TOGGLE_SIZE)
+  {
+    wuss__toggle_box(window, &icon);
+    out->x1 = icon.x0 - 2;
+  }
+}

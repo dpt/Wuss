@@ -146,9 +146,11 @@ result_t wuss_acknowledge(wuss_t               *wuss,
   if (wuss->msg.acking != NULL && msg->my_ref == wuss->msg.acking->my_ref)
     wuss->msg.acked = 1;
 
-  /* A recorded DataLoad completes the transfer: tell the saver, in its task
-   * view (a task has no single window; the saver matches on your_ref). */
-  if (msg->action == wuss_MESSAGE_DATA_LOAD && msg->recorded)
+  /* A recorded DataLoad or RAM transmit completes the transfer: tell the
+   * saver, in its task view (a task has no single window; the saver matches
+   * on your_ref). */
+  if ((msg->action == wuss_MESSAGE_DATA_LOAD ||
+       msg->action == wuss_MESSAGE_RAM_TRANSMIT) && msg->recorded)
   {
     memset(&ack, 0, sizeof(ack));
     ack.action   = wuss_MESSAGE_DATA_LOAD_ACK;

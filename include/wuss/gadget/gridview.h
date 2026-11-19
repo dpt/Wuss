@@ -413,6 +413,16 @@ void wuss_gridview_set_padding(wuss_gridview_t *gridview,
                                int              spacing);
 
 /**
+ * Set the least content width, for example to fit the window's title. The
+ * minimum size, the document extent and \ref wuss_gridview_natural_size all
+ * honour it. Reflows and redraws.
+ *
+ * \param[in] gridview Handle.
+ * \param[in] width    Least content width in pixels; 0 for none.
+ */
+void wuss_gridview_set_min_width(wuss_gridview_t *gridview, int width);
+
+/**
  * Fix the cell size, replacing the measured one. Later calls to \ref
  * wuss_gridview_remeasure keep it; call this again to change it.
  *

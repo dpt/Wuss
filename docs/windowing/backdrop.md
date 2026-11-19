@@ -1,9 +1,15 @@
 # [Wuss](https://github.com/dpt/Wuss) > Backdrop
 
-This document specifies how the desktop backdrop behaves: what it paints, what
-it does when clicked, how files are pinned to it, how its look is changed and
-where notes live. It is implemented by the core `wuss_WINDOW_BACKDROP` flag
-and the Pinboard and Jottings demo tasks. Where the implementation falls
+This document specifies how the desktop backdrop behaves. It covers:
+
+- what the backdrop paints
+- what a click on it does
+- how the user pins files to it
+- how the user changes its look
+- where notes live.
+
+The core `wuss_WINDOW_BACKDROP` flag and the Pinboard and Jottings demo tasks
+implement it. Where the implementation falls
 short of the original specification, the text says so. See
 [ADR 0002](../adr/0002-backdrop-is-a-window.md) for why the backdrop is a
 window.
@@ -38,8 +44,8 @@ One public window flag, `wuss_WINDOW_BACKDROP`:
   and a click leave it there. The window cycling in `core/task/arrange.c`
   (`back_window`) skips it.
 - Creating a second backdrop window fails with
-  `result_WUSS_BACKDROP_EXISTS`. The first is left alone.
-- The flag is needed because tasks must not set `wuss_WINDOW_PINNED`
+  `result_WUSS_BACKDROP_EXISTS`. The first one does not change.
+- Core needs the flag because tasks must not set `wuss_WINDOW_PINNED`
   themselves.
 
 ## Pinboard task
@@ -70,14 +76,14 @@ Pinboard
   Tidy
 ```
 
-- `Dithering` sets how the backdrop image is drawn on paletted and 16bpp
-  screens.
-- `Selection` and `Clear selection` are greyed when nothing is selected. A
-  MENU press over an unselected icon selects that icon only for the life of
+- `Dithering` sets how the Pinboard draws the backdrop image on paletted and
+  16bpp screens.
+- The menu greys `Selection` and `Clear selection` when the selection is
+  empty. A MENU press over an unselected icon selects that icon only for the life of
   the menu, as the Filing task does.
 - `Selection > Reveal` opens a Filer window on the directory holding each
   selected icon's file or directory.
-- `Select all` and `Tidy` are greyed when there are no pinned icons.
+- The menu greys `Select all` and `Tidy` when there are no pinned icons.
 - `Tidy` snaps every pinned icon to the grid, packed from the top left.
 
 ### Changing the backdrop
@@ -89,12 +95,13 @@ Pinboard
   in its window's redraw, over the paint's fill.
 - To set the image, select a pinned PNG and pick `Image > Centre`, `Tile` or
   `Scale`, or drop a PNG on the backdrop with SHIFT held. A plain drop pins
-  the file (see below). `Image > None` removes the image. Those three rows
-  are shaded while there is no image and no PNG pin is selected.
-- The menu rows are updated in place after each pick, so an ADJUST pick
-  that leaves the menu open shows the new state at once.
-- `Clear` returns colour, pattern and image to the theme's backdrop. It is
-  greyed while no image is shown.
+  the file (see below). `Image > None` removes the image. The menu shades
+  those three rows while there is no image and the selection holds no PNG
+  pin.
+- The Pinboard updates the menu rows in place after each pick. So an ADJUST
+  pick that leaves the menu open shows the new state at once.
+- `Clear` returns colour, pattern and image to the theme's backdrop. The menu
+  greys it while the backdrop shows no image.
 
 ### Selection and dragging
 
@@ -103,8 +110,8 @@ Pinboard
 - SELECT on empty backdrop clears the selection.
 - A drag on empty backdrop starts with `wuss_drag_start`, and the Pinboard
   draws the rubber-band box itself. At the end, the icons inside it become
-  selected. SHIFT is read with `wuss_get_modifiers`. With SELECT the
-  selection is replaced. With ADJUST they are added.
+  selected. The Pinboard reads SHIFT with `wuss_get_modifiers`. With SELECT
+  they replace the selection. With ADJUST they join it.
 - A drag on a selected icon drags the selection as a solid drag
   (`wuss_drag_start_bitmap`). A drop on the backdrop window moves the icons.
   A drop on another window transfers the file (see below).
@@ -116,16 +123,16 @@ Pinboard
 - **Pin.** The Filing task's drag-out sends `wuss_MESSAGE_DATA_LOAD(path)`
   straight to the drop target, without DataSave first. When the target is
   the backdrop window, the Pinboard stores the path, places an icon at the
-  drop point and replies `wuss_MESSAGE_DATA_LOAD_ACK`. The file is
-  referenced, not copied.
+  drop point and replies `wuss_MESSAGE_DATA_LOAD_ACK`. The Pinboard refers
+  to the file. It does not copy it.
 - **DataSave.** A DataSave (for example from a save dialogue) has no file on
-  disc yet. The Pinboard does not acknowledge it, so it bounces. Saving to
-  the backdrop is not supported.
+  disc yet. The Pinboard does not acknowledge it, so it bounces. You cannot
+  save to the backdrop.
 - **Duplicates.** Pinning a path that is already pinned moves its icon to
   the drop point. It does not make a second icon.
 - **Icon.** The file-type sprite from the icon pool, with the leafname
-  beneath it. The position snaps to a grid. A drop on an existing icon is
-  placed in the nearest free grid cell.
+  beneath it. The position snaps to a grid. A drop on an existing icon goes
+  in the nearest free grid cell.
 - **Open.** A double-click (or `Selection > Open`) broadcasts
   `wuss_MESSAGE_DATA_OPEN` with a `wuss_data_open_t`, as the Filing task
   does. A directory broadcasts `wuss_MESSAGE_FILER_OPEN_DIR` instead. If no
@@ -133,13 +140,13 @@ Pinboard
   sends it once more, as Filing does.
 - **Drag out.** Dropping a pinned icon on another window sends that window
   `wuss_MESSAGE_DATA_LOAD(path)`, as the Filing task's drag-out does.
-- **Remove.** `Selection > Remove` unpins the icon. The file is never
-  deleted.
+- **Remove.** `Selection > Remove` unpins the icon. It never deletes the
+  file.
 - **Missing files.** A pinned path that no longer exists remains pinned.
   Opening it bounces, as it would from the Filing task.
-- **Pin message.** Any task may pin a path without a drag by broadcasting
-  the core message `wuss_MESSAGE_PINBOARD_PIN`, whose payload is the path
-  as a NUL-terminated string (like `wuss_MESSAGE_FILER_OPEN_DIR`). The
+- **Pin message.** Any task may pin a path without a drag. To do this it
+  broadcasts the core message `wuss_MESSAGE_PINBOARD_PIN`. The payload is the
+  path as a NUL-terminated string (like `wuss_MESSAGE_FILER_OPEN_DIR`). The
   Pinboard acknowledges it and places the icon in the first free grid cell
   from the top left. With no Pinboard running, the message bounces to the
   sender.
@@ -160,10 +167,11 @@ behind every window. It holds at most 16 at once.
   the screen draws over one higher up, so nearer actors cover further
   ones. A click goes to the actor drawn on top.
 - **Borrowed bitmaps.** The Pinboard does not copy the bitmap. The owner
-  keeps it alive until the actor is removed or the owner is destroyed.
+  keeps it alive until it removes the actor or wuss destroys the owner.
 - **Owner destroyed.** Core broadcasts `wuss_MESSAGE_TASK_CLOSE_DOWN` from a
-  task as `wuss_task_destroy` takes it down, before its QUIT, so before it
-  frees anything. The broadcast is delivered at once, not queued. The
+  task while `wuss_task_destroy` destroys it. This happens before the task's
+  QUIT, so before the task frees anything. Core delivers the broadcast at
+  once. It does not queue it. The
   Pinboard then removes that task's actors.
 - **Click.** A SELECT or ADJUST press over an actor broadcasts
   `wuss_MESSAGE_PINBOARD_ACTOR_CLICK` with the owner, id, button and pointer
@@ -190,11 +198,11 @@ through messages.
 - Menu: `New note`, `Colour >`, `Edit` (a toggle between editing the source
   and showing the rendered text), `Pin to backdrop` and `Delete`. A
   double-click on a rendered note also starts editing. ESC stops it.
-- Editing happens at a movable caret. A click places it, and a double-click
-  on a rendered note places it near that point in the source. The arrow keys,
+- Editing happens at a movable caret. A click places it. A double-click on
+  a rendered note places it near that point in the source. The arrow keys,
   Home, End, Page Up and Page Down move it. As in writable icons, Shift moves
-  by word and Ctrl to the end of the line (Alt also moves by word, and Cmd on
-  macOS acts as Ctrl). Ctrl+Home and Ctrl+End, or Ctrl+Up and Ctrl+Down, go to
+  by word and Ctrl moves to the end of the line. Alt also moves by word, and
+  Cmd on macOS acts as Ctrl. Ctrl+Home and Ctrl+End, or Ctrl+Up and Ctrl+Down, go to
   the ends of the note. BACKSPACE and DELETE take the same modifiers. Ctrl+K
   clears to the end of the line and Ctrl+U removes the line. Deleting by line
   works on the source's lines, and moving by line on the wrapped lines. There
@@ -220,16 +228,16 @@ through messages.
   window stays open. A later pin of the same note rewrites its own file, and
   the Pinboard treats it as a duplicate, so no second icon appears.
 - **Name clashes.** Because the directory is permanent, a file with the same
-  name may be left from an earlier session. A note never overwrites a file
+  name may remain from an earlier session. A note never overwrites a file
   it did not write itself. It adds `-2`, `-3` and so on to the leafname
   until the name is free.
 - If the pin message bounces (no Pinboard), the task reports "No pinboard is
-  running" through the error component. The file is kept.
+  running" through the error component. The task keeps the file.
 - **Opening a pinned note.** A double-click on the pinned icon broadcasts
   `wuss_MESSAGE_DATA_OPEN`. The Jottings task acknowledges it for any file
   in the notes directory, including notes from earlier sessions, and opens
   it in a new note window. A note that is already open gets a second
-  window. Markdown files elsewhere are left to the Reading task. This works
+  window. The Reading task handles Markdown files elsewhere. This works
   through the `claims` hook in `taskapp_desc_t` and the start-up order:
   Jottings starts before Reading, so it sees each `wuss_MESSAGE_DATA_OPEN`
   first.
@@ -237,25 +245,25 @@ through messages.
   asks first and then deletes the file as well. A pinned icon for a deleted
   file stays, as for any missing file.
 - When it starts, the task opens one welcome note that explains the desktop
-  to new users. It opens again each time the task is started.
+  to new users. It opens again each time the task starts.
 
 ## Interaction summary
 
 | Pointer over | SELECT | ADJUST | MENU | Drop |
 |---|---|---|---|---|
 | Backdrop, no Pinboard | nothing | nothing | nothing | bounces |
-| Empty backdrop | clear selection; drag: rubber band | drag: rubber band, adding | Pinboard menu | pin; SHIFT: set image |
-| Pinned icon | select; double: open; drag: move or transfer | toggle | Pinboard menu, Selection live | pin in nearest free cell |
-| Actor | to its owner; drag: move | to its owner | Pinboard menu | as for what lies beneath |
+| Empty backdrop | clear selection. Drag: rubber band | drag: rubber band, adding | Pinboard menu | pin. SHIFT: set image |
+| Pinned icon | select. Double: open. Drag: move or transfer | toggle | Pinboard menu, Selection live | pin in nearest free cell |
+| Actor | to its owner. Drag: move | to its owner | Pinboard menu | as for what lies beneath |
 
 ## Persistence
 
-Only note files persist. A note's text is kept once it has been pinned,
+Only note files persist. A note's text survives once the user pins the note,
 because pinning writes it to the permanent notes directory. Pinned icons and
 their positions, unpinned note text, note window positions and a changed
-backdrop all last only for the session. Keeping those needs a pin file and a
-choices system, and is out of scope here. A note file from an earlier session
-can be pinned again from the Filing task.
+backdrop all last only for the session. To keep those needs a pin file and a
+choices system. That is out of scope here. The user can pin a note file from
+an earlier session again from the Filing task.
 
 ## Open questions
 

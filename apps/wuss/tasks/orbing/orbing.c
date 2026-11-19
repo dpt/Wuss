@@ -1247,12 +1247,12 @@ static void orbing_randomise(orbing_task_t *task)
   task->sphere     = colour_random_contrast(&task->rng, task->background);
 }
 
-/* write the sphere alone, sized to its current diameter, as an RGBA PNG:
- * alpha is the disc coverage, so the edge stays anti-aliased and everything
- * outside it is transparent */
-static result_t orbing_save(orbing_task_t *task, const char *path)
+/* draw the sphere alone, sized to its current diameter, into a fresh
+ * bgra8888 bitmap: alpha is the disc coverage, so the edge stays
+ * anti-aliased and everything outside it is transparent. bm->base is NULL
+ * when there is no sphere to draw; the caller frees it */
+static result_t orbing_render(orbing_task_t *task, bitmap_t *bm)
 {
-  result_t       rc;
   box_t          content;
   orbing_frame_t f;
   double         cx, cy, r;
@@ -1261,8 +1261,8 @@ static result_t orbing_save(orbing_task_t *task, const char *path)
   int            x, y;
   double         cov;
   double         n[3], rgb[3];
-  bitmap_t       bm;
 
+  bm->base = NULL;
   if (task->base.window == NULL)
     return result_OK;
 
@@ -1292,16 +1292,28 @@ static result_t orbing_save(orbing_task_t *task, const char *path)
     }
   }
 
-  rc = bitmap_init(&bm, SIZE2D(d, d), pixelfmt_bgra8888,
-                   d * (int) sizeof(*pixels), NULL, pixels);
-  if (rc == result_OK)
-    rc = bitmap_save_png(&bm, path);
-  if (rc != result_OK)
-    logf_warning("orbing: saving \"%s\" failed (rc=0x%X)", path, rc);
-  else
-    logf_info("orbing: saved \"%s\"", path);
+  bm->base = pixels;
+  return bitmap_init(bm, SIZE2D(d, d), pixelfmt_bgra8888,
+                     d * (int) sizeof(*pixels), NULL, pixels);
+}
 
-  free(pixels);
+/* write the sphere alone as an RGBA PNG; see orbing_render */
+static result_t orbing_save(orbing_task_t *task, const char *path)
+{
+  result_t rc;
+  bitmap_t bm;
+
+  rc = orbing_render(task, &bm);
+  if (rc == result_OK && bm.base != NULL)
+  {
+    rc = bitmap_save_png(&bm, path);
+    if (rc != result_OK)
+      logf_warning("orbing: saving \"%s\" failed (rc=0x%X)", path, rc);
+    else
+      logf_info("orbing: saved \"%s\"", path);
+  }
+
+  free(bm.base);
 
   return rc;
 }
@@ -1310,6 +1322,23 @@ static result_t orbing_save(orbing_task_t *task, const char *path)
 static result_t orbing_saveas_save(const char *path, void *opaque)
 {
   return orbing_save(opaque, path);
+}
+
+/* wuss_saveas_bitmap_fn_t: opaque is the orbing_task_t */
+static result_t orbing_saveas_bitmap(bitmap_t **out, void *opaque)
+{
+  result_t rc;
+  bitmap_t bm;
+
+  rc = orbing_render(opaque, &bm);
+  if (rc == result_OK && bm.base == NULL)
+    rc = result_BAD_ARG; /* no sphere to send */
+  if (rc == result_OK)
+    rc = bitmap_convert(&bm, pixelfmt_rgba8888, out);
+
+  free(bm.base);
+
+  return rc;
 }
 
 /* the lit light whose marker is within ORBING_GRAB px of (px, py), or -1 */
@@ -1621,7 +1650,8 @@ result_t orbing_app_create(wuss_t *wuss)
     .handle        = orbing_handle,
     .all_windows   = true, /* the pane opens the menu too */
     .save_name     = "orbing.png",
-    .save          = orbing_saveas_save
+    .save          = orbing_saveas_save,
+    .save_bitmap   = orbing_saveas_bitmap
   };
 
   return taskapp_install(wuss, &desc);

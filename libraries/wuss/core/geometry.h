@@ -38,6 +38,9 @@ point_t wuss__toolbar_scroll_clamp(const wuss_window_t *window,
 #ifdef WUSS_FURNITURE
 void            wuss__titlebar_box(const wuss_window_t *window, box_t *out);
 void            wuss__title_hit_box(const wuss_window_t *window, box_t *out);
+/* the part of the titlebar the title text may use, between its icons */
+void            wuss__title_slot_box(const wuss_window_t *window,
+                                     box_t               *out);
 void            wuss__close_box(const wuss_window_t *window, box_t *out);
 void            wuss__close_hit_box(const wuss_window_t *window, box_t *out);
 void            wuss__inner_box(const wuss_window_t *window, box_t *out);
@@ -306,8 +309,8 @@ static inline void wuss__chrome_carve(const wuss_window_t *window,
 /* The floor a resize-drag or toggle-size will shrink a window's content to:
  * the client's min_doc where it set one, but never below what the window's
  * furniture needs -- its titlebar icons side by side, both arrows of each
- * scrollbar -- nor WUSS_MIN_CONTENT (a window must stay big enough to grab).
- * Nor above the window's own doc extent (a window can't be forced larger than
+ * scrollbar and a WUSS_MIN_WELL well between them -- nor WUSS_MIN_CONTENT
+ * (a window must stay big enough to grab). Nor above the window's own doc extent (a window can't be forced larger than
  * the document it shows) unless the furniture needs more than that. */
 static inline void wuss__min_content(const wuss_window_t *window,
                                      size2d_t            *min)
@@ -317,6 +320,9 @@ static inline void wuss__min_content(const wuss_window_t *window,
   point_t             carve;
   size2d_t            need;
   int                 icons;
+  point_t             panes;
+  int                 strip;
+  int                 corner;
 
   flags = window->flags;
   size  = wuss__button_size(window);
@@ -335,11 +341,22 @@ static inline void wuss__min_content(const wuss_window_t *window,
     need.w = MAX(need.w, WUSS_BUTTON_INSET + icons * (size + WUSS_BUTTON_INSET) - carve.x);
   }
 
-  /* a scrollbar holds an arrow at each end, each behind a divider */
+  /* a scrollbar holds an arrow at each end, each behind a divider, with a
+   * well of at least WUSS_MIN_WELL between them. Its strip spans the content
+   * plus the carve and the panes, less the corner when something owns it
+   * (must match scroll_strip). */
+  wuss__pane_carve(window, &panes);
+  strip = 2 * (size + WUSS_DIVIDER_PX) + WUSS_MIN_WELL;
   if (flags & wuss_WINDOW_VSCROLL)
-    need.h = MAX(need.h, 2 * (size + WUSS_DIVIDER_PX));
+  {
+    corner = (flags & wuss_WINDOW_RESIZE) ? size + WUSS_DIVIDER_PX : 0;
+    need.h = MAX(need.h, strip - carve.y - panes.y + corner);
+  }
   if (flags & wuss_WINDOW_HSCROLL)
-    need.w = MAX(need.w, 2 * (size + WUSS_DIVIDER_PX));
+  {
+    corner = (flags & (wuss_WINDOW_RESIZE | wuss_WINDOW_VSCROLL)) ? size + WUSS_DIVIDER_PX : 0;
+    need.w = MAX(need.w, strip - carve.x - panes.x + corner);
+  }
 
   min->w = CLAMP(window->min_doc.w, need.w, MAX(window->doc.w, need.w));
   min->h = CLAMP(window->min_doc.h, need.h, MAX(window->doc.h, need.h));

@@ -214,6 +214,10 @@ result_t wuss_pointer_bounds_test(const char *resources)
   size = content_size_at(wuss, window, POINT(bounds.x0, bounds.y0));
   if (size.w != min.w || size.h != min.h)
     FAIL("resize minimum bound");
+  /* the titlebar icons hold the width above the hscroll's own floor */
+  if (wuss__vscroll_well_px(window) != WUSS_MIN_WELL ||
+      wuss__hscroll_well_px(window) < WUSS_MIN_WELL)
+    FAIL("scroll wells at the resize minimum");
   size = content_size_at(wuss, window, POINT(bounds.x1 - 1, bounds.y1 - 1));
   if (size.w != 160 || size.h != 120)
     FAIL("resize maximum bound");

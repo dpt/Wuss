@@ -12,7 +12,7 @@ if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE "Release" CACHE STRING "Choose the type of build, options are: Debug Release RelWithDebInfo MinSizeRel." FORCE)
 endif()
 
-project(Wuss VERSION 0.25.0 DESCRIPTION "Minimal window manager" LANGUAGES C)
+project(Wuss VERSION 0.26.0 DESCRIPTION "Minimal window manager" LANGUAGES C)
 
 # The values set in the toolchain file aren't available until this point.
 if(TARGET_RISCOS)
@@ -57,7 +57,7 @@ endif()
 include(FetchContent)
 FetchContent_Declare(dptlib
                      GIT_REPOSITORY https://github.com/dpt/DPTLib.git
-                     GIT_TAG 0.9.0)
+                     GIT_TAG 0.10.0)
 FetchContent_MakeAvailable(dptlib)
 
 # The demo and the tests load bitmap fonts from resources/bmfonts, which are
@@ -89,7 +89,7 @@ endif()
 add_library(WussLib)
 
 set_target_properties(WussLib PROPERTIES
-    VERSION 0.25.0
+    VERSION 0.26.0
     DESCRIPTION "Wuss window manager library"
     C_STANDARD 99
     PREFIX ""  # remove 'lib' prefix
@@ -120,6 +120,7 @@ endif()
 if(WUSS_GADGETS OR WUSS_COMPONENTS)
     list(APPEND PUBLIC_HEADERS include/wuss/gadget/stringset.h)
     list(APPEND PUBLIC_HEADERS include/wuss/gadget/gridview.h)
+    list(APPEND PUBLIC_HEADERS include/wuss/gadget/nodeview.h)
     list(APPEND PUBLIC_HEADERS include/wuss/gadget/rubberband.h)
     list(APPEND PUBLIC_HEADERS include/wuss/gadget/swatches.h)
     list(APPEND PUBLIC_HEADERS include/wuss/gadget/tagcloud.h)
@@ -217,6 +218,7 @@ set(WUSS_CORE_SOURCES
     libraries/wuss/core/window/get-scroll.c
     libraries/wuss/core/window/get-task.c
     libraries/wuss/core/window/get-title.c
+    libraries/wuss/core/window/get-title-width.c
     libraries/wuss/core/window/get-visible-bounds.c
     libraries/wuss/core/window/invalidate.c
     libraries/wuss/core/window/move.c
@@ -314,6 +316,7 @@ set(WUSS_GADGET_SOURCES
     libraries/wuss/gadget/stringset.c
     libraries/wuss/gadget/popup.c
     libraries/wuss/gadget/gridview.c
+    libraries/wuss/gadget/nodeview.c
     libraries/wuss/gadget/rubberband.c
     libraries/wuss/gadget/swatches.c
     libraries/wuss/gadget/tagcloud.c)
@@ -411,6 +414,7 @@ if(BUILD_TESTS)
         libraries/wuss/test/api-test.c
         libraries/wuss/test/gridview-bench-test.c
         libraries/wuss/test/painting-doc-test.c
+        libraries/wuss/test/texturing-gen-test.c
         libraries/wuss/test/harness.c
         libraries/wuss/test/harness.h
         libraries/wuss/menu/test/menu-test.c
@@ -452,6 +456,8 @@ if(BUILD_TESTS)
         libraries/wuss/furniture/test/furniture-test.c
         apps/wuss/tasks/painting/painting-doc.c
         apps/wuss/tasks/painting/painting-doc.h
+        apps/wuss/tasks/texturing/texturing-gen.c
+        apps/wuss/tasks/texturing/texturing-gen.h
         libraries/wuss/test/wuss-test.c)
 
     source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}" FILES ${TEST_SOURCES})
@@ -513,7 +519,6 @@ if(BUILD_APPS)
         apps/wuss/tasks/doughnut/doughnut.c
         apps/wuss/tasks/duckling/duckling.c
         apps/wuss/tasks/effecting/effecting.c
-        apps/wuss/tasks/effecting/effecting-edit.c
         apps/wuss/tasks/filing/filing.c
         apps/wuss/tasks/common/fireball.c
         apps/wuss/tasks/gradient/gradient.c
@@ -549,8 +554,15 @@ if(BUILD_APPS)
         apps/wuss/tasks/reading/reading.c
         apps/wuss/tasks/resizing/resizing.c
         apps/wuss/tasks/tagging/tagging.c
+        apps/wuss/tasks/texturing/texturing.c
+        apps/wuss/tasks/texturing/texturing-gen.c
+        apps/wuss/tasks/texturing/texturing-gen.h
         apps/wuss/tasks/common/confdlg.c
         apps/wuss/tasks/common/confdlg.h
+        apps/wuss/tasks/common/effectstack.c
+        apps/wuss/tasks/common/effectstack.h
+        apps/wuss/tasks/common/effectstack-edit.c
+        apps/wuss/tasks/common/effectstack-edit.h
         apps/wuss/tasks/common/taskapp.c
         apps/wuss/tasks/common/taskapp.h
         apps/wuss/tasks/common/zxtask.c)

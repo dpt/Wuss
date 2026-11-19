@@ -218,6 +218,57 @@ result_t wuss_message_test(const char *resources)
     reap_test_tasks();
   }
 
+  printf("test: acknowledging a recorded RAM transmit sends the saver a "
+        "DataLoadAck\n");
+
+  {
+    static msg_task_t tc_recv, tc_send;
+    wuss_task_t      *delegate_send, *delegate_recv;
+    wuss_window_t    *win_recv;
+    box_t             box_recv;
+    unsigned int      my_ref;
+
+    memset(&tc_recv, 0, sizeof(tc_recv));
+    tc_recv.wuss           = wuss;
+    tc_recv.ack_on_receipt = 1;
+    delegate_recv = mk_task(wuss, msg_handle, &tc_recv);
+    if (delegate_recv == NULL) goto Failure;
+    tc_recv.self = delegate_recv;
+
+    memset(&tc_send, 0, sizeof(tc_send));
+    tc_send.wuss = wuss;
+    delegate_send = mk_task(wuss, msg_handle, &tc_send);
+    if (delegate_send == NULL) goto Failure;
+    tc_send.self = delegate_send;
+
+    box_recv.x0 = 10; box_recv.y0 = 10;
+    box_recv.x1 = 50; box_recv.y1 = 50;
+    rc = wuss_window_create(delegate_recv, &box_recv, "R",
+                            wuss_WINDOW_DEFAULT, wuss_NO_BACKDROP,
+                            SIZE2D(0, 0), SIZE2D(0, 0), &win_recv);
+    if (rc != result_OK)
+      goto Failure;
+
+    rc = wuss_send_recorded(wuss, delegate_send, win_recv,
+                            wuss_MESSAGE_RAM_TRANSMIT, NULL, 0, 0, &my_ref);
+    if (rc != result_OK)
+      goto Failure;
+
+    rc = wuss_idle(wuss);
+    if (rc != result_OK)
+      goto Failure;
+
+    if (tc_recv.message_count != 1 || tc_send.bounced_count != 0)
+      goto Failure;
+    if (tc_send.message_count != 1 ||
+        tc_send.last_message.action != wuss_MESSAGE_DATA_LOAD_ACK ||
+        tc_send.last_message.your_ref != my_ref)
+      goto Failure;
+
+    wuss_window_close(win_recv);
+    reap_test_tasks();
+  }
+
   printf("test: an unacknowledged recorded message bounces to the sender\n");
 
   {

@@ -6,9 +6,9 @@ horizontal scrollbar. Two tasks in the `wuss` demo are of this kind:
 
 - **Filer** (`apps/wuss/tasks/filing/filing.c`): one icon-and-name cell per
   directory entry, laid out by `wuss_gridview` (`libraries/wuss/gadget/gridview.c`).
-  Any column count that fits is used.
+  It uses any column count that fits.
 - **Chars** (`apps/wuss/tasks/chars/chars.c`): one cell per codepoint of a
-  256-codepoint page. Only power-of-two column counts are used, so a page
+  256-codepoint page. It uses only power-of-two column counts, so a page
   divides into whole rows.
 
 This document lists what the two share and how core and `wuss_gridview`
@@ -23,26 +23,27 @@ support it. "Open points" lists what is not done.
 - **Layout width** — the content width for a given column count `n`:
   `n * cell_w + 2 * inset`.
 - **Largest layout width** — the layout width for the largest column count
-  that can ever be shown: the smaller of the item count and what the screen
-  allows.
+  that the window can ever show. That count is the smaller of the item count
+  and what the screen allows.
 - **Screen content ceiling** — the largest content width any window can have
-  on the current screen, after outline and scrollbar carve are subtracted.
+  on the current screen, less the outline and scrollbar carve.
   `wuss_window_get_max_content` returns it.
 
 ## Common behaviour
 
 ### 1. The content is a grid of fixed-size cells
 
-Cell size is fixed by the font and the item type, not by the item contents.
-Gridview measures it once at create time from the largest glyph and a fixed
-number of label characters, so one long name cannot inflate the grid later.
+The font and the item type set the cell size. The item contents do not.
+Gridview measures the cell once at create time, from the largest glyph and a
+fixed number of label characters. So one long name cannot inflate the grid
+later.
 Chars measures it from the shown font's cell metrics plus the system font's
 index text, and re-measures it when the font changes.
 
-Items are placed row-major: item `i` is at column `i % columns` and row
+Items go in row-major order: item `i` is at column `i % columns` and row
 `i / columns`.
 
-### 2. The column count is derived from the width
+### 2. The width sets the column count
 
 On every `wuss_EVENT_OPEN` (the window moved or resized) the task re-reads
 its content width and recomputes the column count:
@@ -56,27 +57,27 @@ its content width and recomputes the column count:
 power-of-two policy. Row count follows from the column count, and the task
 then updates its document extent (`wuss_window_set_doc`) and invalidates the
 visible content. It does not resize the window. If neither the column count
-nor the extent changed, nothing is done.
+nor the extent changed, the task does nothing.
 
 `wuss_EVENT_OPEN` is not sent at create, so a task lays out explicitly once
 after create. `wuss_gridview_create` does this itself.
 
-Hit-testing and drawing both use the same cell geometry, so what is drawn is
-what is hit.
+Hit-testing and drawing both use the same cell geometry, so the hit cell is
+always the drawn cell.
 
-### 3. No horizontal scrollbar; the window can always be dragged wider
+### 3. No horizontal scrollbar: the user can always drag the window wider
 
-The window is created without `wuss_WINDOW_HSCROLL`. Because there is no
-scrollbar, a window narrower than the layout would lose content, so the
+The task creates the window without `wuss_WINDOW_HSCROLL`. With no
+scrollbar, a window narrower than the layout would lose content. So the
 layout wraps instead.
 
 Core caps a resize-drag at the document extent (`doc`, see
-`docs/windowing/wuss.md` "Windows"). For the user to be able to drag a window
-wider than its current layout, `doc.w` must therefore be the *largest layout
-width*, not the current one. It is the smaller of two limits, because more
-columns than either can never be used:
+`docs/windowing/wuss.md` "Windows"). So that the user can drag a window
+wider than its current layout, `doc.w` must be the *largest layout width*,
+not the current one. That width is the smaller of two limits, because the
+window can never use more columns than either:
 
-- the item count (one row holding every item), and
+- the item count (one row holding every item)
 - the screen content ceiling, from `wuss_window_get_max_content`.
 
 Gridview and Chars both do this. `doc.h` is the height of the current layout
@@ -85,18 +86,19 @@ no items the grid is one column and one row.
 
 ### 4. Window width follows the pointer
 
-A resize-drag is not snapped to whole columns. The last column may be partly
+Core does not snap a resize-drag to whole columns. The last column may be partly
 blank until the window reaches a column boundary.
 
 ### 5. Opening: size to the natural layout, capped to the screen
 
-When a window is opened it takes the natural layout width:
+When a window opens, it takes the natural layout width:
 
 1. Take the screen content ceiling, `wuss_window_get_max_content`.
 2. From it, derive the largest column count that fits and the largest layout
    width. Gridview does this when it lays out.
-3. Choose the starting column count: the task's preferred count (Chars: 16;
-   Filer: `FILING_COLUMNS`), capped by the item count and by what fits.
+3. Choose the starting column count. This is the task's preferred count
+   (Chars: 16, Filer: `FILING_COLUMNS`), capped by the item count and by what
+   fits.
 4. Create the window at that layout width, with `doc.w` set to the largest
    layout width (rule 3).
 
@@ -105,14 +107,14 @@ step 3: `columns` wide (or one column per item if fewer) and as many rows as
 the items need, up to `max_rows`.
 
 Filer creates its window, creates the gridview, then resizes the window to the
-natural size. A resize is capped to the screen from the window's top-left, so
-it can stop part way across a column. Filer then resizes again to the whole
+natural size. Core caps a resize to the screen from the window's top-left, so
+the resize can stop part way across a column. Filer then resizes again to the whole
 columns that fit. Chars caps its starting columns by the screen width and
 rewraps once after create.
 
 ### 6. Screen resolution change
 
-`wuss_resize` moves every window back on-screen, shrinks any that no longer
+`wuss_resize` moves every window back on-screen and shrinks any that no longer
 fit. It never grows a window. It then sends
 `wuss_EVENT_RELAYOUT` to every window, whether or not core moved it.
 
@@ -120,7 +122,7 @@ On `wuss_EVENT_RELAYOUT` a task recomputes the screen content ceiling and so
 the largest layout width and `doc.w`:
 
 - **Shrunk:** the columns rewrap as for `wuss_EVENT_OPEN`.
-- **Screen grew:** `doc.w` rises, so the window can be dragged to use the room.
+- **Screen grew:** `doc.w` rises, so the user can drag the window to use the room.
 - **Screen shrank with no move:** `doc.w` falls to match.
 
 Gridview does this itself from `wuss_gridview_handle_event`. Chars does it
@@ -146,7 +148,7 @@ it by hand.
 
 Gridview redraws only the rows the clip reaches. A selection change marks
 only the cells that changed as dirty. A MENU click changes neither the
-selection nor the display. An optional draw callback
+selection nor what the window shows. An optional draw callback
 (`wuss_gridview_set_draw`) replaces the glyph-and-label painter, and
 `wuss_gridview_cell_box` gives a cell's document box.
 
@@ -175,8 +177,8 @@ quantum, the column count and the missing horizontal scrollbar:
   is `hpad + n * (object_width + hpad)` wide.
 - `columns = CLAMP((width - hpad) / (object_width + hpad), 1, nobjects)`.
 - The window has `VSCROLL` only.
-- The extent is reset, and the window force-redrawn, only when the row or
-  column count changes.
+- It resets the extent, and forces a redraw of the window, only when the row
+  or column count changes.
 
 It differs from wuss in these ways.
 
@@ -188,8 +190,8 @@ the extent is already right when the WIMP clamps the window. In wuss,
 does not snap widths, so a pre-open event is not needed.
 
 **Extent width uses both limits.** It is `hpad + maxcolumns * (object_width +
-hpad)` where `maxcolumns` is limited by `nobjects` *and* the screen width
-(`read_screen_dimensions`). `wuss_gridview` now does the same with
+hpad)`. Both `nobjects` *and* the screen width (`read_screen_dimensions`)
+limit `maxcolumns`. `wuss_gridview` now does the same with
 `wuss_window_get_max_content`.
 
 **Drawing is a callback.** `filerwin_redrawfn(redraw, x, y, index, selected,
@@ -199,12 +201,12 @@ the visible rows.
 
 **Gaps in `filerwin`.**
 
-- It reads the screen size only inside `layout()`, and writes the extent only
-  when the rows or columns change, so a screen mode change leaves the extent
+- It reads the screen size only inside `layout()`. It writes the extent only
+  when the rows or columns change. So a screen mode change leaves the extent
   stale until the next resize. Wuss has `wuss_EVENT_RELAYOUT` for this.
 - It opens at a default 1024x512 and lays out afterwards, not at the natural
   size.
-- Font and furniture changes are not handled.
+- It does not handle font and furniture changes.
 - `filerwin_set_nobjects` does not relayout, where `wuss_gridview_set_count`
   does.
 - With `nobjects == 0` the `CLAMP(columns, 1, nobjects)` has its minimum above
@@ -237,15 +239,15 @@ and ADJUST-close. The wuss Filer has none of these yet.
 - Opens with no blank strip at the right, at a width that is `inset + n * cell_w`.
 - Dragging wider adds columns (at each column boundary) and
   stops at the largest layout width.
-- Dragging narrower removes columns; at the minimum width there is one
+- Dragging narrower removes columns. At the minimum width there is one
   column, not zero.
-- The window can be dragged wider after `wuss_resize` enlarges the screen.
-- After `wuss_resize` shrinks the screen below the window's width the grid
-  rewraps and nothing is clipped.
+- The user can drag the window wider after `wuss_resize` enlarges the screen.
+- After `wuss_resize` shrinks the screen below the window's width, the grid
+  rewraps and clips nothing.
 - A font change (where supported) re-measures and resizes to the natural
   layout.
 - An empty window opens one column wide.
 - No horizontal scrollbar is ever shown.
 - Hit-testing and drawing agree at every column count.
-- A selection change redraws only the changed cells; a MENU click redraws
+- A selection change redraws only the changed cells. A MENU click redraws
   nothing.

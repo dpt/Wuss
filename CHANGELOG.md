@@ -8,6 +8,70 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.26.0] - 2026-11-19
+
+### Added
+
+- Texturing: a new Image task that makes seamlessly tiling 256 x 256
+  procedural textures, shown repeated 2 x 2 so any seam would show. The
+  texture is the output of a node graph, edited in the Graph window.
+  - Generator nodes: Clouds, Marble, Wood, Cells, embossed Stone (with
+    highlights), woven Weave (plain, twill or basket), Veins, Checks,
+    Gradient and Fill. Each has its own parameters dialogue.
+  - Other nodes: Seed (SELECT rerolls it), Tone (grain and level), Blend,
+    Colours, Colourise, Effects (an effects stack of its own), Picture (an
+    image dropped on the graph window) and one Output.
+  - Colours: smooth schemes (Sky, Slate, Wood, Lava, Moss, Ice, Sand, Rust,
+    Copper, Gold, Rose, Plum, Ocean, Toxic) ramp. Stepped schemes (Desktop,
+    Grey 16, Linen, Denim, Sage, Clay, Lilac, Ochre, Teal) use five exact
+    tones, as the RISC OS desktop textures do. The Colours menu splits them
+    into Stepped and Smooth submenus.
+  - Menu > Presets gives Plaster, Pebbled, Streaked, Granite, Veined and
+    Rough, after the RISC OS desktop textures. Mutate (M) nudges parameters
+    by up to 15%. Randomise (Ctrl-R) and K replace the graph with a chain.
+  - A SELECT drag moves the tile origin, and a crosshair marks each tile's
+    top-left. Display > Dithering picks Nearest, Bayer or Blue noise. Save
+    writes one tile.
+- `gadget/nodeview.h`: a node graph editor gadget that draws a DPTLib
+  `nodegraph` as rounded, numbered nodes with ports and links coloured by
+  type. SELECT drags nodes and links. `wuss_nodeview_node_at` finds the node
+  under a point.
+- RAM transfer: `wuss_MESSAGE_RAM_FETCH` and `wuss_MESSAGE_RAM_TRANSMIT` hand
+  a document over as an `rgba8888` bitmap, with no file.
+  `wuss_saveas_set_bitmap_fn` lets Save As send one. Viewing, Dithering,
+  Effecting and Resizing take bitmaps. Painting, Dithering, Effecting,
+  Resizing, Texturing and Orbing send them.
+- A Save As icon dropped on another task's window or icon bar icon sends it
+  the document, through a scrap file from DPTLib's `path_scrap`.
+- `wuss_config_t::mouse.no_window_snap` and `no_safe_area_snap` stop a
+  dragged window snapping to screen edges and to safe area edges. Configuring
+  has a new Windowing section with "Snap to screen edges" and "Snap to safe
+  area" options to set them.
+- `wuss_gridview_set_min_width` sets a gridview's minimum width, and
+  `wuss_window_get_title_width` measures the width that shows a window's
+  whole title.
+- Effecting: Delete removes every selected effect. For one selection, the
+  Edit row names the effect, e.g. "Edit 'Blur'".
+- Tagging has an icon.
+
+### Changed
+
+- `wuss_MESSAGE_DATA_SAVE_ACK` carries a `wuss_data_save_ack_t`, not a bare
+  path. Its `unsafe` flag marks the path as a scrap file.
+- Effecting's effects stack moves into `common/effectstack`, so other tasks
+  can use it. The effect icons move into the shared icon pool.
+- Wuss needs DPTLib 0.10.0.
+
+### Fixed
+
+- `wuss_gridview_fit_window` given a place no longer drops columns that
+  would have fitted had the window not opened near the screen's right edge.
+- A scroll bar's well stays at least five pixels long, so a window with a
+  vertical scroll bar and a resize icon can no longer shrink it to nothing.
+- Configuring's section windows, the Palette task's windows and Dithering's
+  Target palette window lose their horizontal scroll bars.
+- Effecting's list window stays within its doc after deletes.
+
 ## [0.25.0] - 2026-11-12
 
 ### Added

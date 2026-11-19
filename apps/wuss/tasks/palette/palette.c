@@ -238,7 +238,7 @@ static result_t palette_open(wuss_t *wuss, bool screen, void **out)
                              &palette_place,
                              SIZE2D(100, 100),
                              screen ? "Screen" : "Palette",
-                             wuss_WINDOW_DEFAULT | wuss_WINDOW_NO_RESIZE_BLIT, /* swatch grid is laid out across the whole window, so a resize must redraw all of it, not just the newly (un)covered edge */
+                             (wuss_WINDOW_DEFAULT & ~wuss_WINDOW_HSCROLL) | wuss_WINDOW_NO_RESIZE_BLIT, /* swatch grid is laid out across the whole window, so a resize must redraw all of it, not just the newly (un)covered edge */
                              wuss_BACKDROP_COLOUR(palette_PICO8_BLACK),
                              SIZE2D(100, 100),
                              SIZE2D(0, 0),

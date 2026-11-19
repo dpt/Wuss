@@ -118,6 +118,9 @@ enum
   CONFIGURING_ST_THEME_LABEL,
   CONFIGURING_ST_THEME_NAME,
   CONFIGURING_ST_THEME_BUTTON,
+  CONFIGURING_ST_WINDOWING,
+  CONFIGURING_ST_SNAP,
+  CONFIGURING_ST_SNAP_SAFE,
   CONFIGURING_ST__LIMIT
 };
 
@@ -443,6 +446,25 @@ static const stack_item_t g_configuring_stack[CONFIGURING_ST__LIMIT] =
                                              0,
                                              0,
                                              stack_ALIGN_FILL),
+
+  [CONFIGURING_ST_WINDOWING] =
+  {
+    .kind      = stack_KIND_VBOX,
+    .parent    = CONFIGURING_ST_ROOT,
+    .axis_size = STACK_HUG,
+    .gap       = 4,
+    .align     = stack_ALIGN_FILL,
+  },
+
+  [CONFIGURING_ST_SNAP] = STACK_LEAF(CONFIGURING_ST_WINDOWING,
+                                     0,
+                                     0,
+                                     stack_ALIGN_FILL),
+
+  [CONFIGURING_ST_SNAP_SAFE] = STACK_LEAF(CONFIGURING_ST_WINDOWING,
+                                          0,
+                                          0,
+                                          stack_ALIGN_FILL),
 };
 
 /* ----------------------------------------------------------------------- */
@@ -488,6 +510,10 @@ enum
   CONFIGURING_ICON_THEME_LABEL,
   CONFIGURING_ICON_THEME_NAME,
   CONFIGURING_ICON_THEME_CHOOSE,
+  /* Windowing */
+  CONFIGURING_ICON_WINDOWING_FRAME,
+  CONFIGURING_ICON_SNAP,
+  CONFIGURING_ICON_SNAP_SAFE,
   CONFIGURING_NICONS
 };
 
@@ -527,7 +553,13 @@ static const configuring_section_t g_configuring_sections[CONFIGURING_SECTION__L
   {
     "Theme", "theme",
     { CONFIGURING_ST_THEME, -1 },
-    CONFIGURING_ICON_THEME_FRAME, CONFIGURING_NICONS
+    CONFIGURING_ICON_THEME_FRAME, CONFIGURING_ICON_WINDOWING_FRAME
+  },
+  [CONFIGURING_SECTION_WINDOWING] =
+  {
+    "Windowing", "windowing",
+    { CONFIGURING_ST_WINDOWING, -1 },
+    CONFIGURING_ICON_WINDOWING_FRAME, CONFIGURING_NICONS
   },
 };
 
@@ -637,6 +669,10 @@ static void configuring_label_widths(const wuss_t *wuss, stack_item_t *items)
     wuss_STD_GAP + task_text_width(wuss, "Reverse mouse scroll direction");
   items[CONFIGURING_ST_SOLID_DRAGS].cross_size = wuss_STD_GLYPH_SIZE +
     wuss_STD_GAP + task_text_width(wuss, "Solid drags");
+  items[CONFIGURING_ST_SNAP].cross_size = wuss_STD_GLYPH_SIZE +
+    wuss_STD_GAP + task_text_width(wuss, "Snap to screen edges");
+  items[CONFIGURING_ST_SNAP_SAFE].cross_size = wuss_STD_GLYPH_SIZE +
+    wuss_STD_GAP + task_text_width(wuss, "Snap to safe area");
   items[CONFIGURING_ST_FG_LABEL].axis_size =
     task_text_width(wuss, "Foreground");
   items[CONFIGURING_ST_BG_LABEL].axis_size =
@@ -705,6 +741,19 @@ static void configuring_section_specs(configuring_task_t *task,
                                       wuss_icon_spec_t   *specs)
 {
   const char *font_name;
+
+  if (section == CONFIGURING_SECTION_WINDOWING)
+  {
+    wuss_icon_spec_frame(&specs[CONFIGURING_ICON_WINDOWING_FRAME],
+                         boxes[CONFIGURING_ST_WINDOWING], "Windows");
+
+    wuss_icon_spec_option(&specs[CONFIGURING_ICON_SNAP],
+                          boxes[CONFIGURING_ST_SNAP], "Snap to screen edges");
+
+    wuss_icon_spec_option(&specs[CONFIGURING_ICON_SNAP_SAFE],
+                          boxes[CONFIGURING_ST_SNAP_SAFE], "Snap to safe area");
+    return;
+  }
 
   if (section == CONFIGURING_SECTION_THEME)
   {
@@ -864,6 +913,11 @@ static void configuring_section_bind(configuring_task_t *task,
     task->theme_name_icon   = CONFIGURING_BIND(CONFIGURING_ICON_THEME_NAME);
     task->choose_theme_icon = CONFIGURING_BIND(CONFIGURING_ICON_THEME_CHOOSE);
     break;
+
+  case CONFIGURING_SECTION_WINDOWING:
+    task->snap_icon      = CONFIGURING_BIND(CONFIGURING_ICON_SNAP);
+    task->snap_safe_icon = CONFIGURING_BIND(CONFIGURING_ICON_SNAP_SAFE);
+    break;
   }
 
 #undef CONFIGURING_BIND
@@ -978,7 +1032,8 @@ static result_t configuring_section_open(configuring_task_t *task,
                              &place,
                              doc,
                              sec->name,
-                             wuss_WINDOW_DEFAULT | wuss_WINDOW_FOCUSABLE,
+                             (wuss_WINDOW_DEFAULT & ~wuss_WINDOW_HSCROLL) |
+                             wuss_WINDOW_FOCUSABLE,
                              wuss_BACKDROP_COLOUR(wuss_COLOUR_WINDOW),
                              doc,
                              SIZE2D(0, 0),
@@ -1007,6 +1062,16 @@ static result_t configuring_section_open(configuring_task_t *task,
     wuss_get_config(task->base.wuss, &config);
     wuss_icon_set_selected(window, task->solid_drags_icon,
                            !config.mouse.outline_drags);
+  }
+  else if (section == CONFIGURING_SECTION_WINDOWING)
+  {
+    wuss_config_t config;
+
+    wuss_get_config(task->base.wuss, &config);
+    wuss_icon_set_selected(window, task->snap_icon,
+                           !config.mouse.no_window_snap);
+    wuss_icon_set_selected(window, task->snap_safe_icon,
+                           !config.mouse.no_safe_area_snap);
   }
 
   return wuss_set_focus(task->base.wuss, window);
@@ -1422,6 +1487,22 @@ static result_t configuring_icon(const wuss_event_t *event, void *task_data)
 
     wuss_get_config(cc->base.wuss, &config);
     config.mouse.outline_drags = !wuss_icon_get_selected(icon);
+    return wuss_set_config(cc->base.wuss, &config);
+  }
+  else if (icon == cc->snap_icon)
+  {
+    wuss_config_t config;
+
+    wuss_get_config(cc->base.wuss, &config);
+    config.mouse.no_window_snap = !wuss_icon_get_selected(icon);
+    return wuss_set_config(cc->base.wuss, &config);
+  }
+  else if (icon == cc->snap_safe_icon)
+  {
+    wuss_config_t config;
+
+    wuss_get_config(cc->base.wuss, &config);
+    config.mouse.no_safe_area_snap = !wuss_icon_get_selected(icon);
     return wuss_set_config(cc->base.wuss, &config);
   }
   else if (icon == cc->choose_font_icon)

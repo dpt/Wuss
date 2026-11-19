@@ -330,6 +330,27 @@ static void viewing_title(viewing_task_t *ic)
                      ic->tile ? 100 : ic->scale);
 }
 
+/* Show next, an rgba8888 bitmap whose pixels it takes, named path, resizing
+ * the window to fit */
+static result_t viewing_take(viewing_task_t *ic,
+                             const bitmap_t *next,
+                             const char     *path)
+{
+  result_t rc;
+
+  free(ic->bitmap.base);
+  ic->bitmap = *next;
+  ic->alpha  = bitmap_has_transparency(&ic->bitmap);
+
+  rc = viewing_fit(ic);
+  if (rc != result_OK)
+    return rc;
+
+  snprintf(ic->path, sizeof(ic->path), "%s", path);
+  viewing_title(ic);
+  return result_OK;
+}
+
 /* Load the PNG or JPEG at path and show it, resizing the window to fit. On failure
  * the current image stays and the error is returned. */
 static result_t viewing_show(viewing_task_t *ic, const char *path)
@@ -344,16 +365,16 @@ static result_t viewing_show(viewing_task_t *ic, const char *path)
     return rc;
   }
 
-  free(ic->bitmap.base);
-  ic->bitmap = next;
-  ic->alpha  = bitmap_has_transparency(&ic->bitmap);
+  return viewing_take(ic, &next, path);
+}
 
-  rc = viewing_fit(ic);
-  if (rc != result_OK)
-    return rc;
-
-  snprintf(ic->path, sizeof(ic->path), "%s", path);
-  viewing_title(ic);
+/* taskapp_data_load_bitmap_fn_t: show a RAM transfer, titled leafname */
+static result_t viewing_show_bitmap(void       *instance,
+                                    bitmap_t   *bm,
+                                    const char *leafname)
+{
+  (void) viewing_take(instance, bm, leafname);
+  free(bm); /* its pixels are taken */
   return result_OK;
 }
 
@@ -799,6 +820,7 @@ result_t viewing_app_create(wuss_t *wuss)
     .name          = "Viewing",
     .purpose       = "View PNG and JPEG images",
     .data_load     = (taskapp_data_load_fn_t) viewing_show,
+    .data_load_bitmap = viewing_show_bitmap,
     .drop_only     = true,
     .opens         = opens,
     .instance_size = sizeof(viewing_task_t),

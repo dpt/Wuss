@@ -18,35 +18,34 @@
 
 #include "snapshot.h"
 
-result_t snapshot_save_png(wuss_window_t    *window,
-                           wuss_window_fn_t *handle,
-                           void             *task_data,
-                           const char       *filename)
+/* redraw window's whole content box into a fresh bgrx8888 bitmap; the
+ * caller frees bm->base, set even on failure */
+static result_t snapshot_render(wuss_window_t    *window,
+                                wuss_window_fn_t *handle,
+                                void             *task_data,
+                                bitmap_t         *bm)
 {
   result_t     rc;
   box_t        bounds;
   size2d_t     size;
   void        *pixels;
-  bitmap_t     bm;
   screen_t     scr;
   wuss_event_t event;
-
-  if (window == NULL)
-    return result_OK;
 
   wuss_window_get_content_bounds(window, &bounds);
   size = box_size(&bounds);
 
   /* zeroed, as not every task paints every pixel */
-  pixels = calloc((size_t) size.w * (size_t) size.h, 4);
+  pixels   = calloc((size_t) size.w * (size_t) size.h, 4);
+  bm->base = pixels;
   if (pixels == NULL)
     return result_OOM;
 
-  rc = bitmap_init(&bm, size, pixelfmt_bgrx8888, size.w * 4, NULL, pixels);
+  rc = bitmap_init(bm, size, pixelfmt_bgrx8888, size.w * 4, NULL, pixels);
   if (rc != result_OK)
-    goto cleanup;
+    return rc;
 
-  screen_for_bitmap(&scr, &bm);
+  screen_for_bitmap(&scr, bm);
 
   /* the redraw sees the whole bitmap as both the dirty and full content box */
   bounds.x0 = 0;
@@ -65,18 +64,50 @@ result_t snapshot_save_png(wuss_window_t    *window,
   event.data.redraw.bounds  = &bounds;
   wuss_window_get_scroll(window, &event.data.redraw.scroll);
 
-  rc = handle(window, &event, task_data);
-  if (rc != result_OK)
-    goto cleanup;
+  return handle(window, &event, task_data);
+}
 
-  rc = bitmap_save_png(&bm, filename);
-  if (rc != result_OK)
-    logf_warning("snapshot: saving \"%s\" failed (rc=0x%X)", filename, rc);
-  else
-    logf_info("snapshot: saved \"%s\"", filename);
+result_t snapshot_save_png(wuss_window_t    *window,
+                           wuss_window_fn_t *handle,
+                           void             *task_data,
+                           const char       *filename)
+{
+  result_t rc;
+  bitmap_t bm;
 
-cleanup:
-  free(pixels);
+  if (window == NULL)
+    return result_OK;
+
+  rc = snapshot_render(window, handle, task_data, &bm);
+  if (rc == result_OK)
+  {
+    rc = bitmap_save_png(&bm, filename);
+    if (rc != result_OK)
+      logf_warning("snapshot: saving \"%s\" failed (rc=0x%X)", filename, rc);
+    else
+      logf_info("snapshot: saved \"%s\"", filename);
+  }
+
+  free(bm.base);
+  return rc;
+}
+
+result_t snapshot_bitmap(wuss_window_t    *window,
+                         wuss_window_fn_t *handle,
+                         void             *task_data,
+                         bitmap_t        **out)
+{
+  result_t rc;
+  bitmap_t bm;
+
+  if (window == NULL)
+    return result_BAD_ARG;
+
+  rc = snapshot_render(window, handle, task_data, &bm);
+  if (rc == result_OK)
+    rc = bitmap_convert(&bm, pixelfmt_rgba8888, out);
+
+  free(bm.base);
   return rc;
 }
 

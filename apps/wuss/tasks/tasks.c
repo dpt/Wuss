@@ -113,6 +113,7 @@ g_image_tasks[] =
   { "Orbing", orbing_app_create },
   { "Painting", painting_app_create },
   { "Resizing", resizing_app_create },
+  { "Texturing", texturing_app_create },
   { "Viewing", viewing_app_create }
 },
 g_tests_tasks[] =

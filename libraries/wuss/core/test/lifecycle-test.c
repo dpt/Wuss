@@ -563,6 +563,8 @@ BackdropOK: ;
     box_t              before;
     box_t              after;
     int                old_height;
+    int                title_w;
+    int                long_w;
 
     small = NULL;
     tall  = NULL;
@@ -614,6 +616,19 @@ BackdropOK: ;
 
     if (wuss_set_font(sfw, wuss_MAX_FONTS, &sfdesc) != result_BAD_ARG)
     {
+      wuss_destroy(sfw);
+      goto Failure;
+    }
+
+    /* a longer title needs more width; none needs none */
+    title_w = wuss_window_get_title_width(sfwin);
+    wuss_window_set_title(sfwin, "FFFFFFFFFFFFFFFFFFFF");
+    long_w = wuss_window_get_title_width(sfwin);
+    wuss_window_set_title(sfwin, "");
+    if (title_w <= 0 || long_w <= title_w ||
+        wuss_window_get_title_width(sfwin) != 0)
+    {
+      printf("  title width %d, long %d\n", title_w, long_w);
       wuss_destroy(sfw);
       goto Failure;
     }

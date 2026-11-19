@@ -77,19 +77,20 @@ struct wuss_saveas
   wuss_icon_t             *save_icon;
   filetype_t               filetype;
   wuss_saveas_save_fn_t   *save_fn;
+  wuss_saveas_bitmap_fn_t *bitmap_fn; /* NULL: files only */
   void                    *opaque;
 
   /* Transfer state; transfer_active gates a fresh drag from starting a
    * second one and gates a stray reply after a bounce. save_target is the
-   * window the DataSave was addressed to -- the DataLoad that follows must
-   * go back to the same window, since a wuss_task_t has no single "the"
-   * window to derive it from. */
+   * window, and icon if any (an icon bar icon), the DataSave was addressed
+   * to -- the DataLoad that follows must go back to the same place, since a
+   * wuss_task_t has no single "the" window to derive it from. */
   int                      transfer_active;
   int                      keep_open; /* set from the drag's button: an
                                        * ADJUST drag-save leaves the dialogue
                                        * open for a repeat save, a SELECT one
                                        * closes it once the transfer completes */
-  wuss_window_t           *save_target;
+  wuss_msg_target_t        save_target;
   unsigned int             save_ref;
   unsigned int             load_ref;
 };
@@ -338,9 +339,11 @@ result_t wuss_saveas_create(wuss_saveas_t        **out,
   sa->dialogue        = NULL;
   sa->filetype        = filetype != NULL ? *filetype : filetype_DATA;
   sa->save_fn         = save_fn;
+  sa->bitmap_fn       = NULL;
   sa->opaque          = opaque;
   sa->transfer_active = 0;
-  sa->save_target     = NULL;
+  sa->save_target.window = NULL;
+  sa->save_target.icon   = NULL;
 
   rc = saveas_solve(wuss, &size, boxes);
   if (rc != result_OK)
@@ -414,6 +417,12 @@ void wuss_saveas_set_filetype(wuss_saveas_t    *saveas,
   wuss__icon_invalidate(wuss_dialogue_window(saveas->dialogue), icon);
 }
 
+void wuss_saveas_set_bitmap_fn(wuss_saveas_t           *saveas,
+                               wuss_saveas_bitmap_fn_t *bitmap_fn)
+{
+  saveas->bitmap_fn = bitmap_fn;
+}
+
 const char *wuss_saveas_get_path(const wuss_saveas_t *saveas)
 {
   return wuss_icon_get_text(saveas->leaf_icon);
@@ -446,8 +455,9 @@ result_t wuss_saveas_open(wuss_saveas_t *saveas)
 static int saveas_handle_drag_end(wuss_saveas_t      *sa,
                                   const wuss_event_t *event)
 {
-  wuss_data_save_t payload;
-  const char      *leafname;
+  const char       *leafname;
+  wuss_data_save_t  payload;
+  wuss_msg_target_t target;
 
   if (sa->transfer_active)
     return 1; /* a transfer is already running: ignore this drag */
@@ -459,14 +469,19 @@ static int saveas_handle_drag_end(wuss_saveas_t      *sa,
   memset(&payload, 0, sizeof(payload));
   payload.filetype     = sa->filetype;
   payload.reply_window = wuss_dialogue_window(sa->dialogue);
+  payload.ram          = sa->bitmap_fn != NULL;
   strncpy(payload.leafname, leafname, sizeof(payload.leafname) - 1);
 
-  if (wuss_send_recorded(sa->wuss, sa->task, event->data.drag_end.drop,
-                         wuss_MESSAGE_DATA_SAVE, &payload, sizeof(payload),
-                         0, &sa->save_ref) == result_OK)
+  /* over an icon bar icon, the icon's own task is the target */
+  target.window = event->data.drag_end.drop;
+  target.icon   = event->data.drag_end.drop_icon;
+
+  if (wuss_send_recorded_to(sa->wuss, sa->task, &target,
+                            wuss_MESSAGE_DATA_SAVE, &payload, sizeof(payload),
+                            0, &sa->save_ref) == result_OK)
   {
     sa->transfer_active = 1;
-    sa->save_target     = event->data.drag_end.drop;
+    sa->save_target     = target;
     sa->keep_open       = (event->data.drag_end.button &
                            wuss_BUTTON_ADJUST) != 0;
   }
@@ -474,8 +489,39 @@ static int saveas_handle_drag_end(wuss_saveas_t      *sa,
   return 1;
 }
 
-/* wuss_EVENT_MESSAGE: a DataSaveAck (path to write to) or DataLoadAck
- * (transfer complete), or a broadcast this dialogue has no interest in. */
+/* A RamFetch: send the target the document as a bitmap. The target owns it
+ * once it acknowledges; saveas_handle_bounced frees it otherwise. */
+static void saveas_ram_transmit(wuss_saveas_t *sa)
+{
+  result_t            rc;
+  wuss_ram_transmit_t payload;
+
+  memset(&payload, 0, sizeof(payload));
+  strncpy(payload.leafname,
+          path_leaf(wuss_icon_get_text(sa->leaf_icon)),
+          sizeof(payload.leafname) - 1);
+
+  wuss_hourglass_on(sa->wuss);
+  rc = sa->bitmap_fn(&payload.bitmap, sa->opaque);
+  wuss_hourglass_off(sa->wuss);
+  if (rc != result_OK)
+  {
+    sa->transfer_active = 0;
+    return;
+  }
+
+  if (wuss_send_recorded_to(sa->wuss, sa->task, &sa->save_target,
+                            wuss_MESSAGE_RAM_TRANSMIT, &payload,
+                            sizeof(payload), 0, &sa->load_ref) != result_OK)
+  {
+    bitmap_destroy(payload.bitmap);
+    sa->transfer_active = 0;
+  }
+}
+
+/* wuss_EVENT_MESSAGE: a DataSaveAck (path to write to), RamFetch (send a
+ * bitmap) or DataLoadAck (transfer complete), or a broadcast this dialogue
+ * has no interest in. */
 static int saveas_handle_message(wuss_saveas_t      *sa,
                                  const wuss_event_t *event)
 {
@@ -486,27 +532,43 @@ static int saveas_handle_message(wuss_saveas_t      *sa,
   if (!sa->transfer_active)
     return 0;
 
+  if (msg->action == wuss_MESSAGE_RAM_FETCH && msg->your_ref == sa->save_ref)
+  {
+    if (sa->bitmap_fn != NULL)
+      saveas_ram_transmit(sa);
+    else
+      sa->transfer_active = 0;
+
+    return 1;
+  }
+
   if (msg->action == wuss_MESSAGE_DATA_SAVE_ACK &&
      msg->your_ref == sa->save_ref)
   {
-    char   path[DPTLIB_MAXPATH];
-    size_t len;
+    wuss_data_save_ack_t ack;
 
-    len = MIN(msg->size, sizeof(path) - 1);
-    strncpy(path, (const char *) msg->data, len);
-    path[len] = '\0';
+    if (msg->size < sizeof(ack))
+    {
+      sa->transfer_active = 0;
+      return 1;
+    }
+    memcpy(&ack, msg->data, sizeof(ack));
+    ack.path[sizeof(ack.path) - 1] = '\0';
 
-    if (saveas_call_save(sa, path) != result_OK)
+    if (saveas_call_save(sa, ack.path) != result_OK)
     {
       sa->transfer_active = 0;
       return 1;
     }
 
-    (void) wuss_icon_set_text(wuss_dialogue_window(sa->dialogue),
-                              sa->leaf_icon, path);
-    if (wuss_send_recorded(sa->wuss, sa->task, sa->save_target,
-                           wuss_MESSAGE_DATA_LOAD, path,
-                           strlen(path) + 1, 0, &sa->load_ref) != result_OK)
+    /* a scrap file is not the document's new home: keep the name */
+    if (!ack.unsafe)
+      (void) wuss_icon_set_text(wuss_dialogue_window(sa->dialogue),
+                                sa->leaf_icon, ack.path);
+    if (wuss_send_recorded_to(sa->wuss, sa->task, &sa->save_target,
+                              wuss_MESSAGE_DATA_LOAD, ack.path,
+                              strlen(ack.path) + 1, 0,
+                              &sa->load_ref) != result_OK)
       sa->transfer_active = 0;
 
     return 1;
@@ -539,6 +601,12 @@ static int saveas_handle_bounced(wuss_saveas_t      *sa,
     return 0;
   if (msg->my_ref != sa->save_ref && msg->my_ref != sa->load_ref)
     return 0;
+
+  /* a refused bitmap is still ours. ponytail: a bounce to a destroyed
+   * dialogue is dropped, leaking it; free it in the queue purge if seen */
+  if (msg->action == wuss_MESSAGE_RAM_TRANSMIT &&
+      msg->size >= sizeof(wuss_ram_transmit_t))
+    bitmap_destroy(((const wuss_ram_transmit_t *) msg->data)->bitmap);
 
   sa->transfer_active = 0;
 

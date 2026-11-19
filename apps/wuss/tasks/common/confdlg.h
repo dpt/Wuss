@@ -14,7 +14,7 @@
 
 #include "taskapp.h"
 
-#define CONFDLG_MAX_ROWS 4
+#define CONFDLG_MAX_ROWS 5
 
 /* One slider row: its label, range, snap step (0 for none) and the byte
  * offset of the int it edits in the task's config block */

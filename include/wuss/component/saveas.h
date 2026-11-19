@@ -23,7 +23,7 @@
  * dialogue's window (see wuss_saveas_window) through
  * wuss_saveas_handle_event, including wuss_EVENT_DRAG_END (the DRAGGABLE
  * icon starts its own core drag) and wuss_EVENT_MESSAGE (the DataSaveAck /
- * DataLoadAck replies). Callers need not forward anything.
+ * RamFetch / DataLoadAck replies). Callers need not forward anything.
  *
  * v1 is save-only: there is no load side, and the icon starts a fresh
  * transfer only when none is already in progress.
@@ -40,6 +40,7 @@ extern "C"
 #endif
 
 #include "base/result.h"
+#include "framebuf/bitmap.h"
 #include "io/filetype.h"
 
 #include "wuss/task.h"
@@ -64,6 +65,20 @@ typedef struct wuss_saveas wuss_saveas_t;
  *         path that failed.
  */
 typedef result_t (wuss_saveas_save_fn_t)(const char *path, void *opaque);
+
+/**
+ * Bitmap callback, for a RAM transfer: make a copy of the caller's document
+ * as a new bitmap. Called once the target has replied wuss_MESSAGE_RAM_FETCH
+ * to the DataSave. See wuss_saveas_set_bitmap_fn.
+ *
+ * \param[out] out    Filled with a pixelfmt_rgba8888 bitmap made by
+ *                    bitmap_convert. The dialogue passes it on to the
+ *                    target, or frees it if the target refuses it.
+ * \param[in]  opaque As passed to wuss_saveas_create.
+ * \return \ref result_OK on success. On failure the transfer is abandoned
+ *         silently, as for a bounce.
+ */
+typedef result_t (wuss_saveas_bitmap_fn_t)(bitmap_t **out, void *opaque);
 
 /* ----------------------------------------------------------------------- */
 
@@ -122,6 +137,19 @@ void wuss_saveas_set_leafname(wuss_saveas_t *saveas, const char *leafname);
  */
 void wuss_saveas_set_filetype(wuss_saveas_t    *saveas,
                               const filetype_t *filetype);
+
+/**
+ * Let a drag send the document as a bitmap to a target that takes one (a RAM
+ * transfer), so no file is written. A target that does not still gets a file
+ * through \c save_fn. The leafname is kept, as for a scrap file.
+ *
+ * \param[in] saveas    Handle.
+ * \param[in] bitmap_fn Makes the bitmap, passed the \c opaque given to
+ *                      wuss_saveas_create; NULL for files only (the
+ *                      default).
+ */
+void wuss_saveas_set_bitmap_fn(wuss_saveas_t           *saveas,
+                               wuss_saveas_bitmap_fn_t *bitmap_fn);
 
 /**
  * The writable's current text, for the caller to seed a fresh dialogue or

@@ -96,7 +96,8 @@ struct wuss_gridview
   size2d_t                       doc;     /* extent last given the window */
   int                            inset;   /* margin round the whole grid */
   int                            max_columns; /* 0 for no limit */
-  int                            pow2;    /* columns restricted to 1, 2, 4... */
+  int                            min_w;   /* caller's least content width */
+  int                            pow2;   /* columns restricted to 1, 2, 4... */
   int                            selectable;
   int                            fixed_cell; /* cell set by the caller */
   int                            has_bg;  /* bg replaces window_bg */
@@ -364,6 +365,7 @@ result_t wuss_gridview_create(wuss_gridview_t            **out,
   gv->doc         = SIZE2D(0, 0);
   gv->inset       = 0;
   gv->max_columns = 0;
+  gv->min_w       = 0;
   gv->pow2        = 0;
   gv->selectable  = 1;
   gv->fixed_cell  = 0;
@@ -426,7 +428,8 @@ static int gridview_width_for_columns(const wuss_gridview_t *gv, int cols)
 }
 
 /* Smallest content size: one cell, widened to fit a GRIDVIEW_MIN_LABEL_CHARS
- * label unless the caller fixed the cell size. */
+ * label unless the caller fixed the cell size, and to the caller's minimum
+ * width. */
 static size2d_t gridview_min_size(const wuss_gridview_t *gv)
 {
   int w;
@@ -434,7 +437,8 @@ static size2d_t gridview_min_size(const wuss_gridview_t *gv)
   w = gv->cell.w;
   if (!gv->fixed_cell)
     w = MAX(w, gridview_cell_for(gv, gv->min_label_w).w);
-  return SIZE2D(w + 2 * gv->inset, gv->cell.h + 2 * gv->inset);
+  return SIZE2D(MAX(w + 2 * gv->inset, gv->min_w),
+                gv->cell.h + 2 * gv->inset);
 }
 
 /* Columns wanted, held to the item count, and to one in wuss_GRIDVIEW_FULL. */
@@ -1262,6 +1266,14 @@ void wuss_gridview_set_layout(wuss_gridview_t *gv,
   wuss_window_invalidate_visible(gv->window);
 }
 
+void wuss_gridview_set_min_width(wuss_gridview_t *gv, int width)
+{
+  gv->min_w = MAX(width, 0);
+
+  gridview_reflow(gv);
+  wuss_window_invalidate_visible(gv->window);
+}
+
 void wuss_gridview_set_padding(wuss_gridview_t *gv,
                                int              pad_x,
                                int              pad_y,
@@ -1382,6 +1394,11 @@ void wuss_gridview_fit_window(wuss_gridview_t    *gv,
   box_t    content;
   int      cols;
   size2d_t size;
+
+  /* placed afterwards anyway: start at the origin so the cap below leaves
+   * the whole screen to grow into */
+  if (place != NULL)
+    wuss_window_move(gv->window, POINT(0, 0));
 
   (void) wuss_window_resize(gv->window,
                             wuss_gridview_natural_size(gv, columns, max_rows));

@@ -8,19 +8,19 @@ The icon bar menu is not covered here. `taskapp` builds it (Info, New or New...,
 Hide, Quit). Help and Choices... will join it when wuss has help text and a
 choices system.
 
-A window menu is laid out in two steps. First build the logical layout from
+Lay out a window menu in two steps. First build the logical layout from
 the top-level entries below. Then reduce it to the physical layout the user
 sees.
 
 ## Logical layout
 
-A window menu is titled with the app's name. Its top-level entries come in
+A window menu has the app's name as its title. Its top-level entries come in
 this order. Leave out any entry the app has nothing for.
 
 1. **`File ⇒`** — document-wide operations: Info, Save, Print.
 2. **`Edit ⇒`** — Undo, Redo, Cut, Copy, Paste, Delete, `Select all`,
    `Clear selection`, Find.
-3. **`View ⇒`** — how the document is shown, not what it holds: new view,
+3. **`View ⇒`** — how the app shows the document, not what it holds: new view,
    view options, grids, scale and zoom, `Display ⇒` with its
    `Dithering ⇒` (`dithermenu_t`'s `display`).
 4. **`<Object> ⇒`** — operations on one type of document object, named for
@@ -28,18 +28,18 @@ this order. Leave out any entry the app has nothing for.
    one entry for each, such as `Text`, `Style` and `Page`, or `Selection`,
    `Shapes` and `Layer`. An app's own settings (`Model ⇒`, `Gravity`) and
    generators (`Randomise`, `Reset`) go under the object they act on.
-5. **`Utils ⇒`** — whatever is left.
+5. **`Utils ⇒`** — all other operations.
 
-If the app has a single object type (a ball game, say) and its entry holds
-only a handful of rows, put those rows straight in the main menu, between
+An app can have a single object type (a ball game, say) whose entry holds
+only a few rows. Then put those rows straight in the main menu, between
 dividers, in place of the `<Object> ⇒` entry.
 
 ## Physical layout
 
-The logical layout is then reduced:
+Then reduce the logical layout:
 
-- A submenu of one or two rows is replaced by those rows. `File ⇒` holding
-  only `Save ⇒` becomes `Save ⇒`; `Edit ⇒` holding only Undo and Redo becomes
+- Replace a submenu of one or two rows with those rows. `File ⇒` holding
+  only `Save ⇒` becomes `Save ⇒`. `Edit ⇒` holding only Undo and Redo becomes
   `Undo` and `Redo`.
 
 ## Dividers
@@ -82,9 +82,9 @@ to `wuss_saveas_window`). `F3` opens the same box on its own through
 `wuss_saveas_open`. Every app with Save binds `F3`.
 
 The row is `Save`, not `Save PNG`. Once an app can save in a second format,
-`Save ⇒` becomes a submenu of formats, each opening its save box, and `F3`
-opens the box for the format used last (PNG to start with). Until then
-`Save ⇒` goes straight to the PNG box.
+`Save ⇒` becomes a submenu of formats. Each format opens its own save box.
+`F3` then opens the box for the format used last (PNG to start with). Until
+then `Save ⇒` goes straight to the PNG box.
 
 ## Labels
 
@@ -100,7 +100,7 @@ opens the box for the format used last (PNG to start with). Until then
 
 ## Keys
 
-These keys are reserved. Don't use them for anything else in a window.
+The standard reserves these keys. Do not use them for anything else in a window.
 
 | Row             | Key     |
 |-----------------|---------|
@@ -114,4 +114,4 @@ These keys are reserved. Don't use them for anything else in a window.
 | Reset           | `R`     |
 | New game        | `N`     |
 
-Use `WUSS_MENU_ITEM_SHORTCUT` so the key is shown against the row.
+Use `WUSS_MENU_ITEM_SHORTCUT`, so that the menu shows the key against the row.
