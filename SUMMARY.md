@@ -1,7 +1,6 @@
 # Wuss 0.26.0
 
-Unreleased. This summary lists the changes since 0.25.0. See
-`CHANGELOG.md` for the full list.
+Unreleased. Changes since 0.25.0; see `CHANGELOG.md` for the full list.
 
 ## Breaking
 
