@@ -8,6 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.26.0] - 2026-11-19
+
 ### Added
 
 - Texturing: a new Image task that makes seamlessly tiling 256 x 256
